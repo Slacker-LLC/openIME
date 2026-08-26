@@ -1,0 +1,66 @@
+name: Bug report
+description: 报告可复现的功能、布局或稳定性问题
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先确认问题能在最新构建复现。不要粘贴密码、剪贴板、录音或其他真实输入内容。
+  - type: input
+    id: version
+    attributes:
+      label: APK / commit
+      placeholder: openIME-1.0-debug.apk 或 commit SHA
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: 设备与 Android 版本
+      placeholder: Xiaomi 24129PN74C / Android 16
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: 输入模式
+      options:
+        - 26 键拼音
+        - 9 键拼音
+        - 英文 / T9
+        - 数字 / 符号
+        - Emoji / 剪贴板
+        - 语音
+        - 设置 / 浮动键盘
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      description: 请使用脱敏后的示例文字。
+      placeholder: |
+        1. 打开……
+        2. 切换到……
+        3. 点击……
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期行为
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 脱敏日志或截图
+      description: 请删除个人路径、输入内容、Token、密码和录音。

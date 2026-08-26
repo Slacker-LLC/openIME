@@ -51,6 +51,15 @@ class InputConnectionGateway(
         }
     }
 
+    /** Delete the active selection without falling back to one-character delete. */
+    fun deleteSelection(): Boolean {
+        if (isPassword()) return false
+        val ic = connection() ?: return false
+        val selected = runCatching { ic.getSelectedText(0)?.toString().orEmpty() }.getOrDefault("")
+        if (selected.isEmpty()) return false
+        return ic.commitText("", 1)
+    }
+
     fun deleteForwards() {
         val ic = connection() ?: return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -134,8 +143,16 @@ class InputConnectionGateway(
 
     fun readClipboard(): String {
         if (isPassword()) return ""
-        val cm = context?.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return ""
-        return cm.primaryClip?.getItemAt(0)?.coerceToText(context!!)?.toString().orEmpty()
+        val safeContext = context ?: return ""
+        val cm = safeContext.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return ""
+        return runCatching {
+            cm.primaryClip
+                ?.takeIf { it.itemCount > 0 }
+                ?.getItemAt(0)
+                ?.coerceToText(safeContext)
+                ?.toString()
+                .orEmpty()
+        }.getOrDefault("")
     }
 
     fun pasteClipboard(): String {

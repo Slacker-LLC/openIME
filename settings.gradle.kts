@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "LocalVoiceIME"
+rootProject.name = "openIME"
 include(":app")

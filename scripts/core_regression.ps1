@@ -1,11 +1,11 @@
-﻿param([string]$Serial = 'emulator-5558')
+﻿param([string]$Serial = '')
 
 $ErrorActionPreference = 'Stop'
 $project = Split-Path $PSScriptRoot -Parent
 $apk = Join-Path $project 'artifacts\openIME-1.0-debug.apk'
-$sdkRoot = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } elseif ($env:ANDROID_SDK_ROOT) { $env:ANDROID_SDK_ROOT } else { $null }
-$adb = if ($sdkRoot) { Join-Path $sdkRoot 'platform-tools\adb.exe' } else { (Get-Command adb -ErrorAction Stop).Source }
-if (-not (Test-Path -LiteralPath $adb)) { throw "adb not found; set ANDROID_HOME/ANDROID_SDK_ROOT or add adb to PATH" }
+. (Join-Path $PSScriptRoot 'adb_context.ps1')
+$adb = Resolve-OpenImeAdb
+$Serial = Resolve-OpenImeSerial -RequestedSerial $Serial -AdbPath $adb
 $pkg = 'llc.slacker.openime'
 $receiver = "$pkg/.E2ETestReceiver"
 $action = "$pkg.TEST_COMMAND"
@@ -111,20 +111,12 @@ AssertText '020 nihao -> 你好' '你好' (GetText 'cr26')
 
 StartReal
 Mode 'PINYIN_9'
-# Chinese 9-key Pinyin uses multi-tap letters; digits are long-press only.
-# 你好 = n(i)(h)(a)(o) = 66 / 444 / 44 / 2 / 666. A pause separates
-# adjacent letters that share the same digit key.
-foreach ($key in @('6', '6')) { Tap $key }
-Start-Sleep -Milliseconds 800
-foreach ($key in @('4', '4', '4')) { Tap $key }
-Start-Sleep -Milliseconds 800
-foreach ($key in @('4', '4')) { Tap $key }
-Start-Sleep -Milliseconds 800
-Tap '2'
-Start-Sleep -Milliseconds 800
-foreach ($key in @('6', '6', '6')) { Tap $key }
+# Chinese 9-key is a continuous T9 digit buffer. 你好 = 64426;
+# the visible pre-edit stays as Pinyin and the user can tap a candidate
+# without inserting a numeric string into the target editor.
+foreach ($key in @('6', '4', '4', '2', '6')) { Tap $key }
 Tap '确定'
-AssertText '030 9-key multi-tap -> 你好' '你好' (GetText 'crp9')
+AssertText '030 9-key continuous buffer -> 你好' '你好' (GetText 'crp9')
 
 StartReal
 Mode 'ENGLISH_T9'

@@ -8,8 +8,8 @@
 | `:app:testDebugUnitTest` | PASS | 5 classes, 28 tests, 0 failures |
 | `:app:lintDebug` | PASS | 0 errors; 45 warnings |
 | Instrumented (API 34 emulator) | PASS | `TEST-GlassTest2(AVD) - 14-_app-.xml`, 4/4 |
-| Real device core E2E | PASS | `f0e2ff6f` |
-| Real device extended E2E | PASS | `f0e2ff6f` |
+| Real device core E2E | PASS | 已脱敏设备序列号 |
+| Real device extended E2E | PASS | 已脱敏设备序列号 |
 | Real device lifecycle | PASS | `scripts/lifecycle_regression.ps1` |
 | Real device visual structure | PASS | `scripts/visual_check.ps1` |
 | Upgrade / settings retention | PASS | `scripts/upgrade_regression.ps1` |
@@ -58,7 +58,7 @@
 
 ## 2026-08-25 重跑会话（当前构建）
 
-> 本轮在 Xiaomi 24129PN74C / Android 16（f0e2ff6f）上完整重跑 P0 闭环。
+> 本轮在 Xiaomi 24129PN74C / Android 16（设备序列号已脱敏）上完整重跑 P0 闭环。
 > 修正了 3 个测试体系自身缺陷（此前使部分断言未真正生效 / 截图证据为损坏文件）。
 
 ### Build
@@ -76,8 +76,8 @@
      含中文的真实路径（junction 也会被 Gradle canonicalize 成真实路径，
      旧文档"junction 已解决"不成立）。
    - 实测 `-Dsun.jnu.encoding` / `-Dfile.encoding` 均无法修复（launcher 用 OS 原生字符集）。
-   - 修复：真实 ASCII 目录 `C:\ime-build`（robocopy /MIR 同步源码与 gradle 文件，排除 build/.gradle/.kotlin），
-     在 `C:\ime-build` 执行 Gradle；APK 拷回 `artifacts\`。
+   - 修复：临时 ASCII 目录（robocopy /MIR 同步源码与 gradle 文件，排除 build/.gradle/.kotlin），
+     在临时目录执行 Gradle；APK 拷回 `artifacts\`。
 2. **PowerShell 脚本 UTF-8 无 BOM**：PS 5.1（中文区域）按 GBK 解析 .ps1 字面量，
    全部 `'你好'` 等中文断言此前实际比较的是乱码（显示层 GBK/UTF-8 往返伪装成正常）。
    - 修复：7 个 `scripts/*.ps1` 加 UTF-8 BOM。

@@ -1,5 +1,6 @@
 package llc.slacker.openime
 
+import android.content.ClipboardManager
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
@@ -11,8 +12,8 @@ data class ClipboardEntry(
 )
 
 /**
- * Tiny persistent clipboard history. It deliberately stores only text the user
- * explicitly copies in the text-editor panel; password fields are never added.
+ * Tiny persistent clipboard history. Clipboard capture is best-effort and is
+ * skipped by the caller for password fields; no clipboard content is logged.
  */
 object ClipboardHistoryRepository {
     private const val PREFS = "ime_clipboard_history"
@@ -41,9 +42,27 @@ object ClipboardHistoryRepository {
 
     fun add(context: Context, text: String) {
         if (text.isBlank()) return
+        val old = load(context).firstOrNull { it.text == text }
         val items = load(context).filterNot { it.text == text }.toMutableList()
-        items.add(0, ClipboardEntry(text, System.currentTimeMillis(), false))
+        items.add(0, ClipboardEntry(text, System.currentTimeMillis(), old?.pinned ?: false))
         save(context, items.take(MAX_ITEMS))
+    }
+
+    /** Capture the current system clip when the user opens the clipboard UI. */
+    fun capturePrimary(context: Context): Boolean {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            ?: return false
+        val text = runCatching {
+            clipboard.primaryClip
+                ?.takeIf { it.itemCount > 0 }
+                ?.getItemAt(0)
+                ?.coerceToText(context)
+                ?.toString()
+                .orEmpty()
+        }.getOrDefault("")
+        if (text.isBlank()) return false
+        add(context, text)
+        return true
     }
 
     fun togglePin(context: Context, text: String) {

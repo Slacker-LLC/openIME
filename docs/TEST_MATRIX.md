@@ -26,7 +26,7 @@
 | UI-003 | Instrumented | root / tags | AUTO | PASS | 4/4 |
 | UI-004 | Instrumented | engine on real API 36 | AUTO | PASS | `am instrument ... ImeInstrumentedTest`, OK |
 | UI-005 | Instrumented | ActivityScenario / startActivitySync on real MIUI | AUTO | BLOCKED | main thread not idle after 45s; emulator evidence kept |
-| SMOKE-001 | Real IME | install / enable / set | AUTO | PASS | `core_regression.ps1 -Serial f0e2ff6f` |
+| SMOKE-001 | Real IME | install / enable / set | AUTO | PASS | `core_regression.ps1`（设备序列号已脱敏） |
 | E2E-001 | Real IME | `nihao → 你好` | AUTO | PASS | `CR 020` real device |
 | E2E-002 | Real IME | `64426 → 你好` | AUTO | PASS | `CR 030` real device |
 | E2E-003 | Real IME | `4663 → good` | AUTO | PASS | `CR 040` real device |
@@ -53,7 +53,7 @@
 | SEC-004 | Security | value-level log audit | AUTO | PASS | no `Log` of composition/candidate/text in main source |
 | SEC-005 | Security | voice permission denied + granted no crash | MANUAL | PASS | mic tap while denied/granted, process alive |
 | COMPAT-001 | Compatibility | API 34 emulator | AUTO | PASS | `GlassTest2` 4/4 + core |
-| COMPAT-002 | Compatibility | API 36 real Xiaomi | AUTO | PASS | `f0e2ff6f` core + extended |
+| COMPAT-002 | Compatibility | API 36 real Xiaomi | AUTO | PASS | 已脱敏设备序列号 core + extended |
 | COMPAT-003 | Compatibility | Android 10 / 12 | MANUAL | NOT TESTED | no matching emulator available |
 | PERF-001 | Performance | ADB command baseline | MANUAL | PARTIAL | P50 mode 63.7ms / state 57.5ms; not frame/Jank |
 | STRESS-001 | Stress | 30 cycles × mode/panel open-close | MANUAL | PARTIAL | PID alive, no FATAL/ANR, PSS ~29.7 MB |

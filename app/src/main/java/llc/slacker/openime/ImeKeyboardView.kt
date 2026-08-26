@@ -2,6 +2,7 @@ package llc.slacker.openime
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -129,6 +130,8 @@ open class ImeKeyboardView(
     private val fixedKeyboardBodyHeightDp = fixedImeHeightDp - 64
     private var syncingComposition = false
     private var t9Filter = "T9"
+    private var passwordField = false
+    private var inlineEditTarget: EditText? = null
 
     private lateinit var mainDock: LinearLayout
     private lateinit var keyboardHost: FrameLayout
@@ -465,7 +468,10 @@ open class ImeKeyboardView(
         lastT9Digits = ""
         currentCandidates = emptyList()
         currentItems = emptyList()
+        keyboardBody.animate().cancel()
+        keyboardBody.alpha = 0.96f
         renderModeBody()
+        keyboardBody.animate().alpha(1f).setDuration(100L).start()
         listener.onModeChanged(newMode)
     }
 
@@ -479,6 +485,8 @@ open class ImeKeyboardView(
         // may restore the IME window to the bottom during that callback.
         listener.onPanelChanged(newPanel)
         renderPanel(newPanel)
+        expandedPanel.alpha = 0.96f
+        expandedPanel.animate().alpha(1f).setDuration(120L).start()
     }
 
     fun closePanelToKeyboard(): Boolean {
@@ -491,11 +499,14 @@ open class ImeKeyboardView(
         stopVoiceIfActive()
         panel = Panel.NONE
         renderModeBody()
+        mainDock.alpha = 0.96f
+        mainDock.animate().alpha(1f).setDuration(100L).start()
         listener.onPanelChanged(Panel.NONE)
         return true
     }
 
     fun renderState(state: ImeState) {
+        passwordField = state.passwordField
         val previousSelection = composition.selectionStart
         setCompositionText(
             state.composition,
@@ -510,9 +521,6 @@ open class ImeKeyboardView(
         } else {
             pinyinBuffer.setLength(0)
             pinyinBuffer.append(state.composition)
-            if (mode == KeyboardMode.PINYIN_9 && state.composition.all { it.isDigit() }) {
-                lastNineDigits = state.composition
-            }
             if (mode == KeyboardMode.ENGLISH_T9) lastT9Digits = state.composition
         }
         updateTopZone(state.composition.isNotEmpty())
@@ -718,7 +726,7 @@ open class ImeKeyboardView(
                 }
                 if (secondary != null) {
                     k.setOnLongClickListener {
-                        listener.onCharacter(secondary)
+                        commitKeyboardCharacter(secondary)
                         true
                     }
                 }
@@ -733,7 +741,7 @@ open class ImeKeyboardView(
         bottom.addView(key("123", true, null, 1f, 15f) { setMode(KeyboardMode.DIGITS) }, flexKeyParams(1.3f))
         bottom.addView(
             key(if (mode == KeyboardMode.ENGLISH_26) "." else "，。", true, null, 1f, 15f) {
-                listener.onCharacter(if (mode == KeyboardMode.ENGLISH_26) "." else "，")
+                commitKeyboardCharacter(if (mode == KeyboardMode.ENGLISH_26) "." else "，")
             },
             flexKeyParams(0.95f),
         )
@@ -833,8 +841,19 @@ open class ImeKeyboardView(
             flexKeyParams(0.9f, gapDp = 2),
         )
         centerBottom.addView(
+            key("0", false, null, 1f, 20f) { onNineKey("0") }.apply {
+                tag = "key-9:0"
+                setTag(MARK_WHITE_KEY, true)
+                setOnLongClickListener {
+                    commitKeyboardCharacter("0")
+                    true
+                }
+            },
+            flexKeyParams(0.9f, gapDp = 2),
+        )
+        centerBottom.addView(
             spaceVoiceKey("空格", white = true) { commitFirstCandidateOrSpace() },
-            flexKeyParams(3.0f, gapDp = 2),
+            flexKeyParams(2.5f, gapDp = 2),
         )
         centerBottom.addView(
             key("中/英", true, null, 1f, 13f) { cycleMode() }.apply {
@@ -893,7 +912,7 @@ open class ImeKeyboardView(
                 gravity = Gravity.CENTER
                 contentDescription = p
                 isClickable = true
-                setOnClickListener { listener.onCharacter(p) }
+                setOnClickListener { commitKeyboardCharacter(p) }
             }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         }
         return stack
@@ -934,7 +953,7 @@ open class ImeKeyboardView(
                                 // A long press keeps the 9-key surface useful for
                                 // literal digits without making digits the default
                                 // Chinese Pinyin composition.
-                                listener.onCharacter(num)
+                                commitKeyboardCharacter(num)
                                 true
                             }
                         }
@@ -966,7 +985,7 @@ open class ImeKeyboardView(
                 gravity = Gravity.CENTER
                 contentDescription = s
                 isClickable = true
-                setOnClickListener { listener.onCharacter(s) }
+                setOnClickListener { commitKeyboardCharacter(s) }
             }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         }
         val left = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
@@ -992,7 +1011,7 @@ open class ImeKeyboardView(
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             chunk.forEach { d ->
                 row.addView(
-                    key(d, false, null, 1f, 22f) { listener.onCharacter(d) }.apply {
+                    key(d, false, null, 1f, 22f) { commitKeyboardCharacter(d) }.apply {
                         tag = "key:$d"
                         setTag(MARK_WHITE_KEY, true)
                     },
@@ -1018,14 +1037,13 @@ open class ImeKeyboardView(
             flexKeyParams(),
         )
         centerBottom.addView(
-            key("0", false, null, 1f, 22f) { listener.onCharacter("0") }.apply {
-                tag = "key:0"
+            spaceVoiceKey("空格", white = true) { listener.onSpace() }.apply {
                 setTag(MARK_WHITE_KEY, true)
             },
             flexKeyParams(),
         )
         centerBottom.addView(
-            key(".", false, null, 1f, 22f) { listener.onCharacter(".") }.apply {
+            key(".", false, null, 1f, 22f) { commitKeyboardCharacter(".") }.apply {
                 tag = "key:."
                 setTag(MARK_WHITE_KEY, true)
             },
@@ -1043,11 +1061,14 @@ open class ImeKeyboardView(
         }
         side.addView(backspaceKey().apply { setTag(MARK_SIDE_KEY, true) }, sideKeyParams(48, true))
         side.addView(
-            spaceVoiceKey("空格") { listener.onSpace() }.apply { setTag(MARK_SIDE_KEY, true) },
+            key("0", false, null, 1f, 22f) { commitKeyboardCharacter("0") }.apply {
+                tag = "key:0"
+                setTag(MARK_SIDE_KEY, true)
+            },
             sideKeyParams(48, true),
         )
         side.addView(
-            key("@", true, null, 1f, 15f) { listener.onCharacter("@") }
+            key("@", true, null, 1f, 15f) { commitKeyboardCharacter("@") }
                 .apply { setTag(MARK_SIDE_KEY, true) },
             sideKeyParams(48, true),
         )
@@ -1083,7 +1104,7 @@ open class ImeKeyboardView(
         1f,
         14f,
         iconRes = R.drawable.ic_mic,
-        onTap = onTap,
+        onTap = { if (!insertIntoInlineEditor(" ")) onTap() },
     ).apply {
         tag = "key-space"
         contentDescription = "$label，点击空格，长按语音输入"
@@ -1595,6 +1616,7 @@ open class ImeKeyboardView(
         // dialect buttons that the packaged model cannot actually recognize.
         val languages = listOf("普通话" to "zh-CN", "English" to "en-US")
         var finalDelivered = false
+        var recognizedText = ""
         val langButton = button(languages[voiceLanguageIndex].first, 13f, true).apply {
             setOnClickListener {
                 voiceLanguageIndex = (voiceLanguageIndex + 1) % languages.size
@@ -1608,8 +1630,8 @@ open class ImeKeyboardView(
         controls.addView(micButton, LinearLayout.LayoutParams(dp(58), dp(58)))
         val commitButton = button("上屏", 14f, false).apply {
             setOnClickListener {
-                val text = transcript.text.toString()
-                if (!finalDelivered && text.isNotEmpty() && text != "点击麦克风开始语音输入...") {
+                val text = recognizedText.trim()
+                if (!finalDelivered && text.isNotEmpty()) {
                     listener.onCharacter(text)
                     finalDelivered = true
                 }
@@ -1633,6 +1655,7 @@ open class ImeKeyboardView(
                 return
             }
             finalDelivered = false
+            recognizedText = ""
             voiceActive = true
             micButton.text = "⏹"
             modelStatus.text = "正在使用离线模型 · 音频不出设备"
@@ -1643,6 +1666,8 @@ open class ImeKeyboardView(
                     // worker thread; keep view and InputConnection mutations
                     // on the IME main thread.
                     post {
+                        if (!voiceActive) return@post
+                        if (text.isNotBlank()) recognizedText = text
                         transcript.text = text
                         modelStatus.text = "正在聆听 · 松开空格结束"
                         listener.onVoicePartial(text)
@@ -1650,6 +1675,7 @@ open class ImeKeyboardView(
                 }
                 override fun onFinal(text: String) {
                     post {
+                        if (text.isNotBlank()) recognizedText = text
                         transcript.text = text
                         micButton.text = "🎤"
                         voiceActive = false
@@ -1669,6 +1695,7 @@ open class ImeKeyboardView(
                 }
                 override fun onError(message: String) {
                     post {
+                        recognizedText = ""
                         transcript.text = message
                         micButton.text = "🎤"
                         voiceActive = false
@@ -1710,6 +1737,8 @@ open class ImeKeyboardView(
     }
 
     private fun renderClipboard() {
+        expandedPanel.removeAllViews()
+        inlineEditTarget = null
         addPanelHead("剪贴板")
         val body = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -1726,11 +1755,12 @@ open class ImeKeyboardView(
         ).apply { bottomMargin = dp(8) })
         val col = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         if (clipboardTab == 0) {
+            if (!passwordField) ClipboardHistoryRepository.capturePrimary(context)
             val history = ClipboardHistoryRepository.load(context)
             if (history.isEmpty()) {
                 col.addView(sectionTitle("最近复制"), wrapParams())
                 col.addView(TextView(context).apply {
-                    text = "暂无剪贴历史，可在文本编辑面板中复制内容。"
+                    text = "暂无剪贴历史；复制文本后重新打开这里即可看到。"
                     textSize = 13f
                     setPadding(dp(4), dp(6), dp(4), 0)
                     tag = "panel-note"
@@ -1772,21 +1802,49 @@ open class ImeKeyboardView(
                 }
             }
         } else {
-            ImeData.quickPhrases.forEach { (cat, phrases) ->
-                col.addView(sectionTitle(cat), wrapParams())
-                phrases.forEach { p ->
-                    col.addView(
-                        key(p, false, null, 1f, 13f) { listener.onCharacter(p) }.apply {
-                            setPadding(dp(12), 0, dp(12), 0)
+            col.addView(button("新增常用语", 13f, true).apply {
+                tag = "quick-phrase-add"
+                setOnClickListener { openQuickPhraseEditor(null) }
+            }, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(44),
+            ).apply { bottomMargin = dp(8) })
+
+            QuickPhraseRepository.load(context)
+                .groupBy { it.category }
+                .forEach { (category, phrases) ->
+                    col.addView(sectionTitle(category), wrapParams())
+                    phrases.forEach { phrase ->
+                        val row = LinearLayout(context).apply {
+                            orientation = LinearLayout.HORIZONTAL
                             tag = "phrase-card"
-                        },
-                        LinearLayout.LayoutParams(
+                        }
+                        row.addView(
+                            key(phrase.text, false, null, 1f, 13f) {
+                                listener.onCharacter(phrase.text)
+                            }.apply {
+                                setPadding(dp(12), 0, dp(12), 0)
+                                tag = "phrase:${phrase.id}"
+                            },
+                            LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(5) },
+                        )
+                        row.addView(button("编辑", 11f, true).apply {
+                            tag = "phrase-edit:${phrase.id}"
+                            setOnClickListener { openQuickPhraseEditor(phrase) }
+                        }, LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginEnd = dp(5) })
+                        row.addView(button("删除", 11f, true).apply {
+                            tag = "phrase-delete:${phrase.id}"
+                            setOnClickListener {
+                                QuickPhraseRepository.remove(context, phrase.id)
+                                renderClipboard()
+                            }
+                        }, LinearLayout.LayoutParams(dp(48), dp(48)))
+                        col.addView(row, LinearLayout.LayoutParams(
                             LinearLayout.LayoutParams.MATCH_PARENT,
                             dp(48),
-                        ).apply { bottomMargin = dp(7) },
-                    )
+                        ).apply { bottomMargin = dp(7) })
+                    }
                 }
-            }
         }
         body.addView(
             panelVerticalScroll(col, "clipboard-scroll"),
@@ -1800,6 +1858,15 @@ open class ImeKeyboardView(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(252),
         ))
+    }
+
+    private fun openQuickPhraseEditor(phrase: QuickPhrase?) {
+        val intent = Intent(context, QuickPhraseEditActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            .putExtra(QuickPhraseEditActivity.EXTRA_ID, phrase?.id ?: 0L)
+            .putExtra(QuickPhraseEditActivity.EXTRA_CATEGORY, phrase?.category.orEmpty())
+            .putExtra(QuickPhraseEditActivity.EXTRA_TEXT, phrase?.text.orEmpty())
+        context.startActivity(intent)
     }
 
     private fun renderTextEditor() {
@@ -2219,8 +2286,39 @@ open class ImeKeyboardView(
         )
     }
 
+    /** Route the keyboard's own keys into an inline quick-phrase editor. */
+    fun insertIntoInlineEditor(text: String): Boolean {
+        val target = inlineEditTarget?.takeIf { it.hasFocus() } ?: return false
+        val start = target.selectionStart.coerceAtLeast(0).coerceAtMost(target.length())
+        val end = target.selectionEnd.coerceAtLeast(start).coerceAtMost(target.length())
+        target.text.replace(start, end, text)
+        target.setSelection((start + text.length).coerceAtMost(target.length()))
+        return true
+    }
+
+    /** Delete one code point from the active inline quick-phrase editor. */
+    fun deleteInlineEditorChar(): Boolean {
+        val target = inlineEditTarget?.takeIf { it.hasFocus() } ?: return false
+        val start = target.selectionStart.coerceAtLeast(0).coerceAtMost(target.length())
+        val end = target.selectionEnd.coerceAtLeast(start).coerceAtMost(target.length())
+        if (start != end) {
+            target.text.delete(start, end)
+            target.setSelection(start)
+            return true
+        }
+        if (start == 0) return true
+        val previous = Character.offsetByCodePoints(target.text, start, -1)
+        target.text.delete(previous, start)
+        target.setSelection(previous)
+        return true
+    }
+
+    private fun commitKeyboardCharacter(text: String) {
+        if (!insertIntoInlineEditor(text)) listener.onCharacter(text)
+    }
+
     private fun onKeyTapped(base: String) {
-        feedback()
+        if (insertIntoInlineEditor(base)) return
         clearAssociationCandidates()
         if (mode == KeyboardMode.PINYIN_26) {
             val (py, selection) = replaceCompositionSelection(base)
@@ -2240,8 +2338,16 @@ open class ImeKeyboardView(
     }
 
     private fun onNineKey(num: String) {
-        feedback()
-        if (num == "0" || num == "*" || num == "#") {
+        if (insertIntoInlineEditor(num)) return
+        if (num == "0") {
+            if (composition.text.isNotEmpty() && currentCandidates.isNotEmpty()) {
+                listener.onCandidateSelected(currentCandidates.first())
+            } else {
+                listener.onSpace()
+            }
+            return
+        }
+        if (num == "*" || num == "#") {
             listener.onCharacter(num)
             return
         }
@@ -2250,30 +2356,23 @@ open class ImeKeyboardView(
             lastT9Digits = digits
             publishComposition(digits, engine.getT9EnglishCandidates(digits), selection)
         } else if (mode == KeyboardMode.PINYIN_9) {
-            val letters = ImeData.keypad9Map[num].orEmpty().filter {
-                it.length == 1 && it[0] in 'a'..'z'
-            }
-            if (letters.isEmpty()) {
-                listener.onCharacter(num)
-                return
-            }
-
-            val sameKey = nineTapKey == num && composition.selectionStart == composition.text.length
-            val current = composition.text.toString()
-            val replaceLast = sameKey && current.isNotEmpty() && current.last() in 'a'..'z'
-            val nextIndex = if (sameKey) (nineTapIndex + 1) % letters.size else 0
-            val letter = letters[nextIndex].toString()
-            val next = if (replaceLast) {
-                current.dropLast(1) + letter
-            } else {
-                replaceCompositionSelection(letter).first
-            }
-            val selection = next.length
-            nineTapKey = num
-            nineTapIndex = nextIndex
-            repeatHandler.removeCallbacks(nineTapReset)
-            repeatHandler.postDelayed(nineTapReset, 700L)
-            publishComposition(next, engine.getCandidates(next, fuzzyEnabled), selection)
+            // Chinese 9-key is a continuous digit buffer. The visible pre-edit
+            // is always Pinyin, never the raw keypad digits, so a user can edit
+            // the syllables and still see the same candidate pipeline as 26-key.
+            val digits = (lastNineDigits + num).take(24)
+            val result = engine.get9KeyCandidates(digits)
+            val preview = result.pinyins.firstOrNull { it.isNotBlank() }
+                ?: digits.mapNotNull { digit ->
+                    ImeData.keypad9Map[digit.toString()]
+                        ?.firstOrNull { it.length == 1 && it[0] in 'a'..'z' }
+                }.joinToString("")
+            val candidates = (result.candidates + engine.getCandidates(preview, fuzzyEnabled))
+                .filter { it.isNotEmpty() && it.none(Char::isDigit) }
+                .distinct()
+                .take(96)
+            lastNineDigits = digits
+            lastNineCandidates = candidates
+            publishComposition(preview, candidates)
         } else {
             listener.onCharacter(num)
         }
@@ -2282,9 +2381,10 @@ open class ImeKeyboardView(
     /** Insert an editable syllable boundary without committing the text. */
     private fun onPinyinSegment() {
         if (mode != KeyboardMode.PINYIN_26 && mode != KeyboardMode.PINYIN_9) return
+        if (insertIntoInlineEditor(" ")) return
         val current = composition.text.toString()
         if (current.isBlank() || current.endsWith(' ')) return
-        feedback()
+        if (mode == KeyboardMode.PINYIN_9) lastNineDigits = ""
         val (next, selection) = replaceCompositionSelection(" ")
         publishComposition(next, candidatesForComposition(next), selection)
     }
@@ -2315,7 +2415,7 @@ open class ImeKeyboardView(
         pinyinBuffer.clear()
         pinyinBuffer.append(text)
         when (mode) {
-            KeyboardMode.PINYIN_9 -> Unit
+            KeyboardMode.PINYIN_9 -> lastNineDigits = ""
             KeyboardMode.ENGLISH_T9 -> lastT9Digits = text
             else -> Unit
         }
@@ -2375,7 +2475,7 @@ open class ImeKeyboardView(
         currentCandidates.firstOrNull() ?: composition.text.toString()
 
     private fun feedback() {
-        if (hapticEnabled) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        if (hapticEnabled) performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
         if (soundEnabled) playSoundEffect(SoundEffectConstants.CLICK)
     }
 
@@ -2444,7 +2544,10 @@ open class ImeKeyboardView(
             setTag(MARK_FUNCTION_KEY, func)
             contentDescription = if (text.isNotEmpty()) text else if (iconRes != 0) "功能键" else " "
             minimumHeight = dp(48)
-            setOnClickListener { onTap() }
+            setOnClickListener {
+                feedback()
+                onTap()
+            }
             if (popupEnabled) {
                 setOnTouchListener { _, event ->
                     when (event.actionMasked) {

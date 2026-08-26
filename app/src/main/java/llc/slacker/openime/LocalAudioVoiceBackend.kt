@@ -8,6 +8,8 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.sqrt
 
 /**
@@ -142,6 +144,10 @@ class LocalAudioVoiceBackend(
 
     private val lock = Any()
     private var session: Session? = null
+    private val startExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "local-voice-start").apply { isDaemon = true }
+    }
+    private val startGeneration = AtomicLong(0L)
 
     override fun isAvailable(): Boolean = runtime?.isReady == true
 
@@ -157,6 +163,20 @@ class LocalAudioVoiceBackend(
             events.onError("本地语音模型尚未内置或仍在加载")
             return
         }
+
+        val generation = startGeneration.incrementAndGet()
+        startExecutor.execute {
+            initializeSession(generation, languageTag, events, model)
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun initializeSession(
+        generation: Long,
+        languageTag: String,
+        events: VoiceRecognitionEvents,
+        model: StreamingEmbeddedVoiceModelRuntime,
+    ) {
 
         val minBufferBytes = AudioRecord.getMinBufferSize(
             LocalVoiceAudioSpec.SAMPLE_RATE,
@@ -206,7 +226,18 @@ class LocalAudioVoiceBackend(
             events = events,
             runtime = model,
         )
-        synchronized(lock) { this.session = session }
+        val accepted = synchronized(lock) {
+            if (startGeneration.get() != generation) {
+                false
+            } else {
+                this.session = session
+                true
+            }
+        }
+        if (!accepted) {
+            record.release()
+            return
+        }
 
         val modelEvents = object : VoiceRecognitionEvents {
             override fun onPartial(text: String) {
@@ -222,19 +253,39 @@ class LocalAudioVoiceBackend(
 
         try {
             model.start(languageTag, modelEvents)
+            if (!isCurrent(generation, session)) {
+                cleanupStartingSession(session)
+                return
+            }
             record.startRecording()
             if (record.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
                 throw IllegalStateException("AudioRecord 未进入录音状态")
             }
-            session.running.set(true)
-            events.onReady()
+            val canRun = synchronized(lock) {
+                if (startGeneration.get() != generation || this.session !== session) {
+                    false
+                } else {
+                    session.running.set(true)
+                    true
+                }
+            }
+            if (!canRun) {
+                cleanupStartingSession(session)
+                return
+            }
             startThreads(session)
+            events.onReady()
         } catch (error: Throwable) {
-            fail(session, "本地语音启动失败：${error.message.orEmpty()}")
+            if (isCurrent(generation, session)) {
+                fail(session, "本地语音启动失败：${error.message.orEmpty()}")
+            } else {
+                cleanupStartingSession(session)
+            }
         }
     }
 
     override fun stop() {
+        startGeneration.incrementAndGet()
         val current = synchronized(lock) {
             val value = session
             session = null
@@ -247,6 +298,18 @@ class LocalAudioVoiceBackend(
         // The inference thread drains the bounded in-memory queue and commits
         // one final result. It releases the AudioRecord and clears the queue
         // in its finally block; no audio survives this session.
+    }
+
+    private fun isCurrent(generation: Long, value: Session): Boolean = synchronized(lock) {
+        startGeneration.get() == generation && session === value
+    }
+
+    private fun cleanupStartingSession(value: Session) {
+        runCatching { value.runtime.stop() }
+        runCatching { value.record.release() }
+        synchronized(lock) {
+            if (session === value) session = null
+        }
     }
 
     private fun startThreads(session: Session) {
@@ -327,6 +390,9 @@ class LocalAudioVoiceBackend(
             runCatching { session.record.stop() }
             session.ring.wake()
             session.events.onError(message)
+            if (session.captureThread == null && session.inferenceThread == null) {
+                cleanupStartingSession(session)
+            }
         }
     }
 

@@ -4,11 +4,15 @@
 build/
 app/build/
 app/.cxx/
+captures/
+.externalNativeBuild/
 
 # Local machine configuration
 local.properties
 .idea/
 *.iml
+.DS_Store
+Thumbs.db
 
 # Downloaded native build dependency; CMake fetches this on demand.
 app/boost-*.tar.xz
@@ -23,6 +27,8 @@ artifacts/
 *.xml
 !app/src/**/*.xml
 
+# Optional local test evidence (the canonical evidence in docs is curated)
+.local/
+
 # Scratch files
 test_patch_probe.txt
-

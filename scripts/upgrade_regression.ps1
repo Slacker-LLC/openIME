@@ -1,11 +1,11 @@
-﻿param([string]$Serial = 'f0e2ff6f')
+﻿param([string]$Serial = '')
 
 $ErrorActionPreference = 'Stop'
 $project = Split-Path $PSScriptRoot -Parent
 $apk = Join-Path $project 'artifacts\openIME-1.0-debug.apk'
-$sdkRoot = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } elseif ($env:ANDROID_SDK_ROOT) { $env:ANDROID_SDK_ROOT } else { $null }
-$adb = if ($sdkRoot) { Join-Path $sdkRoot 'platform-tools\adb.exe' } else { (Get-Command adb -ErrorAction Stop).Source }
-if (-not (Test-Path -LiteralPath $adb)) { throw "adb not found; set ANDROID_HOME/ANDROID_SDK_ROOT or add adb to PATH" }
+. (Join-Path $PSScriptRoot 'adb_context.ps1')
+$adb = Resolve-OpenImeAdb
+$Serial = Resolve-OpenImeSerial -RequestedSerial $Serial -AdbPath $adb
 $pkg = 'llc.slacker.openime'
 $receiver = "$pkg/.E2ETestReceiver"
 $action = "$pkg.TEST_COMMAND"

@@ -5,7 +5,7 @@
 | 项目 | 值 |
 | -- | -- |
 | 厂商 / 型号 | Xiaomi 24129PN74C |
-| Serial | `f0e2ff6f` |
+| Serial | 已脱敏（通过 `-Serial` 或 `ANDROID_SERIAL` 传入） |
 | Android | 16 (API 36) |
 | 分辨率 | 1200×2670 |
 | Density | 520dpi |
@@ -18,8 +18,8 @@
 ## 执行命令
 
 ```powershell
-.\scripts\core_regression.ps1 -Serial f0e2ff6f
-.\scripts\extended_regression.ps1 -Serial f0e2ff6f
+.\scripts\core_regression.ps1
+.\scripts\extended_regression.ps1
 ```
 
 ## 结果
