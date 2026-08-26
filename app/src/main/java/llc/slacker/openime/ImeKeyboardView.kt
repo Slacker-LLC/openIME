@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.BitmapFactory
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
 import android.os.Handler
@@ -53,9 +54,13 @@ open class ImeKeyboardView(
         fun onVoicePressChanged(pressed: Boolean) {
             if (pressed) onVoiceToggle()
         }
+        /** Kept for compatibility; production voice always commits on release of space. */
+        fun onVoiceSessionStarted(autoCommitOnFinal: Boolean) {}
         fun onVoicePartial(text: String) {}
         fun onVoiceFinal(text: String) {}
         fun onVoiceError(message: String) {}
+        fun onVoiceCommit() {}
+        fun onVoiceCancel() {}
         fun onEnter()
         fun onCompositionChanged(composition: String, candidates: List<String>)
         fun onCandidateSelected(candidate: String)
@@ -99,7 +104,7 @@ open class ImeKeyboardView(
     private var hapticEnabled = true
     private var popupEnabled = true
     private var fuzzyEnabled = false
-    private var skinRadius = 9
+    private var skinRadius = 8
 
     private val pinyinBuffer = StringBuilder()
     private var lastNineDigits = ""
@@ -108,17 +113,21 @@ open class ImeKeyboardView(
     private var currentCandidates = emptyList<String>()
     private var currentItems: List<String>? = null
     private var candidateExpandedOpen = false
-    private var symbolCategory = "常用"
-    private var emojiCategory = "表情"
-    private var showStickers = false
+    private var symbolCategory = "中文"
+    private var emojiCategory = "笑脸"
     private var clipboardTab = 0
     private var voiceLanguageIndex = 0
     private var toolPage = 0
     private var voiceProvider: SpeechRecognitionProvider? = null
     private var voiceActive = false
-    private var voiceToggleAction: (() -> Unit)? = null
     private var voiceStartAction: (() -> Unit)? = null
     private var voiceStopAction: (() -> Unit)? = null
+    private var voiceCancelAction: (() -> Unit)? = null
+    private var voiceCancelPreviewAction: (() -> Unit)? = null
+    private var voiceGestureSession = false
+    private var spaceVoiceGestureActive = false
+    private var spaceVoiceGestureCancel = false
+    private var spaceVoiceDownY = 0f
     private var floatingKeyboard = true
     private var popupView: View? = null
     private var keepPopupAfterKeyUp = false
@@ -217,6 +226,7 @@ open class ImeKeyboardView(
             ),
         )
         renderModeBody()
+        prepareVoiceController()
         applyTheme()
 
         setOnApplyWindowInsetsListener { _, insets ->
@@ -284,12 +294,12 @@ open class ImeKeyboardView(
         }
         expandedPanel.setPadding(contentInsetPx, 0, contentInsetPx, 0)
         candidateOverlay.setPadding(contentInsetPx, 0, contentInsetPx, 0)
-        toolbarRow.setPadding(contentInsetPx + dp(12), 0, contentInsetPx + dp(12), 0)
-        composition.setPadding(contentInsetPx + dp(10), dp(3), contentInsetPx + dp(10), 0)
+        toolbarRow.setPadding(contentInsetPx + dp(10), 0, contentInsetPx + dp(10), 0)
+        composition.setPadding(contentInsetPx + dp(14), dp(3), contentInsetPx + dp(14), 0)
         requestLayout()
     }
 
-    /** Top zone: fixed 64dp. Idle = icon toolbar; composing = 20 pre-edit + 44 candidates. */
+    /** Top zone: fixed 64dp. Idle = icon toolbar; composing = 22 pre-edit + 42 candidates. */
     private fun buildTopZone() {
         topZone = LinearLayout(context).apply {
             tag = "ime_toolbar"
@@ -304,28 +314,24 @@ open class ImeKeyboardView(
             tag = "toolbar-row"
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), 0, dp(12), 0)
+            setPadding(dp(10), 0, dp(10), 0)
             minimumHeight = dp(64)
         }
         toolbarRow.addView(
             toolbarIcon(R.drawable.ic_grid, "切换键盘", "keyboard-selector") { showPanel(Panel.KEYBOARD_SELECT) },
-            LinearLayout.LayoutParams(dp(44), dp(48)),
+            LinearLayout.LayoutParams(dp(42), dp(44)),
         )
         toolbarRow.addView(
             toolbarIcon(R.drawable.ic_clipboard, "剪贴板", "toolbar") { showPanel(Panel.CLIPBOARD) },
-            LinearLayout.LayoutParams(dp(44), dp(48)),
+            LinearLayout.LayoutParams(dp(42), dp(44)),
         )
         toolbarRow.addView(
             toolbarIcon(R.drawable.ic_emoji, "Emoji", "toolbar") { showPanel(Panel.EMOJI) },
-            LinearLayout.LayoutParams(dp(44), dp(48)),
+            LinearLayout.LayoutParams(dp(42), dp(44)),
         )
         toolbarRow.addView(
             toolbarIcon(R.drawable.ic_symbols, "符号", "toolbar") { showPanel(Panel.SYMBOLS) },
-            LinearLayout.LayoutParams(dp(44), dp(48)),
-        )
-        toolbarRow.addView(
-            toolbarIcon(R.drawable.ic_more, "更多", "toolbar") { showPanel(Panel.TOOLS) },
-            LinearLayout.LayoutParams(dp(44), dp(48)),
+            LinearLayout.LayoutParams(dp(42), dp(44)),
         )
         associationRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -345,6 +351,11 @@ open class ImeKeyboardView(
             associationScroll,
             LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginStart = dp(4) },
         )
+        // Keep the overflow action at the far right, as in the reference.
+        toolbarRow.addView(
+            toolbarIcon(R.drawable.ic_more, "更多", "toolbar") { showPanel(Panel.TOOLS) },
+            LinearLayout.LayoutParams(dp(42), dp(44)),
+        )
         topZone.addView(toolbarRow, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(64),
@@ -358,7 +369,7 @@ open class ImeKeyboardView(
         composition = EditText(context).apply {
             tag = "pinyin-composition-editor"
             contentDescription = "可编辑拼音预编辑"
-            textSize = 16f
+            textSize = 13f
             gravity = Gravity.CENTER_VERTICAL or Gravity.START
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             setSingleLine(true)
@@ -371,8 +382,8 @@ open class ImeKeyboardView(
             setSelectAllOnFocus(false)
             background = null
             includeFontPadding = false
-            setPadding(dp(10), dp(3), dp(10), 0)
-            minimumHeight = dp(20)
+            setPadding(dp(14), dp(3), dp(14), 0)
+            minimumHeight = dp(22)
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
@@ -383,7 +394,7 @@ open class ImeKeyboardView(
         }
         composeZone.addView(composition, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(20),
+            dp(22),
         ))
         val candField = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -399,11 +410,12 @@ open class ImeKeyboardView(
                 candidateRow,
                 ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
-                    dp(44),
+                    dp(42),
                 ),
             )
         }
-        candField.addView(candScroll, LinearLayout.LayoutParams(0, dp(44), 1f))
+        candField.setPadding(dp(8), 0, dp(8), 0)
+        candField.addView(candScroll, LinearLayout.LayoutParams(0, dp(42), 1f))
         candidateExpandBtn = TextView(context).apply {
             tag = "candidate-expand"
             text = "⌄"
@@ -419,11 +431,11 @@ open class ImeKeyboardView(
         }
         candField.addView(
             candidateExpandBtn,
-            LinearLayout.LayoutParams(dp(30), dp(44)),
+            LinearLayout.LayoutParams(dp(28), dp(42)),
         )
         composeZone.addView(candField, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(44),
+            dp(42),
         ))
         topZone.addView(composeZone, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -449,7 +461,9 @@ open class ImeKeyboardView(
         val next = when (mode) {
             KeyboardMode.PINYIN_26 -> KeyboardMode.ENGLISH_26
             KeyboardMode.ENGLISH_26 -> KeyboardMode.PINYIN_9
-            KeyboardMode.PINYIN_9 -> KeyboardMode.ENGLISH_T9
+            KeyboardMode.PINYIN_9 -> KeyboardMode.DIGITS
+            // Kept only for compatibility with old saved/test state; it is no
+            // longer exposed as an English nine-key layout.
             KeyboardMode.ENGLISH_T9 -> KeyboardMode.DIGITS
             KeyboardMode.DIGITS -> KeyboardMode.PINYIN_26
         }
@@ -457,10 +471,20 @@ open class ImeKeyboardView(
     }
 
     fun setMode(newMode: KeyboardMode) {
+        val effectiveMode = if (newMode == KeyboardMode.ENGLISH_T9) {
+            KeyboardMode.PINYIN_26
+        } else {
+            newMode
+        }
         if (panel != Panel.NONE) closePanelToKeyboard()
         repeatHandler.removeCallbacks(nineTapReset)
         nineTapReset.run()
-        mode = newMode
+        mode = effectiveMode
+        symbolCategory = when (effectiveMode) {
+            KeyboardMode.ENGLISH_26 -> "英文"
+            KeyboardMode.DIGITS -> "数学"
+            else -> "中文"
+        }
         clearAssociationCandidates()
         pinyinBuffer.clear()
         lastNineDigits = ""
@@ -472,11 +496,12 @@ open class ImeKeyboardView(
         keyboardBody.alpha = 0.96f
         renderModeBody()
         keyboardBody.animate().alpha(1f).setDuration(100L).start()
-        listener.onModeChanged(newMode)
+        listener.onModeChanged(effectiveMode)
     }
 
     fun showPanel(newPanel: Panel) {
         if (newPanel == Panel.NONE || newPanel == Panel.CANDIDATE_EXPANDED) return
+        if (panel == Panel.VOICE && newPanel != Panel.VOICE) stopVoiceIfActive()
         panel = newPanel
         mainDock.visibility = View.GONE
         // Publish the page before rendering it. Opening a floating IME can
@@ -648,7 +673,13 @@ open class ImeKeyboardView(
             return
         }
         currentCandidates.take(6).forEachIndexed { index, cand ->
-            candidateRow.addView(candidateItemView(index, cand), wrapParams())
+            candidateRow.addView(
+                candidateItemView(index, cand),
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    dp(32),
+                ).apply { marginEnd = dp(6) },
+            )
         }
     }
 
@@ -656,8 +687,9 @@ open class ImeKeyboardView(
         val word = TextView(context).apply {
             text = cand
             textSize = 14f
+            if (index == 0) typeface = android.graphics.Typeface.DEFAULT_BOLD
             maxLines = 1
-            setPadding(dp(10), 0, dp(10), 0)
+            setPadding(dp(12), 0, dp(12), 0)
             tag = if (index == 0) "candidate-first" else "candidate-word"
             isClickable = false
         }
@@ -665,7 +697,7 @@ open class ImeKeyboardView(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             tag = if (index == 0) "candidate-first-row" else null
-            minimumHeight = dp(34)
+            minimumHeight = dp(32)
             addView(word, wrapParams())
             isClickable = true
             setOnClickListener { listener.onCandidateSelected(cand) }
@@ -746,7 +778,7 @@ open class ImeKeyboardView(
             flexKeyParams(0.95f),
         )
         bottom.addView(
-            spaceVoiceKey(if (mode == KeyboardMode.ENGLISH_26) "space" else "空格") {
+            spaceVoiceKey(if (mode == KeyboardMode.ENGLISH_26) "space" else "空格", white = true) {
                 listener.onSpace()
             },
             flexKeyParams(3.4f),
@@ -841,19 +873,8 @@ open class ImeKeyboardView(
             flexKeyParams(0.9f, gapDp = 2),
         )
         centerBottom.addView(
-            key("0", false, null, 1f, 20f) { onNineKey("0") }.apply {
-                tag = "key-9:0"
-                setTag(MARK_WHITE_KEY, true)
-                setOnLongClickListener {
-                    commitKeyboardCharacter("0")
-                    true
-                }
-            },
-            flexKeyParams(0.9f, gapDp = 2),
-        )
-        centerBottom.addView(
             spaceVoiceKey("空格", white = true) { commitFirstCandidateOrSpace() },
-            flexKeyParams(2.5f, gapDp = 2),
+            flexKeyParams(3.4f, gapDp = 2),
         )
         centerBottom.addView(
             key("中/英", true, null, 1f, 13f) { cycleMode() }.apply {
@@ -1092,6 +1113,36 @@ open class ImeKeyboardView(
         }
     }
 
+    /**
+     * Starting voice replaces the keyboard view while the finger is still down.
+     * Some input-method windows then route ACTION_UP to the new panel, so keep a
+     * root-level fallback to guarantee that release always stops or cancels voice.
+     */
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        val handled = super.dispatchTouchEvent(event)
+        if (spaceVoiceGestureActive) {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_MOVE -> {
+                    if (!spaceVoiceGestureCancel && spaceVoiceDownY - event.rawY >= dp(48)) {
+                        spaceVoiceGestureCancel = true
+                        voiceCancelPreviewAction?.invoke()
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    val shouldCancel = spaceVoiceGestureCancel
+                    spaceVoiceGestureActive = false
+                    spaceVoiceGestureCancel = false
+                    if (shouldCancel) {
+                        voiceCancelAction?.invoke()
+                    } else {
+                        listener.onVoicePressChanged(false)
+                    }
+                }
+            }
+        }
+        return handled
+    }
+
     /** Tap commits the normal space/candidate action; long press starts voice. */
     private fun spaceVoiceKey(
         label: String = "空格",
@@ -1110,17 +1161,48 @@ open class ImeKeyboardView(
         contentDescription = "$label，点击空格，长按语音输入"
         if (white) setTag(MARK_WHITE_KEY, true)
         var voiceLongPressed = false
-        setOnLongClickListener {
-            voiceLongPressed = true
-            listener.onVoicePressChanged(true)
-            true
+        var voiceCancelPreview = false
+        var voiceDownY = 0f
+        val voiceTrigger = Runnable {
+            if (!voiceLongPressed) {
+                voiceLongPressed = true
+                spaceVoiceGestureActive = true
+                spaceVoiceGestureCancel = false
+                spaceVoiceDownY = voiceDownY
+                feedback()
+                listener.onVoicePressChanged(true)
+            }
         }
         setOnTouchListener { _, event ->
             when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    voiceDownY = event.rawY
+                    voiceCancelPreview = false
+                    spaceVoiceDownY = event.rawY
+                    spaceVoiceGestureActive = false
+                    spaceVoiceGestureCancel = false
+                    repeatHandler.postDelayed(voiceTrigger, 150L)
+                    false
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (voiceLongPressed && voiceDownY - event.rawY >= dp(48) && !voiceCancelPreview) {
+                        voiceCancelPreview = true
+                        spaceVoiceGestureCancel = true
+                        voiceCancelPreviewAction?.invoke()
+                    }
+                    voiceLongPressed
+                }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    repeatHandler.removeCallbacks(voiceTrigger)
                     if (voiceLongPressed) {
                         voiceLongPressed = false
-                        listener.onVoicePressChanged(false)
+                        spaceVoiceGestureActive = false
+                        spaceVoiceGestureCancel = false
+                        if (voiceCancelPreview) {
+                            voiceCancelAction?.invoke()
+                        } else {
+                            listener.onVoicePressChanged(false)
+                        }
                         true
                     } else {
                         false
@@ -1131,29 +1213,22 @@ open class ImeKeyboardView(
         }
     }
 
-    /** Called by the listener after a long press on the combined space key. */
+    /** Compatibility entry for older test hosts; the production gesture is long-press space. */
     fun toggleVoiceFromSpace() {
-        if (panel != Panel.VOICE) {
-            showPanel(Panel.VOICE)
-            post { voiceToggleAction?.invoke() }
-        } else {
-            voiceToggleAction?.invoke()
-        }
+        startVoiceFromSpace()
     }
 
     /** Starts recording after the combined space key crosses the long-press threshold. */
     fun startVoiceFromSpace() {
-        if (panel != Panel.VOICE) {
-            showPanel(Panel.VOICE)
-            post { voiceStartAction?.invoke() }
-        } else {
-            voiceStartAction?.invoke()
-        }
+        prepareVoiceController()
+        voiceGestureSession = true
+        voiceStartAction?.invoke()
     }
 
     /** Ends recording when the combined space key is released. */
     fun stopVoiceFromSpace() {
         voiceStopAction?.invoke()
+        revealVoicePanelAfterGesture()
     }
 
     private fun renderPanel(panel: Panel) {
@@ -1177,6 +1252,31 @@ open class ImeKeyboardView(
             Panel.GAMING -> renderGaming()
             else -> closePanelToKeyboard()
         }
+        applyTheme()
+    }
+
+    /** Build the voice controller while it remains hidden, so a space gesture does not relayout the IME. */
+    private fun prepareVoiceController() {
+        if (voiceStartAction != null) return
+        expandedPanel.removeAllViews()
+        expandedPanel.visibility = View.GONE
+        renderVoice()
+        expandedPanel.visibility = View.GONE
+        applyTheme()
+    }
+
+    /** Show the already-populated voice page only after the space gesture has ended. */
+    private fun revealVoicePanelAfterGesture() {
+        if (!voiceGestureSession) return
+        voiceGestureSession = false
+        if (panel != Panel.VOICE) {
+            panel = Panel.VOICE
+            listener.onPanelChanged(Panel.VOICE)
+        }
+        mainDock.visibility = View.GONE
+        keyboardBody.visibility = View.GONE
+        candidateOverlay.visibility = View.GONE
+        expandedPanel.visibility = View.VISIBLE
         applyTheme()
     }
 
@@ -1233,7 +1333,6 @@ open class ImeKeyboardView(
             KeyboardMode.PINYIN_26 to "拼音 26 键",
             KeyboardMode.PINYIN_9 to "拼音 9 键",
             KeyboardMode.ENGLISH_26 to "英文 26 键",
-            KeyboardMode.ENGLISH_T9 to "英文九键",
             KeyboardMode.DIGITS to "数字键盘",
         )
         modes.chunked(2).forEach { chunk ->
@@ -1271,7 +1370,7 @@ open class ImeKeyboardView(
             includeFontPadding = false
             minWidth = dp(42)
             minHeight = dp(34)
-            setPadding(dp(12), 0, dp(12), 0)
+            setPadding(dp(10), 0, dp(10), 0)
             tag = if (active) "tab-active" else "panel-tab"
             contentDescription = label
             isClickable = true
@@ -1325,31 +1424,39 @@ open class ImeKeyboardView(
             tag = "tools-panel"
         }
         val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        data class ToolEntry(
+            val label: String,
+            val target: Panel,
+            val iconRes: Int? = null,
+            val glyph: String? = null,
+        )
         val cards = if (toolPage == 0) {
             listOf(
-                R.drawable.ic_grid to ("切换键盘" to Panel.KEYBOARD_SELECT),
-                R.drawable.ic_emoji to ("表情" to Panel.EMOJI),
-                R.drawable.ic_clipboard to ("剪贴板" to Panel.CLIPBOARD),
-                R.drawable.ic_handwriting to ("手写输入" to Panel.HANDWRITING),
-                R.drawable.ic_symbols to ("符号" to Panel.SYMBOLS),
-                R.drawable.ic_settings to ("更多设置" to Panel.SETTINGS),
-                R.drawable.ic_mic to ("语音" to Panel.VOICE),
-                R.drawable.ic_game to ("浮动键盘" to Panel.GAMING),
-                R.drawable.ic_keyboard to ("文本编辑" to Panel.TEXT_EDITOR),
+                ToolEntry("表情", Panel.EMOJI, R.drawable.ic_emoji),
+                ToolEntry("剪贴板", Panel.CLIPBOARD, R.drawable.ic_clipboard),
+                ToolEntry("手写输入", Panel.HANDWRITING, R.drawable.ic_handwriting),
+                ToolEntry("符号", Panel.SYMBOLS, R.drawable.ic_symbols),
+                ToolEntry("更多设置", Panel.SETTINGS, R.drawable.ic_settings),
+                ToolEntry("切换键盘", Panel.KEYBOARD_SELECT, R.drawable.ic_grid),
+                ToolEntry("繁体输入", Panel.SETTINGS, glyph = "繁"),
+                ToolEntry("主题设置", Panel.SETTINGS, glyph = "Aa"),
             )
         } else {
             listOf(
-                R.drawable.ic_settings to ("主题设置" to Panel.SETTINGS),
-                R.drawable.ic_game to ("浮动键盘" to Panel.GAMING),
+                ToolEntry("浮动键盘", Panel.GAMING, R.drawable.ic_game),
+                ToolEntry("文本编辑", Panel.TEXT_EDITOR, R.drawable.ic_keyboard),
             )
         }
         cards.chunked(4).forEach { chunk ->
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            chunk.forEach { (icon, pair) ->
-                val (label, target) = pair
+            chunk.forEach { entry ->
                 row.addView(
-                    toolCard(icon, label) {
-                        target?.let { showPanel(it) }
+                    if (entry.glyph != null) {
+                        toolGlyphCard(entry.glyph, entry.label) { showPanel(entry.target) }
+                    } else {
+                        toolCard(entry.iconRes ?: R.drawable.ic_settings, entry.label) {
+                            showPanel(entry.target)
+                        }
                     },
                     LinearLayout.LayoutParams(0, dp(70), 1f).apply { marginEnd = dp(8) },
                 )
@@ -1387,7 +1494,7 @@ open class ImeKeyboardView(
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(0, dp(7), 0, dp(6))
+            setPadding(0, dp(8), 0, dp(6))
             contentDescription = label
             isClickable = true
             setOnClickListener { onTap() }
@@ -1396,10 +1503,34 @@ open class ImeKeyboardView(
             setImageResource(iconRes)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             contentDescription = null
-        }, LinearLayout.LayoutParams(dp(28), dp(28)))
+        }, LinearLayout.LayoutParams(dp(20), dp(20)).apply { bottomMargin = dp(6) })
         card.addView(TextView(context).apply {
             text = label
-            textSize = 12f
+            textSize = 11f
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+        }, wrapParams())
+        return card
+    }
+
+    private fun toolGlyphCard(glyph: String, label: String, onTap: () -> Unit): LinearLayout {
+        val card = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(0, dp(8), 0, dp(6))
+            contentDescription = label
+            isClickable = true
+            setOnClickListener { onTap() }
+        }
+        card.addView(TextView(context).apply {
+            text = glyph
+            textSize = if (glyph == "Aa") 15f else 16f
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+        }, LinearLayout.LayoutParams(dp(20), dp(20)).apply { bottomMargin = dp(6) })
+        card.addView(TextView(context).apply {
+            text = label
+            textSize = 11f
             gravity = Gravity.CENTER
             includeFontPadding = false
         }, wrapParams())
@@ -1410,10 +1541,10 @@ open class ImeKeyboardView(
         addPanelHead("符号")
         val body = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), dp(10), dp(10), dp(10))
+            setPadding(dp(12), dp(12), dp(12), dp(12))
             tag = "symbols-panel"
         }
-        val cats = ImeData.symbols.keys.toList()
+        val cats = listOf("常用", "中文", "英文", "数学", "序号", "单位", "特殊", "编程", "自定义")
         val tabs = panelChipScroll(cats, symbolCategory) { cat ->
             if (cat != symbolCategory) {
                 symbolCategory = cat
@@ -1423,13 +1554,49 @@ open class ImeKeyboardView(
         body.addView(tabs, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(32),
+        ).apply { bottomMargin = dp(10) })
+        val railItems = symbolItems(symbolCategory).distinct().take(10)
+        val rail = SymbolRailView(context).apply {
+            setSymbols(railItems)
+            onSymbolCommit = { symbol ->
+                feedback()
+                listener.onSymbolSelected(symbol)
+            }
+            onGroupSwipe = { direction ->
+                val current = cats.indexOf(symbolCategory).coerceAtLeast(0)
+                symbolCategory = cats[(current + direction).mod(cats.size)]
+                renderPanel(Panel.SYMBOLS)
+            }
+        }
+        body.addView(rail, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            dp(48),
+        ).apply { bottomMargin = dp(8) })
+        body.addView(LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(button("管理自定义", 12f, true).apply {
+                contentDescription = "管理自定义符号"
+                setOnClickListener {
+                    context.startActivity(Intent(context, SymbolManagerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+            }, LinearLayout.LayoutParams(0, dp(38), 1f).apply { marginEnd = dp(6) })
+            addView(TextView(context).apply {
+                text = "按住滑动 · 松手输入 · 滑出取消"
+                textSize = 11f
+                gravity = Gravity.CENTER_VERTICAL
+            }, LinearLayout.LayoutParams(0, dp(38), 1f))
+        }, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            dp(38),
         ).apply { bottomMargin = dp(8) })
         val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        ImeData.symbols[symbolCategory].orEmpty().chunked(6).forEach { chunk ->
+        symbolItems(symbolCategory).chunked(6).forEach { chunk ->
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             chunk.forEach { s ->
                 row.addView(
-                    key(s, false, null, 1f, 17f) { listener.onSymbolSelected(s) },
+                    key(s, false, null, 1f, if (s.length > 2) 12f else 17f) {
+                        listener.onSymbolSelected(s)
+                    },
                     gridCellParams(38, 6, 6),
                 )
             }
@@ -1453,55 +1620,39 @@ open class ImeKeyboardView(
     }
 
     private fun renderEmoji() {
-        addPanelHead("Emoji")
+        addPanelHead("黄豆脸")
         val body = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), dp(10), dp(10), dp(10))
+            setPadding(dp(12), dp(12), dp(12), dp(12))
             tag = "emoji-panel"
         }
-        val cats = listOf("表情", "手势", "动物", "食物")
-        val tabs = panelChipScroll(cats + "贴图", if (showStickers) "贴图" else emojiCategory) { cat ->
-            if (cat == "贴图") {
-                showStickers = true
-            } else {
-                showStickers = false
-                emojiCategory = cat
-            }
+        val cats = listOf("最近") + ImeData.fluentSmileysByCategory.keys.toList()
+        val tabs = panelChipScroll(cats, emojiCategory) { cat ->
+            emojiCategory = cat
             renderEmoji()
         }
         body.addView(tabs, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(32),
-        ).apply { bottomMargin = dp(8) })
+        ).apply { bottomMargin = dp(10) })
         val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        if (showStickers) {
-            ImeData.stickers.chunked(8).forEach { chunk ->
-                val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-                chunk.forEach { s ->
-                    row.addView(
-                        key(s.title, false, null, 1f, 12f) { listener.onEmojiSelected(s.text) },
-                        gridCellParams(34, 8, 5),
-                    )
-                }
-                grid.addView(row, LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    dp(34),
-                ).apply { bottomMargin = dp(5) })
-            }
+        val emojiItems = if (emojiCategory == "最近") {
+            ImeData.fluentSmileys.take(40)
         } else {
-            ImeData.emojis[emojiCategory].orEmpty().chunked(8).forEach { chunk ->
-                val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-                chunk.forEach { e ->
-                    row.addView(
-                        key(e, false, null, 1f, 21f) { listener.onEmojiSelected(e) },
-                        gridCellParams(34, 8, 5),
-                    )
-                }
-                grid.addView(row, LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    dp(34),
-                ).apply { bottomMargin = dp(5) })
+            ImeData.fluentSmileysByCategory[emojiCategory].orEmpty()
+        }
+        emojiItems.chunked(8).forEach { chunk ->
+            val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+            chunk.forEach { e ->
+                row.addView(
+                    emojiCell(e),
+                    gridCellParams(34, 8, 4),
+                )
             }
+            grid.addView(row, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(34),
+            ).apply { bottomMargin = dp(4) })
         }
         body.addView(
             panelVerticalScroll(grid, "emoji-scroll"),
@@ -1560,7 +1711,6 @@ open class ImeKeyboardView(
     }
 
     private fun renderVoice() {
-        voiceToggleAction = null
         addPanelHead("语音输入")
         val body = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -1581,7 +1731,7 @@ open class ImeKeyboardView(
             dp(22),
         ))
         val transcript = TextView(context).apply {
-            text = "长按空格开始，松开结束；识别文字会在这里预览"
+            text = "只需长按空格；松开自动上屏，上滑取消"
             textSize = 16f
             gravity = Gravity.CENTER_VERTICAL
             maxLines = 2
@@ -1615,8 +1765,9 @@ open class ImeKeyboardView(
         // The bundled model is bilingual Mandarin + English. Do not expose
         // dialect buttons that the packaged model cannot actually recognize.
         val languages = listOf("普通话" to "zh-CN", "English" to "en-US")
-        var finalDelivered = false
         var recognizedText = ""
+        var voiceCancelled = false
+        var cancelPreview = false
         val langButton = button(languages[voiceLanguageIndex].first, 13f, true).apply {
             setOnClickListener {
                 voiceLanguageIndex = (voiceLanguageIndex + 1) % languages.size
@@ -1626,18 +1777,15 @@ open class ImeKeyboardView(
         controls.addView(langButton, LinearLayout.LayoutParams(0, dp(58), 1f))
         val micButton = button("🎤", 22f, false).apply {
             tag = "voice-mic"
+            isEnabled = false
+            contentDescription = "语音状态，仅支持长按空格启动"
         }
         controls.addView(micButton, LinearLayout.LayoutParams(dp(58), dp(58)))
-        val commitButton = button("上屏", 14f, false).apply {
-            setOnClickListener {
-                val text = recognizedText.trim()
-                if (!finalDelivered && text.isNotEmpty()) {
-                    listener.onCharacter(text)
-                    finalDelivered = true
-                }
-            }
+        val gestureHint = button("长按空格开始", 13f, true).apply {
+            isEnabled = false
+            contentDescription = "长按空格开始语音，松开自动上屏，上滑取消"
         }
-        controls.addView(commitButton, LinearLayout.LayoutParams(0, dp(58), 1f))
+        controls.addView(gestureHint, LinearLayout.LayoutParams(0, dp(58), 1f))
         body.addView(controls, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(58),
@@ -1654,19 +1802,23 @@ open class ImeKeyboardView(
                 transcript.text = "当前不会调用联网识别；模型接入后这里显示实时结果"
                 return
             }
-            finalDelivered = false
             recognizedText = ""
+            voiceCancelled = false
+            cancelPreview = false
             voiceActive = true
             micButton.text = "⏹"
+            gestureHint.text = "松开空格上屏 · 上滑取消"
             modelStatus.text = "正在使用离线模型 · 音频不出设备"
             transcript.text = "正在聆听… 松开空格结束"
+            listener.onVoiceSessionStarted(true)
             provider.start(languages[voiceLanguageIndex].second, object : SpeechRecognitionProvider.SpeechEvents {
                 override fun onPartial(text: String) {
                     // AudioRecord inference callbacks arrive from the voice
                     // worker thread; keep view and InputConnection mutations
                     // on the IME main thread.
                     post {
-                        if (!voiceActive) return@post
+                        if (!voiceActive || voiceCancelled) return@post
+                        if (cancelPreview) return@post
                         if (text.isNotBlank()) recognizedText = text
                         transcript.text = text
                         modelStatus.text = "正在聆听 · 松开空格结束"
@@ -1675,12 +1827,13 @@ open class ImeKeyboardView(
                 }
                 override fun onFinal(text: String) {
                     post {
+                        if (voiceCancelled || cancelPreview) return@post
                         if (text.isNotBlank()) recognizedText = text
                         transcript.text = text
                         micButton.text = "🎤"
+                        gestureHint.text = "长按空格开始"
                         voiceActive = false
-                        finalDelivered = true
-                        modelStatus.text = "离线识别完成 · 可继续长按空格"
+                        modelStatus.text = "离线识别完成 · 已自动上屏"
                         listener.onVoiceFinal(text)
                     }
                 }
@@ -1695,11 +1848,12 @@ open class ImeKeyboardView(
                 }
                 override fun onError(message: String) {
                     post {
+                        if (voiceCancelled) return@post
                         recognizedText = ""
                         transcript.text = message
                         micButton.text = "🎤"
+                        gestureHint.text = "长按空格开始"
                         voiceActive = false
-                        finalDelivered = false
                         modelStatus.text = "语音未完成 · 请检查本地模型和麦克风权限"
                         listener.onVoiceError(message)
                     }
@@ -1707,6 +1861,7 @@ open class ImeKeyboardView(
                 override fun onReady() {
                     post {
                         micButton.text = "⏹"
+                        gestureHint.text = "松开空格上屏 · 上滑取消"
                         modelStatus.text = "正在聆听 · 松开空格结束"
                     }
                 }
@@ -1716,24 +1871,52 @@ open class ImeKeyboardView(
             if (!voiceActive) return
             voiceProvider?.stop()
             micButton.text = "🎤"
+            gestureHint.text = "整理识别结果…"
             voiceActive = false
-            modelStatus.text = "已停止 · 可继续长按空格"
+            modelStatus.text = "正在整理识别结果…"
         }
-        micButton.setOnClickListener {
-            if (voiceActive) stopVoice() else startVoice()
+        fun cancelVoice() {
+            if (voiceCancelled) return
+            voiceCancelled = true
+            cancelPreview = false
+            voiceActive = false
+            voiceProvider?.stop()
+            recognizedText = ""
+            micButton.text = "🎤"
+            gestureHint.text = "长按空格开始"
+            listener.onVoiceCancel()
+            transcript.text = "已取消语音输入"
+            modelStatus.text = "语音已取消 · 音频未保存"
         }
         voiceStartAction = { startVoice() }
         voiceStopAction = { stopVoice() }
-        voiceToggleAction = { if (voiceActive) stopVoice() else startVoice() }
+        voiceCancelAction = {
+            cancelVoice()
+            if (voiceGestureSession) revealVoicePanelAfterGesture()
+            else if (panel == Panel.VOICE) {
+                expandedPanel.visibility = View.VISIBLE
+                applyTheme()
+            }
+        }
+        voiceCancelPreviewAction = {
+            cancelPreview = true
+            transcript.text = "上滑取消 · 松开丢弃本次语音"
+            modelStatus.text = "取消状态 · 松开将丢弃"
+        }
     }
 
     private fun stopVoiceIfActive() {
         voiceProvider?.stop()
         voiceProvider = null
         voiceActive = false
-        voiceToggleAction = null
+        voiceGestureSession = false
+        spaceVoiceGestureActive = false
+        spaceVoiceGestureCancel = false
+        if (panel == Panel.VOICE) listener.onVoiceCancel()
         voiceStartAction = null
         voiceStopAction = null
+        voiceCancelAction = null
+        voiceCancelPreviewAction = null
     }
 
     private fun renderClipboard() {
@@ -1860,6 +2043,68 @@ open class ImeKeyboardView(
         ))
     }
 
+    private fun emojiCell(emoji: String): View {
+        val assetPath = FluentEmojiAssetRepository.pathFor(context, emoji)
+        val view = if (assetPath != null) {
+            ImageView(context).apply {
+                val bitmap = runCatching {
+                    context.assets.open(assetPath).use { BitmapFactory.decodeStream(it) }
+                }.getOrNull()
+                if (bitmap != null) setImageBitmap(bitmap)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+            }
+        } else {
+            TextView(context).apply {
+                text = emoji
+                textSize = 21f
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+            }
+        }
+        view.contentDescription = emoji
+        view.isClickable = true
+        view.background = null
+        view.setOnClickListener {
+            feedback()
+            listener.onEmojiSelected(emoji)
+        }
+        return view
+    }
+
+    private fun symbolItems(category: String): List<String> = when (category) {
+        "中文" -> ImeData.symbols["中文标点"].orEmpty()
+        "英文" -> ImeData.symbols["英文标点"].orEmpty()
+        "数学" -> listOf(
+            ImeData.symbols["数学运算"].orEmpty(),
+            ImeData.symbols["更多数学"].orEmpty(),
+            ImeData.symbols["希腊字母"].orEmpty(),
+            ImeData.symbols["上下标"].orEmpty(),
+        ).flatten()
+        "序号" -> listOf(
+            ImeData.symbols["数字序号"].orEmpty(),
+            ImeData.symbols["数字扩展"].orEmpty(),
+        ).flatten()
+        "单位" -> listOf(
+            ImeData.symbols["货币单位"].orEmpty(),
+            ImeData.symbols["单位符号"].orEmpty(),
+        ).flatten()
+        "编程" -> ImeData.symbols["技术编程"].orEmpty()
+        "特殊" -> listOf(
+            ImeData.symbols["数字序号"].orEmpty(),
+            ImeData.symbols["特殊图形"].orEmpty(),
+            ImeData.symbols["几何图形"].orEmpty(),
+            ImeData.symbols["箭头线条"].orEmpty(),
+            ImeData.symbols["括号边框"].orEmpty(),
+            ImeData.symbols["网络颜文字"].orEmpty(),
+        ).flatten()
+        "自定义" -> CustomSymbolRepository.load(context).map { it.symbol }
+        else -> listOf(
+            ImeData.symbols["常用"].orEmpty(),
+            ImeData.symbols["中文标点"].orEmpty().take(12),
+            ImeData.symbols["数学运算"].orEmpty().take(12),
+        ).flatten().distinct()
+    }
+
     private fun openQuickPhraseEditor(phrase: QuickPhrase?) {
         val intent = Intent(context, QuickPhraseEditActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -1919,7 +2164,7 @@ open class ImeKeyboardView(
     }
 
     private fun renderSettings() {
-        addPanelHead("更多设置")
+        addPanelHead("偏好设置")
         val scroll = ScrollView(context).apply {
             isFillViewport = true
             isVerticalScrollBarEnabled = false
@@ -1939,27 +2184,34 @@ open class ImeKeyboardView(
         }, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(32),
-        ).apply { bottomMargin = dp(14) })
+        ).apply { bottomMargin = dp(12) })
         content.addView(sectionTitle("按键与输入"), wrapParams())
-        listOf(
-            "按键音效" to "声音反馈",
-            "触感震动" to "轻微震动",
-            "按键气泡" to "字母预览",
-        ).forEach { (label, sub) ->
-            content.addView(settingToggleRow(label, sub), LinearLayout.LayoutParams(
+        content.addView(
+            settingGroup(
+                settingToggleRow("按键音效", "机械轴敲击反馈"),
+                settingToggleRow("触感震动", "轻微触感反馈"),
+                settingToggleRow("按键气泡", "字母预览"),
+            ),
+            LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(54),
-            ).apply { bottomMargin = dp(8) })
-        }
-        content.addView(settingNavigationRow(
-            "模糊音纠错",
-            "进入后配置 z/zh、c/ch、s/sh 等规则",
-        ) { showPanel(Panel.FUZZY_SETTINGS) }, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(60),
-        ).apply { bottomMargin = dp(8) })
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { bottomMargin = dp(12) },
+        )
+        content.addView(sectionTitle("智能输入"), wrapParams())
+        content.addView(
+            settingGroup(
+                settingNavigationRow(
+                    "模糊音与智能纠错",
+                    "进入后配置 z/zh、c/ch、s/sh 等规则",
+                ) { showPanel(Panel.FUZZY_SETTINGS) },
+            ),
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { bottomMargin = dp(12) },
+        )
         content.addView(TextView(context).apply {
-            text = "当前外观：iOS。按键圆角采用默认规范，不单独暴露调节项。"
+            text = "当前皮肤：iOS 默认。按键圆角采用原型规范，不单独暴露调节项。"
             textSize = 12f
             setPadding(dp(4), dp(10), dp(4), 0)
             tag = "panel-note"
@@ -1977,10 +2229,46 @@ open class ImeKeyboardView(
 
     private fun sectionTitle(textValue: String): TextView = TextView(context).apply {
         text = textValue
-        textSize = 13f
+        textSize = 12f
         includeFontPadding = false
         setPadding(dp(4), dp(2), 0, dp(8))
         tag = "panel-section-title"
+    }
+
+    private fun settingGroup(vararg rows: View): LinearLayout = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        tag = "setting-group"
+        rows.forEachIndexed { index, row ->
+            if (index > 0) {
+                addView(View(context).apply { tag = "setting-divider" }, LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    dp(1),
+                ).apply {
+                    marginStart = dp(44)
+                    marginEnd = dp(12)
+                })
+            }
+            addView(row, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                if (row is TextView) dp(54) else LinearLayout.LayoutParams.WRAP_CONTENT,
+            ))
+        }
+    }
+
+    private fun settingIcon(label: String): TextView = TextView(context).apply {
+        text = when (label) {
+            "按键音效" -> "◖"
+            "触感震动" -> "✦"
+            "按键气泡" -> "A"
+            "模糊音与智能纠错", "启用模糊音" -> "✧"
+            "外观与键盘高度" -> "◐"
+            else -> "•"
+        }
+        textSize = 15f
+        gravity = Gravity.CENTER
+        includeFontPadding = false
+        contentDescription = label
+        tag = "setting-icon"
     }
 
     private fun settingToggleRow(label: String, sub: String): LinearLayout =
@@ -1990,6 +2278,10 @@ open class ImeKeyboardView(
             setPadding(dp(14), 0, dp(14), 0)
             tag = "setting-row"
             contentDescription = label
+            minimumHeight = dp(54)
+            addView(settingIcon(label), LinearLayout.LayoutParams(dp(26), dp(26)).apply {
+                marginEnd = dp(8)
+            })
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -2015,8 +2307,12 @@ open class ImeKeyboardView(
             setPadding(dp(14), 0, dp(14), 0)
             tag = "setting-row"
             contentDescription = label
+            minimumHeight = dp(60)
             isClickable = true
             setOnClickListener { onTap() }
+            addView(settingIcon(label), LinearLayout.LayoutParams(dp(26), dp(26)).apply {
+                marginEnd = dp(8)
+            })
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -2061,10 +2357,13 @@ open class ImeKeyboardView(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(54),
         ).apply { bottomMargin = dp(10) })
-        content.addView(settingToggleRow("启用模糊音", "z/zh · c/ch · s/sh · l/n"), LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(54),
-        ).apply { bottomMargin = dp(14) })
+        content.addView(
+            settingGroup(settingToggleRow("启用模糊音", "z/zh · c/ch · s/sh · l/n")),
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { bottomMargin = dp(14) },
+        )
         content.addView(sectionTitle("当前规则"), wrapParams())
         content.addView(panelChipScroll(
             listOf("z / zh", "c / ch", "s / sh", "l / n", "f / h"),
@@ -2359,14 +2658,27 @@ open class ImeKeyboardView(
             // Chinese 9-key is a continuous digit buffer. The visible pre-edit
             // is always Pinyin, never the raw keypad digits, so a user can edit
             // the syllables and still see the same candidate pipeline as 26-key.
-            val digits = (lastNineDigits + num).take(24)
+            val digits = (lastNineDigits + num).take(64)
             val result = engine.get9KeyCandidates(digits)
-            val preview = result.pinyins.firstOrNull { it.isNotBlank() }
+            val segmentPrefix = composition.text
+                .toString()
+                .takeIf { lastNineDigits.isEmpty() && it.endsWith(' ') }
+                .orEmpty()
+            val segmentPreview = result.pinyins.firstOrNull { it.isNotBlank() }
                 ?: digits.mapNotNull { digit ->
                     ImeData.keypad9Map[digit.toString()]
                         ?.firstOrNull { it.length == 1 && it[0] in 'a'..'z' }
                 }.joinToString("")
-            val candidates = (result.candidates + engine.getCandidates(preview, fuzzyEnabled))
+            val preview = segmentPrefix + segmentPreview
+            // Long streams already carry the bounded decoder's best text;
+            // resolving the entire raw Pinyin again on the UI thread only
+            // adds latency and gives no better result.
+            val localCandidates = if (preview.length <= 32) {
+                engine.getCandidates(preview, fuzzyEnabled)
+            } else {
+                emptyList()
+            }
+            val candidates = (result.candidates + localCandidates)
                 .filter { it.isNotEmpty() && it.none(Char::isDigit) }
                 .distinct()
                 .take(96)
@@ -2633,14 +2945,17 @@ open class ImeKeyboardView(
                 MotionEvent.ACTION_MOVE -> {
                     val upward = swipeStartY - event.rawY
                     val horizontal = kotlin.math.abs(event.rawX - swipeStartX)
-                    if (!clearSwipe && upward >= dp(36) && horizontal <= dp(96)) {
+                    if (clearSwipe && upward <= dp(16)) {
+                        clearSwipe = false
+                        setClearHintActive(false)
+                        hidePopup()
+                    } else if (!clearSwipe && upward >= dp(36) && horizontal <= dp(96)) {
                         clearSwipe = true
                         repeatHandler.removeCallbacks(repeatAction)
                         setClearHintActive(true)
                         showPopup(this, "清空")
                         repeatHandler.removeCallbacks(popupHideRunnable)
                         Log.d("MinisIme", "backspace-clear-swipe dy=$upward dx=$horizontal")
-                        listener.onClearAll()
                     }
                     clearSwipe
                 }
@@ -2648,6 +2963,7 @@ open class ImeKeyboardView(
                     repeatHandler.removeCallbacks(repeatAction)
                     val consumed = clearSwipe
                     if (consumed) {
+                        if (event.actionMasked == MotionEvent.ACTION_UP) listener.onClearAll()
                         setClearHintActive(false)
                         repeatHandler.postDelayed(popupHideRunnable, 520L)
                     } else {
@@ -2674,8 +2990,8 @@ open class ImeKeyboardView(
         val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
         val t = theme.tokens(appearance, night)
-        val popupWidth = dp(48)
-        val popupHeight = dp(56)
+        val popupWidth = (anchor.width * 1.12f).toInt().coerceIn(dp(40), dp(68))
+        val popupHeight = dp(74)
         val p = TextView(context).apply {
             text = char
             textSize = if (char == "清空") 17f else 24f
@@ -2791,14 +3107,19 @@ open class ImeKeyboardView(
     private fun applyThemeRecursive(view: View, t: ImeTheme.Tokens) {
         when (view) {
             is ImeKeyView -> {
-                val white = view.getTag(MARK_WHITE_KEY) == true ||
-                    view.contentDescription?.toString()?.matches(Regex("[0-9]+")) == true
                 val side = view.getTag(MARK_SIDE_KEY) == true ||
                     (view.parent as? View)?.tag in setOf("pinyin9-actions", "t9-actions", "digits-actions")
                 val function = view.getTag(MARK_FUNCTION_KEY) == true ||
                     labelIsFunc(view.contentDescription?.toString().orEmpty())
+                // Numeric glyphs are white grid keys only when they are real
+                // number keys. Function labels such as 123 must stay gray.
+                val white = !side && (
+                    view.getTag(MARK_WHITE_KEY) == true ||
+                        (!function && view.contentDescription?.toString()?.matches(Regex("[0-9]+")) == true)
+                    )
                 val primary = !side && (view.tag == "tab-active" ||
                     view.tag == "key-shift-caps" ||
+                    view.tag == "key-shift-active" ||
                     view.tag == "key-enter")
                 val color = when {
                     primary -> t.primary
@@ -2819,9 +3140,14 @@ open class ImeKeyboardView(
             }
             is LinearLayout -> {
                 when (view.tag) {
-                    "candidate-first-row" -> view.background = rounded(t.lightKeyBackground, dp(9))
+                    "candidate-first-row" -> view.background = statefulRounded(
+                        t.primary,
+                        dim(t.primary),
+                        dp(8),
+                    )
                     "nine-punct-stack", "digits-symbol-stack" -> view.background = rounded(t.sideKeyBackground, dp(9))
-                    "setting-row", "clip-card" -> view.background = rounded(t.toolCardBackground, dp(10))
+                    "setting-group" -> view.background = rounded(t.toolCardBackground, dp(14))
+                    "clip-card" -> view.background = rounded(t.toolCardBackground, dp(10))
                     "gaming-panel" -> view.background = rounded(t.toolCardBackground, dp(12))
                 }
                 if (view.contentDescription != null && view.isClickable && view.tag == null) {
@@ -2838,18 +3164,33 @@ open class ImeKeyboardView(
                 val tag = view.tag as? String
                 if (view.parent !is ImeKeyView) view.setTextColor(t.keyText)
                 when {
+                    tag == "setting-icon" -> {
+                        val icon = when (view.contentDescription?.toString()) {
+                            "按键音效" -> Color.rgb(0, 102, 235)
+                            "触感震动" -> Color.rgb(147, 51, 234)
+                            "按键气泡" -> Color.rgb(5, 150, 105)
+                            else -> Color.rgb(217, 119, 6)
+                        }
+                        view.setTextColor(icon)
+                        val dark = t.keyboardBackground == Color.parseColor("#13151b")
+                        view.background = rounded(
+                            if (dark) Color.argb(48, Color.red(icon), Color.green(icon), Color.blue(icon))
+                            else Color.argb(34, Color.red(icon), Color.green(icon), Color.blue(icon)),
+                            dp(7),
+                        )
+                    }
                     tag == "backspace-clear-hint" -> {
                         view.setTextColor(t.keySecondaryText)
                     }
                     tag == "candidate-first" -> {
-                        view.setTextColor(t.primary)
+                        view.setTextColor(Color.WHITE)
                     }
                     tag == "candidate-word" -> {
                         view.setTextColor(t.candidateText)
                     }
                     tag == "tab-active" -> {
-                        view.setTextColor(t.primary)
-                        view.background = statefulRounded(t.lightKeyBackground, dim(t.lightKeyBackground), dp(99))
+                        view.setTextColor(Color.WHITE)
+                        view.background = statefulRounded(t.primary, dim(t.primary), dp(99))
                     }
                     tag == "panel-tab" -> {
                         view.setTextColor(t.keySecondaryText)
@@ -2913,6 +3254,7 @@ open class ImeKeyboardView(
             else -> when (view.tag) {
                 "handwriting-canvas" -> view.background = rounded(t.canvasBackground, dp(14))
                 "voice-wave-bar" -> view.background = rounded(t.primary, dp(99))
+                "setting-divider" -> view.setBackgroundColor(t.border)
             }
         }
         if (view is ViewGroup) {

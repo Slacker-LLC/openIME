@@ -112,8 +112,8 @@ AssertContains 'editor text retained after hide/show' 'hi' (GetText 'llc.slacker
 # Voice panel open/close
 Tap '工具'
 Tap '语音'
-Tap '🎤'
-Start-Sleep -Seconds 2
+# The only production voice entry is the combined space-key long press.
+# Opening the panel alone must not start recording or expose a manual commit flow.
 Adb shell pidof $pkg | Out-Null
 Tap 'key-panel-back'
 AssertContains 'voice stopped after panel close' 'voice=false' (StateLog)

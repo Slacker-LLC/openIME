@@ -165,7 +165,7 @@ if ($panelLog -notmatch 'panel=NONE') { throw 'FAIL panel back: NONE not reached
 # Mode switch cycle
 StartActivity 'MainActivity'
 FocusById 'llc.slacker.openime:id/test_input'
-foreach ($mode in @('ENGLISH_26', 'PINYIN_9', 'ENGLISH_T9', 'DIGITS', 'PINYIN_26')) {
+foreach ($mode in @('ENGLISH_26', 'PINYIN_9', 'DIGITS', 'PINYIN_26')) {
     WaitForMode $mode
 }
 'EXT 100 mode switch PASS'

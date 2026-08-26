@@ -26,6 +26,10 @@ artifacts/
 *.png
 *.xml
 !app/src/**/*.xml
+!app/src/main/assets/
+!app/src/main/assets/emoji/
+!app/src/main/assets/emoji/fluent/
+!app/src/main/assets/emoji/fluent/*.png
 
 # Optional local test evidence (the canonical evidence in docs is curated)
 .local/

@@ -3,8 +3,12 @@ package llc.slacker.openime
 import android.graphics.Color
 
 /**
- * Design tokens migrated from ui-suite/css/themes.css.
- * The five themes map 1:1 to the web prototype's CSS variables.
+ * Native design tokens for the bundled IME renderer.
+ *
+ * The supplied dual-theme prototype is the visual source of truth for the
+ * default iOS skin: "跟随系统" selects the exact dark or light palette at
+ * runtime. The legacy theme enum values stay available for state/API
+ * compatibility, but the product intentionally exposes only this skin.
  */
 enum class ImeTheme(val key: String, val label: String) {
     IOS("theme-ios", "iOS Minimal Glass"),
@@ -47,20 +51,21 @@ enum class ImeTheme(val key: String, val label: String) {
             ImeAppearance.DARK -> true
         }
         return when (this) {
-            // preview.html 基准调色板（深海军蓝 + 白色九键/数字键 + 灰侧键）
+            // minis_ime_dual_theme_renderer.html 的 Dark Obsidian / Light Crystal
+            // 调色板。390 × 296 只是设计基准，尺寸仍由原生 View 的实际窗口计算。
             IOS -> if (useDark) {
                 Tokens(
-                    c("#4b86f7"), c("#0e1724"), c("#19283c"), c("#19283c"), c("#f2f6fb"),
-                    c("#3a4c62"), c("#f7f9fc"), c("#8fa1b5"), c("#27374c"), c("#aeb9c7"), c("#223249"),
-                    c("#223249"), Color.argb(20, 255, 255, 255), c("#aeb8c5"), c("#17253a"), c("#101b2b"),
-                    c("#ffffff"), c("#111820"), c("#aeb8c5"), c("#0d1218"), c("#23344c"), c("#24354d"),
+                    c("#3b82f6"), c("#13151b"), c("#171b22"), c("#171b22"), c("#f1f5f9"),
+                    c("#2d3341"), c("#f1f5f9"), c("#94a3b8"), c("#1f232d"), c("#94a3b8"), c("#3c4456"),
+                    Color.argb(9, 255, 255, 255), Color.argb(20, 255, 255, 255), c("#1f232d"), c("#13151b"), c("#1f232d"),
+                    c("#2d3341"), c("#f1f5f9"), c("#1f232d"), c("#94a3b8"), Color.argb(9, 255, 255, 255), c("#171b22"),
                 )
             } else {
                 Tokens(
-                    c("#3478f6"), c("#eef2f7"), c("#e2e8f0"), c("#e2e8f0"), c("#1f2937"),
-                    c("#ffffff"), c("#172033"), c("#667085"), c("#dfe6ef"), c("#475569"), c("#d4deeb"),
-                    c("#ffffff"), Color.argb(30, 15, 23, 42), c("#d5dde8"), c("#f5f7fa"), c("#e7edf4"),
-                    c("#ffffff"), c("#172033"), c("#dfe6ef"), c("#334155"), c("#e5ebf2"), c("#dfe6ef"),
+                    c("#007aff"), c("#d3d7de"), c("#e2e6ec"), c("#e2e6ec"), c("#0f172a"),
+                    c("#ffffff"), c("#0f172a"), c("#475569"), c("#abb4c2"), c("#475569"), c("#eceff3"),
+                    Color.argb(30, 0, 0, 0), Color.argb(15, 0, 0, 0), c("#abb4c2"), c("#d3d7de"), c("#ffffff"),
+                    c("#ffffff"), c("#0f172a"), c("#abb4c2"), c("#475569"), Color.argb(153, 255, 255, 255), c("#e2e6ec"),
                 )
             }
             DARK -> Tokens(

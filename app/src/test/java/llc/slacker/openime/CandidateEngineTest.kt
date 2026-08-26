@@ -32,6 +32,20 @@ class CandidateEngineTest {
     }
 
     @Test
+    fun nineKeyCanDecodeRepeatedWordsWithoutCombinatorialExpansion() {
+        val result = engine.get9KeyCandidates("6442664426")
+        assertTrue(result.pinyins.contains("nihaonihao"))
+        assertTrue(result.candidates.contains("你好你好"))
+    }
+
+    @Test
+    fun longNineKeyStreamRemainsBoundedAndNeverReturnsRawDigits() {
+        val result = engine.get9KeyCandidates("6".repeat(50))
+        assertTrue("长九键串应在 50 个按键内返回", result.pinyins.isNotEmpty())
+        assertTrue("候选不能把九键数字直接当汉字候选", result.candidates.none { it.any(Char::isDigit) })
+    }
+
+    @Test
     fun englishCompletionWorks() {
         assertTrue(engine.getEnglishCompletions("hel").contains("hello"))
     }

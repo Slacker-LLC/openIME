@@ -98,6 +98,29 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
         )
     }
 
+    /**
+     * A compact T9 index. 9-key input must never enumerate every possible
+     * letter combination: 3^50 combinations would freeze the IME main
+     * thread before the user can see the next key feedback.
+     */
+    private data class NineKeyEntry(
+        val pinyin: String,
+        val digits: String,
+        val candidates: List<String>,
+        val phrase: Boolean,
+    )
+
+    private data class NineKeyDecode(
+        val pinyin: String,
+        val text: String,
+        val score: Int,
+        val parts: Int,
+    )
+
+    private val nineKeyEntries: List<NineKeyEntry> = buildNineKeyEntries()
+    private val nineKeyEntriesByFirstDigit: Map<Char, List<NineKeyEntry>> =
+        nineKeyEntries.groupBy { it.digits.first() }
+
     data class NineKeyResult(
         val pinyins: List<String>,
         val candidates: List<String>,
@@ -303,43 +326,134 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
     }
 
     fun get9KeyCandidates(numberStr: String): NineKeyResult {
-        if (numberStr.isEmpty()) return NineKeyResult(emptyList(), emptyList())
-        val preset = ImeData.keypad9Combinations[numberStr]
-        if (!preset.isNullOrEmpty()) {
-            val candidates = mutableSetOf<String>()
-            preset.forEach { candidates.addAll(getCandidates(it)) }
-            return NineKeyResult(preset, candidates.toList())
+        val digits = numberStr
+            .take(MAX_NINE_KEY_DIGITS)
+            .filter { it in '2'..'9' }
+        if (digits.isEmpty()) return NineKeyResult(emptyList(), emptyList())
+
+        val pinyins = linkedSetOf<String>()
+        val candidates = linkedSetOf<String>()
+
+        fun addEntry(entry: NineKeyEntry, resolvePinyin: Boolean) {
+            pinyins.add(entry.pinyin)
+            candidates.addAll(entry.candidates)
+            if (resolvePinyin && entry.pinyin.length <= MAX_LOCAL_RESOLVE_LENGTH) {
+                candidates.addAll(getCandidates(entry.pinyin))
+            }
         }
 
-        val possibleLetters = numberStr.map { ImeData.keypad9Map[it.toString()].orEmpty() }
-        val combinations = mutableListOf<String>()
-        generateCombos(possibleLetters, 0, StringBuilder(), combinations)
-        val valid = combinations.ifEmpty { listOf(numberStr) }
-        val candList = mutableSetOf<String>()
-        valid.forEach { candList.addAll(getCandidates(it)) }
-        return NineKeyResult(valid, candList.toList())
+        // Keep the hand-written high-confidence mappings first, then enrich
+        // them with the complete embedded dictionary below.
+        ImeData.keypad9Combinations[digits].orEmpty().forEach { pinyin ->
+            pinyins.add(pinyin)
+            candidates.addAll(getCandidates(pinyin))
+        }
+
+        val matchingEntries = nineKeyEntriesByFirstDigit[digits.first()].orEmpty()
+        matchingEntries
+            .asSequence()
+            .filter { it.digits == digits }
+            .take(MAX_NINE_MATCHES)
+            .forEach { addEntry(it, resolvePinyin = true) }
+
+        // Resolve a long stream as a sequence of known Pinyin words/syllables
+        // rather than trying to materialize its exponential letter product.
+        decodeNineKey(digits)?.let { decoded ->
+            pinyins.add(decoded.pinyin)
+            if (decoded.text.isNotEmpty()) candidates.add(decoded.text)
+            if (decoded.pinyin.length <= MAX_LOCAL_RESOLVE_LENGTH) {
+                candidates.addAll(getCandidates(decoded.pinyin))
+            }
+        }
+
+        // While the current key stream is only a prefix, expose likely full
+        // Pinyin entries so the candidate strip remains useful immediately.
+        matchingEntries
+            .asSequence()
+            .filter { it.digits.startsWith(digits) }
+            .sortedWith(
+                compareByDescending<NineKeyEntry> { it.phrase }
+                    .thenByDescending { it.digits.length },
+            )
+            .take(MAX_NINE_MATCHES)
+            .forEach { addEntry(it, resolvePinyin = false) }
+
+        return NineKeyResult(
+            pinyins = pinyins.take(MAX_NINE_MATCHES),
+            candidates = candidates.filter { it.isNotEmpty() }.take(96),
+        )
     }
 
-    private fun generateCombos(
-        letters: List<List<String>>,
-        idx: Int,
-        current: StringBuilder,
-        out: MutableList<String>,
-    ) {
-        if (out.size >= 6) return
-        if (idx == letters.size) {
-            val candidate = current.toString()
-            if (pinyinDict.containsKey(candidate) ||
-                ImeData.phraseDict.containsKey(candidate)
-            ) {
-                out.add(candidate)
+    private fun buildNineKeyEntries(): List<NineKeyEntry> {
+        val merged = LinkedHashMap<String, MutableList<String>>()
+        ImeData.phraseDict.forEach { (pinyin, values) ->
+            merged.getOrPut(pinyin) { mutableListOf() }.addAll(values)
+        }
+        pinyinDict.forEach { (pinyin, values) ->
+            merged.getOrPut(pinyin) { mutableListOf() }.addAll(values)
+        }
+        val phraseKeys = ImeData.phraseDict.keys
+        return merged.mapNotNull { (pinyin, values) ->
+            val digits = pinyinToNineDigits(pinyin) ?: return@mapNotNull null
+            NineKeyEntry(
+                pinyin = pinyin,
+                digits = digits,
+                candidates = values.distinct().take(96),
+                phrase = pinyin in phraseKeys,
+            )
+        }.sortedWith(
+            compareByDescending<NineKeyEntry> { it.phrase }
+                .thenByDescending { it.digits.length }
+                .thenBy { it.pinyin },
+        )
+    }
+
+    private fun pinyinToNineDigits(pinyin: String): String? {
+        val digits = StringBuilder(pinyin.length)
+        pinyin.lowercase().forEach { ch ->
+            val digit = when (ch) {
+                in 'a'..'c' -> '2'
+                in 'd'..'f' -> '3'
+                in 'g'..'i' -> '4'
+                in 'j'..'l' -> '5'
+                in 'm'..'o' -> '6'
+                in 'p'..'s' -> '7'
+                in 't'..'v' -> '8'
+                in 'w'..'z' -> '9'
+                else -> return null
             }
-            return
+            digits.append(digit)
         }
-        for (ch in letters[idx]) {
-            if (ch.length != 1) continue
-            generateCombos(letters, idx + 1, StringBuilder(current).append(ch), out)
+        return digits.toString().ifEmpty { null }
+    }
+
+    private fun decodeNineKey(digits: String): NineKeyDecode? {
+        val best = arrayOfNulls<NineKeyDecode>(digits.length + 1)
+        best[0] = NineKeyDecode(pinyin = "", text = "", score = 0, parts = 0)
+        for (start in digits.indices) {
+            val previous = best[start] ?: continue
+            nineKeyEntriesByFirstDigit[digits[start]].orEmpty().forEach { entry ->
+                val end = start + entry.digits.length
+                if (end > digits.length || !digits.regionMatches(start, entry.digits, 0, entry.digits.length)) {
+                    return@forEach
+                }
+                val next = NineKeyDecode(
+                    pinyin = previous.pinyin + entry.pinyin,
+                    text = previous.text + entry.candidates.firstOrNull().orEmpty(),
+                    score = previous.score + entry.digits.length * 10 + if (entry.phrase) 40 else 0,
+                    parts = previous.parts + 1,
+                )
+                val current = best[end]
+                if (
+                    current == null ||
+                    next.score > current.score ||
+                    (next.score == current.score && next.parts < current.parts)
+                ) {
+                    best[end] = next
+                }
+            }
         }
+        return best[digits.length]?.takeIf { it.parts > 0 }
     }
 
     fun getEnglishCompletions(prefix: String): List<String> {
@@ -381,6 +495,12 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
         return word.lowercase().map { ch ->
             map.entries.firstOrNull { it.key.contains(ch) }?.value ?: ""
         }.joinToString("")
+    }
+
+    private companion object {
+        const val MAX_NINE_KEY_DIGITS = 64
+        const val MAX_NINE_MATCHES = 12
+        const val MAX_LOCAL_RESOLVE_LENGTH = 32
     }
 }
 

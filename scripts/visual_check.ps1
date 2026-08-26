@@ -93,7 +93,6 @@ $checks = @()
 $checks += @{ Mode = 'PINYIN_26'; Name = 'pinyin26.png'; Need = @('key:mode', 'key:q', 'key:a', 'key:n', 'key-space') }
 $checks += @{ Mode = 'ENGLISH_26'; Name = 'english26.png'; Need = @('key:mode', 'key:q', 'key:a', 'key:n', 'key-space') }
 $checks += @{ Mode = 'PINYIN_9'; Name = 'pinyin9.png'; Need = @('pinyin9-grid', 'pinyin9-actions', 'key-9:6', 'key-enter') }
-$checks += @{ Mode = 'ENGLISH_T9'; Name = 't9.png'; Need = @('t9-grid', 't9-actions', 'key-9:4', 'key-enter') }
 $checks += @{ Mode = 'DIGITS'; Name = 'digits.png'; Need = @('digits-grid', 'digits-actions', 'key:1') }
 
 $report = @()

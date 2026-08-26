@@ -24,9 +24,12 @@ class ImeKeyboardViewV2(
         fun onVoicePressChanged(pressed: Boolean) {
             if (pressed) onVoiceToggle()
         }
+        fun onVoiceSessionStarted(autoCommitOnFinal: Boolean) {}
         fun onVoicePartial(text: String) {}
         fun onVoiceFinal(text: String) {}
         fun onVoiceError(message: String) {}
+        fun onVoiceCommit() {}
+        fun onVoiceCancel() {}
         fun onEnter()
         fun onCompositionChanged(composition: String, candidates: List<String>)
         fun onCandidateSelected(candidate: String)
@@ -57,9 +60,13 @@ class ImeKeyboardViewV2(
             delegate.onFloatingKeyboardDragged(deltaX, deltaY)
         override fun onVoiceToggle() = delegate.onVoiceToggle()
         override fun onVoicePressChanged(pressed: Boolean) = delegate.onVoicePressChanged(pressed)
+        override fun onVoiceSessionStarted(autoCommitOnFinal: Boolean) =
+            delegate.onVoiceSessionStarted(autoCommitOnFinal)
         override fun onVoicePartial(text: String) = delegate.onVoicePartial(text)
         override fun onVoiceFinal(text: String) = delegate.onVoiceFinal(text)
         override fun onVoiceError(message: String) = delegate.onVoiceError(message)
+        override fun onVoiceCommit() = delegate.onVoiceCommit()
+        override fun onVoiceCancel() = delegate.onVoiceCancel()
         override fun onEnter() = delegate.onEnter()
         override fun onCompositionChanged(composition: String, candidates: List<String>) =
             delegate.onCompositionChanged(composition, candidates)

@@ -32,6 +32,11 @@
             android:exported="false"
             android:label="常用语" />
 
+        <activity
+            android:name=".SymbolManagerActivity"
+            android:exported="false"
+            android:label="自定义符号" />
+
         <service
             android:name=".LocalVoiceImeService"
             android:exported="true"

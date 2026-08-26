@@ -119,12 +119,6 @@ Tap '确定'
 AssertText '030 9-key continuous buffer -> 你好' '你好' (GetText 'crp9')
 
 StartReal
-Mode 'ENGLISH_T9'
-foreach ($key in @('4', '6', '6', '3')) { Tap $key }
-Tap 'Go'
-AssertText '040 4663 -> good' 'good' (GetText 'crt9')
-
-StartReal
 Mode 'DIGITS'
 foreach ($key in @('1', '2', '3')) { Tap $key }
 AssertText '050 123 -> 123' '123' (GetText 'crdig')

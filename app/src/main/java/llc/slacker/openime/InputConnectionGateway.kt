@@ -38,6 +38,17 @@ class InputConnectionGateway(
         connection()?.finishComposingText()
     }
 
+    /** Remove the active pre-edit text without committing it to the editor. */
+    fun cancelComposing() {
+        val ic = connection() ?: return
+        if (isPassword()) {
+            ic.finishComposingText()
+            return
+        }
+        ic.setComposingText("", 1)
+        ic.finishComposingText()
+    }
+
     fun clearComposition() {
         finishComposing()
     }

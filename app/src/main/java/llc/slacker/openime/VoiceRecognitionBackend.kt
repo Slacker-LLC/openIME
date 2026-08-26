@@ -155,6 +155,7 @@ private class SherpaOnnxStreamingRuntime(
     private var stream: OnlineStream? = null
     private var events: VoiceRecognitionEvents? = null
     private var lastPartial = ""
+    private var languageTag = "zh-CN"
 
     override val isReady: Boolean
         get() = manifest.modelType == "zipformer" && manifest.files.containsAll(
@@ -187,6 +188,7 @@ private class SherpaOnnxStreamingRuntime(
         stream?.release()
         stream = recognizer?.createStream()
         this.events = events
+        this.languageTag = languageTag
         lastPartial = ""
     }
 
@@ -206,7 +208,7 @@ private class SherpaOnnxStreamingRuntime(
         return currentRecognizer.getResult(currentStream).text.trim().also { lastPartial = it }
     }
 
-    override fun punctuate(text: String): String = text
+    override fun punctuate(text: String): String = VoiceTextProcessor.process(text, languageTag)
 
     override fun stop() {
         stream?.release()
