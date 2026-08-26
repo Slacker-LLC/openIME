@@ -1,0 +1,21 @@
+﻿{
+    "Device":  "f0e2ff6f",
+    "MeasuredAt":  "2026-08-25T22:50:04.1117662+08:00",
+    "Note":  "Host-\u003eadb broadcast round trip; not frame/Jank measurement",
+    "ModeSwitch":  {
+                       "Command":  "tap:key:mode",
+                       "Samples":  20,
+                       "P50":  64.05,
+                       "P95":  79.94,
+                       "Max":  86.88,
+                       "Mean":  65.38
+                   },
+    "StateQuery":  {
+                       "Command":  "state",
+                       "Samples":  20,
+                       "P50":  57.98,
+                       "P95":  68.21,
+                       "Max":  71.09,
+                       "Mean":  60.19
+                   }
+}

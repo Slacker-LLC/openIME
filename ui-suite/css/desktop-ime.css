@@ -1,0 +1,202 @@
+/* ==========================================================================
+   IME UI Suite - Desktop Floating IME & Cursor Candidate Box
+   ========================================================================== */
+
+/* 1. 桌面端悬浮输入法状态栏 (Floating Tool Bar) */
+.desktop-floating-ime-bar {
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  gap: 6px;
+  cursor: move;
+  width: fit-content;
+  user-select: none;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.desktop-floating-ime-bar:hover {
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.2);
+  border-color: rgba(37, 99, 235, 0.3);
+}
+
+.desktop-drag-handle {
+  color: #94a3b8;
+  font-size: 14px;
+  padding: 0 4px;
+  cursor: grab;
+}
+
+.desktop-ime-logo {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 6px;
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.desktop-logo-icon {
+  width: 20px;
+  height: 20px;
+  background: linear-gradient(135deg, #2563eb, #7c3aed);
+  border-radius: 4px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.desktop-status-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  transition: all 0.15s;
+}
+
+.desktop-status-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.desktop-status-btn.active-lang {
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.08);
+  border-color: rgba(37, 99, 235, 0.2);
+}
+
+.desktop-status-badge {
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #e2e8f0;
+  color: #475569;
+}
+
+/* 2. 桌面端跟随光标候选词框 (Desktop Cursor Candidate Popup) */
+.desktop-cursor-candidate-box {
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 10px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.06);
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 220px;
+  z-index: 1000;
+  font-family: inherit;
+}
+
+/* 顶部拼音输入预编辑串 */
+.desktop-composition-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px dashed rgba(0, 0, 0, 0.1);
+  padding-bottom: 4px;
+}
+
+.desktop-comp-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2563eb;
+  letter-spacing: 0.5px;
+}
+
+.desktop-comp-pinyin-split {
+  font-size: 11px;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+/* 候选词列表：水平横排模式 (Horizontal Layout) */
+.desktop-candidates-strip.horizontal {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.desktop-candidate-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.desktop-candidate-item:hover,
+.desktop-candidate-item.selected {
+  background: rgba(37, 99, 235, 0.1);
+}
+
+.desktop-cand-index {
+  font-size: 12px;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+.desktop-cand-text {
+  font-size: 15px;
+  font-weight: 500;
+  color: #0f172a;
+}
+
+.desktop-candidate-item.selected .desktop-cand-index,
+.desktop-candidate-item.selected .desktop-cand-text {
+  color: #2563eb;
+  font-weight: 700;
+}
+
+/* 候选词列表：垂直竖排模式 (Vertical Layout) */
+.desktop-candidates-strip.vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.desktop-candidates-strip.vertical .desktop-candidate-item {
+  justify-content: space-between;
+  width: 100%;
+}
+
+/* 翻页控制 */
+.desktop-paging-row {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #94a3b8;
+  padding-top: 2px;
+}
+
+.desktop-paging-btn {
+  background: none;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.desktop-paging-btn:hover {
+  background: #f1f5f9;
+}

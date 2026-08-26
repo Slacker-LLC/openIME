@@ -1,0 +1,16 @@
+{
+  "modelId": "sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20-int8",
+  "modelVersion": "2023-02-20-int8",
+  "language": "zh-CN,en-US",
+  "modelType": "zipformer",
+  "engineVersion": "sherpa-onnx-v1.13.6",
+  "fileHash": "f2b835dfe8231bccc08692b4d8751ff50c2360b9b39a7501136a45e1bd97db85",
+  "supportsPunctuation": false,
+  "requiredMemory": 420000000,
+  "files": [
+    "models/voice/bilingual-zipformer/decoder-epoch-99-avg-1.onnx",
+    "models/voice/bilingual-zipformer/encoder-epoch-99-avg-1.int8.onnx",
+    "models/voice/bilingual-zipformer/joiner-epoch-99-avg-1.int8.onnx",
+    "models/voice/bilingual-zipformer/tokens.txt"
+  ]
+}

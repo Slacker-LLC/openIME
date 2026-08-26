@@ -1,0 +1,4 @@
+The pinyin_chars.tsv asset is generated from the Unicode Character Database
+Unihan_Readings.txt kMandarin property. See https://www.unicode.org/terms_of_use.html
+and https://www.unicode.org/reports/tr38/ for the applicable Unicode data terms
+and the definition of the Unihan database.

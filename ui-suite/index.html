@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>输入法全套 UI 系统与交互展示 (IME UI Suite)</title>
+  
+  <!-- CSS 样式表模块 -->
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/keyboard.css" />
+  <link rel="stylesheet" href="css/panels.css" />
+  <link rel="stylesheet" href="css/desktop-ime.css" />
+  <link rel="stylesheet" href="css/themes.css" />
+</head>
+<body class="theme-ios">
+
+  <!-- 顶部导航栏 -->
+  <header class="app-header">
+    <div class="brand-badge">
+      <div class="brand-icon">拼</div>
+      <div class="brand-title">
+        <h1>IME UI Suite · 输入法全套界面交互系统</h1>
+        <p>包含移动端 26/9 键、桌面浮动候选栏、手写、语音、Emoji、符号、剪贴板及多套皮肤</p>
+      </div>
+    </div>
+    <div class="header-controls">
+      <button class="header-btn" id="header-sound-btn" title="按键音效开关">
+        <span>🔊</span> <span id="sound-status-text">机械音效 开</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- 主展示视口容器 -->
+  <main class="showcase-container">
+
+    <!-- ==================== 左侧：界面导航画廊 ==================== -->
+    <aside class="gallery-panel">
+      <div class="panel-title">
+        <span>📑</span> 核心界面清单 (点击直达)
+      </div>
+
+      <div class="interface-grid">
+        <!-- 5 大核心基础键盘 -->
+        <div class="interface-card active" data-view="pinyin26">
+          <div class="card-icon">⌨️</div>
+          <div class="card-title">26 键中文键盘</div>
+          <div class="card-desc">QWERTY / 气泡预览 / 拼音候选</div>
+        </div>
+
+        <div class="interface-card" data-view="english26">
+          <div class="card-icon">🔤</div>
+          <div class="card-title">26 键英文键盘</div>
+          <div class="card-desc">CapsLock锁定 / 单词预测补全</div>
+        </div>
+
+        <div class="interface-card" data-view="pinyin9">
+          <div class="card-icon">🔢</div>
+          <div class="card-title">九键中文键盘</div>
+          <div class="card-desc">九宫数字映射 / 左侧智能分词</div>
+        </div>
+
+        <div class="interface-card" data-view="english9">
+          <div class="card-icon">🔠</div>
+          <div class="card-title">九键英文键盘 (T9)</div>
+          <div class="card-desc">T9数字串预测 / 智能词根联想</div>
+        </div>
+
+        <div class="interface-card" data-view="digits">
+          <div class="card-icon">#️⃣</div>
+          <div class="card-title">数字专用键盘</div>
+          <div class="card-desc">大按键九宫数字 / 快捷金额符号</div>
+        </div>
+
+        <!-- 键盘形态演示 -->
+        <div class="interface-card" data-view="gaming">
+          <div class="card-icon">🎮</div>
+          <div class="card-title">游戏悬浮形态 (HUD)</div>
+          <div class="card-desc">半透明浮动小窗 / 快捷战术宏</div>
+        </div>
+
+        <!-- 辅助扩展面板 -->
+        <div class="interface-card" data-view="symbols">
+          <div class="card-icon">#+=</div>
+          <div class="card-title">符号大全分类</div>
+          <div class="card-desc">标点 / 数学 / 序号 / 颜文字</div>
+        </div>
+
+        <div class="interface-card" data-view="emoji">
+          <div class="card-icon">😊</div>
+          <div class="card-title">Emoji 与贴纸</div>
+          <div class="card-desc">全分类 Emoji / Meme 表情包</div>
+        </div>
+
+        <div class="interface-card" data-view="handwriting">
+          <div class="card-icon">✍️</div>
+          <div class="card-title">Canvas 手写板</div>
+          <div class="card-desc">平滑笔锋 / 笔画撤销 / 汉字识别</div>
+        </div>
+
+        <div class="interface-card" data-view="voice">
+          <div class="card-icon">🎙️</div>
+          <div class="card-title">AI 动态语音输入</div>
+          <div class="card-desc">霓虹声波波形 / 多方言流式转写</div>
+        </div>
+
+        <div class="interface-card" data-view="clipboard">
+          <div class="card-icon">📋</div>
+          <div class="card-title">剪贴板与快捷短语</div>
+          <div class="card-desc">历史记录 / 图钉置顶 / 常用模板</div>
+        </div>
+
+        <div class="interface-card" data-view="texteditor">
+          <div class="card-icon">🎯</div>
+          <div class="card-title">光标与编辑触控板</div>
+          <div class="card-desc">十字方向键 / 全选复制撤销</div>
+        </div>
+
+        <!-- 独立提出：输入法全局设置中心 -->
+        <div class="interface-card card-highlight-settings" data-view="settings" style="grid-column: span 2; border: 1.5px solid #3b82f6; background: linear-gradient(135deg, rgba(59,130,246,0.06), rgba(139,92,246,0.06));">
+          <div class="card-icon">⚙️</div>
+          <div class="card-title" style="color: #2563eb; font-weight: 800;">⚙️ 输入法全局偏好设置中心</div>
+          <div class="card-desc">按键机械音效 / 触感震动 / 模糊音纠错 / 输入习惯个性化偏好</div>
+        </div>
+      </div>
+
+      <!-- 多套主题皮肤快速切换 -->
+      <div class="panel-title" style="margin-top: 8px;">
+        <span>🎨</span> 主题换肤 (一键换装)
+      </div>
+      <div class="theme-selector-list">
+        <button class="theme-pill active" data-theme="theme-ios">
+          <span class="color-dot" style="background: #007aff;"></span> iOS 毛玻璃
+        </button>
+        <button class="theme-pill" data-theme="theme-dark">
+          <span class="color-dot" style="background: #1e293b;"></span> 暗黑深空
+        </button>
+        <button class="theme-pill" data-theme="theme-cyberpunk">
+          <span class="color-dot" style="background: #ff007f;"></span> 赛博朋克
+        </button>
+        <button class="theme-pill" data-theme="theme-classic">
+          <span class="color-dot" style="background: #e11d48;"></span> 经典桌面
+        </button>
+        <button class="theme-pill" data-theme="theme-macos">
+          <span class="color-dot" style="background: #0ea5e9;"></span> macOS 极简灰
+        </button>
+      </div>
+    </aside>
+
+
+    <!-- ==================== 中间：移动端真机框架 ==================== -->
+    <section class="device-stage">
+      <div class="mobile-phone-frame">
+        <!-- 灵动岛 -->
+        <div class="phone-island">
+          <div class="island-sensor"></div>
+          <div class="island-camera"></div>
+        </div>
+
+        <!-- 手机屏幕 -->
+        <div class="phone-screen">
+          <!-- 手机顶部状态栏 -->
+          <div class="phone-status-bar">
+            <span>09:41</span>
+            <span>5G 📶 100%</span>
+          </div>
+
+          <!-- 模拟即时聊天演练区 -->
+          <div class="phone-app-content" id="phone-chat-stream">
+            <div class="chat-bubble receiver">
+              您好！这是一套完整的输入法 UI 交互演示系统。支持物理键盘或下方软键盘实时打字测试！
+            </div>
+            <div class="chat-bubble receiver">
+              💡 试试打：<code>nihao</code>、<code>shurufa</code>、<code>zhongguo</code> 或切换到手写、语音和 Emoji 面板！
+            </div>
+          </div>
+
+          <!-- 模拟活跃输入框 -->
+          <div class="phone-input-bar">
+            <div class="mock-input-field" id="phone-mock-input" contenteditable="true"></div>
+            <button class="send-msg-btn" id="phone-send-btn" title="发送消息">
+              ➤
+            </button>
+          </div>
+
+          <!-- 键盘与面板主挂载点 Dock -->
+          <div class="phone-ime-dock" id="phone-ime-dock">
+            <!-- 由 JS 动态挂载键盘与子面板 -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ==================== 右侧：桌面端悬浮条预览与测试场 ==================== -->
+    <aside class="inspector-panel">
+      <!-- 桌面端输入法悬浮组件 -->
+      <div class="sandbox-card">
+        <div class="panel-title">
+          <span>🖥️</span> 桌面端输入法组件 (可交互/可拖拽)
+        </div>
+
+        <!-- 桌面悬浮状态条 -->
+        <div class="desktop-floating-ime-bar" id="desktop-floating-bar" title="按住左侧点阵可拖拽移动">
+          <span class="desktop-drag-handle">⠿</span>
+          <div class="desktop-ime-logo">
+            <div class="desktop-logo-icon">拼</div>
+            <span style="font-size: 12px; font-weight: 700;">输入法</span>
+          </div>
+          <button class="desktop-status-btn active-lang" id="desktop-btn-lang" title="中/英切换">
+            <span class="desktop-status-badge">中</span>
+          </button>
+          <button class="desktop-status-btn" id="desktop-btn-punct" title="中/英文标点切换">
+            <span class="desktop-status-badge">。，</span>
+          </button>
+          <button class="desktop-status-btn" id="desktop-btn-shape" title="全/半角切换">
+            <span class="desktop-status-badge">半</span>
+          </button>
+          <button class="desktop-status-btn" id="desktop-btn-layout" title="横排/竖排候选词切换">
+            <span class="desktop-status-badge">横排</span>
+          </button>
+        </div>
+
+        <!-- 跟随光标候选词框 -->
+        <div class="desktop-cursor-candidate-box" id="desktop-candidate-box">
+          <div class="desktop-composition-row">
+            <span class="desktop-comp-text" id="desktop-comp-text">ni'hao</span>
+            <span class="desktop-comp-pinyin-split">拼音</span>
+          </div>
+          <div class="desktop-candidates-strip horizontal" id="desktop-candidates-strip">
+            <div class="desktop-candidate-item selected">
+              <span class="desktop-cand-index">1.</span>
+              <span class="desktop-cand-text">你好</span>
+            </div>
+            <div class="desktop-candidate-item">
+              <span class="desktop-cand-index">2.</span>
+              <span class="desktop-cand-text">您好</span>
+            </div>
+            <div class="desktop-candidate-item">
+              <span class="desktop-cand-index">3.</span>
+              <span class="desktop-cand-text">泥壕</span>
+            </div>
+            <div class="desktop-candidate-item">
+              <span class="desktop-cand-index">4.</span>
+              <span class="desktop-cand-text">拟好</span>
+            </div>
+          </div>
+          <div class="desktop-paging-row">
+            <span>翻页 (-, =)</span>
+            <button class="desktop-paging-btn">&lt;</button>
+            <button class="desktop-paging-btn">&gt;</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 独立记事本测试沙盒 -->
+      <div class="sandbox-card">
+        <div class="panel-title">
+          <span>📝</span> 综合演练记事本 (物理键盘实时联动)
+        </div>
+        <div class="sandbox-input-group">
+          <label for="sandbox-textarea">在下方区域输入或敲击键盘：</label>
+          <textarea class="sandbox-textarea" id="sandbox-textarea" placeholder="点击这里，使用物理键盘敲击拼音（如 nihao）或使用软键盘输入..."></textarea>
+        </div>
+        <div class="sandbox-actions">
+          <button class="sandbox-btn" id="btn-clear-sandbox">清空文本</button>
+          <button class="sandbox-btn primary" id="btn-copy-sandbox">复制内容</button>
+        </div>
+      </div>
+
+      <!-- 核心技术亮点清单 -->
+      <div class="sandbox-card">
+        <div class="panel-title">
+          <span>⚡</span> 系统架构亮点
+        </div>
+        <ul class="feature-list">
+          <li><span class="badge">全纯原生</span> 纯 HTML5 / CSS3 / ES6+ 无外部黑盒打包依赖</li>
+          <li><span class="badge">全端覆盖</span> 移动端虚拟键盘 + 桌面端光标悬浮候选双体验</li>
+          <li><span class="badge">手写引擎</span> Canvas 贝塞尔光滑笔锋 + 笔画撤销与多字候选</li>
+          <li><span class="badge">语音脉冲</span> 动态声波可视化频谱 + 多语种方言流式模拟</li>
+          <li><span class="badge">音效合成</span> Web Audio API 纯算法合成机械青轴 / 触感音</li>
+          <li><span class="badge">多款主题</span> iOS毛玻璃、暗黑深空、赛博霓虹、经典与macOS</li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- ==================== 底部：全套输入法 19 大 UI 界面实景平铺大展厅 ==================== -->
+    <section class="panorama-matrix-section">
+      <div class="panorama-header">
+        <div class="panorama-title-wrap">
+          <span class="panorama-badge">全景直出</span>
+          <h2>全套输入法 UI 界面设计大图鉴 (19 大界面全部实景平铺直出)</h2>
+        </div>
+        <p class="panorama-subtitle">以下直接渲染了本套输入法系统的每一个完整子界面与交互组件，无需跳转，一屏尽览全部设计细节与视觉规范：</p>
+      </div>
+
+      <!-- 模块 1：5 大核心输入键盘直出 -->
+      <div class="exhibition-category">
+        <div class="category-heading">
+          <span class="cat-pill">模块一</span>
+          <h3>5 大核心输入键盘 (实景直出)</h3>
+        </div>
+        <div class="live-ui-grid">
+          
+          <!-- UI 01: 26 键中文键盘 -->
+          <div class="live-ui-card">
+            <div class="live-card-head">
+              <span class="live-index">UI 01</span>
+              <h4>26 键中文键盘 (QWERTY 拼音)</h4>
+            </div>
+            <div class="live-component-body">
+              <div class="ime-keyboard-wrapper">
+                <div class="ime-candidate-bar has-composition">
+                  <div class="composition-preview"><span class="comp-text">ni'hao</span><span class="comp-cursor"></span></div>
+                  <div class="candidate-list">
+                    <div class="candidate-item highlight"><span class="cand-num">1.</span><span class="cand-word">你好</span></div>
+                    <div class="candidate-item"><span class="cand-num">2.</span><span class="cand-word">您好</span></div>
+                    <div class="candidate-item"><span class="cand-num">3.</span><span class="cand-word">泥壕</span></div>
+                    <div class="candidate-item"><span class="cand-num">4.</span><span class="cand-word">拟好</span></div>
+                  </div>
+                  <button class="candidate-expand-btn">▼</button>
+                </div>
+                <div class="ime-keypad-container">
+                  <div class="ime-keys-layout layout-26">
+                    <div class="ime-key-row">
+                      <button class="ime-key"><span class="sub-hint">1</span><span class="main-char">q</span></button>
+                      <button class="ime-key"><span class="sub-hint">2</span><span class="main-char">w</span></button>
+                      <button class="ime-key"><span class="sub-hint">3</span><span class="main-char">e</span></button>
+                      <button class="ime-key"><span class="sub-hint">4</span><span class="main-char">r</span></button>
+                      <button class="ime-key"><span class="sub-hint">5</span><span class="main-char">t</span></button>
+                      <button class="ime-key"><span class="sub-hint">6</span><span class="main-char">y</span></button>
+                      <button class="ime-key"><span class="sub-hint">7</span><span class="main-char">u</span></button>
+                      <button class="ime-key"><span class="sub-hint">8</span><span class="main-char">i</span></button>
+                      <button class="ime-key"><span class="sub-hint">9</span><span class="main-char">o</span></button>
+                      <button class="ime-key"><span class="sub-hint">0</span><span class="main-char">p</span></button>
+                    </div>
+                    <div class="ime-key-row row-2">
+                      <button class="ime-key"><span class="sub-hint">@</span><span class="main-char">a</span></button>
+                      <button class="ime-key"><span class="sub-hint">#</span><span class="main-char">s</span></button>
+                      <button class="ime-key"><span class="sub-hint">$</span><span class="main-char">d</span></button>
+                      <button class="ime-key"><span class="sub-hint">%</span><span class="main-char">f</span></button>
+                      <button class="ime-key"><span class="sub-hint">&</span><span class="main-char">g</span></button>
+                      <button class="ime-key"><span class="sub-hint">-</span><span class="main-char">h</span></button>
+                      <button class="ime-key"><span class="sub-hint">+</span><span class="main-char">j</span></button>
+                      <button class="ime-key"><span class="sub-hint">(</span><span class="main-char">k</span></button>
+                      <button class="ime-key"><span class="sub-hint">)</span><span class="main-char">l</span></button>
+                    </div>
+                    <div class="ime-key-row row-3">
+                      <button class="ime-key key-func key-shift"><span>⇧</span></button>
+                      <button class="ime-key"><span class="sub-hint">*</span><span class="main-char">z</span></button>
+                      <button class="ime-key"><span class="sub-hint">"</span><span class="main-char">x</span></button>
+                      <button class="ime-key"><span class="sub-hint">'</span><span class="main-char">c</span></button>
+                      <button class="ime-key"><span class="sub-hint">:</span><span class="main-char">v</span></button>
+                      <button class="ime-key"><span class="sub-hint">;</span><span class="main-char">b</span></button>
+                      <button class="ime-key"><span class="sub-hint">!</span><span class="main-char">n</span></button>
+                      <button class="ime-key"><span class="sub-hint">?</span><span class="main-char">m</span></button>
+                      <button class="ime-key key-func key-backspace"><span>⌫</span></button>
+                    </div>
+                    <div class="ime-key-row row-bottom">
+                      <button class="ime-key key-func key-mode"><span>英</span></button>
+                      <button class="ime-key key-func key-symbols"><span>123</span></button>
+                      <button class="ime-key key-space"><span class="space-title">空格 / 空白</span></button>
+                      <button class="ime-key key-func key-dot"><span>。</span></button>
+                      <button class="ime-key key-func key-enter"><span>确认</span></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- UI 02: 26 键英文键盘 -->
+          <div class="live-ui-card">
+            <div class="live-card-head">
+              <span class="live-index">UI 02</span>
+              <h4>26 键英文键盘 (CapsLock 锁定与单词预测)</h4>
+            </div>
+            <div class="live-component-body">
+              <div class="ime-keyboard-wrapper">
+                <div class="ime-candidate-bar has-composition">
+                  <div class="composition-preview"><span class="comp-text">hell</span></div>
+                  <div class="candidate-list">
+                    <div class="candidate-item highlight"><span class="cand-word">hello</span></div>
+                    <div class="candidate-item"><span class="cand-word">help</span></div>
+                    <div class="candidate-item"><span class="cand-word">hello world</span></div>
+                  </div>
+                </div>
+                <div class="ime-keypad-container">
+                  <div class="ime-keys-layout layout-26">
+                    <div class="ime-key-row">
+                      <button class="ime-key"><span class="main-char">Q</span></button>
+                      <button class="ime-key"><span class="main-char">W</span></button>
+                      <button class="ime-key"><span class="main-char">E</span></button>
+                      <button class="ime-key"><span class="main-char">R</span></button>
+                      <button class="ime-key"><span class="main-char">T</span></button>
+                      <button class="ime-key"><span class="main-char">Y</span></button>
+                      <button class="ime-key"><span class="main-char">U</span></button>
+                      <button class="ime-key"><span class="main-char">I</span></button>
+                      <button class="ime-key"><span class="main-char">O</span></button>
+                      <button class="ime-key"><span class="main-char">P</span></button>
+                    </div>
+                    <div class="ime-key-row row-2">
+                      <button class="ime-key"><span class="main-char">A</span></button>
+                      <button class="ime-key"><span class="main-char">S</span></button>
+                      <button class="ime-key"><span class="main-char">D</span></button>
+                      <button class="ime-key"><span class="main-char">F</span></button>
+                      <button class="ime-key"><span class="main-char">G</span></button>
+                      <button class="ime-key"><span class="main-char">H</span></button>
+                      <button class="ime-key"><span class="main-char">J</span></button>
+                      <button class="ime-key"><span class="main-char">K</span></button>
+                      <button class="ime-key"><span class="main-char">L</span></button>
+                    </div>
+                    <div class="ime-key-row row-3">
+                      <button class="ime-key key-func key-shift caps-locked"><span>⇪</span></button>
+                      <button class="ime-key"><span class="main-char">Z</span></button>
+                      <button class="ime-key"><span class="main-char">X</span></button>
+                      <button class="ime-key"><span class="main-char">C</span></button>
+                      <button class="ime-key"><span class="main-char">V</span></button>
+                      <button class="ime-key"><span class="main-char">B</span></button>
+                      <button class="ime-key"><span class="main-char">N</span></button>
+                      <button class="ime-key"><span class="main-char">M</span></button>
+                      <button class="ime-key key-func key-backspace"><span>⌫</span></button>
+                    </div>
+                    <div class="ime-key-row row-bottom">
+                      <button class="ime-key key-func key-mode"><span>中</span></button>
+                      <button class="ime-key key-func key-symbols"><span>123</span></button>
+                      <button class="ime-key key-space"><span class="space-title">space</span></button>
+                      <button class="ime-key key-func key-dot"><span>.</span></button>
+                      <button class="ime-key key-func key-enter"><span>Go</span></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- UI 03: 九键中文键盘 -->
+          <div class="live-ui-card">
+            <div class="live-card-head">
+              <span class="live-index">UI 03</span>
+              <h4>九键中文键盘 (九宫拼音智能分词)</h4>
+            </div>
+            <div class="live-component-body">
+              <div class="ime-keyboard-wrapper">
+                <div class="ime-candidate-bar has-composition">
+                  <div class="composition-preview"><span class="comp-text">64426</span></div>
+                  <div class="candidate-list">
+                    <div class="candidate-item highlight"><span class="cand-num">1.</span><span class="cand-word">你好</span></div>
+                    <div class="candidate-item"><span class="cand-num">2.</span><span class="cand-word">您好</span></div>
+                    <div class="candidate-item"><span class="cand-num">3.</span><span class="cand-word">泥壕</span></div>
+                  </div>
+                </div>
+                <div class="ime-keypad-container">
+                  <div class="ime-keys-layout layout-9">
+                    <div class="keypad9-filter-col">
+                      <div class="filter-9-item active">nihao</div>
+                      <div class="filter-9-item">mihao</div>
+                      <div class="filter-9-item">全拼</div>
+                    </div>
+                    <div class="keypad9-grid">
+                      <button class="ime-key key-9"><span class="num-9">1</span><span class="sub-9">.,?!@</span></button>
+                      <button class="ime-key key-9"><span class="num-9">2</span><span class="sub-9">ABC</span></button>
+                      <button class="ime-key key-9"><span class="num-9">3</span><span class="sub-9">DEF</span></button>
+                      <button class="ime-key key-9"><span class="num-9">4</span><span class="sub-9">GHI</span></button>
+                      <button class="ime-key key-9"><span class="num-9">5</span><span class="sub-9">JKL</span></button>
+                      <button class="ime-key key-9"><span class="num-9">6</span><span class="sub-9">MNO</span></button>
+                      <button class="ime-key key-9"><span class="num-9">7</span><span class="sub-9">PQRS</span></button>
+                      <button class="ime-key key-9"><span class="num-9">8</span><span class="sub-9">TUV</span></button>
+                      <button class="ime-key key-9"><span class="num-9">9</span><span class="sub-9">WXYZ</span></button>
+                      <button class="ime-key key-9"><span class="num-9">*</span><span class="sub-9">重输</span></button>
+                      <button class="ime-key key-9"><span class="num-9">0</span><span class="sub-9">空格</span></button>
+                      <button class="ime-key key-9"><span class="num-9">#</span><span class="sub-9">符号</span></button>
+                    </div>
+                    <div class="keypad9-side-col">
+                      <button class="ime-key key-func key-backspace"><span>⌫</span></button>
+                      <button class="ime-key key-func key-mode"><span>26键</span></button>
+                      <button class="ime-key key-func key-enter"><span>确定</span></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- UI 04: 九键英文键盘 (T9) -->
+          <div class="live-ui-card">
+            <div class="live-card-head">
+              <span class="live-index">UI 04</span>
+              <h4>九键英文键盘 (T9 智能英文预测)</h4>
+            </div>
+            <div class="live-component-body">
+              <div class="ime-keyboard-wrapper">
+                <div class="ime-candidate-bar has-composition">
+                  <div class="composition-preview"><span class="comp-text">4663 (T9)</span></div>
+                  <div class="candidate-list">
+                    <div class="candidate-item highlight"><span class="cand-word">good</span></div>
+                    <div class="candidate-item"><span class="cand-word">home</span></div>
+                    <div class="candidate-item"><span class="cand-word">gone</span></div>
+                    <div class="candidate-item"><span class="cand-word">hood</span></div>
+                  </div>
+                </div>
+                <div class="ime-keypad-container">
+                  <div class="ime-keys-layout layout-9 layout-9-english">
+                    <div class="keypad9-filter-col">
+                      <div class="filter-9-item active">T9智能</div>
+                      <div class="filter-9-item">abc</div>
+                      <div class="filter-9-item">ABC</div>
+                    </div>
+                    <div class="keypad9-grid">
+                      <button class="ime-key key-9"><span class="num-9">1</span><span class="sub-9">.,?!@</span></button>
+                      <button class="ime-key key-9"><span class="num-9">2</span><span class="sub-9">abc</span></button>
+                      <button class="ime-key key-9"><span class="num-9">3</span><span class="sub-9">def</span></button>
+                      <button class="ime-key key-9"><span class="num-9">4</span><span class="sub-9">ghi</span></button>
+                      <button class="ime-key key-9"><span class="num-9">5</span><span class="sub-9">jkl</span></button>
+                      <button class="ime-key key-9"><span class="num-9">6</span><span class="sub-9">mno</span></button>
+                      <button class="ime-key key-9"><span class="num-9">7</span><span class="sub-9">pqrs</span></button>
+                      <button class="ime-key key-9"><span class="num-9">8</span><span class="sub-9">tuv</span></button>
+                      <button class="ime-key key-9"><span class="num-9">9</span><span class="sub-9">wxyz</span></button>
+                      <button class="ime-key key-9"><span class="num-9">*</span><span class="sub-9">重输</span></button>
+                      <button class="ime-key key-9"><span class="num-9">0</span><span class="sub-9">space</span></button>
+                      <button class="ime-key key-9"><span class="num-9">#</span><span class="sub-9">#+=</span></button>
+                    </div>
+                    <div class="keypad9-side-col">
+                      <button class="ime-key key-func key-backspace"><span>⌫</span></button>
+                      <button class="ime-key key-func key-mode"><span>26键</span></button>
+                      <button class="ime-key key-func key-enter"><span>Go</span></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- UI 05: 数字专用键盘 -->
+          <div class="live-ui-card">
+            <div class="live-card-head">
+              <span class="live-index">UI 05</span>
+              <h4>数字金融专用键盘</h4>
+            </div>
+            <div class="live-component-body">
+              <div class="ime-keyboard-wrapper">
+                <div class="ime-keypad-container">
+                  <div class="ime-keys-layout layout-digits">
+                    <div class="digits-grid">
+                      <div class="ime-key-row">
+                        <button class="ime-key key-digit"><span class="main-char">1</span></button>
+                        <button class="ime-key key-digit"><span class="main-char">2</span></button>
+                        <button class="ime-key key-digit"><span class="main-char">3</span></button>
+                      </div>
+                      <div class="ime-key-row">
+                        <button class="ime-key key-digit"><span class="main-char">4</span></button>
+                        <button class="ime-key key-digit"><span class="main-char">5</span></button>
+                        <button class="ime-key key-digit"><span class="main-char">6</span></button>
+                      </div>
+                      <div class="ime-key-row">
+                        <button class="ime-key key-digit"><span class="main-char">7</span></button>
+                        <button class="ime-key key-digit"><span class="main-char">8</span></button>
+                        <button class="ime-key key-digit"><span class="main-char">9</span></button>
+                      </div>
+                      <div class="ime-key-row">
+                        <button class="ime-key key-digit"><span class="main-char">.</span></button>
+                        <button class="ime-key key-digit"><span class="main-char">0</span></button>
+                        <button class="ime-key key-digit"><span class="main-char">00</span></button>
+                      </div>
+                    </div>
+                    <div class="digits-side-col">
+                      <button class="ime-key key-func key-backspace"><span>⌫</span></button>
+                      <button class="ime-key key-func"><span>拼音</span></button>
+                      <button class="ime-key key-func key-enter digits-enter"><span>确认</span></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- 模块 2：键盘形态展示 (游戏悬浮 HUD 形态) -->
+      <div class="exhibition-category">
+        <div class="category-heading">
+          <span class="cat-pill">模块二</span>
+          <h3>键盘形态展示 (固定贴底 vs 游戏 HUD 悬浮形态)</h3>
+        </div>
+        <div class="live-ui-grid">
+
+          <!-- 游戏悬浮形态演示卡片 -->
+          <div class="live-ui-card" style="grid-column: span 1;">
+            <div class="live-card-head">
+              <span class="live-index">形态演示</span>
+              <h4>游戏 HUD 悬浮小窗形态 (支持 26中/26英/9中/9英/数字全键位)</h4>
+            </div>
+            <div class="live-component-body" style="padding: 12px; background: rgba(15, 23, 42, 0.95); display: flex; align-items: center; justify-content: center;">
+              <div class="gaming-mini-container" style="width: 100%;">
+                <div class="gaming-hud-header">
+                  <div class="gaming-hud-title"><span class="hud-dot"></span> 🎮 GAME HUD 悬浮小键盘 (支持全套5大键位自由切换)</div>
+                  <div class="gaming-macro-scroll">
+                    <button class="game-macro-pill">收到！</button>
+                    <button class="game-macro-pill">集合进攻！</button>
+                    <button class="game-macro-pill">稳住能赢！</button>
+                    <button class="game-macro-pill">请求集合！</button>
+                    <button class="game-macro-pill">保护输出！</button>
+                  </div>
+                </div>
+                <div class="gaming-mini-keypad">
+                  <div class="game-key-row">
+                    <button class="game-mini-key">Q</button><button class="game-mini-key">W</button><button class="game-mini-key">E</button><button class="game-mini-key">R</button><button class="game-mini-key">T</button><button class="game-mini-key">Y</button><button class="game-mini-key">U</button><button class="game-mini-key">I</button><button class="game-mini-key">O</button><button class="game-mini-key">P</button>
+                  </div>
+                  <div class="game-key-row">
+                    <button class="game-mini-key">A</button><button class="game-mini-key">S</button><button class="game-mini-key">D</button><button class="game-mini-key">F</button><button class="game-mini-key">G</button><button class="game-mini-key">H</button><button class="game-mini-key">J</button><button class="game-mini-key">K</button><button class="game-mini-key">L</button>
+                  </div>
+                  <div class="game-key-row">
+                    <button class="game-mini-key" style="flex: 1.2;">⌫</button>
+                    <button class="game-mini-key">Z</button><button class="game-mini-key">X</button><button class="game-mini-key">C</button><button class="game-mini-key">V</button><button class="game-mini-key">B</button><button class="game-mini-key">N</button><button class="game-mini-key">M</button>
+                    <button class="game-mini-key game-enter-btn">发送</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- 模块 3：富媒体与扩展功能面板直出 -->
+      <div class="exhibition-category">
+        <div class="category-heading">
+          <span class="cat-pill">模块三</span>
+          <h3>富媒体与扩展功能面板 (6 款)</h3>
+        </div>
+        <div class="live-ui-grid">
+
+          <!-- UI 06: 符号大全分类面板 -->
+          <div class="live-ui-card">
+            <div class="live-card-head">
+              <span class="live-index">UI 06</span>
+              <h4>符号大全分类面板 (标点/数学/序号/颜文字)</h4>
+            </div>
+            <div class="live-component-body">
+              <div class="ime-sub-panel symbols-panel">
+                <div class="panel-top-nav">
+                  <div class="panel-heading"><span>#+=</span> 常用与中文标点</div>
+                  <button class="panel-close-btn">✕ 键盘</button>
+                </div>
+                <div class="symbols-panel-layout">
+                  <div class="symbols-cat-sidebar">
+                    <div class="symbols-cat-item active">常用标点</div>
+                    <div class="symbols-cat-item">数学运算</div>
+                    <div class="symbols-cat-item">序号特殊</div>
+                    <div class="symbols-cat-item">颜文字</div>
+                  </div>
+                  <div class="symbols-grid-container">
+                    <div class="symbol-cell">，</div>
+                    <div class="symbol-cell">。</div>
+                    <div class="symbol-cell">！</div>
+                    <div class="symbol-cell">？</div>
+                    <div class="symbol-cell">、</div>
+                    <div class="symbol-cell">；</div>
+                    <div class="symbol-cell">：</div>
+                    <div class="symbol-cell">“</div>
+                    <div class="symbol-cell">”</div>
+                    <div class="symbol-cell">……</div>
+                    <div class="symbol-cell">——</div>
+                    <div class="symbol-cell">~</div>
+                    <div class="symbol-cell">@</div>
+                    <div class="symbol-cell">#</div>
+                    <div class="symbol-cell">（</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- UI 07: Emoji 与表情贴纸面板 -->
+          <div class="live-ui-card">
+            <div class="live-card-head">
+              <span class="live-index">UI 07</span>
+              <h4>Emoji 与贴纸表情面板 (含流行 Meme 动图)</h4>
+            </div>
+            <div class="live-component-body">
+              <div class="ime-sub-panel emoji-panel">
+                <div class="panel-top-nav">
+                  <div class="panel-heading"><span>😊</span> Emoji & 贴纸表情</div>
+                  <button class="panel-close-btn">✕ 键盘</button>
+                </div>
+                <div class="emoji-panel-layout">
+                  <div class="emoji-tabs-bar">
+                    <button class="emoji-tab-btn active">表情</button>
+                    <button class="emoji-tab-btn">手势</button>
+                    <button class="emoji-tab-btn">动物</button>
+                    <button class="emoji-tab-btn">食物</button>
+                    <button class="emoji-tab-btn">🔥 贴纸/动图</button>
+                  </div>
+                  <div class="emoji-grid-content">
+                    <div class="emoji-item">😀</div><div class="emoji-item">😃</div><div class="emoji-item">😄</div><div class="emoji-item">😁</div><div class="emoji-item">😆</div><div class="emoji-item">😅</div><div class="emoji-item">🤣</div>
+                    <div class="emoji-item">😂</div><div class="emoji-item">🙂</div><div class="emoji-item">😉</div><div class="emoji-item">😊</div><div class="emoji-item">😇</div><div class="emoji-item">🥰</div><div class="emoji-item">😍</div>
+                    <div class="emoji-item">🤩</div><div class="emoji-item">😘</div><div class="emoji-item">😋</div><div class="emoji-item">😜</div><div class="emoji-item">🤪</div><div class="emoji-item">😎</div><div class="emoji-item">🥳</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- UI 08: Canvas 智能手写板 -->
+          <div class="live-ui-card">
+            <div class="live-card-head">
+              <span class="live-index">UI 08</span>
+              <h4>Canvas 智能手写板 (贝塞尔平滑笔锋)</h4>
+            </div>
+            <div class="live-component-body">
+              <div class="ime-sub-panel handwriting-panel">
+                <div class="panel-top-nav">
+                  <div class="panel-heading"><span>✍️</span> 智能手写识别板</div>
+                  <button class="panel-close-btn">✕ 键盘</button>
+                </div>
+                <div class="handwriting-panel-layout">
+                  <div class="handwriting-top-candidates">
+                    <div class="hw-cand-item" style="color: #2563eb; font-weight:700;">汉</div>
+                    <div class="hw-cand-item">字</div>
+                    <div class="hw-cand-item">写</div>
+                    <div class="hw-cand-item">好</div>
+                    <div class="hw-cand-item">正</div>
+                  </div>
+                  <div class="handwriting-canvas-box" style="display: flex; align-items: center; justify-content: center; position: relative;">
+                    <div style="font-size: 72px; font-family: 'STKaiti', cursive; color: #1e293b; opacity: 0.85;">汉</div>
+                    <div style="position: absolute; border: 1px dashed rgba(150,150,150,0.3); width: 100%; height: 100%;"></div>
+                  </div>
+                  <div class="handwriting-action-bar">
+                    <div class="hw-actions-left">
+                      <button class="hw-btn">撤销笔画</button>
+                      <button class="hw-btn">重写清空</button>
+                    </div>
+                    <button class="hw-btn primary">空格</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- UI 09: AI 动态声波语音输入 (高颜值重构) -->
+          <div class="live-ui-card">
+            <div class="live-card-head">
+              <span class="live-index">UI 09</span>
+              <h4>AI 动态声波语音输入 (全新 iOS/Siri 霓虹光波质感设计)</h4>
+            </div>
+            <div class="live-component-body">
+              <div class="ime-sub-panel voice-panel">
+                <div class="panel-top-nav">
+                  <div class="panel-heading"><span>🎙️</span> AI 动态声波流式语音转写</div>
+                  <button class="panel-close-btn">✕ 键盘</button>
+                </div>
+                <div class="voice-panel-layout">
+                  <div class="voice-status-box">
+                    <span class="voice-transcript-text">正在聆听... “人工智能输入法为您带来毫秒级极速转写体验”</span>
+                  </div>
+                  <!-- 霓虹声波波形频段 -->
+                  <div class="voice-equalizer-wrap">
+                    <span class="voice-wave-bar"></span>
+                    <span class="voice-wave-bar"></span>
+                    <span class="voice-wave-bar"></span>
+                    <span class="voice-wave-bar"></span>
+                    <span class="voice-wave-bar"></span>
+                    <span class="voice-wave-bar"></span>
+                    <span class="voice-wave-bar"></span>
+                    <span class="voice-wave-bar"></span>
+                    <span class="voice-wave-bar"></span>
+                    <span class="voice-wave-bar"></span>
+                  </div>
+                  <div class="voice-controls-bar">
+                    <select class="voice-lang-select"><option>普通话 (标准中文)</option></select>
+                    <button class="voice-mic-main-btn recording">⏹️</button>
+                    <button class="hw-btn primary">完成上屏</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- UI 10: 剪贴板与懒人短语面板 -->
+          <div class="live-ui-card">
+            <div class="live-card-head">
+              <span class="live-index">UI 10</span>
+              <h4>剪贴板历史与懒人常用短语面板</h4>
+            </div>
+            <div class="live-component-body">
+              <div class="ime-sub-panel clipboard-panel">
+                <div class="panel-top-nav">
+                  <div class="panel-heading"><span>📋</span> 剪贴板与常用短语</div>
+                  <button class="panel-close-btn">✕ 键盘</button>
+                </div>
+                <div class="clipboard-panel-layout">
+                  <div class="clipboard-nav-tabs">
+                    <button class="clip-tab-btn active">历史剪贴记录</button>
+                    <button class="clip-tab-btn">懒人常用短语</button>
+                  </div>
+                  <div class="clipboard-list">
+                    <div class="clipboard-card">
+                      <div class="clipboard-text">https://github.com/google-deepmind/antigravity</div>
+                      <div class="clipboard-meta"><span class="clip-pin-icon">📌</span> 刚刚</div>
+                    </div>
+                    <div class="clipboard-card">
+                      <div class="clipboard-text">北京市海淀区中关村南大街1号科技大厦B座808室</div>
+                      <div class="clipboard-meta"><span class="clip-pin-icon">📌</span> 5分钟前</div>
+                    </div>
+                    <div class="clipboard-card">
+                      <div class="clipboard-text">您好，请问有什么可以帮您？马上为您推进！</div>
+                      <div class="clipboard-meta">常用语</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- UI 11: 文本编辑与光标十字精准定位 -->
+          <div class="live-ui-card">
+            <div class="live-card-head">
+              <span class="live-index">UI 11</span>
+              <h4>光标触控板与文本编辑工具面板</h4>
+            </div>
+            <div class="live-component-body">
+              <div class="ime-sub-panel text-editor-panel">
+                <div class="panel-top-nav">
+                  <div class="panel-heading"><span>🎯</span> 文本编辑与光标精准定位</div>
+                  <button class="panel-close-btn">✕ 键盘</button>
+                </div>
+                <div class="text-editor-layout">
+                  <div class="editor-quick-actions">
+                    <button class="editor-action-btn">全选</button>
+                    <button class="editor-action-btn">复制</button>
+                    <button class="editor-action-btn">剪切</button>
+                    <button class="editor-action-btn">粘贴</button>
+                    <button class="editor-action-btn">撤销</button>
+                  </div>
+                  <div class="cursor-cross-pad">
+                    <div class="cross-row"><button class="cross-btn">▲</button></div>
+                    <div class="cross-row middle">
+                      <button class="cross-btn">◀</button>
+                      <div class="cross-center-label">光标</div>
+                      <button class="cross-btn">▶</button>
+                    </div>
+                    <div class="cross-row"><button class="cross-btn">▼</button></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- 独立提出来的全局设置中心板块 -->
+      <div class="exhibition-category settings-exclusive-section" id="global-settings-section">
+        <div class="category-heading" style="border-bottom: 2px solid #3b82f6; padding-bottom: 8px;">
+          <span class="cat-pill" style="background: #2563eb; color: #fff;">独立模块</span>
+          <h3 style="color: #2563eb;">⚙️ 输入法全局偏好与个性化设置中心 (独立直出)</h3>
+        </div>
+        <div class="live-ui-grid" style="grid-template-columns: 1fr;">
+
+          <!-- UI 12: 全局设置与个性化配置中心 -->
+          <div class="live-ui-card" style="border: 2px solid #3b82f6; box-shadow: 0 8px 24px rgba(37,99,235,0.08);">
+            <div class="live-card-head" style="background: linear-gradient(135deg, rgba(37,99,235,0.08), rgba(139,92,246,0.08));">
+              <span class="live-index" style="background: #2563eb;">UI 12 · 全局设置</span>
+              <h4 style="color: #1e3a8a; font-weight: 800;">系统全局偏好设置面板</h4>
+            </div>
+            <div class="live-component-body" style="padding: 14px;">
+              <div class="ime-sub-panel settings-panel" style="max-width: 600px; margin: 0 auto; width: 100%;">
+                <div class="panel-top-nav">
+                  <div class="panel-heading"><span>⚙️</span> 输入法高级设置</div>
+                  <button class="panel-close-btn">✕ 键盘</button>
+                </div>
+                <div class="settings-panel-layout">
+                  <div class="settings-group">
+                    <div class="settings-group-title">声音与按键反馈 (Web Audio)</div>
+                    <div class="settings-row">
+                      <div><div class="settings-label">按键机械音效</div><div class="settings-desc">仿真机械青轴清脆敲击音效</div></div>
+                      <label class="ios-switch"><input type="checkbox" checked /><span class="slider"></span></label>
+                    </div>
+                    <div class="settings-row">
+                      <div><div class="settings-label">触感震动反馈</div><div class="settings-desc">打字微震动触感模拟</div></div>
+                      <label class="ios-switch"><input type="checkbox" checked /><span class="slider"></span></label>
+                    </div>
+                  </div>
+                  <div class="settings-group">
+                    <div class="settings-group-title">输入法算法配置</div>
+                    <div class="settings-row">
+                      <div><div class="settings-label">模糊音纠错 (z/zh, c/ch, s/sh)</div><div class="settings-desc">平翘舌与前后鼻音智能容错</div></div>
+                      <label class="ios-switch"><input type="checkbox" checked /><span class="slider"></span></label>
+                    </div>
+                    <div class="settings-row">
+                      <div><div class="settings-label">长按弹出按键气泡放大镜</div><div class="settings-desc">精准点按预览</div></div>
+                      <label class="ios-switch"><input type="checkbox" checked /><span class="slider"></span></label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- 脚本入口 -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

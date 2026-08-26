@@ -1,0 +1,694 @@
+/* ==========================================================================
+   IME UI Suite - Keyboard & Keypad Layout Styles
+   ========================================================================== */
+
+.ime-keyboard-wrapper {
+  display: flex;
+  flex-direction: column;
+  background: var(--ime-bg, #eceff4);
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* 1. 顶部快捷工具条 (Quick Toolbar) */
+.ime-quick-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 6px;
+  background: var(--ime-toolbar-bg, rgba(255, 255, 255, 0.85));
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--ime-border, rgba(0, 0, 0, 0.08));
+  height: 40px;
+  gap: 4px;
+}
+
+.tool-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.tool-group.left {
+  flex: 1;
+  justify-content: flex-start;
+}
+
+.tool-group.right {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+}
+
+.tool-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 4px 6px;
+  height: 30px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  color: var(--ime-key-text, #334155);
+  font-weight: 500;
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.12s ease;
+  flex-shrink: 0;
+}
+
+.tool-btn:hover, .tool-btn:active {
+  background: var(--ime-key-active, rgba(0, 0, 0, 0.06));
+}
+
+.tool-btn .tool-icon {
+  font-size: 13px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+}
+
+.tool-btn .tool-label {
+  font-size: 11.5px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* 2. 拼音预编辑与候选词栏 (Candidate Strip) */
+.ime-candidate-bar {
+  display: flex;
+  align-items: center;
+  height: 42px;
+  padding: 0 8px;
+  background: var(--ime-candidate-bg, #ffffff);
+  border-bottom: 1px solid var(--ime-border, rgba(0, 0, 0, 0.08));
+  position: relative;
+  gap: 6px;
+}
+
+.composition-preview {
+  display: none;
+  align-items: center;
+  padding: 2px 8px;
+  background: var(--ime-comp-bg, #eff6ff);
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary-color, #2563eb);
+  white-space: nowrap;
+}
+
+.ime-candidate-bar.has-composition .composition-preview {
+  display: flex;
+}
+
+.comp-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 14px;
+  background: var(--primary-color, #2563eb);
+  margin-left: 2px;
+  animation: blinkCursor 0.8s infinite;
+}
+
+@keyframes blinkCursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.candidate-list {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  height: 100%;
+}
+
+.candidate-list::-webkit-scrollbar {
+  display: none;
+}
+
+.candidate-item {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ime-cand-text, #1e293b);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  height: 32px;
+}
+
+.candidate-item:hover,
+.candidate-item:active {
+  background: var(--ime-key-active, rgba(0, 0, 0, 0.08));
+  transform: scale(0.98);
+}
+
+.candidate-item.highlight {
+  font-weight: 700;
+  color: var(--primary-color, #2563eb);
+}
+
+.cand-num {
+  font-size: 11px;
+  color: var(--ime-cand-sub, #94a3b8);
+}
+
+.candidate-empty-hint {
+  font-size: 12px;
+  color: #94a3b8;
+  font-style: italic;
+  padding-left: 4px;
+}
+
+.candidate-expand-btn {
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #64748b;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.candidate-expand-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+/* 3. 候选词全量展开九宫格面板 (Expanded Grid) */
+.ime-candidate-expanded-panel {
+  position: absolute;
+  top: 36px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--ime-expanded-bg, #ffffff);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-md);
+}
+
+.expanded-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  background: var(--ime-expanded-head, #f8fafc);
+  border-bottom: 1px solid var(--border-color);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.close-expanded-btn {
+  background: none;
+  border: none;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 4px;
+}
+
+.expanded-grid {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  padding: 12px;
+}
+
+.expanded-cand-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 10px;
+  background: var(--ime-expanded-card, #f1f5f9);
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.expanded-cand-item:hover {
+  background: var(--primary-light);
+  color: var(--primary-color);
+}
+
+/* 4. 键盘按键主体与 26 键布局 (26 Keys Layout) */
+.ime-keypad-container {
+  padding: 8px 4px 14px;
+}
+
+.ime-keys-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.ime-key-row {
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+}
+
+.ime-key {
+  position: relative;
+  flex: 1;
+  height: 44px;
+  background: var(--ime-key-bg, #ffffff);
+  border: none;
+  border-radius: 6px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 1px 0 rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.08s ease, background-color 0.12s ease;
+  font-family: inherit;
+  color: var(--ime-key-text, #0f172a);
+}
+
+.ime-key:active {
+  transform: scale(0.94);
+  background: var(--ime-key-pressed, #cbd5e1) !important;
+}
+
+.sub-hint {
+  font-size: 9px;
+  color: var(--ime-key-sub, #94a3b8);
+  line-height: 1;
+  position: absolute;
+  top: 3px;
+  right: 4px;
+}
+
+.main-char {
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+/* 功能键样式 */
+.ime-key.key-func {
+  background: var(--ime-func-bg, #d1d5db);
+  flex: 1.35;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.ime-key.key-shift.active {
+  background: #3b82f6;
+  color: #fff;
+}
+
+.ime-key.key-shift.caps-locked {
+  background: #2563eb;
+  color: #fff;
+}
+
+.ime-key.key-space {
+  flex: 4;
+}
+
+.space-title {
+  font-size: 12px;
+  color: var(--ime-key-sub, #64748b);
+}
+
+.ime-key.key-enter {
+  flex: 1.8;
+  background: var(--primary-color, #2563eb);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.ime-key.key-enter:hover {
+  background: var(--primary-hover, #1d4ed8);
+}
+
+/* 按键放大镜气泡 (Popup Preview) */
+.key-popup-bubble {
+  position: absolute;
+  bottom: 110%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 48px;
+  height: 56px;
+  background: var(--ime-key-bg, #ffffff);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--ime-key-text, #0f172a);
+  z-index: 99;
+  pointer-events: none;
+  animation: popIn 0.1s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+}
+
+.key-popup-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 6px solid var(--ime-key-bg, #ffffff);
+}
+
+@keyframes popIn {
+  0% { transform: translateX(-50%) scale(0.6); opacity: 0; }
+  100% { transform: translateX(-50%) scale(1); opacity: 1; }
+}
+
+/* 5. 9 键九宫格布局 (9 Keys Layout) */
+.layout-9 {
+  display: grid;
+  grid-template-columns: 74px 1fr 64px;
+  gap: 8px;
+  padding: 4px;
+}
+
+.keypad9-filter-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  max-height: 200px;
+}
+
+.filter-9-item {
+  background: var(--ime-key-bg, #ffffff);
+  border-radius: 6px;
+  padding: 8px 4px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ime-key-text, #334155);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.filter-9-item.active {
+  background: var(--primary-color, #2563eb);
+  color: #fff;
+}
+
+.keypad9-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.ime-key.key-9 {
+  height: 46px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.num-9 {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.sub-9 {
+  font-size: 9px;
+  color: var(--ime-key-sub, #94a3b8);
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+}
+
+.keypad9-side-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.keypad9-side-col .ime-key {
+  height: 100%;
+}
+
+/* 6. 数字键盘布局 (Digits Layout) */
+.layout-digits {
+  display: grid;
+  grid-template-columns: 1fr 70px;
+  gap: 8px;
+}
+
+.digits-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.digits-side-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* 7. 笔画输入法键盘样式 (Stroke 5-Keys) */
+.layout-stroke {
+  display: grid;
+  grid-template-columns: 1fr 74px;
+  gap: 8px;
+}
+
+.stroke-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.ime-key.key-stroke {
+  height: 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.stroke-symbol {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--primary-color, #2563eb);
+  line-height: 1;
+}
+
+.stroke-name {
+  font-size: 11px;
+  color: var(--ime-key-sub, #64748b);
+  font-weight: 600;
+}
+
+.stroke-side-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stroke-enter {
+  flex: 2 !important;
+}
+
+/* 8. 双拼与五笔按键角标 */
+.sp-hint, .wb-hint {
+  font-size: 8px;
+  color: var(--primary-color, #2563eb);
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+}
+
+/* 9. 单手模式 (One-Handed Mode) */
+.one-handed-wrapper {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 6px;
+}
+
+.one-handed-sidebar {
+  width: 44px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+  padding: 6px 2px;
+  align-items: center;
+  justify-content: center;
+}
+
+.one-hand-control-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: var(--ime-key-bg, #ffffff);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.one-hand-control-btn:hover {
+  background: var(--primary-light);
+  color: var(--primary-color);
+}
+
+.one-handed-keyboard-body {
+  flex: 1;
+}
+
+/* 10. 游戏悬浮小键盘样式 (Gaming Mini HUD Keypad) */
+.gaming-mini-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(15, 23, 42, 0.92);
+  backdrop-filter: blur(18px);
+  border-radius: 16px;
+  padding: 10px 12px;
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), inset 0 0 15px rgba(0, 240, 255, 0.1);
+  max-width: 380px;
+  margin: 0 auto;
+}
+
+.gaming-hud-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 6px;
+}
+
+.gaming-hud-title {
+  font-size: 11px;
+  font-weight: 800;
+  color: #00f0ff;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  letter-spacing: 0.5px;
+}
+
+.hud-dot {
+  width: 6px;
+  height: 6px;
+  background: #00f0ff;
+  border-radius: 50%;
+  box-shadow: 0 0 8px #00f0ff;
+  display: inline-block;
+}
+
+.gaming-macro-scroll {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.gaming-macro-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.game-macro-pill {
+  padding: 4px 10px;
+  border-radius: 14px;
+  background: rgba(0, 240, 255, 0.12);
+  border: 1px solid rgba(0, 240, 255, 0.4);
+  color: #a5f3fc;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.game-macro-pill:hover, .game-macro-pill:active {
+  background: #00f0ff;
+  color: #0f172a;
+}
+
+.gaming-mini-keypad {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.game-key-row {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+}
+
+.game-mini-key {
+  flex: 1;
+  height: 34px;
+  min-width: 24px;
+  background: rgba(30, 41, 59, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  color: #f1f5f9;
+  font-size: 12.5px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.game-mini-key:hover, .game-mini-key:active {
+  background: #00f0ff;
+  color: #0f172a;
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.6);
+}
+
+.game-mini-key.game-enter-btn {
+  flex: 1.6;
+  background: linear-gradient(135deg, #0284c7, #0369a1);
+  color: #fff;
+  border-color: #38bdf8;
+}
+
+

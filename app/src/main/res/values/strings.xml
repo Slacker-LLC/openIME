@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">openIME</string>
+    <string name="subtitle_zh">中文</string>
+    <string name="subtitle_en">English</string>
+    <string name="main_description">这是一个独立的本地语音输入法。\n\n在系统设置中启用并切换到它，然后在下方输入框或任意第三方 App 中使用。</string>
+    <string name="test_hint">在这里测试本地输入法</string>
+    <string name="open_ime_settings">打开输入法设置</string>
+</resources>

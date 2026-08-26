@@ -1,0 +1,8 @@
+﻿{
+    "Device":  "f0e2ff6f",
+    "Apk":  "local-voice-ime-debug.apk",
+    "Reinstall":  "PASS",
+    "ThemeBefore":  "DARK",
+    "ThemeAfter":  "DARK",
+    "PrefsPath":  "shared_prefs/ime_settings.xml"
+}

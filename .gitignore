@@ -1,0 +1,28 @@
+# Android/Gradle build output
+.gradle/
+.kotlin/
+build/
+app/build/
+app/.cxx/
+
+# Local machine configuration
+local.properties
+.idea/
+*.iml
+
+# Downloaded native build dependency; CMake fetches this on demand.
+app/boost-*.tar.xz
+app/src/main/cpp/boost/
+
+# Generated delivery files
+artifacts/
+*.apk
+
+# Local screenshots and UI dumps kept outside the source tree
+*.png
+*.xml
+!app/src/**/*.xml
+
+# Scratch files
+test_patch_probe.txt
+

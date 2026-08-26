@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+        <TextView
+            android:id="@+id/security_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="安全测试：密码字段"
+            android:textSize="16sp" />
+        <EditText
+            android:id="@+id/security_password"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:hint="密码字段"
+            android:inputType="textPassword"
+            android:importantForAutofill="no" />
+        <EditText
+            android:id="@+id/security_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:hint="普通文本字段"
+            android:inputType="text"
+            android:importantForAutofill="no" />
+        <EditText
+            android:id="@+id/security_multiline"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:hint="多行文本字段"
+            android:imeOptions="actionNone"
+            android:inputType="textMultiLine"
+            android:importantForAutofill="no" />
+    </LinearLayout>
+</ScrollView>
