@@ -39,9 +39,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
     )
 
     private data class PendingVoiceCorrection(
-        val original: String,
-        val start: Int,
-        val end: Int,
+        val range: VoiceCorrectionRange,
         var edited: Boolean = false,
     )
 
@@ -1020,28 +1018,21 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
             pendingVoiceCorrection = null
             return
         }
-        val snapshot = gateway.cursorSnapshot() ?: run {
+        val snapshot = gateway.absoluteCursorSnapshot() ?: run {
             pendingVoiceCorrection = null
             return
         }
-        val start = snapshot.cursor - original.length
-        pendingVoiceCorrection = if (
-            start >= 0 && snapshot.cursor <= snapshot.text.length &&
-            snapshot.text.substring(start, snapshot.cursor) == original
-        ) {
-            PendingVoiceCorrection(original = original, start = start, end = snapshot.cursor)
-        } else {
-            null
-        }
+        val range = voiceCorrectionRange(original, snapshot)
+        pendingVoiceCorrection = range?.let(::PendingVoiceCorrection)
     }
 
     private fun noteVoiceBackspace() {
         val pending = pendingVoiceCorrection ?: return
-        val cursor = gateway.cursorSnapshot()?.cursor ?: run {
+        val cursorAbsolute = gateway.absoluteCursorSnapshot()?.cursorAbsolute ?: run {
             pendingVoiceCorrection = null
             return
         }
-        if (cursor in (pending.start + 1)..pending.end) {
+        if (cursorAbsolute in (pending.range.startAbsolute + 1)..pending.range.endAbsolute) {
             pending.edited = true
         } else if (!pending.edited) {
             pendingVoiceCorrection = null
@@ -1059,12 +1050,9 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
         val pending = pendingVoiceCorrection ?: return
         pendingVoiceCorrection = null
         if (!pending.edited || state.passwordField) return
-        val snapshot = gateway.cursorSnapshot() ?: return
-        val end = snapshot.cursor
-        if (pending.start !in 0..snapshot.text.length || end < pending.start) return
-        if (end - pending.start > 128 || end > snapshot.text.length) return
-        val corrected = snapshot.text.substring(pending.start, end)
-        VoiceCorrectionRepository.record(pending.original, corrected)
+        val snapshot = gateway.absoluteCursorSnapshot() ?: return
+        val corrected = correctedVoiceText(pending.range, snapshot) ?: return
+        VoiceCorrectionRepository.record(pending.range.original, corrected)
     }
 
     private fun dropLastCodePoint(text: String): String = dropLastCodePointSafe(text)

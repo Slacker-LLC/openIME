@@ -49,6 +49,20 @@ class InputConnectionGateway(
         val cursor: Int,
     )
 
+    data class AbsoluteCursorSnapshot(
+        val text: String,
+        val windowStart: Int,
+        val cursorAbsolute: Int,
+    ) {
+        fun textInAbsoluteRange(startAbsolute: Int, endAbsolute: Int): String? {
+            if (endAbsolute < startAbsolute) return null
+            val localStart = startAbsolute - windowStart
+            val localEnd = endAbsolute - windowStart
+            if (localStart < 0 || localEnd < localStart || localEnd > text.length) return null
+            return text.substring(localStart, localEnd)
+        }
+    }
+
     fun commitText(text: String) {
         if (text.isEmpty()) return
         connection()?.commitText(text, 1)
@@ -234,6 +248,24 @@ class InputConnectionGateway(
         val after = runCatching { ic.getTextAfterCursor(bounded, 0)?.toString().orEmpty() }
             .getOrDefault("")
         return CursorSnapshot(before + after, before.length)
+    }
+
+    /**
+     * Snapshot a collapsed cursor using ExtractedText.startOffset so every
+     * coordinate is tied to the document rather than to a sliding local window.
+     */
+    fun absoluteCursorSnapshot(): AbsoluteCursorSnapshot? {
+        if (isPassword()) return null
+        val ic = connection() ?: return null
+        val window = extractedWindow(ic) ?: return null
+        if (window.selectionStartAbsolute != window.selectionEndAbsolute) return null
+        val localCursor = window.selectionEndAbsolute - window.windowStart
+        if (localCursor !in 0..window.text.length) return null
+        return AbsoluteCursorSnapshot(
+            text = window.text,
+            windowStart = window.windowStart,
+            cursorAbsolute = window.selectionEndAbsolute,
+        )
     }
 
     fun copySelection(): String {
