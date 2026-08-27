@@ -40,23 +40,38 @@ class EditorInfoAdapterTest {
     }
 
     @Test
-    fun emailAndUrlUseEnglish() {
-        assertEquals(
-            KeyboardMode.ENGLISH_26,
-            EditorInfoAdapter.defaultKeyboardMode(
-                EditorInfoAdapter.kind(
-                    info(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS),
-                ),
-            ),
+    fun emailAndUrlAreClassifiedExplicitlyAndUseEnglish() {
+        val email = EditorInfoAdapter.kind(
+            info(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS),
         )
-        assertEquals(
-            KeyboardMode.ENGLISH_26,
-            EditorInfoAdapter.defaultKeyboardMode(
-                EditorInfoAdapter.kind(
-                    info(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI),
-                ),
-            ),
+        val webEmail = EditorInfoAdapter.kind(
+            info(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS),
         )
+        val url = EditorInfoAdapter.kind(
+            info(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI),
+        )
+
+        assertEquals(EditorInfoAdapter.EditorKind.EMAIL, email)
+        assertEquals(EditorInfoAdapter.EditorKind.EMAIL, webEmail)
+        assertEquals(EditorInfoAdapter.EditorKind.URL, url)
+        assertFalse(EditorInfoAdapter.isPassword(email))
+        assertFalse(EditorInfoAdapter.isPassword(webEmail))
+        assertFalse(EditorInfoAdapter.isPassword(url))
+        assertEquals(KeyboardMode.ENGLISH_26, EditorInfoAdapter.defaultKeyboardMode(email))
+        assertEquals(KeyboardMode.ENGLISH_26, EditorInfoAdapter.defaultKeyboardMode(url))
+    }
+
+    @Test
+    fun ordinaryTextVariationsAreNotPasswords() {
+        listOf(
+            InputType.TYPE_TEXT_VARIATION_NORMAL,
+            InputType.TYPE_TEXT_VARIATION_PERSON_NAME,
+            InputType.TYPE_TEXT_VARIATION_POSTAL_ADDRESS,
+            InputType.TYPE_TEXT_VARIATION_WEB_EDIT_TEXT,
+        ).forEach { variation ->
+            val kind = EditorInfoAdapter.kind(info(InputType.TYPE_CLASS_TEXT or variation))
+            assertFalse("variation=$variation must not be password", EditorInfoAdapter.isPassword(kind))
+        }
     }
 
     @Test
@@ -72,11 +87,22 @@ class EditorInfoAdapterTest {
     }
 
     @Test
-    fun passwordIsDetectedAndBlocksCandidates() {
-        val kind = EditorInfoAdapter.kind(
-            info(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD),
+    fun allPasswordVariationsAreDetectedAndBlockCandidates() {
+        val textPasswords = listOf(
+            InputType.TYPE_TEXT_VARIATION_PASSWORD,
+            InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
+            InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD,
         )
-        assertTrue(EditorInfoAdapter.isPassword(kind))
-        assertFalse(EditorInfoAdapter.allowCandidates(kind))
+        textPasswords.forEach { variation ->
+            val kind = EditorInfoAdapter.kind(info(InputType.TYPE_CLASS_TEXT or variation))
+            assertTrue("variation=$variation must be password", EditorInfoAdapter.isPassword(kind))
+            assertFalse(EditorInfoAdapter.allowCandidates(kind))
+        }
+
+        val numberPassword = EditorInfoAdapter.kind(
+            info(InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD),
+        )
+        assertTrue(EditorInfoAdapter.isPassword(numberPassword))
+        assertFalse(EditorInfoAdapter.allowCandidates(numberPassword))
     }
 }
