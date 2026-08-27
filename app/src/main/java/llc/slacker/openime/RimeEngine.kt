@@ -13,6 +13,8 @@ internal data class RimeCandidateEntry(
 internal fun rimeProbeHasCandidate(snapshot: Array<String>): Boolean =
     snapshot.drop(2).any { it.isNotBlank() }
 
+internal fun rimeDataRevision(versionCode: Int): String = "apk-$versionCode"
+
 /**
  * Tracks ownership of one asynchronous startup attempt. Destroy invalidates the
  * current generation immediately; a stale worker may clean native state, but it
@@ -217,11 +219,16 @@ class RimeEngine(private val context: Context) {
             .distinctBy { it.text }
 
     private fun copyAssetsIfNeeded(sharedDir: File) {
-        val marker = File(sharedDir, ".openime-rime-3")
+        // An APK upgrade necessarily changes versionCode. Tie the copied Rime
+        // data revision to that build identity so asset changes cannot silently
+        // keep an old filesDir copy because somebody forgot to bump a magic
+        // marker number. Re-copying once per app upgrade is cheap and explicit.
+        val revision = rimeDataRevision(BuildConfig.VERSION_CODE)
+        val marker = File(sharedDir, ".openime-rime-$revision")
         if (marker.exists() && File(sharedDir, "luna_pinyin_simp.schema.yaml").exists()) return
         deleteChildren(sharedDir)
         copyAssetTree("rime-data", sharedDir)
-        marker.writeText("openIME Rime data revision 3 with Rime Ice core lexicons\n")
+        marker.writeText("openIME Rime data revision $revision\n")
     }
 
     private fun copyAssetTree(assetPath: String, destination: File) {
