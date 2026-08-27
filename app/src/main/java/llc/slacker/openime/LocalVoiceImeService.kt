@@ -1032,7 +1032,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
             pendingVoiceCorrection = null
             return
         }
-        if (cursorAbsolute in pending.range.startAbsolute until pending.range.endAbsolute) {
+        if (cursorAbsolute in (pending.range.startAbsolute + 1)..pending.range.endAbsolute) {
             pending.edited = true
         } else if (!pending.edited) {
             pendingVoiceCorrection = null
