@@ -1,6 +1,7 @@
 package llc.slacker.openime
 
 import android.content.Context
+import android.os.Build
 import android.util.Log
 import java.io.File
 import java.util.concurrent.Executors
@@ -9,6 +10,55 @@ internal data class RimeCandidateEntry(
     val text: String,
     val nativeIndex: Int,
 )
+
+internal fun rimeProbeHasCandidate(snapshot: Array<String>): Boolean =
+    snapshot.drop(2).any { it.isNotBlank() }
+
+internal fun rimeDataRevision(versionCode: Long): String = "apk-$versionCode"
+
+/**
+ * Tracks ownership of one asynchronous startup attempt. Destroy invalidates the
+ * current generation immediately; a stale worker may clean native state, but it
+ * can never publish READY after its owner has gone away.
+ */
+internal class RimeStartupGate {
+    private var generation = 0L
+    private var starting = false
+    private var destroyed = false
+
+    @Synchronized
+    fun begin(): Long? {
+        if (destroyed || starting) return null
+        generation += 1
+        starting = true
+        return generation
+    }
+
+    @Synchronized
+    fun isCurrent(token: Long): Boolean =
+        !destroyed && starting && generation == token
+
+    @Synchronized
+    fun complete(token: Long): Boolean {
+        if (!isCurrent(token)) return false
+        starting = false
+        return true
+    }
+
+    @Synchronized
+    fun fail(token: Long): Boolean {
+        if (!isCurrent(token)) return false
+        starting = false
+        return true
+    }
+
+    @Synchronized
+    fun destroy() {
+        destroyed = true
+        starting = false
+        generation += 1
+    }
+}
 
 /**
  * Owns one process-local librime session and exposes IME-friendly operations.
@@ -20,6 +70,7 @@ internal data class RimeCandidateEntry(
  */
 class RimeEngine(private val context: Context) {
     private val lock = Any()
+    private val startupGate = RimeStartupGate()
     private val startupExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "local-rime-startup").apply { isDaemon = true }
     }
@@ -32,23 +83,53 @@ class RimeEngine(private val context: Context) {
 
     fun start() {
         if (isReady) return
+        val generation = startupGate.begin() ?: return
         startupExecutor.execute {
-            runCatching {
+            var nativeStartupReturned = false
+            try {
                 val sharedDir = File(context.filesDir, "rime-data").apply { mkdirs() }
                 val userDir = File(context.filesDir, "rime-user").apply { mkdirs() }
+                if (!startupGate.isCurrent(generation)) return@execute
                 copyAssetsIfNeeded(sharedDir)
+                if (!startupGate.isCurrent(generation)) return@execute
+
+                // nativeStartup is internally serialized. Even if destroy races
+                // this call, nativeShutdown will either run after it or this
+                // stale worker will perform the same idempotent cleanup below.
                 RimeNative.nativeStartup(sharedDir.absolutePath, userDir.absolutePath)
-                synchronized(lock) {
-                    // A session with no candidates is not useful; the native
-                    // side has already completed synchronous deployment here.
-                    val probe = RimeNative.nativeSetInput("")
-                    check(probe.isNotEmpty()) { "librime session unavailable" }
+                nativeStartupReturned = true
+                if (!startupGate.isCurrent(generation)) {
+                    cleanupNative()
+                    return@execute
                 }
+
+                synchronized(lock) {
+                    // Prove that the selected schema and translator are actually
+                    // usable. An empty-input snapshot can look non-empty even
+                    // when no schema can produce candidates.
+                    val probe = try {
+                        RimeNative.nativeSetInput(HEALTH_PROBE_INPUT)
+                    } finally {
+                        RimeNative.nativeClear()
+                    }
+                    check(rimeProbeHasCandidate(probe)) {
+                        "librime schema/candidate pipeline unavailable"
+                    }
+                }
+                if (!startupGate.complete(generation)) {
+                    cleanupNative()
+                    return@execute
+                }
+                errorMessage = ""
                 isReady = true
                 Log.i(TAG, "librime ready")
-            }.onFailure { throwable ->
-                errorMessage = throwable.message ?: throwable.javaClass.simpleName
-                Log.w(TAG, "librime unavailable; keeping Kotlin fallback", throwable)
+            } catch (throwable: Throwable) {
+                if (nativeStartupReturned) cleanupNative()
+                if (startupGate.fail(generation)) {
+                    isReady = false
+                    errorMessage = throwable.message ?: throwable.javaClass.simpleName
+                    Log.w(TAG, "librime unavailable; keeping Kotlin fallback", throwable)
+                }
             }
         }
     }
@@ -117,13 +198,16 @@ class RimeEngine(private val context: Context) {
     }
 
     fun shutdown() {
-        if (isReady) {
-            synchronized(lock) {
-                runCatching { RimeNative.nativeShutdown() }
-            }
-        }
+        startupGate.destroy()
         isReady = false
+        cleanupNative()
         startupExecutor.shutdownNow()
+    }
+
+    private fun cleanupNative() {
+        synchronized(lock) {
+            runCatching { RimeNative.nativeShutdown() }
+        }
     }
 
     private fun snapshotCandidateEntries(snapshot: Array<String>): List<RimeCandidateEntry> =
@@ -136,11 +220,25 @@ class RimeEngine(private val context: Context) {
             .distinctBy { it.text }
 
     private fun copyAssetsIfNeeded(sharedDir: File) {
-        val marker = File(sharedDir, ".openime-rime-3")
+        // Read the identity of the actually installed APK instead of relying on
+        // generated BuildConfig fields. This stays valid even when BuildConfig
+        // generation is disabled and automatically changes on every upgrade.
+        val revision = rimeDataRevision(installedVersionCode())
+        val marker = File(sharedDir, ".openime-rime-$revision")
         if (marker.exists() && File(sharedDir, "luna_pinyin_simp.schema.yaml").exists()) return
         deleteChildren(sharedDir)
         copyAssetTree("rime-data", sharedDir)
-        marker.writeText("openIME Rime data revision 3 with Rime Ice core lexicons\n")
+        marker.writeText("openIME Rime data revision $revision\n")
+    }
+
+    @Suppress("DEPRECATION")
+    private fun installedVersionCode(): Long {
+        val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            packageInfo.longVersionCode
+        } else {
+            packageInfo.versionCode.toLong()
+        }
     }
 
     private fun copyAssetTree(assetPath: String, destination: File) {
@@ -167,5 +265,6 @@ class RimeEngine(private val context: Context) {
 
     private companion object {
         const val TAG = "RimeEngine"
+        const val HEALTH_PROBE_INPUT = "ni"
     }
 }

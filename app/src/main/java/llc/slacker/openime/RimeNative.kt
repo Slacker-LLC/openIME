@@ -23,5 +23,9 @@ internal object RimeNative {
 
     @JvmStatic
     external fun nativeShutdown()
+
+    /** JNI boundary regression hook; does not touch the Rime session. */
+    @JvmStatic
+    external fun nativeUtf8RoundTripForTest(input: String): String
 }
 
