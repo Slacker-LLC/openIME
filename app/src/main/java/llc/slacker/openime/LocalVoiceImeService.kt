@@ -216,6 +216,41 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
         super.onFinishInputView(finishingInput)
     }
 
+    override fun onUpdateSelection(
+        oldSelStart: Int,
+        oldSelEnd: Int,
+        newSelStart: Int,
+        newSelEnd: Int,
+        candidatesStart: Int,
+        candidatesEnd: Int,
+    ) {
+        super.onUpdateSelection(
+            oldSelStart,
+            oldSelEnd,
+            newSelStart,
+            newSelEnd,
+            candidatesStart,
+            candidatesEnd,
+        )
+        if (!shouldClearCompositionForSelectionUpdate(
+                hasComposition = lastComposition.isNotEmpty(),
+                oldSelStart = oldSelStart,
+                oldSelEnd = oldSelEnd,
+                newSelStart = newSelStart,
+                newSelEnd = newSelEnd,
+                candidatesStart = candidatesStart,
+                candidatesEnd = candidatesEnd,
+            )
+        ) return
+
+        // Drop IME-side state before touching the editor so any callback caused
+        // by cancelComposing() observes an already-empty composition and cannot
+        // recursively invalidate a new one.
+        clearImeCompositionState(render = false)
+        gateway.cancelComposing()
+        keyboardView?.renderState(state)
+    }
+
     override fun onDestroy() {
         mainHandler.removeCallbacksAndMessages(null)
         candidateExecutor.shutdownNow()
