@@ -5,6 +5,7 @@ import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Build
 import android.util.Log
+import androidx.annotation.RequiresApi
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -56,7 +57,7 @@ class VoiceAudioRouteManager(context: Context) {
     private val ownership = VoiceRouteOwnership<RouteBaseline>()
 
     fun beginSession(): Session {
-        if (Build.VERSION.SDK_INT < 31) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
             // VOICE_RECOGNITION follows the system-selected wired/SCO route on
             // old Android versions. Do not force SCO and introduce a 500 ms
             // startup gap; keep the policy isolated here for later tuning.
@@ -79,6 +80,7 @@ class VoiceAudioRouteManager(context: Context) {
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.S)
     private fun prepareManagedRoute(): RouteBaseline {
         val previousMode = audioManager.mode
         val previousDevice = runCatching { audioManager.communicationDevice }.getOrNull()
@@ -104,6 +106,7 @@ class VoiceAudioRouteManager(context: Context) {
         )
     }
 
+    @RequiresApi(Build.VERSION_CODES.S)
     private fun restoreManagedRoute(baseline: RouteBaseline) {
         if (baseline.changedDevice) {
             runCatching {
@@ -119,8 +122,8 @@ class VoiceAudioRouteManager(context: Context) {
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.S)
     private fun preferredExternalDevice(): AudioDeviceInfo? {
-        if (Build.VERSION.SDK_INT < 31) return null
         val priority = listOf(
             AudioDeviceInfo.TYPE_BLE_HEADSET,
             AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
