@@ -65,6 +65,9 @@ set(BUILD_MERGED_PLUGINS ON CACHE BOOL "" FORCE)
 set(ENABLE_LOGGING OFF CACHE BOOL "" FORCE)
 set(ENABLE_TIMESTAMP OFF CACHE BOOL "" FORCE)
 add_subdirectory(vendor/librime)
+target_include_directories(rime-static PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/vendor/librime/deps/utfcpp/source"
+)
 
 add_library(local_rime SHARED local_rime_jni.cc)
 target_include_directories(local_rime PRIVATE
