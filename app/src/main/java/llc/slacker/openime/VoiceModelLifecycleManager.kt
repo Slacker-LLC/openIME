@@ -18,6 +18,46 @@ enum class VoiceModelLifecycleState {
     ERROR,
 }
 
+/** Pure retry policy so transient native failures do not poison the service forever. */
+internal class VoicePreloadRetryPolicy(
+    private val baseBackoffMs: Long = 1_000L,
+    private val maxBackoffMs: Long = 30_000L,
+) {
+    init {
+        require(baseBackoffMs > 0L)
+        require(maxBackoffMs >= baseBackoffMs)
+    }
+
+    private var transientFailures = 0
+    private var retryNotBeforeMs = 0L
+    private var permanentlyBlocked = false
+
+    fun canAttempt(nowMs: Long): Boolean = !permanentlyBlocked && nowMs >= retryNotBeforeMs
+
+    fun recordFailure(permanent: Boolean, nowMs: Long) {
+        if (permanent) {
+            permanentlyBlocked = true
+            retryNotBeforeMs = Long.MAX_VALUE
+            return
+        }
+        transientFailures += 1
+        val multiplier = 1L shl (transientFailures - 1).coerceAtMost(10)
+        val delay = (baseBackoffMs * multiplier).coerceAtMost(maxBackoffMs)
+        retryNotBeforeMs = nowMs + delay
+    }
+
+    fun recordSuccess() {
+        transientFailures = 0
+        retryNotBeforeMs = 0L
+        permanentlyBlocked = false
+    }
+
+    fun retryDelayMs(nowMs: Long): Long =
+        if (permanentlyBlocked) Long.MAX_VALUE else (retryNotBeforeMs - nowMs).coerceAtLeast(0L)
+}
+
+private class PermanentVoiceModelException(message: String) : IllegalStateException(message)
+
 /**
  * Service-scoped owner of the offline ASR runtime.
  *
@@ -44,6 +84,7 @@ class VoiceModelLifecycleManager(
     private val lifecycleGeneration = AtomicLong(0L)
     private val sessionGeneration = AtomicLong(0L)
     private val backend = LocalAudioVoiceBackend(appContext, this)
+    private val retryPolicy = VoicePreloadRetryPolicy()
 
     @Volatile
     private var state: VoiceModelLifecycleState = VoiceModelLifecycleState.COLD
@@ -78,10 +119,11 @@ class VoiceModelLifecycleManager(
     }
 
     fun preload() {
+        val nowMs = SystemClock.elapsedRealtime()
         val token = synchronized(lock) {
             if (
                 destroyed || runtime != null || preloadInFlight ||
-                state == VoiceModelLifecycleState.ERROR
+                !retryPolicy.canAttempt(nowMs)
             ) {
                 return
             }
@@ -89,7 +131,7 @@ class VoiceModelLifecycleManager(
             state = VoiceModelLifecycleState.VERIFYING
             lifecycleGeneration.incrementAndGet()
         }
-        val startedAt = SystemClock.elapsedRealtime()
+        val startedAt = nowMs
         executor.execute {
             var created: StreamingEmbeddedVoiceModelRuntime? = null
             try {
@@ -97,7 +139,9 @@ class VoiceModelLifecycleManager(
                 val selection = VoiceModelRepository(appContext).selectAvailable()
                 val verifyMs = SystemClock.elapsedRealtime() - verifyStartedAt
                 if (selection.manifest == null) {
-                    throw IllegalStateException(selection.reason.ifBlank { "没有可用的本地语音模型" })
+                    throw PermanentVoiceModelException(
+                        selection.reason.ifBlank { "没有可用的本地语音模型" },
+                    )
                 }
                 synchronized(lock) {
                     if (destroyed || token != lifecycleGeneration.get()) return@execute
@@ -110,7 +154,7 @@ class VoiceModelLifecycleManager(
                 val modelCreateStartedAt = SystemClock.elapsedRealtime()
                 created = EmbeddedVoiceRuntimeFactory.create(appContext, selection)
                     as? StreamingEmbeddedVoiceModelRuntime
-                    ?: throw IllegalStateException("本地语音模型类型不受支持")
+                    ?: throw PermanentVoiceModelException("本地语音模型类型不受支持")
                 created.preload()
                 val modelCreateMs = SystemClock.elapsedRealtime() - modelCreateStartedAt
                 val accepted = synchronized(lock) {
@@ -119,6 +163,7 @@ class VoiceModelLifecycleManager(
                     } else {
                         runtime = created
                         preloadInFlight = false
+                        retryPolicy.recordSuccess()
                         state = when {
                             recording -> VoiceModelLifecycleState.RECORDING
                             inputViewActive -> VoiceModelLifecycleState.HOT
@@ -139,14 +184,24 @@ class VoiceModelLifecycleManager(
                 }
             } catch (error: Throwable) {
                 runCatching { created?.release() }
+                val failedAt = SystemClock.elapsedRealtime()
+                val permanent = error is PermanentVoiceModelException
+                var retryDelay = Long.MAX_VALUE
                 synchronized(lock) {
                     if (!destroyed && token == lifecycleGeneration.get()) {
                         preloadInFlight = false
+                        retryPolicy.recordFailure(permanent, failedAt)
+                        retryDelay = retryPolicy.retryDelayMs(failedAt)
                         state = VoiceModelLifecycleState.ERROR
                         lock.notifyAll()
                     }
                 }
-                Log.e(TAG, "preloadFailed elapsedMs=${SystemClock.elapsedRealtime() - startedAt}", error)
+                Log.e(
+                    TAG,
+                    "preloadFailed elapsedMs=${failedAt - startedAt} permanent=$permanent " +
+                        "retryDelayMs=$retryDelay",
+                    error,
+                )
             }
         }
     }
@@ -165,7 +220,7 @@ class VoiceModelLifecycleManager(
             }
             if (state == VoiceModelLifecycleState.ERROR) {
                 VoicePerformanceTrace.finish(droppedPcmSamples = 0L, failed = true)
-                events.onError("本地语音模型校验或加载失败")
+                events.onError("本地语音模型校验或加载失败，请稍后重试")
                 return
             }
             recording = true
