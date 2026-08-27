@@ -10,6 +10,7 @@ import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputContentInfo
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -19,6 +20,13 @@ class InputConnectionGatewayTest {
         var beforeText: String = "",
         var afterText: String = "",
         var selectedText: String = "",
+        var extractedText: ExtractedText? = ExtractedText().apply {
+            text = ""
+            selectionStart = 0
+            selectionEnd = 0
+            startOffset = 0
+        },
+        var contextMenuResult: Boolean = false,
     ) : InputConnection {
         val events = mutableListOf<String>()
 
@@ -47,17 +55,15 @@ class InputConnectionGatewayTest {
         }
         override fun getCursorCapsMode(reqType: Int): Int = 0
         override fun getExtractedText(request: ExtractedTextRequest?, flags: Int): ExtractedText? =
-            ExtractedText().apply {
-                text = ""
-                selectionStart = 0
-                selectionEnd = 0
-                startOffset = 0
-            }
+            extractedText
         override fun getHandler(): Handler? = null
         override fun getSelectedText(flags: Int): CharSequence? = selectedText
-        override fun getTextAfterCursor(length: Int, flags: Int): CharSequence? = afterText
-        override fun getTextBeforeCursor(length: Int, flags: Int): CharSequence? = beforeText
-        override fun performContextMenuAction(id: Int): Boolean = false
+        override fun getTextAfterCursor(length: Int, flags: Int): CharSequence? = afterText.take(length)
+        override fun getTextBeforeCursor(length: Int, flags: Int): CharSequence? = beforeText.takeLast(length)
+        override fun performContextMenuAction(id: Int): Boolean {
+            events += "context:$id"
+            return contextMenuResult
+        }
         override fun performEditorAction(editorAction: Int): Boolean {
             events += "action:$editorAction"
             return true
@@ -78,6 +84,18 @@ class InputConnectionGatewayTest {
             events += "selection:$start:$end"
             return true
         }
+    }
+
+    private fun extracted(
+        text: String,
+        startOffset: Int,
+        selectionStart: Int,
+        selectionEnd: Int,
+    ) = ExtractedText().apply {
+        this.text = text
+        this.startOffset = startOffset
+        this.selectionStart = selectionStart
+        this.selectionEnd = selectionEnd
     }
 
     @Test
@@ -125,6 +143,76 @@ class InputConnectionGatewayTest {
         val emoji = "👨‍👩‍👧‍👦"
         gateway.commitText(emoji)
         assertEquals(listOf("commit:$emoji"), fake.events)
+    }
+
+    @Test
+    fun extractedSelectionUsesAbsoluteStartOffsetWithoutLocalClamp() {
+        val fake = FakeInputConnection(
+            extractedText = extracted(
+                text = "0123456789",
+                startOffset = 1_000,
+                selectionStart = 5,
+                selectionEnd = 5,
+            ),
+        )
+        val gateway = InputConnectionGateway(null, { fake })
+
+        assertEquals(1_005, gateway.currentSelectionStart())
+        assertEquals(1_005, gateway.currentSelectionEnd())
+        assertEquals(-1, gateway.currentTextLength())
+
+        gateway.selectStartEnd(1_004, 1_004)
+        assertTrue(fake.events.contains("selection:1004:1004"))
+    }
+
+    @Test
+    fun copySelectionMapsAbsoluteSelectionBackIntoExtractedWindow() {
+        val fake = FakeInputConnection(
+            selectedText = "",
+            extractedText = extracted(
+                text = "0123456789",
+                startOffset = 100,
+                selectionStart = 2,
+                selectionEnd = 5,
+            ),
+        )
+        val gateway = InputConnectionGateway(null, { fake })
+
+        assertEquals("234", gateway.copySelection())
+    }
+
+    @Test
+    fun boundedFallbackExposesRelativeCursorWithoutFabricatingSelection() {
+        val fake = FakeInputConnection(
+            beforeText = "x".repeat(20_000),
+            afterText = "tail",
+            extractedText = null,
+        )
+        val gateway = InputConnectionGateway(null, { fake })
+
+        assertEquals(8_192, gateway.currentSelectionStart())
+        assertEquals(8_192, gateway.currentSelectionEnd())
+        gateway.selectStartEnd(8_192, 8_192)
+        assertTrue(fake.events.none { it.startsWith("selection:") })
+    }
+
+    @Test
+    fun relativeCursorDeltaMapsToDpadKeys() {
+        assertEquals(KeyEvent.KEYCODE_DPAD_LEFT, relativeCursorKeyCode(-1))
+        assertEquals(KeyEvent.KEYCODE_DPAD_RIGHT, relativeCursorKeyCode(1))
+        assertNull(relativeCursorKeyCode(0))
+        assertNull(relativeCursorKeyCode(2))
+    }
+
+    @Test
+    fun selectAllPrefersEditorContextAction() {
+        val fake = FakeInputConnection(contextMenuResult = true)
+        val gateway = InputConnectionGateway(null, { fake })
+
+        gateway.selectAll()
+
+        assertTrue(fake.events.contains("context:${android.R.id.selectAll}"))
+        assertTrue(fake.events.none { it.startsWith("selection:") })
     }
 
     @Test
