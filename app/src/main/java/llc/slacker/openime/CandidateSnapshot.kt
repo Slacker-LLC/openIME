@@ -22,12 +22,20 @@ internal data class CandidateSnapshot(
     val visibleCandidates: List<String>
         get() = entries.map { it.text }
 
+    /**
+     * Space/enter commit the rendered first candidate. When there is no
+     * candidate chip, the visible pre-edit string itself remains the commit
+     * target, matching the existing raw-composition fallback.
+     */
     fun firstForCommit(
         currentGeneration: Long,
         currentComposition: String,
         currentMode: KeyboardMode,
-    ): CandidateSnapshotEntry? =
-        if (matches(currentGeneration, currentComposition, currentMode)) entries.firstOrNull() else null
+    ): CandidateSnapshotEntry? {
+        if (!matches(currentGeneration, currentComposition, currentMode)) return null
+        return entries.firstOrNull()
+            ?: composition.takeIf { it.isNotEmpty() }?.let(::CandidateSnapshotEntry)
+    }
 
     fun candidateForCommit(
         candidate: String,
