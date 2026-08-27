@@ -30,21 +30,23 @@ class VoiceRuntimeModelSourceTest {
 
     @Test
     fun builtInSelectionUsesAssetPaths() {
-        val selection = VoiceModelSelection(
-            manifest = manifest(),
-            source = VoiceModelSelection.Source.BUILT_IN,
-        )
-        val source = resolveSherpaRuntimeModelFiles(
-            selection,
-            Files.createTempDirectory("unused-downloaded-root").toFile(),
-        )
+        val downloadedRoot = Files.createTempDirectory("unused-downloaded-root").toFile()
+        try {
+            val selection = VoiceModelSelection(
+                manifest = manifest(),
+                source = VoiceModelSelection.Source.BUILT_IN,
+            )
+            val source = resolveSherpaRuntimeModelFiles(selection, downloadedRoot)
 
-        assertNotNull(source)
-        assertEquals(SherpaRuntimeStorage.ASSETS, source?.storage)
-        assertEquals(SHERPA_ENCODER, source?.encoder)
-        assertEquals(SHERPA_DECODER, source?.decoder)
-        assertEquals(SHERPA_JOINER, source?.joiner)
-        assertEquals(SHERPA_TOKENS, source?.tokens)
+            assertNotNull(source)
+            assertEquals(SherpaRuntimeStorage.ASSETS, source?.storage)
+            assertEquals(SHERPA_ENCODER, source?.encoder)
+            assertEquals(SHERPA_DECODER, source?.decoder)
+            assertEquals(SHERPA_JOINER, source?.joiner)
+            assertEquals(SHERPA_TOKENS, source?.tokens)
+        } finally {
+            downloadedRoot.deleteRecursively()
+        }
     }
 
     @Test
@@ -70,7 +72,10 @@ class VoiceRuntimeModelSourceTest {
             assertEquals(File(packageRoot, SHERPA_DECODER).canonicalPath, File(source.decoder).canonicalPath)
             assertEquals(File(packageRoot, SHERPA_JOINER).canonicalPath, File(source.joiner).canonicalPath)
             assertEquals(File(packageRoot, SHERPA_TOKENS).canonicalPath, File(source.tokens).canonicalPath)
-            assertTrue(listOf(source.encoder, source.decoder, source.joiner, source.tokens).all(File::isFile))
+            assertTrue(
+                listOf(source.encoder, source.decoder, source.joiner, source.tokens)
+                    .all { File(it).isFile },
+            )
         } finally {
             downloadedRoot.deleteRecursively()
         }
