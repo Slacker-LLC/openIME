@@ -52,7 +52,9 @@ set(BUILD_PYTHON OFF CACHE BOOL "" FORCE)
 add_subdirectory(vendor/OpenCC EXCLUDE_FROM_ALL)
 include(OpenccWorkarounds)
 
-set(X11Keysym "${CMAKE_CURRENT_SOURCE_DIR}/vendor/librime/include")
+# Android has no system X11 include tree. librime only needs the protocol
+# keysym definitions, provided by the pinned xorgproto source fetched for CI.
+set(X11Keysym "${CMAKE_CURRENT_SOURCE_DIR}/vendor/librime/deps/xorgproto/include")
 include_directories("${X11Keysym}")
 
 # Do not auto-discover optional Rime plugins. The base engine already provides
@@ -67,6 +69,7 @@ set(ENABLE_TIMESTAMP OFF CACHE BOOL "" FORCE)
 add_subdirectory(vendor/librime)
 target_include_directories(rime-static PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/vendor/librime/deps/utfcpp/source"
+    "${X11Keysym}"
 )
 
 add_library(local_rime SHARED local_rime_jni.cc)
