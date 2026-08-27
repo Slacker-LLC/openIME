@@ -29,4 +29,21 @@ class LocalAudioVoiceBackendTest {
         assertEquals(0f, result[1], 0.0001f)
         assertTrue(result[2] > 0.99f && result[2] <= 1f)
     }
+
+    @Test
+    fun closingOldStreamLeaseCannotReleaseNewStream() {
+        val released = mutableListOf<String>()
+        val old = VoiceStreamLease("stream-a", released::add)
+        val current = VoiceStreamLease("stream-b", released::add)
+
+        old.close()
+        old.close()
+
+        assertEquals(listOf("stream-a"), released)
+        assertTrue(current.isClosed.not())
+        assertEquals("stream-b", current.value)
+
+        current.close()
+        assertEquals(listOf("stream-a", "stream-b"), released)
+    }
 }

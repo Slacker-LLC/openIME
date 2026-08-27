@@ -181,8 +181,8 @@ class LocalAudioVoiceBackend(
 
     @SuppressLint("MissingPermission")
     override fun start(languageTag: String, events: VoiceRecognitionEvents) {
-        // A new gesture replaces an unfinished old one. Do not let two model
-        // streams share the same runtime.
+        // A new gesture replaces an unfinished old one. Each gesture receives
+        // its own model stream handle, so stale cleanup cannot stop a new one.
         cancel()
         if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             events.onError("当前未授予麦克风权限，请在系统设置中授权后重试")
@@ -316,8 +316,7 @@ class LocalAudioVoiceBackend(
             // already live and the bounded ring keeps the spoken prefix.
             val model = runtimeProvider.awaitRuntime()
                 ?: throw IllegalStateException("本地语音模型尚未内置或加载失败")
-            session.runtime = model
-            model.start(languageTag, modelEvents)
+            session.voiceSession = model.openSession(languageTag, modelEvents)
             if (!isCurrent(generation, session) || session.cancelled.get() || session.failed.get()) {
                 cleanupStartingSession(session)
                 return
@@ -371,7 +370,8 @@ class LocalAudioVoiceBackend(
         value.running.set(false)
         runCatching { value.record.stop() }
         value.ring.wake()
-        runCatching { value.runtime?.stop() }
+        runCatching { value.voiceSession?.close() }
+        value.voiceSession = null
         runCatching { value.record.release() }
         value.routeSession.close()
         value.ring.clear()
@@ -437,7 +437,7 @@ class LocalAudioVoiceBackend(
     }
 
     private fun inferenceLoop(session: Session) {
-        val runtime = checkNotNull(session.runtime) { "本地语音模型尚未连接" }
+        val voiceSession = checkNotNull(session.voiceSession) { "本地语音模型尚未连接" }
         val pending = ShortArray(LocalVoiceAudioSpec.CHUNK_SAMPLES)
         var pendingCount = 0
         try {
@@ -455,20 +455,20 @@ class LocalAudioVoiceBackend(
                 val chunk = pending.copyOf(pendingCount)
                 pendingCount = 0
                 VoicePerformanceTrace.markFirstDecode()
-                runtime.acceptWaveform(pcm16ToFloat(chunk))
+                voiceSession.acceptWaveform(pcm16ToFloat(chunk))
             }
             if (pendingCount > 0) {
                 VoicePerformanceTrace.markFirstDecode()
-                runtime.acceptWaveform(pcm16ToFloat(pending.copyOf(pendingCount)))
+                voiceSession.acceptWaveform(pcm16ToFloat(pending.copyOf(pendingCount)))
             }
             if (
                 !session.failed.get() &&
                 !session.cancelled.get() &&
                 session.finished.compareAndSet(false, true)
             ) {
-                val raw = runtime.inputFinished().ifBlank { session.lastPartial }
+                val raw = voiceSession.inputFinished().ifBlank { session.lastPartial }
                 VoicePerformanceTrace.markFinalAsr()
-                val punctuated = if (raw.isBlank()) raw else runtime.punctuate(raw) ?: raw
+                val punctuated = if (raw.isBlank()) raw else voiceSession.punctuate(raw) ?: raw
                 val final = VoiceCorrectionRepository.apply(punctuated)
                 VoicePerformanceTrace.markPunctuationDone()
                 session.events.onFinal(final)
@@ -477,7 +477,8 @@ class LocalAudioVoiceBackend(
         } catch (error: Throwable) {
             fail(session, "本地语音推理失败：${error.message.orEmpty()}")
         } finally {
-            runCatching { runtime.stop() }
+            runCatching { voiceSession.close() }
+            session.voiceSession = null
             session.ring.clear()
             session.routeSession.close()
             synchronized(lock) {
@@ -504,7 +505,7 @@ class LocalAudioVoiceBackend(
         val routeSession: VoiceAudioRouteManager.Session,
     ) {
         @Volatile
-        var runtime: StreamingEmbeddedVoiceModelRuntime? = null
+        var voiceSession: StreamingVoiceModelSession? = null
         val running = AtomicBoolean(false)
         val stopRequested = AtomicBoolean(false)
         val cancelled = AtomicBoolean(false)

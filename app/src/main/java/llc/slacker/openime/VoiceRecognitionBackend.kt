@@ -7,6 +7,7 @@ import com.k2fsa.sherpa.onnx.OnlineRecognizer
 import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig
 import com.k2fsa.sherpa.onnx.OnlineStream
 import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Stable voice boundary used by the keyboard UI. The production contract is
@@ -50,25 +51,48 @@ interface EmbeddedVoiceModelRuntime {
     fun stop()
 }
 
+/** One independently owned streaming decode session. */
+interface StreamingVoiceModelSession : AutoCloseable {
+    fun acceptWaveform(samples: FloatArray)
+
+    /** Finish this stream and return the raw ASR text. */
+    fun inputFinished(): String
+
+    /** Run punctuation once at the end; null means punctuation failed. */
+    fun punctuate(text: String): String?
+}
+
 /**
- * Audio-facing contract for the bundled streaming runtime. The runtime keeps
- * its OnlineStream state between calls; the IME never sends the whole
- * recording back through the model on every partial result.
+ * Audio-facing contract for the bundled streaming runtime. The recognizer is
+ * shared and preloaded, but each long-press receives an independent stream
+ * handle so stale session cleanup cannot release a newer session's stream.
  */
 interface StreamingEmbeddedVoiceModelRuntime : EmbeddedVoiceModelRuntime {
     /** Map and initialize the local recognizer without starting a voice session. */
     fun preload()
 
-    fun acceptWaveform(samples: FloatArray)
-
-    /** Finish the current stream and return the raw ASR text. */
-    fun inputFinished(): String
-
-    /** Run punctuation once at the end; null means punctuation failed. */
-    fun punctuate(text: String): String?
+    fun openSession(
+        languageTag: String,
+        events: VoiceRecognitionEvents,
+    ): StreamingVoiceModelSession
 
     /** Release all native model resources after the IME cooldown expires. */
     fun release()
+}
+
+/** A small idempotent owner used so each voice session releases only its resource. */
+internal class VoiceStreamLease<T : Any>(
+    val value: T,
+    private val releaseResource: (T) -> Unit,
+) : AutoCloseable {
+    private val closed = AtomicBoolean(false)
+
+    val isClosed: Boolean
+        get() = closed.get()
+
+    override fun close() {
+        if (closed.compareAndSet(false, true)) releaseResource(value)
+    }
 }
 
 /**
@@ -170,21 +194,58 @@ private class SherpaOnnxStreamingRuntime(
         private const val TOKENS = "$MODEL_ROOT/tokens.txt"
     }
 
+    private val runtimeLock = Any()
     private var recognizer: OnlineRecognizer? = null
-    private var stream: OnlineStream? = null
-    private var events: VoiceRecognitionEvents? = null
-    private var lastPartial = ""
-    private var languageTag = "zh-CN"
+    private val activeSessions = mutableSetOf<SherpaSession>()
+    private var legacySession: SherpaSession? = null
 
     override val isReady: Boolean
         get() = manifest.modelType == "zipformer" && manifest.files.containsAll(
             listOf(ENCODER, DECODER, JOINER, TOKENS),
         )
 
-    @Synchronized
     override fun preload() {
-        if (recognizer != null) return
-        recognizer = OnlineRecognizer(
+        synchronized(runtimeLock) {
+            ensureRecognizerLocked()
+        }
+    }
+
+    override fun openSession(
+        languageTag: String,
+        events: VoiceRecognitionEvents,
+    ): StreamingVoiceModelSession = synchronized(runtimeLock) {
+        check(isReady) { "内置语音模型清单或文件不完整" }
+        openSessionLocked(languageTag, events)
+    }
+
+    /** Legacy non-AudioRecord path retained for the generic runtime boundary. */
+    override fun start(languageTag: String, events: VoiceRecognitionEvents) {
+        synchronized(runtimeLock) {
+            legacySession?.closeLocked()
+            legacySession = openSessionLocked(languageTag, events)
+        }
+    }
+
+    override fun stop() {
+        synchronized(runtimeLock) {
+            legacySession?.closeLocked()
+            legacySession = null
+        }
+    }
+
+    override fun release() {
+        synchronized(runtimeLock) {
+            activeSessions.toList().forEach { it.closeLocked() }
+            legacySession = null
+            recognizer?.release()
+            recognizer = null
+        }
+    }
+
+    private fun ensureRecognizerLocked(): OnlineRecognizer {
+        recognizer?.let { return it }
+        check(isReady) { "内置语音模型清单或文件不完整" }
+        return OnlineRecognizer(
             context.assets,
             OnlineRecognizerConfig(
                 featConfig = FeatureConfig(sampleRate = SAMPLE_RATE, featureDim = 80),
@@ -205,69 +266,96 @@ private class SherpaOnnxStreamingRuntime(
                 maxActivePaths = 4,
                 hotwordsScore = 1.8f,
             ),
-        )
+        ).also { recognizer = it }
     }
 
-    override fun start(languageTag: String, events: VoiceRecognitionEvents) {
-        check(isReady) { "内置语音模型清单或文件不完整" }
-        preload()
-        stream?.release()
+    private fun openSessionLocked(
+        languageTag: String,
+        events: VoiceRecognitionEvents,
+    ): SherpaSession {
+        val currentRecognizer = ensureRecognizerLocked()
         val hotwords = VoiceHotwordProvider.current()
-        stream = if (hotwords.isBlank()) {
-            recognizer?.createStream()
+        val stream = if (hotwords.isBlank()) {
+            currentRecognizer.createStream()
         } else {
-            recognizer?.createStream(hotwords)
+            currentRecognizer.createStream(hotwords)
         }
-        this.events = events
-        this.languageTag = languageTag
-        lastPartial = ""
+        return SherpaSession(
+            streamLease = VoiceStreamLease(stream) { it.release() },
+            languageTag = languageTag,
+            events = events,
+        ).also(activeSessions::add)
     }
 
-    override fun acceptWaveform(samples: FloatArray) {
-        val currentRecognizer = checkNotNull(recognizer) { "语音识别器尚未启动" }
-        val currentStream = checkNotNull(stream) { "语音流尚未启动" }
-        if (samples.isEmpty()) return
-        currentStream.acceptWaveform(samples, SAMPLE_RATE)
-        decodeReady(currentRecognizer, currentStream)
-    }
+    private inner class SherpaSession(
+        private val streamLease: VoiceStreamLease<OnlineStream>,
+        private val languageTag: String,
+        private val events: VoiceRecognitionEvents,
+    ) : StreamingVoiceModelSession {
+        private var lastPartial = ""
 
-    override fun inputFinished(): String {
-        val currentRecognizer = recognizer ?: return lastPartial
-        val currentStream = stream ?: return lastPartial
-        currentStream.inputFinished()
-        decodeReady(currentRecognizer, currentStream)
-        return currentRecognizer.getResult(currentStream).text.trim().also { lastPartial = it }
-    }
-
-    override fun punctuate(text: String): String = VoiceTextProcessor.process(text, languageTag)
-
-    override fun stop() {
-        stream?.release()
-        stream = null
-        events = null
-        lastPartial = ""
-        // Keep the recognizer mapped. The next long-press can start promptly
-        // without remapping the large encoder into the IME process.
-    }
-
-    @Synchronized
-    override fun release() {
-        stream?.release()
-        stream = null
-        recognizer?.release()
-        recognizer = null
-        events = null
-        lastPartial = ""
-    }
-
-    private fun decodeReady(currentRecognizer: OnlineRecognizer, currentStream: OnlineStream) {
-        while (currentRecognizer.isReady(currentStream)) {
-            currentRecognizer.decode(currentStream)
-            val text = currentRecognizer.getResult(currentStream).text.trim()
-            if (text.isNotEmpty() && text != lastPartial) {
-                lastPartial = text
-                events?.onPartial(text)
+        override fun acceptWaveform(samples: FloatArray) {
+            if (samples.isEmpty()) return
+            val partials = synchronized(runtimeLock) {
+                checkOpenLocked()
+                val currentRecognizer = checkNotNull(recognizer) { "语音识别器已释放" }
+                val currentStream = streamLease.value
+                currentStream.acceptWaveform(samples, SAMPLE_RATE)
+                decodeReadyLocked(currentRecognizer, currentStream)
             }
+            partials.forEach(events::onPartial)
+        }
+
+        override fun inputFinished(): String {
+            val (result, partials) = synchronized(runtimeLock) {
+                checkOpenLocked()
+                val currentRecognizer = checkNotNull(recognizer) { "语音识别器已释放" }
+                val currentStream = streamLease.value
+                currentStream.inputFinished()
+                val decoded = decodeReadyLocked(currentRecognizer, currentStream)
+                val final = currentRecognizer.getResult(currentStream).text.trim()
+                    .ifBlank { lastPartial }
+                lastPartial = final
+                final to decoded
+            }
+            partials.forEach(events::onPartial)
+            return result
+        }
+
+        override fun punctuate(text: String): String = VoiceTextProcessor.process(text, languageTag)
+
+        override fun close() {
+            synchronized(runtimeLock) {
+                closeLocked()
+            }
+        }
+
+        fun closeLocked() {
+            if (streamLease.isClosed) return
+            streamLease.close()
+            activeSessions.remove(this)
+            if (legacySession === this) legacySession = null
+            lastPartial = ""
+        }
+
+        private fun checkOpenLocked() {
+            check(!streamLease.isClosed) { "语音流已经结束" }
+        }
+
+        private fun decodeReadyLocked(
+            currentRecognizer: OnlineRecognizer,
+            currentStream: OnlineStream,
+        ): List<String> {
+            val emitted = mutableListOf<String>()
+            while (currentRecognizer.isReady(currentStream)) {
+                currentRecognizer.decode(currentStream)
+                val text = currentRecognizer.getResult(currentStream).text.trim()
+                if (text.isNotEmpty() && text != lastPartial) {
+                    lastPartial = text
+                    emitted += text
+                }
+            }
+            return emitted
         }
     }
 }
