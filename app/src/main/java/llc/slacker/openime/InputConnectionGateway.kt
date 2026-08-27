@@ -88,7 +88,12 @@ class InputConnectionGateway(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             ic.deleteSurroundingTextInCodePoints(1, 0)
         } else {
-            ic.deleteSurroundingText(1, 0)
+            // API 26/27 only exposes UTF-16-unit deletion. Inspect the two
+            // units before the cursor so one backspace never leaves half of a
+            // supplementary code point (emoji / extension Han) behind.
+            val before = runCatching { ic.getTextBeforeCursor(2, 0) }.getOrNull()
+            val utf16Units = previousCodePointUtf16Length(before).coerceAtLeast(1)
+            ic.deleteSurroundingText(utf16Units, 0)
         }
     }
 

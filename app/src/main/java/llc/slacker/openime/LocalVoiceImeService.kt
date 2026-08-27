@@ -1036,14 +1036,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
         VoiceCorrectionRepository.record(pending.original, corrected)
     }
 
-    private fun dropLastCodePoint(text: String): String {
-        if (text.isEmpty()) return text
-        val last = text.last()
-        if (Character.isHighSurrogate(last) && text.length >= 2 && Character.isLowSurrogate(text[text.length - 2])) {
-            return text.substring(0, text.length - 2)
-        }
-        return text.substring(0, text.length - 1)
-    }
+    private fun dropLastCodePoint(text: String): String = dropLastCodePointSafe(text)
 
     /**
      * The floating keyboard is an actual IME window, not a card translated
