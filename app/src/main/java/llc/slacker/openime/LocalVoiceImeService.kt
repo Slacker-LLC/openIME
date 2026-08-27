@@ -216,6 +216,41 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
         super.onFinishInputView(finishingInput)
     }
 
+    override fun onUpdateSelection(
+        oldSelStart: Int,
+        oldSelEnd: Int,
+        newSelStart: Int,
+        newSelEnd: Int,
+        candidatesStart: Int,
+        candidatesEnd: Int,
+    ) {
+        super.onUpdateSelection(
+            oldSelStart,
+            oldSelEnd,
+            newSelStart,
+            newSelEnd,
+            candidatesStart,
+            candidatesEnd,
+        )
+        if (!shouldClearCompositionForSelectionUpdate(
+                hasComposition = lastComposition.isNotEmpty(),
+                oldSelStart = oldSelStart,
+                oldSelEnd = oldSelEnd,
+                newSelStart = newSelStart,
+                newSelEnd = newSelEnd,
+                candidatesStart = candidatesStart,
+                candidatesEnd = candidatesEnd,
+            )
+        ) return
+
+        // Drop IME-side state before touching the editor so any callback caused
+        // by cancelComposing() observes an already-empty composition and cannot
+        // recursively invalidate a new one.
+        clearImeCompositionState(render = false)
+        gateway.cancelComposing()
+        keyboardView?.renderState(state)
+    }
+
     override fun onDestroy() {
         mainHandler.removeCallbacksAndMessages(null)
         candidateExecutor.shutdownNow()
@@ -268,10 +303,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
                 false
             } else {
                 VoicePerformanceTrace.abandon()
-                // Emulator audio is nondeterministic. Feed a deterministic
-                // result through the exact same composing/final callbacks as
-                // the local recognizer while the real long-press UI is tested
-                // separately by voice-press/voice-release.
                 onVoiceSessionStarted(autoCommitOnFinal = true)
                 onVoicePartial(text)
                 onVoiceFinal(text)
@@ -339,18 +370,12 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
     }
 
     internal fun currentMode(): KeyboardMode = state.keyboardMode
-
     internal fun isVoiceActive(): Boolean = keyboardView?.isVoiceActive() == true
-
     internal fun isRimeReadyForTest(): Boolean = ::rime.isInitialized && rime.isReady
-
     internal fun compositionLengthForTest(): Int = lastComposition.length
-
     internal fun voiceComposingForTest(): Boolean = voiceComposing
     internal fun voiceModelStateForTest(): VoiceModelLifecycleState = voiceModelState()
-
     internal fun editorTextLengthForTest(): Int = gateway.currentTextLength()
-
     internal fun candidateDiagnosticsForTest(): String = candidateDiagnostics.asLogFields()
 
     override fun onModeChanged(mode: KeyboardMode) {
@@ -386,9 +411,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
             val immediate = immediateCandidates(next, fallback)
             updateComposition(next, immediate)
             requestNativeCandidates(next, state.keyboardMode, fallback)
-            // The view normally updates itself before this callback. If the
-            // visible pre-edit field lost focus, however, the service owns the
-            // deletion and must also remove stale candidate chips.
             keyboardView?.renderState(state)
         } else {
             gateway.deleteBackwards()
@@ -397,9 +419,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
     }
 
     override fun onClearAll() {
-        // Invalidate every pending candidate/Rime path before touching the
-        // editor. Otherwise a late native result can restore the just-cleared
-        // pre-edit on the very next key press.
         clearImeCompositionState(render = false)
         gateway.clearAllText()
         pendingVoiceCorrection = null
@@ -610,19 +629,11 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
             return
         }
         val modeAtRequest = state.keyboardMode
-        // The view has already produced the bounded local result for this
-        // key event. Reusing it avoids running the same dictionary work a
-        // second time on the IME main thread during rapid 9-key input.
         val fallback = candidates.ifEmpty {
             fallbackCandidatesFor(composition, modeAtRequest)
         }
         val immediate = immediateCandidates(composition, fallback)
-        updateComposition(
-            composition,
-            immediate,
-        )
-        // The view renders a fast local result first, then receives the
-        // authoritative librime ordering in the same callback.
+        updateComposition(composition, immediate)
         keyboardView?.renderState(state)
         requestNativeCandidates(composition, modeAtRequest, fallback, rimeInputs)
     }
@@ -726,9 +737,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
                 val end = gateway.currentSelectionEnd()
                 gateway.selectStartEnd(end + 1, end + 1)
             }
-            "up", "down", "undo" -> {
-                // These depend on the target editor; no fake implementation here.
-            }
+            "up", "down", "undo" -> Unit
         }
     }
 
@@ -743,20 +752,12 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
         lastComposition = next
         state = state.copy(composition = next, candidates = candidates)
         if (next.isEmpty()) {
-            // Finishing a non-empty composing span preserves it as committed
-            // editor text in many apps. Deleting the final Pinyin character
-            // must remove that span instead of leaving a raw letter behind.
             gateway.cancelComposing()
         } else {
             gateway.setComposingText(next)
         }
     }
 
-    /**
-     * Finish a pending composing string before inserting a non-composing item.
-     * This is what makes punctuation, emoji, symbols and mode changes behave
-     * like a normal IME instead of concatenating the next key into raw pinyin.
-     */
     private fun commitPendingComposition() {
         if (lastComposition.isEmpty()) return
         commitFirstCandidate()
@@ -764,8 +765,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
 
     private fun fallbackCandidatesFor(composition: String, mode: KeyboardMode): List<String> = when (mode) {
         KeyboardMode.ENGLISH_26 -> engine.getEnglishCompletions(composition)
-        KeyboardMode.PINYIN_26,
-        -> engine.getCandidates(composition, state.fuzzyPinyinEnabled)
+        KeyboardMode.PINYIN_26 -> engine.getCandidates(composition, state.fuzzyPinyinEnabled)
         KeyboardMode.PINYIN_9 -> if (composition.length <= 32) {
             engine.getCandidates(composition, state.fuzzyPinyinEnabled)
         } else {
@@ -775,7 +775,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
         else -> emptyList()
     }
 
-    /** The extra learner is only a repeated-choice fallback while Rime is unavailable. */
     private fun immediateCandidates(composition: String, fallback: List<String>): List<String> {
         val learned = if (!rime.isReady) {
             UserPhraseRepository.candidatesFor(composition)
@@ -794,7 +793,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
         return (learned + fallback).distinct().take(MAX_CANDIDATES)
     }
 
-    /** Query librime away from the IME input thread; stale answers are ignored. */
     private fun requestNativeCandidates(
         composition: String,
         mode: KeyboardMode,
@@ -824,8 +822,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
             return
         }
         candidateExecutor.execute {
-            // Coalesce a burst of key events before entering librime. Older
-            // requests are already obsolete and must not build a native queue.
             if (candidateGeneration.get() != request) return@execute
             val query = queryNativeChoices(queryInputs) {
                 candidateGeneration.get() != request
@@ -838,9 +834,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
                     lastComposition != composition ||
                     activeRimeInputs != queryInputs
                 ) return@post
-                // Once Rime returns candidates, its mature dictionary and
-                // userdb ordering replace the transient Kotlin preview. The
-                // fallback is retained only when native has no answer.
                 val learned = if (!rime.isReady && native.isEmpty()) {
                     UserPhraseRepository.candidatesFor(composition)
                 } else {
@@ -893,7 +886,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
         )
     }
 
-    /** Commit the authoritative first choice, even if the UI still shows the fast fallback. */
     private fun commitFirstCandidate() {
         val composition = lastComposition
         if (composition.isEmpty()) return
@@ -937,10 +929,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
         val nativeCommit = if (
             composition.length <= MAX_RIME_INPUT_LENGTH &&
             rime.isReady &&
-            (
-                mode == KeyboardMode.PINYIN_26 ||
-                    mode == KeyboardMode.PINYIN_9
-                )
+            (mode == KeyboardMode.PINYIN_26 || mode == KeyboardMode.PINYIN_9)
         ) {
             if (reference != null) {
                 rime.selectCandidate(reference.input, reference.nativeIndex)
@@ -964,9 +953,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
 
     private fun finishCandidateCommit(composition: String, committed: String) {
         if (committed.isEmpty()) return
-        // librime owns normal learning through its userdb. Keep the old local
-        // repository only as an offline fallback; never run two unconditional
-        // ranking systems over the same successful native selection.
         if (!rime.isReady) UserPhraseRepository.record(composition, committed)
         gateway.commitText(committed)
         gateway.finishComposing()
@@ -1015,8 +1001,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
 
     private fun noteVoiceReplacementInput() {
         val pending = pendingVoiceCorrection ?: return
-        // Typing at the end without first deleting any part of the ASR result
-        // is ordinary continuation, not a correction pair.
         if (!pending.edited) pendingVoiceCorrection = null
     }
 
@@ -1034,11 +1018,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
 
     private fun dropLastCodePoint(text: String): String = dropLastCodePointSafe(text)
 
-    /**
-     * The floating keyboard is an actual IME window, not a card translated
-     * inside the 296dp keyboard view.  That keeps it draggable over the whole
-     * display while retaining the system IME token and editor connection.
-     */
     private fun scheduleFloatingWindowLayout(resetPosition: Boolean) {
         mainHandler.post {
             val imeWindow = getWindow().window ?: return@post
@@ -1075,7 +1054,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
         val (screenWidth, screenHeight) = displaySize()
         val attrs = imeWindow.attributes
         val width = if (attrs.width > 0) attrs.width else minOf(dp(600), screenWidth - dp(10))
-        val height = (imeWindow.decorView.height.takeIf { it > 0 } ?: dp(296))
+        val height = imeWindow.decorView.height.takeIf { it > 0 } ?: dp(296)
         floatingWindowX = floatingWindowX.coerceIn(0, (screenWidth - width).coerceAtLeast(0))
         floatingWindowY = floatingWindowY.coerceIn(0, (screenHeight - height).coerceAtLeast(0))
         attrs.gravity = Gravity.TOP or Gravity.START
