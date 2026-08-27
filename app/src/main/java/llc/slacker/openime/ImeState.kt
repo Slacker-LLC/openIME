@@ -6,7 +6,6 @@ enum class KeyboardMode {
     PINYIN_26,
     ENGLISH_26,
     PINYIN_9,
-    ENGLISH_T9,
     DIGITS,
 }
 
