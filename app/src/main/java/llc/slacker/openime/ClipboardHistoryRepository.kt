@@ -11,6 +11,17 @@ data class ClipboardEntry(
     val pinned: Boolean = false,
 )
 
+internal object ClipboardSensitivityPolicy {
+    // ClipDescription.EXTRA_IS_SENSITIVE was added as a public constant in
+    // API 33, but this literal is the compatibility key Android documents for
+    // older releases as well. Keeping the literal avoids any runtime API-level
+    // dependency while preserving the same contract on API 26+.
+    const val SENSITIVE_KEY = "android.content.extra.IS_SENSITIVE"
+
+    fun isSensitive(readBoolean: (String) -> Boolean): Boolean =
+        runCatching { readBoolean(SENSITIVE_KEY) }.getOrDefault(false)
+}
+
 /**
  * Tiny persistent clipboard history. Clipboard capture is best-effort and is
  * skipped by the caller for password fields; no clipboard content is logged.
@@ -52,6 +63,12 @@ object ClipboardHistoryRepository {
     fun capturePrimary(context: Context): Boolean {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
             ?: return false
+        val description = runCatching { clipboard.primaryClipDescription }.getOrNull()
+        val sensitive = description?.extras?.let { extras ->
+            ClipboardSensitivityPolicy.isSensitive { key -> extras.getBoolean(key, false) }
+        } ?: false
+        if (sensitive) return false
+
         val text = runCatching {
             clipboard.primaryClip
                 ?.takeIf { it.itemCount > 0 }
