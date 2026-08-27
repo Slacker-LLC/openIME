@@ -16,6 +16,24 @@ internal fun relativeCursorKeyCode(delta: Int): Int? = when (delta) {
     else -> null
 }
 
+internal fun collapseSelectionForAdjacentArrow(
+    currentStart: Int,
+    currentEnd: Int,
+    requestedStart: Int,
+    requestedEnd: Int,
+): Pair<Int, Int> {
+    if (requestedStart != requestedEnd || currentStart == currentEnd) {
+        return requestedStart to requestedEnd
+    }
+    val left = minOf(currentStart, currentEnd)
+    val right = maxOf(currentStart, currentEnd)
+    return when (requestedStart) {
+        left - 1 -> left to left
+        right + 1 -> right to right
+        else -> requestedStart to requestedEnd
+    }
+}
+
 /**
  * Single funnel for all editor side effects. Password fields are never logged,
  * uploaded or added to history; direct typing is still forwarded to the editor.
@@ -151,14 +169,25 @@ class InputConnectionGateway(
      * editor exposes only a bounded before/after window, a one-character move
      * is delegated back to the editor through DPAD instead of fabricating an
      * absolute document coordinate from that local window.
+     *
+     * The text-editor panel currently expresses left/right movement as one
+     * position beyond the current edge. With a non-empty selection Android's
+     * normal arrow semantics collapse to that edge first, so intercept exactly
+     * those adjacent requests instead of moving one extra character.
      */
     fun selectStartEnd(start: Int, end: Int) {
         if (isPassword()) return
         val ic = connection() ?: return
         when (val selection = selectionSnapshot(ic)) {
             is SelectionSnapshot.Absolute -> {
-                val safeStart = start.coerceAtLeast(0)
-                val safeEnd = end.coerceAtLeast(safeStart)
+                val (targetStart, targetEnd) = collapseSelectionForAdjacentArrow(
+                    currentStart = selection.start,
+                    currentEnd = selection.end,
+                    requestedStart = start,
+                    requestedEnd = end,
+                )
+                val safeStart = targetStart.coerceAtLeast(0)
+                val safeEnd = targetEnd.coerceAtLeast(safeStart)
                 ic.setSelection(safeStart, safeEnd)
             }
             is SelectionSnapshot.Relative -> {
