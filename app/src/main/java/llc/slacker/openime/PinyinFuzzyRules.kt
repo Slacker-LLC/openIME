@@ -30,8 +30,8 @@ internal fun pinyinFuzzyVariants(rawPinyin: String): List<String> {
         }
 
         when {
-            value.startsWith('n') -> enqueue("l" + value.substring(1))
-            value.startsWith('l') -> enqueue("n" + value.substring(1))
+            value.startsWith("n") -> enqueue("l" + value.substring(1))
+            value.startsWith("l") -> enqueue("n" + value.substring(1))
         }
 
         when {
