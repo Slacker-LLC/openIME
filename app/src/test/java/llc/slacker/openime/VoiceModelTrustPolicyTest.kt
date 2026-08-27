@@ -7,6 +7,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 class VoiceModelTrustPolicyTest {
@@ -89,7 +90,10 @@ class VoiceModelTrustPolicyTest {
         val outside = Files.createTempDirectory("openime-model-outside").toFile()
         try {
             File(outside, "payload.onnx").writeText("outside")
-            Files.createSymbolicLink(File(root, "escape").toPath(), outside.toPath())
+            val linkCreated = runCatching {
+                Files.createSymbolicLink(File(root, "escape").toPath(), outside.toPath())
+            }.isSuccess
+            assumeTrue("filesystem does not allow test symlinks", linkCreated)
 
             assertTrue(
                 runCatching {
