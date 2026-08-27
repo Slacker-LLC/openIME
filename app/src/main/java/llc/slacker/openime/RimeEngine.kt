@@ -1,6 +1,7 @@
 package llc.slacker.openime
 
 import android.content.Context
+import android.os.Build
 import android.util.Log
 import java.io.File
 import java.util.concurrent.Executors
@@ -13,7 +14,7 @@ internal data class RimeCandidateEntry(
 internal fun rimeProbeHasCandidate(snapshot: Array<String>): Boolean =
     snapshot.drop(2).any { it.isNotBlank() }
 
-internal fun rimeDataRevision(versionCode: Int): String = "apk-$versionCode"
+internal fun rimeDataRevision(versionCode: Long): String = "apk-$versionCode"
 
 /**
  * Tracks ownership of one asynchronous startup attempt. Destroy invalidates the
@@ -219,16 +220,25 @@ class RimeEngine(private val context: Context) {
             .distinctBy { it.text }
 
     private fun copyAssetsIfNeeded(sharedDir: File) {
-        // An APK upgrade necessarily changes versionCode. Tie the copied Rime
-        // data revision to that build identity so asset changes cannot silently
-        // keep an old filesDir copy because somebody forgot to bump a magic
-        // marker number. Re-copying once per app upgrade is cheap and explicit.
-        val revision = rimeDataRevision(BuildConfig.VERSION_CODE)
+        // Read the identity of the actually installed APK instead of relying on
+        // generated BuildConfig fields. This stays valid even when BuildConfig
+        // generation is disabled and automatically changes on every upgrade.
+        val revision = rimeDataRevision(installedVersionCode())
         val marker = File(sharedDir, ".openime-rime-$revision")
         if (marker.exists() && File(sharedDir, "luna_pinyin_simp.schema.yaml").exists()) return
         deleteChildren(sharedDir)
         copyAssetTree("rime-data", sharedDir)
         marker.writeText("openIME Rime data revision $revision\n")
+    }
+
+    @Suppress("DEPRECATION")
+    private fun installedVersionCode(): Long {
+        val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            packageInfo.longVersionCode
+        } else {
+            packageInfo.versionCode.toLong()
+        }
     }
 
     private fun copyAssetTree(assetPath: String, destination: File) {
