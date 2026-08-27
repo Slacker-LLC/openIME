@@ -66,7 +66,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
         Thread(runnable, "ime-candidates").apply { isDaemon = true }
     }
     private val candidateGeneration = AtomicLong(0L)
-    private var nativeCandidateReferences: Map<String, NativeCandidateReference> = emptyMap()
+    private var renderedCandidateSnapshot: CandidateSnapshot? = null
     private var activeRimeInputs: List<String> = emptyList()
     @Volatile
     private var candidateDiagnostics = CandidateDiagnostics()
@@ -417,10 +417,17 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
         keyboardView?.clearAssociationCandidates()
         if (lastComposition.isNotEmpty()) {
             val next = dropLastCodePoint(lastComposition)
-            val fallback = fallbackCandidatesFor(next, state.keyboardMode)
+            val mode = state.keyboardMode
+            val fallback = fallbackCandidatesFor(next, mode)
             val immediate = immediateCandidates(next, fallback)
             updateComposition(next, immediate)
-            requestNativeCandidates(next, state.keyboardMode, fallback)
+            val generation = requestNativeCandidates(next, mode, fallback)
+            renderedCandidateSnapshot = CandidateSnapshot.rendered(
+                generation = generation,
+                composition = next,
+                mode = mode,
+                candidates = immediate,
+            )
             // The view normally updates itself before this callback. If the
             // visible pre-edit field lost focus, however, the service owns the
             // deletion and must also remove stale candidate chips.
@@ -641,6 +648,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
             gateway.commitText(ch.toString())
             lastComposition = ""
             state = state.copy(composition = "", candidates = emptyList())
+            renderedCandidateSnapshot = null
             keyboardView?.renderState(state)
             return
         }
@@ -656,10 +664,16 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
             composition,
             immediate,
         )
-        // The view renders a fast local result first, then receives the
-        // authoritative librime ordering in the same callback.
+        val generation = requestNativeCandidates(composition, modeAtRequest, fallback, rimeInputs)
+        renderedCandidateSnapshot = CandidateSnapshot.rendered(
+            generation = generation,
+            composition = composition,
+            mode = modeAtRequest,
+            candidates = immediate,
+        )
+        // The view renders this exact snapshot first. A later native callback
+        // replaces both the rendered list and its immutable commit identity.
         keyboardView?.renderState(state)
-        requestNativeCandidates(composition, modeAtRequest, fallback, rimeInputs)
     }
 
     override fun onCandidateSelected(candidate: String) {
@@ -835,9 +849,8 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
         mode: KeyboardMode,
         fallback: List<String>,
         rimeInputs: List<String> = listOf(composition),
-    ) {
+    ): Long {
         val request = candidateGeneration.incrementAndGet()
-        nativeCandidateReferences = emptyMap()
         val queryInputs = rimeInputs
             .asSequence()
             .map { it.trim() }
@@ -856,7 +869,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
                 fallbackCount = fallback.distinct().size,
                 finalCandidateSource = if (fallback.isEmpty()) "none" else "fallback",
             )
-            return
+            return request
         }
         candidateExecutor.execute {
             // Coalesce a burst of key events before entering librime. Older
@@ -886,7 +899,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
                 } else {
                     (learned + fallback).distinct().take(MAX_CANDIDATES)
                 }
-                nativeCandidateReferences = if (native.isNotEmpty()) {
+                val nativeReferences = if (native.isNotEmpty()) {
                     native.associate { it.text to it.reference }
                 } else {
                     emptyMap()
@@ -906,9 +919,17 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
                 )
                 Log.d(TAG, "candidate-stats ${candidateDiagnostics.asLogFields()}")
                 state = state.copy(candidates = finalCandidates)
+                renderedCandidateSnapshot = CandidateSnapshot.rendered(
+                    generation = request,
+                    composition = composition,
+                    mode = mode,
+                    candidates = finalCandidates,
+                    nativeReferences = nativeReferences,
+                )
                 keyboardView?.renderState(state)
             }
         }
+        return request
     }
 
     private fun queryNativeChoices(
@@ -928,73 +949,52 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
         )
     }
 
-    /** Commit the authoritative first choice, even if the UI still shows the fast fallback. */
+    /** Commit only the first candidate that belongs to the currently rendered snapshot. */
     private fun commitFirstCandidate() {
         val composition = lastComposition
         if (composition.isEmpty()) return
         val mode = state.keyboardMode
-        val inputs = activeRimeInputs.ifEmpty { listOf(composition) }
-        val firstReference = state.candidates.firstOrNull()?.let(nativeCandidateReferences::get)
+        val entry = renderedCandidateSnapshot?.firstForCommit(
+            currentGeneration = candidateGeneration.get(),
+            currentComposition = composition,
+            currentMode = mode,
+        ) ?: return
         invalidateCandidateQueries()
+        val reference = entry.nativeReference
         val nativeCommit = if (
-            composition.length <= MAX_RIME_INPUT_LENGTH &&
+            reference != null &&
             rime.isReady &&
             (mode == KeyboardMode.PINYIN_26 || mode == KeyboardMode.PINYIN_9)
         ) {
-            when {
-                firstReference != null -> rime.selectCandidate(
-                    firstReference.input,
-                    firstReference.nativeIndex,
-                )
-                mode == KeyboardMode.PINYIN_9 -> {
-                    val reference = queryNativeChoices(inputs)?.choices?.firstOrNull()?.reference
-                    if (reference == null) "" else {
-                        rime.selectCandidate(reference.input, reference.nativeIndex)
-                    }
-                }
-                else -> rime.commitFirst(composition)
-            }
+            rime.selectCandidate(reference.input, reference.nativeIndex)
         } else {
             ""
         }
-        val committed = nativeCommit.ifBlank {
-            state.candidates.firstOrNull() ?: composition
-        }
-        finishCandidateCommit(composition, committed)
+        finishCandidateCommit(composition, nativeCommit.ifBlank { entry.text })
     }
 
     private fun selectCandidate(candidate: String) {
         val composition = lastComposition
+        if (composition.isEmpty()) return
         val mode = state.keyboardMode
-        val inputs = activeRimeInputs.ifEmpty { listOf(composition) }
-        val reference = nativeCandidateReferences[candidate]
+        val entry = renderedCandidateSnapshot?.candidateForCommit(
+            candidate = candidate,
+            currentGeneration = candidateGeneration.get(),
+            currentComposition = composition,
+            currentMode = mode,
+        ) ?: return
         invalidateCandidateQueries()
+        val reference = entry.nativeReference
         val nativeCommit = if (
-            composition.length <= MAX_RIME_INPUT_LENGTH &&
+            reference != null &&
             rime.isReady &&
-            (
-                mode == KeyboardMode.PINYIN_26 ||
-                    mode == KeyboardMode.PINYIN_9
-                )
+            (mode == KeyboardMode.PINYIN_26 || mode == KeyboardMode.PINYIN_9)
         ) {
-            if (reference != null) {
-                rime.selectCandidate(reference.input, reference.nativeIndex)
-            } else {
-                selectNativeCandidateByText(inputs, candidate)
-            }
+            rime.selectCandidate(reference.input, reference.nativeIndex)
         } else {
             ""
         }
-        val committed = nativeCommit.ifBlank { candidate }
-        finishCandidateCommit(composition, committed)
-    }
-
-    private fun selectNativeCandidateByText(inputs: List<String>, candidate: String): String {
-        inputs.take(MAX_RIME_NINE_KEY_PATHS).forEach { input ->
-            val committed = rime.selectCandidate(input, candidate)
-            if (committed.isNotEmpty()) return committed
-        }
-        return ""
+        finishCandidateCommit(composition, nativeCommit.ifBlank { entry.text })
     }
 
     private fun finishCandidateCommit(composition: String, committed: String) {
@@ -1155,7 +1155,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
 
     private fun invalidateCandidateQueries() {
         candidateGeneration.incrementAndGet()
-        nativeCandidateReferences = emptyMap()
+        renderedCandidateSnapshot = null
         activeRimeInputs = emptyList()
     }
 
