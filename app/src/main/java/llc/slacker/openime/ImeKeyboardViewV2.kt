@@ -3,21 +3,33 @@ package llc.slacker.openime
 import android.content.Context
 import android.os.Build
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowInsets
+import android.widget.TextView
 
 /**
  * Production wrapper around the legacy renderer. Business state still lives in
- * the service; this layer owns window geometry that should not leak into key
- * layout/state code.
+ * the service; this layer owns window geometry and production-only capability
+ * filtering that should not leak into key layout/state code.
  */
-class ImeKeyboardViewV2(
+class ImeKeyboardViewV2 private constructor(
     context: Context,
-    listener: Listener,
-) : ImeKeyboardView(context, Adapter(listener)) {
+    private val adapter: Adapter,
+) : ImeKeyboardView(context, adapter) {
+
+    constructor(context: Context, listener: Listener) : this(context, Adapter(listener))
 
     private var navigationBottomInsetPx = 0
 
     init {
+        adapter.afterPanelChanged = { panel ->
+            if (panel == Panel.TEXT_EDITOR) {
+                // The legacy renderer invokes onPanelChanged before renderPanel,
+                // so defer capability filtering until the panel children exist.
+                post { disableUnsupportedTextEditControls() }
+            }
+        }
+
         // Insets already consumed by the IME window arrive as zero, so this
         // adds safe area only when Android actually reports an unconsumed nav
         // region. The value is bounded to avoid pathological OEM geometry.
@@ -57,6 +69,21 @@ class ImeKeyboardViewV2(
             // last key row is not compressed upward or covered by navigation.
             setMeasuredDimension(measuredWidth, targetHeight)
         }
+    }
+
+    private fun disableUnsupportedTextEditControls() {
+        fun visit(view: View) {
+            if (view is TextView && TextEditControlPolicy.isUnavailableLabel(view.text.toString())) {
+                view.isEnabled = false
+                view.isClickable = false
+                view.alpha = 0.38f
+                view.contentDescription = "${view.text}（当前编辑器暂不支持）"
+            }
+            if (view is ViewGroup) {
+                for (index in 0 until view.childCount) visit(view.getChildAt(index))
+            }
+        }
+        visit(this)
     }
 
     private fun insetDp(value: Int): Int =
@@ -114,8 +141,13 @@ class ImeKeyboardViewV2(
     }
 
     private class Adapter(private val delegate: Listener) : ImeKeyboardView.Listener {
+        var afterPanelChanged: ((Panel) -> Unit)? = null
+
         override fun onModeChanged(mode: KeyboardMode) = delegate.onModeChanged(mode)
-        override fun onPanelChanged(panel: Panel) = delegate.onPanelChanged(panel)
+        override fun onPanelChanged(panel: Panel) {
+            delegate.onPanelChanged(panel)
+            afterPanelChanged?.invoke(panel)
+        }
         override fun onCharacter(char: String) = delegate.onCharacter(char)
         override fun onBackspace() = delegate.onBackspace()
         override fun onClearAll() = delegate.onClearAll()
