@@ -10,6 +10,7 @@ import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputContentInfo
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -181,7 +182,7 @@ class InputConnectionGatewayTest {
     }
 
     @Test
-    fun boundedFallbackUsesRelativeDpadInsteadOfLocalSetSelection() {
+    fun boundedFallbackExposesRelativeCursorWithoutFabricatingSelection() {
         val fake = FakeInputConnection(
             beforeText = "x".repeat(20_000),
             afterText = "tail",
@@ -189,29 +190,18 @@ class InputConnectionGatewayTest {
         )
         val gateway = InputConnectionGateway(null, { fake })
 
-        val start = gateway.currentSelectionStart()
-        assertEquals(8_192, start)
-        val left = start.coerceAtLeast(1) - 1
-        gateway.selectStartEnd(left, left)
-
-        assertTrue(fake.events.contains("key:${KeyEvent.KEYCODE_DPAD_LEFT}"))
+        assertEquals(8_192, gateway.currentSelectionStart())
+        assertEquals(8_192, gateway.currentSelectionEnd())
+        gateway.selectStartEnd(8_192, 8_192)
         assertTrue(fake.events.none { it.startsWith("selection:") })
     }
 
     @Test
-    fun boundedFallbackCanMoveRightRelatively() {
-        val fake = FakeInputConnection(
-            beforeText = "x".repeat(20_000),
-            afterText = "tail",
-            extractedText = null,
-        )
-        val gateway = InputConnectionGateway(null, { fake })
-
-        val end = gateway.currentSelectionEnd()
-        gateway.selectStartEnd(end + 1, end + 1)
-
-        assertTrue(fake.events.contains("key:${KeyEvent.KEYCODE_DPAD_RIGHT}"))
-        assertTrue(fake.events.none { it.startsWith("selection:") })
+    fun relativeCursorDeltaMapsToDpadKeys() {
+        assertEquals(KeyEvent.KEYCODE_DPAD_LEFT, relativeCursorKeyCode(-1))
+        assertEquals(KeyEvent.KEYCODE_DPAD_RIGHT, relativeCursorKeyCode(1))
+        assertNull(relativeCursorKeyCode(0))
+        assertNull(relativeCursorKeyCode(2))
     }
 
     @Test
