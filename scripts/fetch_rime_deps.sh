@@ -44,5 +44,11 @@ fetch_dep "yaml-cpp" "jbeder/yaml-cpp" "2f86d13775d119edbb69af52e5f566fd65c6953b
 
 # librime includes <utf8.h> directly. Desktop package managers provide this
 # header via UTF8-CPP, but Android cross-compilation must not depend on host
-# /usr/include. Pin the Ubuntu 24.04-compatible UTF8-CPP release explicitly.
+# /usr/include. Pin the header-only dependency explicitly.
 fetch_dep "utfcpp" "nemtrif/utfcpp" "f23474118c5c544c1403883976d78128d17125f9"
+
+# librime's key table includes <X11/keysym.h>. Android's NDK intentionally does
+# not ship X11 headers, so vendor the Xorg protocol headers instead of leaking
+# the GitHub runner's /usr/include into a cross-compiled target. This commit is
+# the xorgproto-2024.1 release.
+fetch_dep "xorgproto" "X11Libre/mirror.fdo.xorgproto" "67469711055522b8adb2d795b01e7ba98cb8816c"
