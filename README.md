@@ -14,7 +14,9 @@ openIME 的界面、输入法引擎和本地语音链路均在同一个独立 AP
     ↓
 输入状态与候选栏
     ↓
-librime / OpenCC（中文拼音、候选、简繁转换）
+高频快速词库（首次部署期间即时可用）
+    ↓
+librime / OpenCC（完整拼音、候选、学习、简繁转换）
     ↓
 InputConnection
     ↓
@@ -26,14 +28,16 @@ InputConnection
 
 ## 当前能力
 
-- 26 键拼音、9 键拼音、英文 26 键、英文 T9、数字与符号输入。
-- 基于 librime 的预编辑、候选词、分词、光标编辑、删除和提交链路。
+- 26 键拼音、9 键拼音、英文 26 键、数字与符号输入；不提供英文九键。
+- 基于 librime 的全拼、简拼、显式分词、候选词、用户学习、光标编辑、删除和提交链路。
+- 内置约 90 万条 Rime Ice 基础及扩展词典记录；首次部署完整词典时，高频快速词库仍可即时提供候选。
 - OpenCC 简繁转换与 Rime 词典数据，候选结果通过 `setComposingText()` 更新，选中后
   通过 `commitText()` 写入当前编辑器。
 - Emoji、符号、剪贴板、文本编辑、手写入口、浮动键盘和设置面板。
 - 根据输入法窗口实际可用宽度动态计算列宽与间距；宽屏限制内容最大宽度并居中，
   系统底部区域通过 WindowInsets 处理。
-- 空格短按/长按语音、删除键上滑清空预编辑与候选状态。
+- 空格短按输入空格或提交首选，长按约 150 ms 进入唯一的语音输入流程；删除键上滑清空。
+- 选词或首选上屏后统一清除拼音、候选与 Rime composition，随后删除键只处理目标输入框。
 - Android 密码编辑器的隐私边界、麦克风权限失败回退和本地模型校验。
 
 ## 仓库结构
@@ -110,7 +114,9 @@ Receiver 只存在于 debug 变体，不会成为正式输入法的公共控制�
 真实 IME 回归需要明确指定设备 Serial，避免误操作其他手机：
 
 ```powershell
+.\scripts\test_sop.ps1 -Level L0 -Serial <serial>
 .\scripts\core_regression.ps1 -Serial <serial>
+.\scripts\typing_engine_regression.ps1 -Serial <serial>
 .\scripts\extended_regression.ps1 -Serial <serial>
 .\scripts\lifecycle_regression.ps1 -Serial <serial>
 .\scripts\visual_check.ps1 -Serial <serial>
@@ -119,6 +125,7 @@ Receiver 只存在于 debug 变体，不会成为正式输入法的公共控制�
 更多说明见：
 
 - [文档索引](docs/README.md)
+- [正式测试 SOP](docs/TEST_SOP.md)
 - [输入法架构](docs/ARCHITECTURE.md)
 - [本地语音模型接入边界](docs/LOCAL_VOICE_MODEL.md)
 - [适配与坐标规范](docs/COORDINATE_SYSTEM.md)

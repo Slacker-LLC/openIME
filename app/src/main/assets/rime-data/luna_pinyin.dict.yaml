@@ -28,9 +28,17 @@
 
 ---
 name: luna_pinyin
-version: "2024.02.10"
+version: "2026.08.26-openime-3"
 sort: by_weight
 use_preset_vocabulary: true
+import_tables:
+  # openIME ships the maintained Rime Ice core/extended lexicons in addition
+  # to Luna's character table.  The large Tencent auto-annotated table is
+  # intentionally omitted to keep first deployment bounded and predictable.
+  - openime_dicts/8105
+  - openime_dicts/base
+  - openime_dicts/ext
+  - openime_dicts/others
 ...
 
 〇	ling

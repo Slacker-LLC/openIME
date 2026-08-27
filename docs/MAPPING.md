@@ -4,7 +4,6 @@
 |---|---|---|
 | 26 键中文/英文 | `ImeKeyboardView.renderPinyin26/English26` | 真实 composition/commit，Shift/Caps 状态机 |
 | 九键中文 | `renderPinyin9` + `CandidateEngine.get9KeyCandidates` | 真实拼音候选 |
-| 九键英文 T9 | `renderEnglish9` + `getT9EnglishCandidates` | 真实数字 → 单词 |
 | 数字键盘 | `renderDigits` | commit |
 | Toolbar | 单行紧凑 TextView + 矢量图标 `res/drawable/ic_*.xml` | 真实点击；主题着色 |
 | Root UI | `MainDock/Toolbar/Candidate/KeyboardHost` + `PanelOverlay` + `CandidateOverlay` | 面板替换主键盘；候选展开覆盖键盘主体 |
@@ -19,3 +18,6 @@
 | Skin DIY | Design Token 已预留 `skinRadius/skinOpacity/skinFontSize/skinPrimaryColor` | 正式 UI 无独立入口，按提示词不强行增加 |
 | AI Writer | 未接入 | 当前项目无现成 Agent/API 架构，按提示词不擅自引入模型/联网 |
 | Long Press/Popup | `showPopup`/`setOnLongClickListener` | 真实 |
+
+> 当前产品不提供英文九键。源码中残留的兼容枚举或候选方法不构成 UI 入口，后续可在
+> 不影响旧设置迁移的版本中删除。

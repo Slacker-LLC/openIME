@@ -46,6 +46,24 @@ std::string take_commit() {
   return result;
 }
 
+std::string finish_selection() {
+  std::string result = take_commit();
+  if (!result.empty()) return result;
+  if (g_api && g_session && g_api->commit_composition &&
+      g_api->commit_composition(g_session)) {
+    return take_commit();
+  }
+  return {};
+}
+
+void append_candidate(std::vector<std::string>* values, const char* text) {
+  if (!values || !text || !*text) return;
+  // Keep one slot for every native candidate index. Kotlin removes duplicate
+  // labels for display, but retains this original index so selecting a word
+  // still addresses the exact item in librime's complete candidate list.
+  values->emplace_back(text);
+}
+
 std::vector<std::string> snapshot_locked() {
   std::vector<std::string> values;
   if (!g_api || !g_session) return values;
@@ -58,9 +76,27 @@ std::vector<std::string> snapshot_locked() {
 
   values.emplace_back(context.composition.preedit ?
                           context.composition.preedit : "");
-  for (int i = 0; i < context.menu.num_candidates; ++i) {
-    const char* text = context.menu.candidates[i].text;
-    if (text && *text) values.emplace_back(text);
+
+  // The context menu only exposes the current page (five items in the
+  // bundled default).  Iterate the complete candidate stream so Android's
+  // expandable candidate panel can actually reach uncommon characters and
+  // words without changing Rime's ranking.
+  bool iterated = false;
+  if (g_api->candidate_list_begin && g_api->candidate_list_next &&
+      g_api->candidate_list_end) {
+    RimeCandidateListIterator iterator = {0};
+    if (g_api->candidate_list_begin(g_session, &iterator)) {
+      iterated = true;
+      while (values.size() < 98 && g_api->candidate_list_next(&iterator)) {
+        append_candidate(&values, iterator.candidate.text);
+      }
+      g_api->candidate_list_end(&iterator);
+    }
+  }
+  if (!iterated) {
+    for (int i = 0; i < context.menu.num_candidates; ++i) {
+      append_candidate(&values, context.menu.candidates[i].text);
+    }
   }
   g_api->free_context(&context);
   return values;
@@ -129,7 +165,11 @@ Java_llc_slacker_openime_RimeNative_nativeSelectCandidate(
   if (!g_api->select_candidate(g_session, static_cast<size_t>(index))) {
     return env->NewStringUTF("");
   }
-  const std::string commit = take_commit();
+  // Selecting a candidate normally only confirms a Rime segment.  Explicitly
+  // commit the completed composition so the chosen word is learned, any
+  // remaining segmented input is preserved, and the Android pre-edit can be
+  // cleared atomically after the click.
+  const std::string commit = finish_selection();
   return env->NewStringUTF(commit.c_str());
 }
 
@@ -139,7 +179,7 @@ Java_llc_slacker_openime_RimeNative_nativeCommitFirst(
   std::lock_guard<std::mutex> lock(g_mutex);
   if (!g_api || !g_session) return env->NewStringUTF("");
   if (g_api->select_candidate(g_session, 0)) {
-    const std::string commit = take_commit();
+    const std::string commit = finish_selection();
     return env->NewStringUTF(commit.c_str());
   }
   if (g_api->commit_composition(g_session)) {

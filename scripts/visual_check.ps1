@@ -1,4 +1,9 @@
-﻿param([string]$Serial = '')
+﻿param(
+    [string]$Serial = '',
+    [string]$OutputDir = '',
+    [string]$NamePrefix = '',
+    [switch]$SkipInstall
+)
 
 $ErrorActionPreference = 'Stop'
 # PS5.1 decodes external stdout with the console codepage; adb emits UTF-8.
@@ -11,7 +16,11 @@ $Serial = Resolve-OpenImeSerial -RequestedSerial $Serial -AdbPath $adb
 $pkg = 'llc.slacker.openime'
 $receiver = "$pkg/.E2ETestReceiver"
 $action = "$pkg.TEST_COMMAND"
-$outDir = Join-Path $project 'docs\visual\check'
+$outDir = if ([string]::IsNullOrWhiteSpace($OutputDir)) {
+    Join-Path $project 'docs\visual\check'
+} else {
+    $OutputDir
+}
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
 function Adb { & $adb -s $Serial @args }
@@ -53,15 +62,15 @@ function Send([string]$cmd) {
 function Mode([string]$mode) {
     for ($attempt = 0; $attempt -lt 8; $attempt++) {
         Send 'state'
-        $log = Adb logcat -d -t 300 | Select-String -Pattern 'MinisImeE2E' | Out-String
-        if ($log -match ('MinisImeE2E: STATE mode=' + $mode)) { return }
+        $log = Adb logcat -d -t 300 | Select-String -Pattern 'OpenImeE2E' | Out-String
+        if ($log -match ('OpenImeE2E: STATE mode=' + $mode)) { return }
         Send 'tap:key:mode'
     }
     throw ('mode not reached: ' + $mode)
 }
 
 function Capture([string]$name) {
-    $path = Join-Path $outDir $name
+    $path = Join-Path $outDir ($NamePrefix + $name)
     # PS '>' re-encodes pipes and corrupts binary; cmd redirect is byte-exact.
     $quoted = $adb
     cmd /c "`"$quoted`" -s $Serial exec-out screencap -p > `"$path`""
@@ -80,7 +89,7 @@ function BoundsLog {
 
 $ime = "$pkg/.LocalVoiceImeService"
 if (-not (Test-Path -LiteralPath $apk)) { throw 'missing APK' }
-Adb install -r $apk | Out-Null
+if (-not $SkipInstall) { Adb install -r $apk | Out-Null }
 Adb shell settings put --user 0 secure default_input_method $ime
 Adb shell settings put --user 0 secure show_ime_with_hard_keyboard 1
 Adb shell am force-stop $pkg | Out-Null

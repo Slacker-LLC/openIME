@@ -28,6 +28,8 @@ class SpeechRecognitionProvider(
     fun start(languageTag: String, events: SpeechEvents) = backend.start(languageTag, events)
 
     fun stop() = backend.stop()
+
+    fun cancel() = backend.cancel()
 }
 
 /** Real device speech provider used until the embedded runtime is supplied. */
@@ -90,6 +92,12 @@ class AndroidSpeechRecognitionBackend(
 
     override fun stop() {
         recognizer?.stopListening()
+        recognizer?.destroy()
+        recognizer = null
+    }
+
+    override fun cancel() {
+        recognizer?.cancel()
         recognizer?.destroy()
         recognizer = null
     }

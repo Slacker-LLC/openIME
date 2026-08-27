@@ -10,6 +10,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 
+/** Debug-only keyboard renderer used by instrumented and visual tests. */
 class DebugKeyboardActivity : Activity(), ImeKeyboardView.Listener {
 
     private lateinit var input: TextView

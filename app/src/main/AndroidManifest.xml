@@ -23,11 +23,6 @@
         </activity>
 
         <activity
-            android:name=".DebugKeyboardActivity"
-            android:exported="true"
-            android:theme="@style/AppTheme" />
-
-        <activity
             android:name=".QuickPhraseEditActivity"
             android:exported="false"
             android:label="常用语" />

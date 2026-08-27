@@ -20,6 +20,7 @@ import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.SoundEffectConstants
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
@@ -63,6 +64,14 @@ open class ImeKeyboardView(
         fun onVoiceCancel() {}
         fun onEnter()
         fun onCompositionChanged(composition: String, candidates: List<String>)
+        fun onNineKeyCompositionChanged(
+            composition: String,
+            digitBuffer: String,
+            pinyinPaths: List<String>,
+            candidates: List<String>,
+        ) {
+            onCompositionChanged(composition, candidates)
+        }
         fun onCandidateSelected(candidate: String)
         fun onCompositionBackspace()
         fun onThemeChanged(theme: ImeTheme)
@@ -87,10 +96,20 @@ open class ImeKeyboardView(
     private val repeatHandler = Handler(Looper.getMainLooper())
     private val repeatAction = object : Runnable {
         override fun run() {
-            if (!deleteCompositionAtCursor()) listener.onBackspace()
+            if (!backspaceGestureActive || backspaceClearArmed) return
+            backspaceRepeatStarted = true
+            performBackspaceOnce()
             repeatHandler.postDelayed(this, 60L)
         }
     }
+    private var backspaceGestureActive = false
+    private var backspaceClearArmed = false
+    private var backspaceRepeatStarted = false
+    private var backspaceStartX = 0f
+    private var backspaceStartY = 0f
+    private var backspaceAnchor: View? = null
+    private var backspaceClearUiAction: ((Boolean) -> Unit)? = null
+    private var backspaceRepeatStartAction: Runnable? = null
 
     private val engine = CandidateEngine(PinyinLexicon.load(context).also {
         UserPhraseRepository.configure(context)
@@ -109,6 +128,8 @@ open class ImeKeyboardView(
     private val pinyinBuffer = StringBuilder()
     private var lastNineDigits = ""
     private var lastNineCandidates = emptyList<String>()
+    private var lastNineSegmentPrefix = ""
+    private var lastNinePinyinPaths = emptyList<String>()
     private var lastT9Digits = ""
     private var currentCandidates = emptyList<String>()
     private var currentItems: List<String>? = null
@@ -123,11 +144,30 @@ open class ImeKeyboardView(
     private var voiceStartAction: (() -> Unit)? = null
     private var voiceStopAction: (() -> Unit)? = null
     private var voiceCancelAction: (() -> Unit)? = null
-    private var voiceCancelPreviewAction: (() -> Unit)? = null
+    private var voiceCancelPreviewAction: ((Boolean) -> Unit)? = null
     private var voiceGestureSession = false
     private var spaceVoiceGestureActive = false
     private var spaceVoiceGestureCancel = false
     private var spaceVoiceDownY = 0f
+    private var voiceInlineActive = false
+    private var voiceInlineCancel = false
+    private var voiceInlineGeneration = 0L
+    private var voiceInlineHasLiveRms = false
+    private var voiceInlinePulseFrame = 0
+    private val voiceInlinePulseAction = object : Runnable {
+        override fun run() {
+            if (!voiceInlineActive || !voiceGestureSession || voiceInlineHasLiveRms) return
+            voiceInlineWaves.forEachIndexed { index, bar ->
+                val phase = (voiceInlinePulseFrame + index * 2) % 12
+                val distance = kotlin.math.abs(phase - 6)
+                val params = bar.layoutParams
+                params.height = dp((7 + (6 - distance) * 3).coerceIn(7, 25))
+                bar.layoutParams = params
+            }
+            voiceInlinePulseFrame = (voiceInlinePulseFrame + 1) % 12
+            repeatHandler.postDelayed(this, 72L)
+        }
+    }
     private var floatingKeyboard = true
     private var popupView: View? = null
     private var keepPopupAfterKeyUp = false
@@ -151,6 +191,9 @@ open class ImeKeyboardView(
     private lateinit var candidateRow: LinearLayout
     private lateinit var associationRow: LinearLayout
     private lateinit var candidateExpandBtn: TextView
+    private lateinit var voiceInlineZone: LinearLayout
+    private lateinit var voiceInlineStatus: TextView
+    private val voiceInlineWaves = mutableListOf<View>()
     private val keyboardBody = LinearLayout(context)
     private val expandedPanel = LinearLayout(context)
     private val candidateOverlay = LinearLayout(context)
@@ -441,6 +484,69 @@ open class ImeKeyboardView(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(64),
         ))
+
+        // Long-press voice stays inside the current keyboard. This fixed-height
+        // row replaces the toolbar in-place, so recording never opens another
+        // panel or changes the IME height while the finger is held down.
+        voiceInlineZone = LinearLayout(context).apply {
+            tag = "voice-inline-zone"
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            visibility = View.GONE
+            setPadding(dp(12), 0, dp(12), 0)
+        }
+        voiceInlineZone.addView(
+            ImageView(context).apply {
+                tag = "voice-inline-icon"
+                contentDescription = null
+                setImageResource(R.drawable.ic_mic)
+                imageTintList = ColorStateList.valueOf(Color.WHITE)
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+            },
+            LinearLayout.LayoutParams(dp(22), dp(22)).apply { marginEnd = dp(9) },
+        )
+        voiceInlineStatus = TextView(context).apply {
+            tag = "voice-inline-status"
+            text = "正在聆听…"
+            textSize = 14f
+            setTextColor(Color.WHITE)
+            includeFontPadding = false
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        voiceInlineZone.addView(
+            voiceInlineStatus,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f),
+        )
+        val inlineWave = LinearLayout(context).apply {
+            tag = "voice-inline-waveform"
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        repeat(6) { index ->
+            val bar = View(context).apply {
+                tag = "voice-inline-wave-$index"
+                background = rounded(Color.WHITE, dp(99))
+            }
+            voiceInlineWaves += bar
+            inlineWave.addView(
+                bar,
+                LinearLayout.LayoutParams(dp(3), dp(if (index % 2 == 0) 10 else 16)).apply {
+                    if (index > 0) marginStart = dp(3)
+                },
+            )
+        }
+        voiceInlineZone.addView(
+            inlineWave,
+            LinearLayout.LayoutParams(dp(42), LinearLayout.LayoutParams.MATCH_PARENT),
+        )
+        topZone.addView(
+            voiceInlineZone,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)).apply {
+                setMargins(dp(8), dp(8), dp(8), dp(8))
+            },
+        )
         mainDock.addView(topZone, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(64),
@@ -489,6 +595,8 @@ open class ImeKeyboardView(
         pinyinBuffer.clear()
         lastNineDigits = ""
         lastNineCandidates = emptyList()
+        lastNineSegmentPrefix = ""
+        lastNinePinyinPaths = emptyList()
         lastT9Digits = ""
         currentCandidates = emptyList()
         currentItems = emptyList()
@@ -542,6 +650,9 @@ open class ImeKeyboardView(
         if (state.composition.isEmpty()) {
             pinyinBuffer.clear()
             lastNineDigits = ""
+            lastNineCandidates = emptyList()
+            lastNineSegmentPrefix = ""
+            lastNinePinyinPaths = emptyList()
             lastT9Digits = ""
         } else {
             pinyinBuffer.setLength(0)
@@ -633,6 +744,43 @@ open class ImeKeyboardView(
         return target?.performClick() == true
     }
 
+    /**
+     * Debug E2E entry that deliberately traverses the production backspace
+     * gesture state machine. This verifies the arm threshold and atomic clear
+     * callback instead of bypassing them with a direct editor mutation.
+     */
+    internal fun swipeClearForTest(): Boolean {
+        val anchor = findTestTarget("key-backspace") ?: return false
+        if (anchor.width <= 0 || anchor.height <= 0) return false
+        val location = IntArray(2)
+        anchor.getLocationOnScreen(location)
+        val rawX = location[0] + anchor.width / 2f
+        val rawY = location[1] + anchor.height / 2f
+        beginBackspaceGesture(anchor, rawX, rawY) { }
+        updateBackspaceGesture(rawX, rawY - dp(48))
+        finishBackspaceGesture(commit = true)
+        return true
+    }
+
+    /** Opens the production quick-phrase editor for one exact test phrase. */
+    internal fun editQuickPhraseForTest(text: String): Boolean {
+        val phrase = QuickPhraseRepository.load(context).firstOrNull { it.text == text } ?: return false
+        openQuickPhraseEditor(phrase)
+        return true
+    }
+
+    /** Clicks one exact phrase through the same listener as a real user tap. */
+    internal fun useQuickPhraseForTest(text: String): Boolean {
+        val phrase = QuickPhraseRepository.load(context).firstOrNull { it.text == text } ?: return false
+        return findTestTarget("phrase:${phrase.id}")?.performClick() == true
+    }
+
+    /** Clicks the production delete action for one exact rendered test phrase. */
+    internal fun deleteQuickPhraseForTest(text: String): Boolean {
+        val phrase = QuickPhraseRepository.load(context).firstOrNull { it.text == text } ?: return false
+        return findTestTarget("phrase-delete:${phrase.id}")?.performClick() == true
+    }
+
     internal fun normalizedBoundsReport(): String {
         val out = StringBuilder()
         fun deep(view: View) {
@@ -655,8 +803,76 @@ open class ImeKeyboardView(
     }
 
     private fun updateTopZone(composing: Boolean) {
+        if (voiceInlineActive) {
+            toolbarRow.visibility = View.GONE
+            composeZone.visibility = View.GONE
+            voiceInlineZone.visibility = View.VISIBLE
+            return
+        }
+        voiceInlineZone.visibility = View.GONE
         toolbarRow.visibility = if (composing) View.GONE else View.VISIBLE
         composeZone.visibility = if (composing) View.VISIBLE else View.GONE
+    }
+
+    private fun showInlineVoiceState(
+        message: String,
+        cancelling: Boolean = false,
+        rms: Float? = null,
+    ) {
+        voiceInlineActive = true
+        voiceInlineCancel = cancelling
+        voiceInlineStatus.text = message
+        voiceInlineZone.contentDescription = message
+        if (rms != null) {
+            voiceInlineHasLiveRms = true
+            repeatHandler.removeCallbacks(voiceInlinePulseAction)
+            val strength = (rms * 9f).coerceIn(0.08f, 1f)
+            voiceInlineWaves.forEachIndexed { index, bar ->
+                val shape = if (index in 2..3) 1f else if (index in 1..4) 0.72f else 0.48f
+                val params = bar.layoutParams
+                params.height = dp((6f + 22f * strength * shape).toInt().coerceIn(6, 28))
+                bar.layoutParams = params
+            }
+        }
+        applyInlineVoicePalette()
+        updateTopZone(false)
+    }
+
+    private fun startInlineVoicePulse() {
+        voiceInlineHasLiveRms = false
+        voiceInlinePulseFrame = 0
+        repeatHandler.removeCallbacks(voiceInlinePulseAction)
+        repeatHandler.post(voiceInlinePulseAction)
+    }
+
+    private fun stopInlineVoicePulse() {
+        repeatHandler.removeCallbacks(voiceInlinePulseAction)
+    }
+
+    private fun applyInlineVoicePalette() {
+        if (!::voiceInlineZone.isInitialized) return
+        val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        val tokens = theme.tokens(appearance, night)
+        val backgroundColor = if (voiceInlineCancel) Color.rgb(220, 38, 38) else tokens.primary
+        voiceInlineZone.background = rounded(backgroundColor, dp(13))
+        voiceInlineStatus.setTextColor(Color.WHITE)
+        voiceInlineWaves.forEach { it.background = rounded(Color.WHITE, dp(99)) }
+    }
+
+    private fun hideInlineVoiceState() {
+        stopInlineVoicePulse()
+        voiceInlineActive = false
+        voiceInlineCancel = false
+        if (::voiceInlineZone.isInitialized) voiceInlineZone.visibility = View.GONE
+        updateTopZone(composition.text?.isNotEmpty() == true)
+    }
+
+    private fun hideInlineVoiceStateLater(delayMs: Long) {
+        val generation = voiceInlineGeneration
+        postDelayed({
+            if (generation == voiceInlineGeneration && !voiceActive) hideInlineVoiceState()
+        }, delayMs)
     }
 
     private fun renderCandidateRow() {
@@ -697,6 +913,7 @@ open class ImeKeyboardView(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             tag = if (index == 0) "candidate-first-row" else null
+            contentDescription = "候选:$cand"
             minimumHeight = dp(32)
             addView(word, wrapParams())
             isClickable = true
@@ -734,16 +951,28 @@ open class ImeKeyboardView(
                 if (rowIndex == 1) tag = "key-row-secondary"
             }
             if (rowIndex == 2) {
-                val iconRes = if (shiftState == ShiftState.CAPS_LOCK) R.drawable.ic_caps_lock else R.drawable.ic_shift
-                val shift = key("", true, null, 1f, iconRes = iconRes) { cycleShift() }
-                shift.tag = if (shiftState == ShiftState.CAPS_LOCK) {
-                    "key-shift-caps"
-                } else if (shiftState == ShiftState.SHIFT_ONCE) {
-                    "key-shift-active"
+                val leadingKey = if (mode == KeyboardMode.PINYIN_26) {
+                    key("分词", true, "@#/", 1f, 12f) { onPinyinSegment() }.apply {
+                        tag = "key-segment"
+                        contentDescription = "分词，长按输入@井号或斜杠"
+                        setOnLongClickListener {
+                            showChoicePopup(this, listOf("@", "#", "/"))
+                            true
+                        }
+                    }
                 } else {
-                    "key-shift"
+                    val iconRes = if (shiftState == ShiftState.CAPS_LOCK) R.drawable.ic_caps_lock else R.drawable.ic_shift
+                    key("", true, null, 1f, iconRes = iconRes) { cycleShift() }.apply {
+                        tag = if (shiftState == ShiftState.CAPS_LOCK) {
+                            "key-shift-caps"
+                        } else if (shiftState == ShiftState.SHIFT_ONCE) {
+                            "key-shift-active"
+                        } else {
+                            "key-shift"
+                        }
+                    }
                 }
-                row.addView(shift, flexKeyParams(1.25f))
+                row.addView(leadingKey, flexKeyParams(1.25f))
             }
             rowText.forEach { ch ->
                 val main = if (mode == KeyboardMode.ENGLISH_26 && shiftState != ShiftState.LOWERCASE) {
@@ -1114,18 +1343,26 @@ open class ImeKeyboardView(
     }
 
     /**
-     * Starting voice replaces the keyboard view while the finger is still down.
-     * Some input-method windows then route ACTION_UP to the new panel, so keep a
-     * root-level fallback to guarantee that release always stops or cancels voice.
+     * Keep held gestures at the keyboard root. A finger can leave the original
+     * key before ACTION_UP; voice release and one-shot clear must still finish
+     * exactly once without falling back to a stream of synthetic taps.
      */
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         val handled = super.dispatchTouchEvent(event)
+        if (backspaceGestureActive) {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_MOVE -> updateBackspaceGesture(event.rawX, event.rawY)
+                MotionEvent.ACTION_UP -> finishBackspaceGesture(commit = true)
+                MotionEvent.ACTION_CANCEL -> finishBackspaceGesture(commit = false)
+            }
+        }
         if (spaceVoiceGestureActive) {
             when (event.actionMasked) {
                 MotionEvent.ACTION_MOVE -> {
-                    if (!spaceVoiceGestureCancel && spaceVoiceDownY - event.rawY >= dp(48)) {
-                        spaceVoiceGestureCancel = true
-                        voiceCancelPreviewAction?.invoke()
+                    val cancelNow = spaceVoiceDownY - event.rawY >= dp(48)
+                    if (cancelNow != spaceVoiceGestureCancel) {
+                        spaceVoiceGestureCancel = cancelNow
+                        voiceCancelPreviewAction?.invoke(cancelNow)
                     }
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -1185,10 +1422,11 @@ open class ImeKeyboardView(
                     false
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    if (voiceLongPressed && voiceDownY - event.rawY >= dp(48) && !voiceCancelPreview) {
-                        voiceCancelPreview = true
-                        spaceVoiceGestureCancel = true
-                        voiceCancelPreviewAction?.invoke()
+                    val cancelNow = voiceLongPressed && voiceDownY - event.rawY >= dp(48)
+                    if (voiceLongPressed && cancelNow != voiceCancelPreview) {
+                        voiceCancelPreview = cancelNow
+                        spaceVoiceGestureCancel = cancelNow
+                        voiceCancelPreviewAction?.invoke(cancelNow)
                     }
                     voiceLongPressed
                 }
@@ -1222,13 +1460,25 @@ open class ImeKeyboardView(
     fun startVoiceFromSpace() {
         prepareVoiceController()
         voiceGestureSession = true
-        voiceStartAction?.invoke()
+        voiceInlineGeneration++
+        showInlineVoiceState("正在准备麦克风…")
+        startInlineVoicePulse()
+        // Let the in-place state row draw before model/session startup begins.
+        post {
+            if (voiceGestureSession) voiceStartAction?.invoke()
+        }
     }
 
     /** Ends recording when the combined space key is released. */
     fun stopVoiceFromSpace() {
+        if (!voiceGestureSession) return
+        voiceGestureSession = false
+        stopInlineVoicePulse()
+        showInlineVoiceState("正在识别…")
         voiceStopAction?.invoke()
-        revealVoicePanelAfterGesture()
+        // A first-use model startup can be cancelled before the backend emits
+        // a terminal callback. Never leave the keyboard stuck in voice UI.
+        hideInlineVoiceStateLater(4_000L)
     }
 
     private fun renderPanel(panel: Panel) {
@@ -1262,21 +1512,6 @@ open class ImeKeyboardView(
         expandedPanel.visibility = View.GONE
         renderVoice()
         expandedPanel.visibility = View.GONE
-        applyTheme()
-    }
-
-    /** Show the already-populated voice page only after the space gesture has ended. */
-    private fun revealVoicePanelAfterGesture() {
-        if (!voiceGestureSession) return
-        voiceGestureSession = false
-        if (panel != Panel.VOICE) {
-            panel = Panel.VOICE
-            listener.onPanelChanged(Panel.VOICE)
-        }
-        mainDock.visibility = View.GONE
-        keyboardBody.visibility = View.GONE
-        candidateOverlay.visibility = View.GONE
-        expandedPanel.visibility = View.VISIBLE
         applyTheme()
     }
 
@@ -1768,6 +2003,7 @@ open class ImeKeyboardView(
         var recognizedText = ""
         var voiceCancelled = false
         var cancelPreview = false
+        var modelPrepared = false
         val langButton = button(languages[voiceLanguageIndex].first, 13f, true).apply {
             setOnClickListener {
                 voiceLanguageIndex = (voiceLanguageIndex + 1) % languages.size
@@ -1800,12 +2036,16 @@ open class ImeKeyboardView(
             if (!provider.isAvailable()) {
                 modelStatus.text = "离线模型未就绪 · 请先放入已校验的模型包"
                 transcript.text = "当前不会调用联网识别；模型接入后这里显示实时结果"
+                showInlineVoiceState("本地语音模型未就绪")
+                hideInlineVoiceStateLater(1_500L)
                 return
             }
             recognizedText = ""
             voiceCancelled = false
             cancelPreview = false
+            modelPrepared = false
             voiceActive = true
+            showInlineVoiceState("正在准备麦克风…")
             micButton.text = "⏹"
             gestureHint.text = "松开空格上屏 · 上滑取消"
             modelStatus.text = "正在使用离线模型 · 音频不出设备"
@@ -1819,9 +2059,11 @@ open class ImeKeyboardView(
                     post {
                         if (!voiceActive || voiceCancelled) return@post
                         if (cancelPreview) return@post
+                        modelPrepared = true
                         if (text.isNotBlank()) recognizedText = text
                         transcript.text = text
                         modelStatus.text = "正在聆听 · 松开空格结束"
+                        showInlineVoiceState(text.ifBlank { "正在聆听…" })
                         listener.onVoicePartial(text)
                     }
                 }
@@ -1835,15 +2077,22 @@ open class ImeKeyboardView(
                         voiceActive = false
                         modelStatus.text = "离线识别完成 · 已自动上屏"
                         listener.onVoiceFinal(text)
+                        showInlineVoiceState(if (text.isBlank()) "没有识别到语音" else "已上屏")
+                        hideInlineVoiceStateLater(if (text.isBlank()) 900L else 280L)
                     }
                 }
                 override fun onRms(rms: Float) {
                     val h = (8 + (rms * 4f).coerceIn(0f, 52f)).toInt().coerceIn(8, 64)
                     post {
+                        if (!voiceActive || voiceCancelled || cancelPreview) return@post
                         waves.forEach { it.layoutParams = LinearLayout.LayoutParams(dp(4), h).apply {
                             marginEnd = dp(5)
                         } }
                         waveBar.invalidate()
+                        showInlineVoiceState(
+                            if (modelPrepared) "正在聆听…" else "正在录音 · 模型准备中…",
+                            rms = rms,
+                        )
                     }
                 }
                 override fun onError(message: String) {
@@ -1856,13 +2105,31 @@ open class ImeKeyboardView(
                         voiceActive = false
                         modelStatus.text = "语音未完成 · 请检查本地模型和麦克风权限"
                         listener.onVoiceError(message)
+                        showInlineVoiceState(message.ifBlank { "语音输入失败" })
+                        hideInlineVoiceStateLater(1_500L)
                     }
                 }
                 override fun onReady() {
                     post {
+                        if (voiceCancelled) return@post
                         micButton.text = "⏹"
-                        gestureHint.text = "松开空格上屏 · 上滑取消"
-                        modelStatus.text = "正在聆听 · 松开空格结束"
+                        if (voiceActive) {
+                            gestureHint.text = "松开空格上屏 · 上滑取消"
+                            modelStatus.text = "正在录音 · 本地模型准备中"
+                            showInlineVoiceState("正在录音 · 模型准备中…")
+                        } else {
+                            gestureHint.text = "整理识别结果…"
+                            modelStatus.text = "正在整理识别结果…"
+                            showInlineVoiceState("正在识别…")
+                        }
+                    }
+                }
+                override fun onModelReady() {
+                    post {
+                        if (!voiceActive || voiceCancelled || cancelPreview) return@post
+                        modelPrepared = true
+                        modelStatus.text = "正在识别 · 松开空格结束"
+                        showInlineVoiceState("正在聆听…")
                     }
                 }
             })
@@ -1874,44 +2141,52 @@ open class ImeKeyboardView(
             gestureHint.text = "整理识别结果…"
             voiceActive = false
             modelStatus.text = "正在整理识别结果…"
+            showInlineVoiceState("正在识别…")
         }
         fun cancelVoice() {
             if (voiceCancelled) return
             voiceCancelled = true
             cancelPreview = false
             voiceActive = false
-            voiceProvider?.stop()
+            voiceProvider?.cancel()
             recognizedText = ""
             micButton.text = "🎤"
             gestureHint.text = "长按空格开始"
             listener.onVoiceCancel()
             transcript.text = "已取消语音输入"
             modelStatus.text = "语音已取消 · 音频未保存"
+            showInlineVoiceState("已取消")
+            hideInlineVoiceStateLater(260L)
         }
         voiceStartAction = { startVoice() }
         voiceStopAction = { stopVoice() }
         voiceCancelAction = {
+            voiceGestureSession = false
             cancelVoice()
-            if (voiceGestureSession) revealVoicePanelAfterGesture()
-            else if (panel == Panel.VOICE) {
-                expandedPanel.visibility = View.VISIBLE
-                applyTheme()
-            }
         }
-        voiceCancelPreviewAction = {
-            cancelPreview = true
-            transcript.text = "上滑取消 · 松开丢弃本次语音"
-            modelStatus.text = "取消状态 · 松开将丢弃"
+        voiceCancelPreviewAction = { cancelling ->
+            cancelPreview = cancelling
+            if (cancelling) {
+                transcript.text = "上滑取消 · 松开丢弃本次语音"
+                modelStatus.text = "取消状态 · 松开将丢弃"
+                showInlineVoiceState("松开取消", cancelling = true)
+            } else {
+                transcript.text = recognizedText.ifBlank { "正在聆听… 松开空格结束" }
+                modelStatus.text = "正在聆听 · 松开空格结束"
+                showInlineVoiceState(recognizedText.ifBlank { "正在聆听…" })
+            }
         }
     }
 
     private fun stopVoiceIfActive() {
-        voiceProvider?.stop()
+        voiceProvider?.cancel()
         voiceProvider = null
         voiceActive = false
         voiceGestureSession = false
         spaceVoiceGestureActive = false
         spaceVoiceGestureCancel = false
+        voiceInlineGeneration++
+        hideInlineVoiceState()
         if (panel == Panel.VOICE) listener.onVoiceCancel()
         voiceStartAction = null
         voiceStopAction = null
@@ -2491,7 +2766,7 @@ open class ImeKeyboardView(
                     MotionEvent.ACTION_DOWN -> {
                         lastTouchX = event.rawX
                         lastTouchY = event.rawY
-                        Log.d("MinisIme", "floating-drag-down x=${event.rawX} y=${event.rawY}")
+                        Log.d("OpenIme", "floating-drag-down x=${event.rawX} y=${event.rawY}")
                         true
                     }
                     MotionEvent.ACTION_MOVE -> {
@@ -2655,39 +2930,93 @@ open class ImeKeyboardView(
             lastT9Digits = digits
             publishComposition(digits, engine.getT9EnglishCandidates(digits), selection)
         } else if (mode == KeyboardMode.PINYIN_9) {
-            // Chinese 9-key is a continuous digit buffer. The visible pre-edit
-            // is always Pinyin, never the raw keypad digits, so a user can edit
-            // the syllables and still see the same candidate pipeline as 26-key.
-            val digits = (lastNineDigits + num).take(64)
-            val result = engine.get9KeyCandidates(digits)
-            val segmentPrefix = composition.text
-                .toString()
-                .takeIf { lastNineDigits.isEmpty() && it.endsWith(' ') }
-                .orEmpty()
-            val segmentPreview = result.pinyins.firstOrNull { it.isNotBlank() }
-                ?: digits.mapNotNull { digit ->
-                    ImeData.keypad9Map[digit.toString()]
-                        ?.firstOrNull { it.length == 1 && it[0] in 'a'..'z' }
-                }.joinToString("")
-            val preview = segmentPrefix + segmentPreview
-            // Long streams already carry the bounded decoder's best text;
-            // resolving the entire raw Pinyin again on the UI thread only
-            // adds latency and gives no better result.
-            val localCandidates = if (preview.length <= 32) {
-                engine.getCandidates(preview, fuzzyEnabled)
-            } else {
-                emptyList()
+            if (lastNineDigits.isEmpty()) {
+                lastNineSegmentPrefix = composition.text
+                    .toString()
+                    .takeIf { it.endsWith(' ') }
+                    .orEmpty()
             }
-            val candidates = (result.candidates + localCandidates)
-                .filter { it.isNotEmpty() && it.none(Char::isDigit) }
-                .distinct()
-                .take(96)
-            lastNineDigits = digits
-            lastNineCandidates = candidates
-            publishComposition(preview, candidates)
+            publishNineKeyDigits((lastNineDigits + num).take(64))
         } else {
             listener.onCharacter(num)
         }
+    }
+
+    /** Decode one bounded digit buffer without discarding alternate Pinyin paths. */
+    private fun publishNineKeyDigits(
+        digits: String,
+        preferredSuffix: String? = null,
+    ) {
+        val result = engine.get9KeyCandidates(digits)
+        val fallbackPath = digits.mapNotNull { digit ->
+            ImeData.keypad9Map[digit.toString()]
+                ?.firstOrNull { it.length == 1 && it[0] in 'a'..'z' }
+        }.joinToString("")
+        val stableSuffix = preferredSuffix
+            ?.lowercase()
+            ?.takeIf { suffix -> nineKeyDigitsFor(suffix) == digits }
+        val pinyinPaths = (listOfNotNull(stableSuffix) + result.pinyins)
+            .asSequence()
+            .filter { it.isNotBlank() }
+            .map { lastNineSegmentPrefix + it }
+            .distinct()
+            .take(8)
+            .toList()
+            .ifEmpty {
+                listOf(lastNineSegmentPrefix + fallbackPath).filter { it.isNotBlank() }
+            }
+        val preview = pinyinPaths.firstOrNull().orEmpty()
+        val localCandidates = if (preview.length <= 32) {
+            engine.getCandidates(preview, fuzzyEnabled)
+        } else {
+            emptyList()
+        }
+        val candidates = (
+            if (lastNineSegmentPrefix.isEmpty()) {
+                result.candidates + localCandidates
+            } else {
+                localCandidates + result.candidates
+            }
+            )
+            .filter { it.isNotEmpty() && it.none(Char::isDigit) }
+            .distinct()
+            .take(96)
+        lastNineDigits = digits
+        lastNinePinyinPaths = pinyinPaths
+        lastNineCandidates = candidates
+        setCompositionText(preview)
+        pinyinBuffer.clear()
+        pinyinBuffer.append(preview)
+        currentCandidates = candidates
+        updateTopZone(preview.isNotEmpty())
+        renderCandidateRow()
+        listener.onNineKeyCompositionChanged(
+            composition = preview,
+            digitBuffer = digits,
+            pinyinPaths = pinyinPaths,
+            candidates = candidates,
+        )
+        applyCandidateTheme()
+    }
+
+    private fun nineKeyDigitsFor(pinyin: String): String? {
+        val digits = StringBuilder(pinyin.length)
+        pinyin.forEach { ch ->
+            digits.append(
+                when (ch) {
+                    in 'a'..'c' -> '2'
+                    in 'd'..'f' -> '3'
+                    in 'g'..'i' -> '4'
+                    in 'j'..'l' -> '5'
+                    in 'm'..'o' -> '6'
+                    in 'p'..'s' -> '7'
+                    in 't'..'v' -> '8'
+                    in 'w'..'z' -> '9'
+                    else -> return null
+                },
+            )
+        }
+        return digits.toString()
     }
 
     /** Insert an editable syllable boundary without committing the text. */
@@ -2696,9 +3025,13 @@ open class ImeKeyboardView(
         if (insertIntoInlineEditor(" ")) return
         val current = composition.text.toString()
         if (current.isBlank() || current.endsWith(' ')) return
-        if (mode == KeyboardMode.PINYIN_9) lastNineDigits = ""
+        if (mode == KeyboardMode.PINYIN_9) {
+            lastNineDigits = ""
+            lastNinePinyinPaths = emptyList()
+        }
         val (next, selection) = replaceCompositionSelection(" ")
         publishComposition(next, candidatesForComposition(next), selection)
+        if (mode == KeyboardMode.PINYIN_9) lastNineSegmentPrefix = next
     }
 
     private fun publishComposition(text: String, candidates: List<String>, selection: Int? = null) {
@@ -2727,7 +3060,11 @@ open class ImeKeyboardView(
         pinyinBuffer.clear()
         pinyinBuffer.append(text)
         when (mode) {
-            KeyboardMode.PINYIN_9 -> lastNineDigits = ""
+            KeyboardMode.PINYIN_9 -> {
+                lastNineDigits = ""
+                lastNineSegmentPrefix = ""
+                lastNinePinyinPaths = emptyList()
+            }
             KeyboardMode.ENGLISH_T9 -> lastT9Digits = text
             else -> Unit
         }
@@ -2758,6 +3095,30 @@ open class ImeKeyboardView(
 
     /** Delete at the visible pre-edit cursor; fall back to target-text deletion otherwise. */
     private fun deleteCompositionAtCursor(): Boolean {
+        if (mode == KeyboardMode.PINYIN_9 && lastNineDigits.isNotEmpty()) {
+            val length = composition.text.length
+            val editingInsideVisiblePinyin = composition.hasFocus() &&
+                (composition.selectionStart != length || composition.selectionEnd != length)
+            if (!editingInsideVisiblePinyin) {
+                val nextDigits = lastNineDigits.dropLast(1)
+                if (nextDigits.isNotEmpty()) {
+                    val currentSuffix = composition.text
+                        .toString()
+                        .removePrefix(lastNineSegmentPrefix)
+                    publishNineKeyDigits(nextDigits, currentSuffix.dropLast(1))
+                } else {
+                    lastNineDigits = ""
+                    lastNinePinyinPaths = emptyList()
+                    val prefix = lastNineSegmentPrefix
+                    publishComposition(
+                        prefix,
+                        if (prefix.isEmpty()) emptyList() else candidatesForComposition(prefix),
+                        prefix.length,
+                    )
+                }
+                return true
+            }
+        }
         if (!composition.hasFocus() || composition.text.isEmpty()) return false
         val current = composition.text.toString()
         val start = composition.selectionStart.coerceIn(0, current.length)
@@ -2769,6 +3130,11 @@ open class ImeKeyboardView(
             start
         }
         val next = current.removeRange(deleteStart, end)
+        if (mode == KeyboardMode.PINYIN_9) {
+            lastNineDigits = ""
+            lastNineSegmentPrefix = ""
+            lastNinePinyinPaths = emptyList()
+        }
         publishComposition(next, candidatesForComposition(next), deleteStart)
         return true
     }
@@ -2889,8 +3255,103 @@ open class ImeKeyboardView(
         minimumHeight = dp(28)
     }
 
-    private fun backspaceKey(): ImeKeyView = key("", true, null, 1f, 15f, iconRes = R.drawable.ic_backspace) {
+    private fun performBackspaceOnce() {
         if (!deleteCompositionAtCursor()) listener.onBackspace()
+    }
+
+    private fun beginBackspaceGesture(
+        anchor: View,
+        rawX: Float,
+        rawY: Float,
+        clearUiAction: (Boolean) -> Unit,
+    ) {
+        if (backspaceGestureActive) finishBackspaceGesture(commit = false)
+        repeatHandler.removeCallbacks(repeatAction)
+        backspaceRepeatStartAction?.let(repeatHandler::removeCallbacks)
+        backspaceGestureActive = true
+        backspaceClearArmed = false
+        backspaceRepeatStarted = false
+        backspaceStartX = rawX
+        backspaceStartY = rawY
+        backspaceAnchor = anchor
+        backspaceClearUiAction = clearUiAction
+        anchor.isPressed = true
+        anchor.parent?.requestDisallowInterceptTouchEvent(true)
+        clearUiAction(false)
+        hidePopup()
+        feedback()
+        val startRepeat = Runnable {
+            if (backspaceGestureActive && !backspaceClearArmed) repeatAction.run()
+        }
+        backspaceRepeatStartAction = startRepeat
+        repeatHandler.postDelayed(startRepeat, ViewConfiguration.getLongPressTimeout().toLong())
+    }
+
+    private fun updateBackspaceGesture(rawX: Float, rawY: Float) {
+        if (!backspaceGestureActive) return
+        val upward = backspaceStartY - rawY
+        val horizontal = kotlin.math.abs(rawX - backspaceStartX)
+        // As soon as the motion clearly points upward, suspend repeat-delete
+        // while waiting for the clear threshold. A slow swipe must not erase
+        // characters one by one before it becomes an atomic clear.
+        if (upward >= dp(8) && horizontal <= dp(96)) {
+            backspaceRepeatStartAction?.let(repeatHandler::removeCallbacks)
+            repeatHandler.removeCallbacks(repeatAction)
+        }
+        val shouldArm = if (backspaceClearArmed) {
+            upward > dp(16) && horizontal <= dp(120)
+        } else {
+            upward >= dp(36) && horizontal <= dp(96)
+        }
+        if (shouldArm == backspaceClearArmed) return
+        backspaceClearArmed = shouldArm
+        backspaceClearUiAction?.invoke(shouldArm)
+        if (shouldArm) {
+            backspaceRepeatStartAction?.let(repeatHandler::removeCallbacks)
+            repeatHandler.removeCallbacks(repeatAction)
+            backspaceAnchor?.let { showPopup(it, "清空") }
+            repeatHandler.removeCallbacks(popupHideRunnable)
+            Log.d("OpenIme", "backspace-clear-armed dy=$upward dx=$horizontal")
+        } else {
+            hidePopup()
+            Log.d("OpenIme", "backspace-clear-disarmed dy=$upward dx=$horizontal")
+        }
+    }
+
+    private fun finishBackspaceGesture(commit: Boolean) {
+        if (!backspaceGestureActive) return
+        val clearAll = commit && backspaceClearArmed
+        val deleteOnce = commit && !backspaceClearArmed && !backspaceRepeatStarted
+        repeatHandler.removeCallbacks(repeatAction)
+        backspaceRepeatStartAction?.let(repeatHandler::removeCallbacks)
+        backspaceRepeatStartAction = null
+        backspaceAnchor?.apply {
+            isPressed = false
+            parent?.requestDisallowInterceptTouchEvent(false)
+        }
+        backspaceClearUiAction?.invoke(false)
+        backspaceGestureActive = false
+        backspaceClearArmed = false
+        backspaceRepeatStarted = false
+        backspaceAnchor = null
+        backspaceClearUiAction = null
+        when {
+            clearAll -> {
+                // One callback performs one batch clear. Never emulate this by
+                // dispatching hundreds of backspace events.
+                listener.onClearAll()
+                repeatHandler.postDelayed(popupHideRunnable, 320L)
+            }
+            deleteOnce -> {
+                hidePopup()
+                performBackspaceOnce()
+            }
+            else -> hidePopup()
+        }
+    }
+
+    private fun backspaceKey(): ImeKeyView = key("", true, null, 1f, 15f, iconRes = R.drawable.ic_backspace) {
+        performBackspaceOnce()
     }.apply {
         tag = "key-backspace"
         contentDescription = "删除，向上滑清空"
@@ -2910,9 +3371,6 @@ open class ImeKeyboardView(
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
             topMargin = dp(2)
         })
-        var swipeStartX = 0f
-        var swipeStartY = 0f
-        var clearSwipe = false
         fun setClearHintActive(active: Boolean) {
             if (active) {
                 clearHint.text = "清空"
@@ -2926,53 +3384,21 @@ open class ImeKeyboardView(
                 clearHint.alpha = 0.72f
             }
         }
-        setOnLongClickListener {
-            repeatHandler.removeCallbacks(repeatAction)
-            repeatHandler.postDelayed(repeatAction, 300L)
-            true
-        }
-        setOnTouchListener { _, event ->
+        setOnTouchListener { view, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    swipeStartX = event.rawX
-                    swipeStartY = event.rawY
-                    clearSwipe = false
-                    setClearHintActive(false)
                     clearHint.alpha = 1f
-                    Log.d("MinisIme", "backspace-touch-down x=${event.rawX} y=${event.rawY}")
-                    false
+                    beginBackspaceGesture(view, event.rawX, event.rawY, ::setClearHintActive)
+                    Log.d("OpenIme", "backspace-touch-down x=${event.rawX} y=${event.rawY}")
+                    true
                 }
-                MotionEvent.ACTION_MOVE -> {
-                    val upward = swipeStartY - event.rawY
-                    val horizontal = kotlin.math.abs(event.rawX - swipeStartX)
-                    if (clearSwipe && upward <= dp(16)) {
-                        clearSwipe = false
-                        setClearHintActive(false)
-                        hidePopup()
-                    } else if (!clearSwipe && upward >= dp(36) && horizontal <= dp(96)) {
-                        clearSwipe = true
-                        repeatHandler.removeCallbacks(repeatAction)
-                        setClearHintActive(true)
-                        showPopup(this, "清空")
-                        repeatHandler.removeCallbacks(popupHideRunnable)
-                        Log.d("MinisIme", "backspace-clear-swipe dy=$upward dx=$horizontal")
-                    }
-                    clearSwipe
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    repeatHandler.removeCallbacks(repeatAction)
-                    val consumed = clearSwipe
-                    if (consumed) {
-                        if (event.actionMasked == MotionEvent.ACTION_UP) listener.onClearAll()
-                        setClearHintActive(false)
-                        repeatHandler.postDelayed(popupHideRunnable, 520L)
-                    } else {
-                        setClearHintActive(false)
-                    }
-                    clearSwipe = false
-                    consumed
-                }
-                else -> clearSwipe
+                // The keyboard root owns MOVE/UP so the gesture survives even
+                // when the finger leaves this key's rectangle.
+                MotionEvent.ACTION_MOVE,
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL,
+                -> true
+                else -> true
             }
         }
     }
@@ -2998,7 +3424,10 @@ open class ImeKeyboardView(
             gravity = Gravity.CENTER
             setPadding(dp(8), dp(6), dp(8), dp(6))
             setTextColor(Color.WHITE)
-            background = rounded(t.primary, dp(12))
+            background = rounded(
+                if (char == "清空") Color.rgb(211, 47, 47) else t.primary,
+                dp(12),
+            )
             elevation = dp(4).toFloat()
         }
         val anchorLocation = IntArray(2)
@@ -3092,6 +3521,7 @@ open class ImeKeyboardView(
         applyThemeRecursive(this, t)
         composition.setTextColor(t.keySecondaryText)
         candidateExpandBtn.setTextColor(t.keySecondaryText)
+        if (voiceInlineActive) applyInlineVoicePalette()
     }
 
     private fun applyCandidateTheme() {

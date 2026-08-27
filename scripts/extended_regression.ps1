@@ -90,8 +90,8 @@ function AssertContains([string]$name, [string]$expected, [string]$actual) {
 function WaitForMode([string]$mode) {
     for ($i = 0; $i -lt 8; $i++) {
         SendCommand 'state'
-        $log = Adb logcat -d -t 300 | Select-String -Pattern 'MinisImeE2E' | Out-String
-        if ($log -match ('MinisImeE2E: STATE mode=' + $mode)) { return }
+        $log = Adb logcat -d -t 300 | Select-String -Pattern 'OpenImeE2E' | Out-String
+        if ($log -match ('OpenImeE2E: STATE mode=' + $mode)) { return }
         Tap 'key:mode'
         Start-Sleep -Milliseconds 350
     }

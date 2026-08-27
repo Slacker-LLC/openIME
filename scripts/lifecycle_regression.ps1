@@ -74,7 +74,7 @@ function StateLog {
     Start-Sleep -Milliseconds 200
     (
         Adb logcat -d -t 300 |
-            Select-String -Pattern 'MinisImeE2E|MinisIme' |
+            Select-String -Pattern 'OpenImeE2E|OpenIme' |
             Out-String
     )
 }
@@ -109,14 +109,14 @@ FocusById 'llc.slacker.openime:id/lifecycle_b'
 AssertContains 'composition cleared after hide/show' 'compositionLength=0' (StateLog)
 AssertContains 'editor text retained after hide/show' 'hi' (GetText 'llc.slacker.openime:id/lifecycle_b')
 
-# Voice panel open/close
-Tap '工具'
-Tap '语音'
-# The only production voice entry is the combined space-key long press.
-# Opening the panel alone must not start recording or expose a manual commit flow.
-Adb shell pidof $pkg | Out-Null
-Tap 'key-panel-back'
-AssertContains 'voice stopped after panel close' 'voice=false' (StateLog)
+# The only production voice entry is the combined space key. The debug command
+# enters the same press/release callback used after the real 150ms threshold;
+# it does not add a second UI entry.
+Adb shell pm grant $pkg android.permission.RECORD_AUDIO | Out-Null
+SendCommand 'voice-press'
+AssertContains 'voice starts on held space path' 'voice=true' (StateLog)
+SendCommand 'voice-release'
+AssertContains 'voice stops on space release' 'voice=false' (StateLog)
 
 StartActivity 'LifecycleTestActivity'
 FocusById 'llc.slacker.openime:id/lifecycle_a'

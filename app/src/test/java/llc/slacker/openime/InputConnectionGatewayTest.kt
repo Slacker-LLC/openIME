@@ -15,7 +15,11 @@ import org.junit.Test
 
 class InputConnectionGatewayTest {
 
-    private class FakeInputConnection : InputConnection {
+    private class FakeInputConnection(
+        var beforeText: String = "",
+        var afterText: String = "",
+        var selectedText: String = "",
+    ) : InputConnection {
         val events = mutableListOf<String>()
 
         override fun beginBatchEdit(): Boolean = false
@@ -50,9 +54,9 @@ class InputConnectionGatewayTest {
                 startOffset = 0
             }
         override fun getHandler(): Handler? = null
-        override fun getSelectedText(flags: Int): CharSequence? = null
-        override fun getTextAfterCursor(length: Int, flags: Int): CharSequence? = null
-        override fun getTextBeforeCursor(length: Int, flags: Int): CharSequence? = null
+        override fun getSelectedText(flags: Int): CharSequence? = selectedText
+        override fun getTextAfterCursor(length: Int, flags: Int): CharSequence? = afterText
+        override fun getTextBeforeCursor(length: Int, flags: Int): CharSequence? = beforeText
         override fun performContextMenuAction(id: Int): Boolean = false
         override fun performEditorAction(editorAction: Int): Boolean {
             events += "action:$editorAction"
@@ -121,6 +125,27 @@ class InputConnectionGatewayTest {
         val emoji = "👨‍👩‍👧‍👦"
         gateway.commitText(emoji)
         assertEquals(listOf("commit:$emoji"), fake.events)
+    }
+
+    @Test
+    fun clearAllCancelsCompositionThenUsesOneBatchDelete() {
+        val fake = FakeInputConnection(
+            beforeText = "旧😀",
+            selectedText = "选中",
+            afterText = "文本",
+        )
+        val gateway = InputConnectionGateway(null, { fake })
+
+        assertTrue(gateway.clearAllText())
+
+        assertEquals("compose:", fake.events[0])
+        assertEquals("finish", fake.events[1])
+        assertEquals(1, fake.events.count { it.startsWith("delete") })
+        assertTrue(
+            fake.events.any {
+                it == "deleteCodePoints:2:2" || it == "delete:3:2"
+            },
+        )
     }
 
     @Test

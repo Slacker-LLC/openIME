@@ -27,7 +27,7 @@ NOT TESTED
 | Expanded Candidate Overlay | PASS | `04_real_candidate_expanded_after.png` | 有真实候选 `你好/您好/泥壕/拟好` |
 | Root 无大块空白 | PASS | 全部真实 after 截图 | `DebugKeyboardActivity` 已改为 wrap_content |
 
-## 26 键 / 9 键 / T9 / 数字
+## 26 键 / 拼音九键 / 数字
 
 | 项目 | 状态 | 证据 | 备注 |
 | -- | -- | -- | -- |
@@ -39,8 +39,6 @@ NOT TESTED
 | Enter Primary | PASS | `01_real_pinyin26_after.png` | `确认/Go` 使用主题 primary |
 | Pinyin9 sidebar | PASS | `06_real_pinyin9_after.png` | left filters / center grid / right actions 均可见 |
 | Pinyin9 `64426 → 你好` | PASS | `06...` + actual input | 真实 IME 输入通过 |
-| English T9 | PASS | `07_real_english_t9_after.png` | left T9 模式 / center grid / right actions |
-| T9 `4663 → good` | PASS | actual `v2_real_t9_input3.xml` | 真实 IME 输入通过 |
 | Digits right sidebar | PASS | `08_real_digits_after.png` | 右栏 Backspace/拼音/确认 |
 | Digits `123 → 123` | PASS | actual `v2_real_digit_input.xml` | 真实 IME 输入通过 |
 
@@ -83,7 +81,6 @@ NOT TESTED
 | -- | -- | -- |
 | `nihao → 你好` | PASS | 真实 IME input + `v2_real_candidate_selected.xml` |
 | `64426 → 你好` | PASS | 真实 IME input + `v2_real_p9_input.xml` |
-| `4663 → good` | PASS | 真实 IME input + `v2_real_t9_input3.xml` |
 | `123 → 123` | PASS | 真实 IME input + `v2_real_digit_input.xml` |
 | Symbol / Emoji commit | PASS | debug commit status `symbol=，`、`emoji=😀` |
 | Candidate Expanded | PASS | `04_real_candidate_expanded_after.png` |

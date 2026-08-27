@@ -7,13 +7,29 @@ package llc.slacker.openime
 class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
 
     private val pinyinDict: Map<String, List<String>> = LinkedHashMap<String, List<String>>().apply {
-        putAll(ImeData.pinyinDict)
         externalPinyin.forEach { (key, values) ->
+            this[key] = values.distinct().take(96)
+        }
+        ImeData.pinyinDict.forEach { (key, values) ->
+            // The generated full lexicon is the useful immediate fallback.
+            // The compact hand-written table only fills gaps behind it and
+            // must not silently replace its frequency order.
             this[key] = (get(key).orEmpty() + values).distinct().take(96)
         }
     }
 
-    private val syllableKeys = pinyinDict.keys.sortedByDescending { it.length }
+    private val sortedPinyinKeys = pinyinDict.keys.sorted()
+    private val syllablesByFirst: Map<Char, List<String>> = pinyinDict
+        .asSequence()
+        .filter { (key, values) ->
+            key.length <= 6 && values.any { value ->
+                value.codePointCount(0, value.length) == 1
+            }
+        }
+        .map { it.key }
+        .distinct()
+        .sortedByDescending { it.length }
+        .groupBy { it.first() }
 
     private data class SyllableState(
         val score: Int,
@@ -97,6 +113,9 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
                 .thenByDescending { it.phrase },
         )
     }
+    private val segmentationTokensByFirst: Map<Char, List<SegmentationToken>> by lazy {
+        segmentationTokens.groupBy { it.pinyin.first() }
+    }
 
     /**
      * A compact T9 index. 9-key input must never enumerate every possible
@@ -138,10 +157,6 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
         }
 
         val result = linkedSetOf<String>()
-        // User choices outrank the built-in frequency order but do not hide
-        // the normal candidates. This is how the user can reliably get a
-        // less-common character or a personal phrase after selecting it once.
-        result.addAll(UserPhraseRepository.candidatesFor(py))
         if (fuzzy) {
             fuzzyVariants(py).forEach { variant ->
                 result.addAll(ImeData.phraseDict[variant].orEmpty())
@@ -159,8 +174,13 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
         ImeData.phraseDict.forEach { (key, list) ->
             if (key.startsWith(py)) result.addAll(list)
         }
-        pinyinDict.forEach { (key, list) ->
-            if (key.startsWith(py)) result.addAll(list.take(3))
+        var prefixIndex = lowerBound(sortedPinyinKeys, py)
+        while (prefixIndex < sortedPinyinKeys.size) {
+            val key = sortedPinyinKeys[prefixIndex]
+            if (!key.startsWith(py)) break
+            result.addAll(pinyinDict[key].orEmpty().take(3))
+            if (result.size >= 96) break
+            prefixIndex++
         }
 
         if (result.isEmpty() && py.length > 2) {
@@ -231,7 +251,6 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
 
         val key = parts.joinToString("|")
         val result = linkedSetOf<String>()
-        result.addAll(UserPhraseRepository.candidatesFor(key))
         result.addAll(ImeData.segmentedPhraseDict[key].orEmpty())
 
         // The general fallback handles arbitrary boundaries even when a
@@ -258,7 +277,7 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
         best[0] = SyllableState(score = 0, parts = 0, initials = "")
         for (start in pinyin.indices) {
             val previous = best[start] ?: continue
-            syllableKeys.forEach { syllable ->
+            syllablesByFirst[pinyin[start]].orEmpty().forEach { syllable ->
                 if (!pinyin.startsWith(syllable, start)) return@forEach
                 val end = start + syllable.length
                 val next = SyllableState(
@@ -288,7 +307,7 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
         best[0] = SegmentationState(score = 0, parts = 0, text = "")
         for (start in py.indices) {
             val previous = best[start] ?: continue
-            segmentationTokens.forEach { token ->
+            segmentationTokensByFirst[py[start]].orEmpty().forEach { token ->
                 if (!py.startsWith(token.pinyin, start)) return@forEach
                 val end = start + token.pinyin.length
                 val next = SegmentationState(
@@ -497,10 +516,20 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
         }.joinToString("")
     }
 
-    private companion object {
+    private fun lowerBound(values: List<String>, target: String): Int {
+        var low = 0
+        var high = values.size
+        while (low < high) {
+            val middle = (low + high) ushr 1
+            if (values[middle] < target) low = middle + 1 else high = middle
+        }
+        return low
+    }
+
+    internal companion object {
         const val MAX_NINE_KEY_DIGITS = 64
-        const val MAX_NINE_MATCHES = 12
-        const val MAX_LOCAL_RESOLVE_LENGTH = 32
+        private const val MAX_NINE_MATCHES = 12
+        private const val MAX_LOCAL_RESOLVE_LENGTH = 32
     }
 }
 

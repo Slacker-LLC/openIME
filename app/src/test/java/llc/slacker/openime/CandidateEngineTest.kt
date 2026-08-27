@@ -101,9 +101,11 @@ class CandidateEngineTest {
     }
 
     @Test
-    fun userChoiceCanBeRankedBeforeBuiltInCandidates() {
+    fun fallbackDictionaryDoesNotLetLegacyLearningOverrideItsOrder() {
+        UserPhraseRepository.clear()
         UserPhraseRepository.record("nihao", "自定义词")
-        assertEquals("自定义词", engine.getCandidates("nihao").first())
+        repeat(2) { UserPhraseRepository.record("nihao", "自定义词") }
+        assertTrue("备用引擎不应混入第二套学习排序", "自定义词" !in engine.getCandidates("nihao"))
         UserPhraseRepository.clear()
     }
 

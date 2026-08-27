@@ -3,6 +3,13 @@
     xmlns:tools="http://schemas.android.com/tools">
     <application>
         <activity
+            android:name=".DebugKeyboardActivity"
+            android:exported="true"
+            android:theme="@style/AppTheme" />
+        <activity
+            android:name=".ImeTestLabActivity"
+            android:exported="true" />
+        <activity
             android:name=".SecurityTestActivity"
             android:exported="true" />
         <activity

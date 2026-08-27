@@ -67,8 +67,8 @@ function Tap([string]$target) {
 function Mode([string]$mode) {
     for ($i = 0; $i -lt 8; $i++) {
         SendCommand 'state'
-        $log = Adb logcat -d -t 300 | Select-String -Pattern 'MinisImeE2E' | Out-String
-        if ($log -match ('MinisImeE2E: STATE mode=' + $mode)) { return }
+        $log = Adb logcat -d -t 300 | Select-String -Pattern 'OpenImeE2E' | Out-String
+        if ($log -match ('OpenImeE2E: STATE mode=' + $mode)) { return }
         Tap 'key:mode'
         Start-Sleep -Milliseconds 350
     }
@@ -98,6 +98,7 @@ Adb install -r $apk
 if ($LASTEXITCODE -ne 0) {
     throw ('APK install failed on ' + $Serial + ' with exit ' + $LASTEXITCODE)
 }
+Adb shell pm grant $pkg android.permission.RECORD_AUDIO | Out-Null
 Adb shell settings put --user 0 secure show_ime_with_hard_keyboard 1
 Adb shell settings put --user 0 secure enabled_input_methods "$pkg/.LocalVoiceImeService"
 Adb shell settings put --user 0 secure default_input_method "$pkg/.LocalVoiceImeService"
@@ -108,6 +109,29 @@ StartReal
 foreach ($key in @('n', 'i', 'h', 'a', 'o')) { Tap $key }
 Tap 'candidate-first-row'
 AssertText '020 nihao -> 你好' '你好' (GetText 'cr26')
+
+StartReal
+foreach ($key in 'woxiangchifan'.ToCharArray()) { Tap ([string]$key) }
+Tap 'key-space'
+AssertText '021 continuous Pinyin -> 我想吃饭' '我想吃饭' (GetText 'cr-sentence')
+
+StartReal
+Mode 'PINYIN_26'
+foreach ($key in @('n', 'i', 'h', 'a', 'o')) { Tap $key }
+Tap 'key-backspace'
+AssertText '022 composition backspace' 'niha' (GetText 'cr-compose-delete')
+
+StartReal
+Mode 'PINYIN_26'
+foreach ($key in @('n', 'i', 'h', 'a', 'o')) { Tap $key }
+Tap 'candidate-first-row'
+Tap 'key-backspace'
+AssertText '023 committed backspace' '你' (GetText 'cr-commit-delete')
+
+StartReal
+Mode 'ENGLISH_26'
+foreach ($key in 'openime'.ToCharArray()) { Tap ([string]$key) }
+AssertText '025 English key path' 'openime' (GetText 'cr-en')
 
 StartReal
 Mode 'PINYIN_9'
@@ -122,5 +146,11 @@ StartReal
 Mode 'DIGITS'
 foreach ($key in @('1', '2', '3')) { Tap $key }
 AssertText '050 123 -> 123' '123' (GetText 'crdig')
+
+StartReal
+Mode 'PINYIN_26'
+Tap '符号'
+Tap '，'
+AssertText '060 symbol panel commit' '，' (GetText 'cr-symbol')
 
 'CORE REGRESSION SUITE PASS'

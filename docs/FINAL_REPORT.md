@@ -7,18 +7,18 @@
 - Android 系统 IME 注册、enable、set。
 - Pinyin26 `nihao → 你好`。
 - Pinyin9 `64426 → 你好`。
-- English T9 `4663 → good`。
 - Digits `123 → 123`。
 - Space 首候选、候选回退、提交后删除。
 - Emoji、符号、多行 Enter、面板返回、模式循环。
 - Unit 28/28、Lint 0 error、API 34 instrumented 4/4。
 - 实机 Xiaomi 24129PN74C 全链路回归。
 - 实机 Lifecycle：编辑器 A→B、hide/show、重启 composition 清理、Voice 关闭。
-- 实机 Visual Structure Check：Pinyin26/English26/P9/T9/Digits 结构检查 PASS。
+- 实机 Visual Structure Check：Pinyin26/English26/P9/Digits 结构检查 PASS。
 - Upgrade：`DARK` 主题在 `adb install -r` 后保留。
 - Perf 基线：mode P50≈63.7ms、state P50≈57.5ms（host→adb 回程）。
 - 密码字段无 logcat/文件泄漏；麦克风 denied/granted 不崩溃。
 - 归一化坐标：`KeyboardGeometry.kt` + 语义化 E2E bridge。
+- 当前只保留拼音九键；英文九键已从产品入口移除。
 
 ## 未完成 / 风险
 

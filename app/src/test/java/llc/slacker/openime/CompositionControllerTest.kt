@@ -38,6 +38,14 @@ class CompositionControllerTest {
     }
 
     @Test
+    fun selectingFromLongCompositionClearsAllEditableState() {
+        controller.replace("woxiangchifan")
+        val s = controller.selectCandidate("我想吃饭")
+        assertEquals("", s.composition)
+        assertTrue(s.candidates.isEmpty())
+    }
+
+    @Test
     fun nineKeyDigitsResolve() {
         val s = controller.set9KeyNumber("64426")
         assertTrue(s.candidates.contains("你好"))

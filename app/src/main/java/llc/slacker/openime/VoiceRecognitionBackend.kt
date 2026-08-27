@@ -18,7 +18,10 @@ interface VoiceRecognitionEvents {
     fun onFinal(text: String)
     fun onRms(rms: Float)
     fun onError(message: String)
+    /** Microphone capture is live; model loading may still be in progress. */
     fun onReady()
+    /** The buffered audio is now connected to the local recognizer. */
+    fun onModelReady() {}
 }
 
 interface VoiceRecognitionBackend {
@@ -29,6 +32,9 @@ interface VoiceRecognitionBackend {
     fun start(languageTag: String, events: VoiceRecognitionEvents)
 
     fun stop()
+
+    /** Discard buffered audio and suppress the final transcript. */
+    fun cancel() = stop()
 }
 
 /**

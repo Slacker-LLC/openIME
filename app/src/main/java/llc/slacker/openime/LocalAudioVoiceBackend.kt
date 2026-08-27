@@ -122,7 +122,9 @@ object LocalVoiceAudioSpec {
     const val CHUNK_MILLIS = 20
     const val CHUNK_SAMPLES = SAMPLE_RATE * CHUNK_MILLIS / 1_000
     const val CHUNK_BYTES = CHUNK_SAMPLES * 2
-    const val SESSION_BUFFER_SECONDS = 8
+    // First-use model mapping can take a few seconds on slower phones. Keep a
+    // bounded 30-second pre-roll so speech is never lost while it warms up.
+    const val SESSION_BUFFER_SECONDS = 30
 }
 
 /** Convert signed PCM16 samples to the float range expected by sherpa/ONNX. */
@@ -148,12 +150,15 @@ class LocalAudioVoiceBackend(
         Thread(runnable, "local-voice-start").apply { isDaemon = true }
     }
     private val startGeneration = AtomicLong(0L)
+    private val stopRequestedGeneration = AtomicLong(-1L)
 
     override fun isAvailable(): Boolean = runtime?.isReady == true
 
     @SuppressLint("MissingPermission")
     override fun start(languageTag: String, events: VoiceRecognitionEvents) {
-        stop()
+        // A new gesture replaces an unfinished old one. Do not let two model
+        // streams share the same runtime.
+        cancel()
         if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             events.onError("当前未授予麦克风权限，请在系统设置中授权后重试")
             return
@@ -165,6 +170,7 @@ class LocalAudioVoiceBackend(
         }
 
         val generation = startGeneration.incrementAndGet()
+        stopRequestedGeneration.set(-1L)
         startExecutor.execute {
             initializeSession(generation, languageTag, events, model)
         }
@@ -238,6 +244,7 @@ class LocalAudioVoiceBackend(
             record.release()
             return
         }
+        session.stopRequested.set(stopRequestedGeneration.get() == generation)
 
         val modelEvents = object : VoiceRecognitionEvents {
             override fun onPartial(text: String) {
@@ -248,15 +255,14 @@ class LocalAudioVoiceBackend(
             override fun onFinal(text: String) = events.onFinal(text)
             override fun onRms(rms: Float) = events.onRms(rms)
             override fun onError(message: String) = events.onError(message)
-            override fun onReady() = events.onReady()
+            override fun onReady() = Unit
+            override fun onModelReady() = Unit
         }
 
         try {
-            model.start(languageTag, modelEvents)
-            if (!isCurrent(generation, session)) {
-                cleanupStartingSession(session)
-                return
-            }
+            // Capture first. The expensive first recognizer mapping happens
+            // below while PCM accumulates in the ring, so no spoken prefix is
+            // lost and the waveform can follow the finger immediately.
             record.startRecording()
             if (record.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
                 throw IllegalStateException("AudioRecord 未进入录音状态")
@@ -273,11 +279,22 @@ class LocalAudioVoiceBackend(
                 cleanupStartingSession(session)
                 return
             }
-            startThreads(session)
+            startCaptureThread(session)
             events.onReady()
+            if (session.stopRequested.get()) requestCaptureStop(session)
+
+            model.start(languageTag, modelEvents)
+            if (!isCurrent(generation, session) || session.cancelled.get() || session.failed.get()) {
+                cleanupStartingSession(session)
+                return
+            }
+            session.modelReady.set(true)
+            events.onModelReady()
+            startInferenceThread(session)
         } catch (error: Throwable) {
             if (isCurrent(generation, session)) {
                 fail(session, "本地语音启动失败：${error.message.orEmpty()}")
+                if (!session.inferenceStarted.get()) cleanupStartingSession(session)
             } else {
                 cleanupStartingSession(session)
             }
@@ -285,19 +302,30 @@ class LocalAudioVoiceBackend(
     }
 
     override fun stop() {
+        val generation = startGeneration.get()
+        stopRequestedGeneration.set(generation)
+        val current = synchronized(lock) { session } ?: return
+        current.stopRequested.set(true)
+        requestCaptureStop(current)
+        if (current.modelReady.get()) startInferenceThread(current)
+        // If the first model load is still running, initializeSession keeps
+        // this session alive, then drains the buffered PCM and emits one final.
+    }
+
+    override fun cancel() {
         startGeneration.incrementAndGet()
+        stopRequestedGeneration.set(-1L)
         val current = synchronized(lock) {
             val value = session
             session = null
             value
         } ?: return
-        current.running.set(false)
-        runCatching { current.record.stop() }
+        current.cancelled.set(true)
+        requestCaptureStop(current)
+        current.ring.clear()
         current.ring.wake()
         current.captureThread?.interrupt()
-        // The inference thread drains the bounded in-memory queue and commits
-        // one final result. It releases the AudioRecord and clears the queue
-        // in its finally block; no audio survives this session.
+        current.inferenceThread?.interrupt()
     }
 
     private fun isCurrent(generation: Long, value: Session): Boolean = synchronized(lock) {
@@ -305,17 +333,32 @@ class LocalAudioVoiceBackend(
     }
 
     private fun cleanupStartingSession(value: Session) {
+        value.running.set(false)
+        runCatching { value.record.stop() }
+        value.ring.wake()
         runCatching { value.runtime.stop() }
         runCatching { value.record.release() }
+        value.ring.clear()
         synchronized(lock) {
             if (session === value) session = null
         }
     }
 
-    private fun startThreads(session: Session) {
+    private fun requestCaptureStop(session: Session) {
+        session.running.set(false)
+        runCatching { session.record.stop() }
+        session.ring.wake()
+        session.captureThread?.interrupt()
+    }
+
+    private fun startCaptureThread(session: Session) {
         session.captureThread = Thread({ captureLoop(session) }, "local-voice-capture")
-        session.inferenceThread = Thread({ inferenceLoop(session) }, "local-voice-inference")
         session.captureThread?.start()
+    }
+
+    private fun startInferenceThread(session: Session) {
+        if (!session.inferenceStarted.compareAndSet(false, true)) return
+        session.inferenceThread = Thread({ inferenceLoop(session) }, "local-voice-inference")
         session.inferenceThread?.start()
     }
 
@@ -368,10 +411,14 @@ class LocalAudioVoiceBackend(
             if (pendingCount > 0) {
                 session.runtime.acceptWaveform(pcm16ToFloat(pending.copyOf(pendingCount)))
             }
-            if (!session.failed.get() && session.finished.compareAndSet(false, true)) {
+            if (
+                !session.failed.get() &&
+                !session.cancelled.get() &&
+                session.finished.compareAndSet(false, true)
+            ) {
                 val raw = session.runtime.inputFinished().ifBlank { session.lastPartial }
                 val final = if (raw.isBlank()) raw else session.runtime.punctuate(raw) ?: raw
-                if (final.isNotBlank()) session.events.onFinal(final)
+                session.events.onFinal(final)
             }
         } catch (error: Throwable) {
             fail(session, "本地语音推理失败：${error.message.orEmpty()}")
@@ -386,11 +433,9 @@ class LocalAudioVoiceBackend(
 
     private fun fail(session: Session, message: String) {
         if (session.failed.compareAndSet(false, true)) {
-            session.running.set(false)
-            runCatching { session.record.stop() }
-            session.ring.wake()
+            requestCaptureStop(session)
             session.events.onError(message)
-            if (session.captureThread == null && session.inferenceThread == null) {
+            if (!session.modelReady.get() && session.captureThread == null) {
                 cleanupStartingSession(session)
             }
         }
@@ -403,6 +448,10 @@ class LocalAudioVoiceBackend(
         val runtime: StreamingEmbeddedVoiceModelRuntime,
     ) {
         val running = AtomicBoolean(false)
+        val stopRequested = AtomicBoolean(false)
+        val cancelled = AtomicBoolean(false)
+        val modelReady = AtomicBoolean(false)
+        val inferenceStarted = AtomicBoolean(false)
         val finished = AtomicBoolean(false)
         val failed = AtomicBoolean(false)
         var captureThread: Thread? = null

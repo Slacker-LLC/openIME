@@ -5,6 +5,11 @@ import android.util.Log
 import java.io.File
 import java.util.concurrent.Executors
 
+internal data class RimeCandidateEntry(
+    val text: String,
+    val nativeIndex: Int,
+)
+
 /**
  * Owns one process-local librime session and exposes IME-friendly operations.
  *
@@ -49,34 +54,56 @@ class RimeEngine(private val context: Context) {
     }
 
     fun candidates(input: String): List<String> {
-        if (!isReady || input.isBlank() || input.any { it.isWhitespace() || it == '|' }) {
-            return emptyList()
-        }
+        return candidateEntries(input).map { it.text }
+    }
+
+    /**
+     * Return display text together with its absolute librime candidate index.
+     * The index must travel with a nine-key path; the same label can occur for
+     * several ambiguous Pinyin inputs and cannot safely be selected by the
+     * preview string alone.
+     */
+    internal fun candidateEntries(input: String): List<RimeCandidateEntry> {
+        val normalized = RimeInputNormalizer.normalize(input)
+        if (!isReady || normalized.isBlank()) return emptyList()
         return synchronized(lock) {
             runCatching {
-                snapshotCandidates(RimeNative.nativeSetInput(input))
+                snapshotCandidateEntries(RimeNative.nativeSetInput(normalized))
             }.getOrDefault(emptyList())
         }
     }
 
     /** Let Rime learn the selected candidate, then return its committed text. */
     fun selectCandidate(input: String, candidate: String): String {
-        if (!isReady || input.isBlank()) return ""
+        val normalized = RimeInputNormalizer.normalize(input)
+        if (!isReady || normalized.isBlank()) return ""
         return synchronized(lock) {
             runCatching {
-                val snapshot = RimeNative.nativeSetInput(input)
-                val candidates = snapshotCandidates(snapshot)
-                val index = candidates.indexOf(candidate)
-                if (index >= 0) RimeNative.nativeSelectCandidate(index) else ""
+                val snapshot = RimeNative.nativeSetInput(normalized)
+                val entry = snapshotCandidateEntries(snapshot).firstOrNull { it.text == candidate }
+                if (entry != null) RimeNative.nativeSelectCandidate(entry.nativeIndex) else ""
+            }.getOrDefault("")
+        }
+    }
+
+    /** Select an entry previously returned by [candidateEntries]. */
+    fun selectCandidate(input: String, nativeIndex: Int): String {
+        val normalized = RimeInputNormalizer.normalize(input)
+        if (!isReady || normalized.isBlank() || nativeIndex < 0) return ""
+        return synchronized(lock) {
+            runCatching {
+                RimeNative.nativeSetInput(normalized)
+                RimeNative.nativeSelectCandidate(nativeIndex)
             }.getOrDefault("")
         }
     }
 
     fun commitFirst(input: String): String {
-        if (!isReady || input.isBlank()) return ""
+        val normalized = RimeInputNormalizer.normalize(input)
+        if (!isReady || normalized.isBlank()) return ""
         return synchronized(lock) {
             runCatching {
-                RimeNative.nativeSetInput(input)
+                RimeNative.nativeSetInput(normalized)
                 RimeNative.nativeCommitFirst()
             }.getOrDefault("")
         }
@@ -99,17 +126,21 @@ class RimeEngine(private val context: Context) {
         startupExecutor.shutdownNow()
     }
 
-    private fun snapshotCandidates(snapshot: Array<String>): List<String> =
+    private fun snapshotCandidateEntries(snapshot: Array<String>): List<RimeCandidateEntry> =
         snapshot.drop(2)
-            .filter { it.isNotBlank() }
-            .distinct()
+            .mapIndexedNotNull { index, text ->
+                text.takeIf { it.isNotBlank() }?.let {
+                    RimeCandidateEntry(text = it, nativeIndex = index)
+                }
+            }
+            .distinctBy { it.text }
 
     private fun copyAssetsIfNeeded(sharedDir: File) {
-        val marker = File(sharedDir, ".local-voice-ime-rime-2")
+        val marker = File(sharedDir, ".openime-rime-3")
         if (marker.exists() && File(sharedDir, "luna_pinyin_simp.schema.yaml").exists()) return
         deleteChildren(sharedDir)
         copyAssetTree("rime-data", sharedDir)
-        marker.writeText("embedded librime data with OpenCC simplified conversion\n")
+        marker.writeText("openIME Rime data revision 3 with Rime Ice core lexicons\n")
     }
 
     private fun copyAssetTree(assetPath: String, destination: File) {

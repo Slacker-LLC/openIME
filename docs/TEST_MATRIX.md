@@ -6,7 +6,6 @@
 | UNIT-002 | Candidate | `zhongguo → 中国` | AUTO | PASS | `CandidateEngineTest` |
 | UNIT-003 | Candidate | `shurufa → 输入法` | AUTO | PASS | `CandidateEngineTest` |
 | UNIT-004 | Candidate | `64426 → 你好` | AUTO | PASS | `CandidateEngineTest` |
-| UNIT-005 | Candidate | `4663 → good` | AUTO | PASS | `CandidateEngineTest` |
 | UNIT-006 | Candidate | fuzzy variant | AUTO | PASS | `CandidateEngineTest` |
 | UNIT-007 | Composition | n→ni→nih→niha→nihao | AUTO | PASS | `CompositionControllerTest` |
 | UNIT-008 | Composition | backspace | AUTO | PASS | `CompositionControllerTest` |
@@ -29,7 +28,6 @@
 | SMOKE-001 | Real IME | install / enable / set | AUTO | PASS | `core_regression.ps1`（设备序列号已脱敏） |
 | E2E-001 | Real IME | `nihao → 你好` | AUTO | PASS | `CR 020` real device |
 | E2E-002 | Real IME | `64426 → 你好` | AUTO | PASS | `CR 030` real device |
-| E2E-003 | Real IME | `4663 → good` | AUTO | PASS | `CR 040` real device |
 | E2E-004 | Real IME | `123 → 123` | AUTO | PASS | `CR 050` real device |
 | E2E-005 | Real IME | space first candidate | AUTO | PASS | `EXT 021` |
 | E2E-006 | Real IME | composition backspace | AUTO | PASS | `EXT 023` |
@@ -39,7 +37,7 @@
 | E2E-010 | Real IME | panel back | AUTO | PASS | `EXT 110` |
 | E2E-011 | Real IME | multiline Enter | AUTO | PASS | `security_multiline` |
 | E2E-012 | Real IME | mode cycle | AUTO | PASS | `EXT 100` |
-| VIS-001 | Visual | Pinyin26 / English26 / P9 / T9 / Digits | MANUAL | PASS | `docs/visual/real-device/` |
+| VIS-001 | Visual | Pinyin26 / English26 / P9 / Digits | MANUAL | PASS | `docs/visual/real-device/` |
 | VIS-002 | Visual | Symbols / Emoji | MANUAL | PASS | `docs/visual/real-device/` |
 | VIS-003 | Visual | structural layout check / normalized tags | AUTO | PASS | `scripts/visual_check.ps1` |
 | LIFECYCLE-001 | Lifecycle | editor A/B switch + composition cleanup | AUTO | PASS | `lifecycle_regression.ps1` |
@@ -67,3 +65,6 @@
 | E2E-014 | EditorAction | `actionDone` 真实提交并隐藏 IME | AUTO | PASS | B=def + Enter → input view false |
 | STRESS-003 | Stress | 500 轮 × 3 命令 panel/mode | AUTO | PASS | 无 FATAL/ANR，PSS 177→119MB |
 | PERF-002 | Performance | host→adb 命令基线 | AUTO | PARTIAL | P50 65.4 / 58.0ms（往返主导，帧/Jank 待测） |
+| E2E-015 | Real IME | 全拼、显式分词、连续长句与扩展候选 | AUTO | PASS | `typing_engine_regression.ps1` |
+| E2E-016 | Real IME | 选词后 composition 清空并回删目标文本 | AUTO | PASS | `typing_engine_regression.ps1` |
+| E2E-017 | Real IME | 10 / 20 / 50 汉字单 composition 精确提交 | AUTO | PASS | `typing_engine_regression.ps1` |

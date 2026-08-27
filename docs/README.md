@@ -14,6 +14,8 @@
 
 ## 测试与交付
 
+- [TEST_SOP.md](TEST_SOP.md)：L0～L3 正式测试流程、失败门禁和发布条件。
+- [TEST_SOP_CHECKLIST.md](TEST_SOP_CHECKLIST.md)：L2/L3 多设备与人工交互验收清单。
 - [TEST_REPORT.md](TEST_REPORT.md)：最近一次构建和回归结果。
 - [TEST_MATRIX.md](TEST_MATRIX.md)：测试场景矩阵。
 - [TEST_ARCHITECTURE.md](TEST_ARCHITECTURE.md)：测试层级和调试入口。

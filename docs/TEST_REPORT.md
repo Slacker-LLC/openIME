@@ -1,11 +1,26 @@
 # Test Report
 
+## 2026-08-26 中文输入引擎增强（当前构建）
+
+| Gate | Status | Evidence |
+| -- | -- | -- |
+| ASCII 路径完整构建 | PASS | `scripts/build_ascii.ps1`，APK 304,305,096 bytes |
+| JVM 单元测试 | PASS | 构建流程内执行；新增词典资产、输入归一化和长 composition 清理测试 |
+| 冷启动高频候选 | PASS | 清除应用数据后、Rime 尚未部署完成时，26 键及拼音九键仍可提交 `你好` |
+| 完整 Rime 部署 | PASS | `luna_pinyin.table.bin` 生成，`librime ready` |
+| 中文输入引擎回归 | PASS | `xian→先`、`xi' an→西安`、`今天天气`、`我想吃饭`、`输入法引擎` |
+| 选词状态清理 | PASS | 选词后拼音/候选清空，下一次删除处理目标编辑器文本 |
+| 连续长句 | PASS | 10、20、50 个汉字单 composition 精确提交，提交后状态均为空 |
+
+当前产品只提供拼音九键，不提供英文九键；下方 2026-08-25 章节里的英文 T9 是已移除
+入口的历史测试证据，不代表当前功能。
+
 ## Build
 
 | Gate | Status | Evidence |
 | -- | -- | -- |
-| `:app:assembleDebug` | PASS | latest APK, 1093314 bytes |
-| `:app:testDebugUnitTest` | PASS | 5 classes, 28 tests, 0 failures |
+| `:app:assembleDebug` | PASS | latest APK, 304305096 bytes |
+| `:app:testDebugUnitTest` | PASS | `build_ascii.ps1` 当前构建通过 |
 | `:app:lintDebug` | PASS | 0 errors; 45 warnings |
 | Instrumented (API 34 emulator) | PASS | `TEST-GlassTest2(AVD) - 14-_app-.xml`, 4/4 |
 | Real device core E2E | PASS | 已脱敏设备序列号 |
@@ -24,7 +39,7 @@
 | T1 Unit | PASS | composition/candidate/state/input-connection |
 | T2 Integration | PASS | FakeInputConnection covers setComposing/commit/backspace/action/Unicode |
 | T3 Smoke | PASS | real IME install/enable/set + basic input |
-| T4 Core E2E | PASS | Pinyin26/P9/T9/Digits |
+| T4 Core E2E | PASS | Pinyin26/P9/Digits；英文九键已从当前 UI 移除 |
 | T5 UI / Visual | PASS | emulator instrumented + visual references; real-device screenshots |
 | T6 Lifecycle | PASS | editor A/B, hide/show, app restart, voice close all PASS |
 | T7 Privacy | PASS | password logcat/files clean, voice denied/granted no crash |

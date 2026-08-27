@@ -11,8 +11,11 @@ LocalVoiceImeService (InputMethodService)
         ├── ImeState / CompositionController
         │       └── 模式、预编辑、光标、删除、主题和窗口状态
         │
+        ├── CandidateEngine / PinyinLexicon
+        │       └── 高频候选、前缀索引和首次词典部署回退
+        │
         ├── RimeEngine → RimeNative (JNI) → librime/OpenCC
-        │       └── 拼音输入、分词、候选排序、简繁转换
+        │       └── 全拼、简拼、显式分词、完整候选、用户学习和简繁转换
         │
         ├── InputConnectionGateway
         │       └── setComposingText / commitText / deleteSurroundingText
@@ -28,6 +31,15 @@ LocalVoiceImeService (InputMethodService)
 3. 用户选择候选、按空格或执行明确提交动作时，使用 `commitText()` 写入目标编辑器。
 4. 删除键先处理预编辑和候选，再处理目标编辑器中的已提交文本。
 5. 切换编辑器、隐藏输入法、切换模式或结束语音时清理对应的 composing 状态。
+6. 首选提交直接向当前 Rime session 请求最终结果，避免最后一次异步候选刷新造成旧首选上屏。
+7. 候选上屏后统一结束 Rime composition、清空拼音和候选；用户学习结果优先于通用词频。
+
+## 词典部署与回退
+
+- 完整 Rime Ice 词典在 APK 首次运行时由 librime 部署，部署完成后成为中文候选的权威来源。
+- `pinyin_phrases.tsv` 是构建时从同一词典筛选生成的高频子集，完整词典尚未就绪时仍能即时打字。
+- 高频候选使用有序拼音键和二分前缀查找，避免每次按键遍历整个词典。
+- 空格、回车及明确提交动作走同步首选提交；候选栏刷新仍可异步执行，保证按键反馈连续。
 
 ## 布局适配原则
 

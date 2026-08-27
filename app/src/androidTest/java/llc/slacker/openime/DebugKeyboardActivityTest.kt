@@ -1,7 +1,10 @@
 package llc.slacker.openime
 
+import android.os.SystemClock
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
 import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertTrue
@@ -53,6 +56,50 @@ class DebugKeyboardActivityTest {
             assertNotNull(root?.findViewWithTag<View>("candidate-expand"))
             assertNotNull(root?.findViewWithTag<View>("panel-overlay"))
             assertNotNull(root?.findViewWithTag<View>("candidate-overlay"))
+        }
+    }
+
+    @Test
+    fun backspaceSwipeUpDispatchesOneShotClear() {
+        rule.scenario.onActivity { activity ->
+            val root = activity.findViewById<ViewGroup>(android.R.id.content)
+            val imeRoot = requireNotNull(root.findViewWithTag<View>("ime_root"))
+            val backspace = requireNotNull(root.findViewWithTag<View>("key-backspace"))
+
+            val imeLocation = IntArray(2)
+            val keyLocation = IntArray(2)
+            imeRoot.getLocationOnScreen(imeLocation)
+            backspace.getLocationOnScreen(keyLocation)
+            val x = keyLocation[0] - imeLocation[0] + backspace.width / 2f
+            val y = keyLocation[1] - imeLocation[1] + backspace.height / 2f
+            val upY = y - activity.resources.displayMetrics.density * 48f
+            val downTime = SystemClock.uptimeMillis()
+
+            fun dispatch(action: Int, eventY: Float) {
+                val event = MotionEvent.obtain(
+                    downTime,
+                    SystemClock.uptimeMillis(),
+                    action,
+                    x,
+                    eventY,
+                    0,
+                )
+                imeRoot.dispatchTouchEvent(event)
+                event.recycle()
+            }
+            dispatch(MotionEvent.ACTION_DOWN, y)
+            dispatch(MotionEvent.ACTION_MOVE, upY)
+            dispatch(MotionEvent.ACTION_UP, upY)
+
+            var clearStatusFound = false
+            fun walk(view: View) {
+                if (view is TextView && view.text.toString() == "clear-all") clearStatusFound = true
+                if (view is ViewGroup) {
+                    for (index in 0 until view.childCount) walk(view.getChildAt(index))
+                }
+            }
+            walk(root)
+            assertTrue("上滑松手必须只触发一次批量清空", clearStatusFound)
         }
     }
 }

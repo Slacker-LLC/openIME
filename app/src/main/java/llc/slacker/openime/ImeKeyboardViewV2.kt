@@ -32,6 +32,14 @@ class ImeKeyboardViewV2(
         fun onVoiceCancel() {}
         fun onEnter()
         fun onCompositionChanged(composition: String, candidates: List<String>)
+        fun onNineKeyCompositionChanged(
+            composition: String,
+            digitBuffer: String,
+            pinyinPaths: List<String>,
+            candidates: List<String>,
+        ) {
+            onCompositionChanged(composition, candidates)
+        }
         fun onCandidateSelected(candidate: String)
         fun onCompositionBackspace()
         fun onThemeChanged(theme: ImeTheme)
@@ -70,6 +78,12 @@ class ImeKeyboardViewV2(
         override fun onEnter() = delegate.onEnter()
         override fun onCompositionChanged(composition: String, candidates: List<String>) =
             delegate.onCompositionChanged(composition, candidates)
+        override fun onNineKeyCompositionChanged(
+            composition: String,
+            digitBuffer: String,
+            pinyinPaths: List<String>,
+            candidates: List<String>,
+        ) = delegate.onNineKeyCompositionChanged(composition, digitBuffer, pinyinPaths, candidates)
         override fun onCandidateSelected(candidate: String) = delegate.onCandidateSelected(candidate)
         override fun onCompositionBackspace() = delegate.onCompositionBackspace()
         override fun onThemeChanged(theme: ImeTheme) = delegate.onThemeChanged(theme)

@@ -34,13 +34,22 @@ object UserPhraseRepository {
         }
     }
 
-    fun candidatesFor(code: String): List<String> {
+    /**
+     * This legacy fallback learner is consulted only while librime is not
+     * ready. Requiring repeated choices prevents one accidental tap from
+     * becoming a permanent first candidate. Existing entries stay untouched.
+     */
+    fun candidatesFor(
+        code: String,
+        minimumFrequency: Int = DEFAULT_MINIMUM_FREQUENCY,
+    ): List<String> {
         val key = normalize(code)
         if (key.isEmpty()) return emptyList()
+        val threshold = minimumFrequency.coerceAtLeast(1)
         synchronized(lock) {
             return entries.values
                 .asSequence()
-                .filter { it.code == key }
+                .filter { it.code == key && it.frequency >= threshold }
                 .sortedWith(compareByDescending<Entry> { it.frequency }.thenByDescending { it.lastUsed })
                 .map { it.text }
                 .distinct()
@@ -120,4 +129,6 @@ object UserPhraseRepository {
         }
         target.edit().putString(KEY, array.toString()).apply()
     }
+
+    private const val DEFAULT_MINIMUM_FREQUENCY = 3
 }

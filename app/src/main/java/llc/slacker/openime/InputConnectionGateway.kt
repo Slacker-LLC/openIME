@@ -84,11 +84,16 @@ class InputConnectionGateway(
     fun clearAllText(): Boolean {
         if (isPassword()) return false
         val ic = connection() ?: return false
-        val before = ic.getTextBeforeCursor(100_000, 0)?.toString().orEmpty()
-        val after = ic.getTextAfterCursor(100_000, 0)?.toString().orEmpty()
-        val selected = ic.getSelectedText(0)?.toString().orEmpty()
         ic.beginBatchEdit()
         return try {
+            // Remove the active pre-edit instead of finishing (committing) it.
+            // Query surrounding text only afterwards so delete counts cannot
+            // include a stale composing span that an editor may resurrect.
+            ic.setComposingText("", 1)
+            ic.finishComposingText()
+            val before = ic.getTextBeforeCursor(100_000, 0)?.toString().orEmpty()
+            val after = ic.getTextAfterCursor(100_000, 0)?.toString().orEmpty()
+            val selected = ic.getSelectedText(0)?.toString().orEmpty()
             if (selected.isNotEmpty()) ic.commitText("", 1)
             val beforeCount = before.codePointCount(0, before.length)
             val afterCount = after.codePointCount(0, after.length)

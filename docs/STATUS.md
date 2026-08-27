@@ -23,7 +23,7 @@ Upgrade: PASS
 - 真实 InputConnection 输入：通过。
 - 26 键 `nihao → 你好`：通过。
 - 九键 `64426 → 你好`：通过（真实小米 24129PN74C）。
-- T9 / 数字输入：真实回归通过（真实小米 24129PN74C）。
+- 数字输入：真实回归通过（真实小米 24129PN74C）；当前不提供英文九键。
 - Build / Unit / Lint / Instrumented：通过（Unit 28/28，Lint 0 error，API 34 4/4）。
 
 ## 已完成并验证的 UI 纠偏
@@ -33,7 +33,7 @@ Upgrade: PASS
 - 独立“中文26键”标题：已移除。
 - Candidate Bar：单行、42dp、小展开按钮。
 - 26 键：44dp、副提示 right-top、第二行居中、Enter primary。
-- Nine Key / T9 / Digits：侧栏与右栏已恢复。
+- Pinyin9 / Digits：侧栏与右栏已恢复。
 - SubPanel：已替换 Main Keyboard，不再叠加。
 
 ## 本轮完成项
@@ -41,7 +41,7 @@ Upgrade: PASS
 - Real IME after 截图：`docs/visual/01_real_*_after.png` ~ `21_real_*_after.png`。
 - 实机 after 截图：`docs/visual/real-device/`。
 - Root 层级、Toolbar/Candidate/Panel/Overlay：已按原型修正。
-- 26/九键/T9/数字：真实 IME 回归通过。
+- 26 键/拼音九键/数字：真实 IME 回归通过。
 - 五套主题主键盘：真实 IME 截图通过。
 - Multi-width 360/393/412dp：截图通过。
 - `docs/VISUAL_ACCEPTANCE.md`：已生成，逐项 PASS。

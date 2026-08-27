@@ -16,6 +16,14 @@
 - `app/src/main/assets/rime/`
 - `app/src/main/assets/rime-data/`
 
+`app/src/main/assets/rime-data/openime_dicts/` 中的 `8105`、`base`、`ext` 和
+`others` 词典来自 Rime Ice 固定提交
+`75e6572bebc05b49021e842949ce947882e3e4b2`，按 GPL-3.0-only 使用。
+`app/src/main/assets/pinyin_phrases.tsv` 是由这些词典生成的高频子集，沿用相同来源与
+许可证范围。许可证全文位于
+`app/src/main/assets/licenses/rime-ice-GPL-3.0.txt`，来源明细见根目录
+`THIRD_PARTY_NOTICES.md`。
+
 语音 runtime 以 `app/libs/sherpa-onnx-1.13.6.aar` 提供，语音模型位于
 `app/src/main/assets/models/voice/`。发布 APK 前应同时核对 runtime、模型和词典的
 上游许可证与再分发条件；Git LFS 只负责文件存储，不改变文件的许可证。
