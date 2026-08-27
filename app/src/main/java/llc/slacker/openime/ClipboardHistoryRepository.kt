@@ -2,6 +2,8 @@ package llc.slacker.openime
 
 import android.content.ClipboardManager
 import android.content.Context
+import android.inputmethodservice.InputMethodService
+import android.view.inputmethod.EditorInfo
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -22,9 +24,19 @@ internal object ClipboardSensitivityPolicy {
         runCatching { readBoolean(SENSITIVE_KEY) }.getOrDefault(false)
 }
 
+internal object ClipboardPrivacyPolicy {
+    fun canUsePersistentHistory(
+        editorKind: EditorInfoAdapter.EditorKind,
+        imeOptions: Int,
+    ): Boolean =
+        !EditorInfoAdapter.isPassword(editorKind) &&
+            (imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING) == 0
+}
+
 /**
- * Tiny persistent clipboard history. Clipboard capture is best-effort and is
- * skipped by the caller for password fields; no clipboard content is logged.
+ * Tiny persistent clipboard history. Clipboard capture is best-effort; no
+ * clipboard content is logged. Password and no-personalized-learning editors
+ * cannot read from or write to the persistent history at all.
  */
 object ClipboardHistoryRepository {
     private const val PREFS = "ime_clipboard_history"
@@ -32,35 +44,22 @@ object ClipboardHistoryRepository {
     private const val MAX_ITEMS = 24
 
     fun load(context: Context): List<ClipboardEntry> {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(KEY_ITEMS, "[]") ?: "[]"
-        return runCatching {
-            val arr = JSONArray(raw)
-            buildList {
-                for (i in 0 until arr.length()) {
-                    val obj = arr.getJSONObject(i)
-                    add(
-                        ClipboardEntry(
-                            text = obj.optString("text", ""),
-                            timestamp = obj.optLong("timestamp", 0L),
-                            pinned = obj.optBoolean("pinned", false),
-                        ),
-                    )
-                }
-            }
-        }.getOrElse { emptyList() }
+        if (!canUsePersistentHistory(context)) return emptyList()
+        return loadStored(context)
     }
 
     fun add(context: Context, text: String) {
-        if (text.isBlank()) return
-        val old = load(context).firstOrNull { it.text == text }
-        val items = load(context).filterNot { it.text == text }.toMutableList()
+        if (text.isBlank() || !canUsePersistentHistory(context)) return
+        val stored = loadStored(context)
+        val old = stored.firstOrNull { it.text == text }
+        val items = stored.filterNot { it.text == text }.toMutableList()
         items.add(0, ClipboardEntry(text, System.currentTimeMillis(), old?.pinned ?: false))
         save(context, items.take(MAX_ITEMS))
     }
 
     /** Capture the current system clip when the user opens the clipboard UI. */
     fun capturePrimary(context: Context): Boolean {
+        if (!canUsePersistentHistory(context)) return false
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
             ?: return false
         val description = runCatching { clipboard.primaryClipDescription }.getOrNull()
@@ -83,7 +82,8 @@ object ClipboardHistoryRepository {
     }
 
     fun togglePin(context: Context, text: String) {
-        val items = load(context).toMutableList()
+        if (!canUsePersistentHistory(context)) return
+        val items = loadStored(context).toMutableList()
         val idx = items.indexOfFirst { it.text == text }
         if (idx >= 0) {
             val old = items[idx]
@@ -93,7 +93,37 @@ object ClipboardHistoryRepository {
     }
 
     fun remove(context: Context, text: String) {
-        save(context, load(context).filterNot { it.text == text })
+        if (!canUsePersistentHistory(context)) return
+        save(context, loadStored(context).filterNot { it.text == text })
+    }
+
+    private fun canUsePersistentHistory(context: Context): Boolean {
+        val service = context as? InputMethodService ?: return true
+        val editorInfo = service.currentInputEditorInfo ?: return true
+        return ClipboardPrivacyPolicy.canUsePersistentHistory(
+            editorKind = EditorInfoAdapter.kind(editorInfo),
+            imeOptions = editorInfo.imeOptions,
+        )
+    }
+
+    private fun loadStored(context: Context): List<ClipboardEntry> {
+        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_ITEMS, "[]") ?: "[]"
+        return runCatching {
+            val arr = JSONArray(raw)
+            buildList {
+                for (i in 0 until arr.length()) {
+                    val obj = arr.getJSONObject(i)
+                    add(
+                        ClipboardEntry(
+                            text = obj.optString("text", ""),
+                            timestamp = obj.optLong("timestamp", 0L),
+                            pinned = obj.optBoolean("pinned", false),
+                        ),
+                    )
+                }
+            }
+        }.getOrElse { emptyList() }
     }
 
     private fun save(context: Context, items: List<ClipboardEntry>) {
