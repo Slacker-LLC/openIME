@@ -227,7 +227,10 @@ class RimeEngine(private val context: Context) {
                 synchronized(lock) {
                     if (isReady) {
                         runCatching {
-                            if (!syncSchemaFromSettingsLocked()) return@runCatching
+                            // nativeIndex belongs to the schema that produced the
+                            // rendered snapshot. Do not switch schemas between
+                            // rendering and consuming that index; the next native
+                            // candidate query will synchronize a changed setting.
                             RimeNative.nativeSetInput(normalized)
                             RimeNative.nativeSelectCandidate(nativeIndex)
                         }
