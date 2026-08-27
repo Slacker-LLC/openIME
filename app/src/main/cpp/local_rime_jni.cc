@@ -153,10 +153,17 @@ Java_llc_slacker_openime_RimeNative_nativeStartup(
   }
 
   g_session = g_api->create_session();
-  if (g_session && g_api->select_schema) {
-    if (!g_api->select_schema(g_session, "luna_pinyin_simp")) {
-      g_api->select_schema(g_session, "luna_pinyin");
-    }
+  if (!g_session) return;
+
+  // A live session is not sufficient: without a selected schema every later
+  // candidate query is empty. Require one of the bundled Pinyin schemas.
+  const bool schema_selected =
+      g_api->select_schema &&
+      (g_api->select_schema(g_session, "luna_pinyin_simp") ||
+       g_api->select_schema(g_session, "luna_pinyin"));
+  if (!schema_selected) {
+    g_api->destroy_session(g_session);
+    g_session = 0;
   }
 }
 
