@@ -7,6 +7,7 @@ import com.k2fsa.sherpa.onnx.OnlineRecognizer
 import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig
 import com.k2fsa.sherpa.onnx.OnlineStream
 import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
+import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -95,26 +96,18 @@ internal class VoiceStreamLease<T : Any>(
     }
 }
 
-/**
- * Detects the future model bundle without pretending that an absent model is
- * usable. The expected files are deliberately explicit so a partial APK does
- * not silently claim to support local recognition.
- */
+/** Local-only backend backed by whichever verified model source is selected. */
 class EmbeddedLocalVoiceBackend(
     private val context: Context,
     private val runtime: EmbeddedVoiceModelRuntime? = null,
 ) : VoiceRecognitionBackend {
     override val id: String = "embedded-local"
 
-    private val modelAssetsPresent: Boolean by lazy {
-        assetExists("models/voice/manifest.json")
-    }
-
-    override fun isAvailable(): Boolean = modelAssetsPresent && runtime?.isReady == true
+    override fun isAvailable(): Boolean = runtime?.isReady == true
 
     override fun start(languageTag: String, events: VoiceRecognitionEvents) {
         if (!isAvailable()) {
-            events.onError("APK 尚未内置可用的本地语音模型")
+            events.onError("本地语音模型不可用")
             return
         }
         runtime?.start(languageTag, events)
@@ -123,18 +116,10 @@ class EmbeddedLocalVoiceBackend(
     override fun stop() {
         runtime?.stop()
     }
-
-    private fun assetExists(path: String): Boolean = runCatching {
-        context.assets.open(path).use { true }
-    }.getOrDefault(false)
 }
 
 object VoiceRecognitionBackendFactory {
-    /**
-     * Keep the selection in one place. Once the model runtime is linked into
-     * this independent APK, this factory is the only production seam that
-     * needs to change.
-     */
+    /** Keep local/offline selection behind one production seam. */
     fun create(context: Context): VoiceRecognitionBackend {
         val runtime = EmbeddedVoiceRuntimeFactory.create(context)
         val embedded = EmbeddedLocalVoiceBackend(context, runtime)
@@ -172,40 +157,43 @@ object EmbeddedVoiceRuntimeFactory {
     ): EmbeddedVoiceModelRuntime? {
         val manifest = selection.manifest ?: return null
         if (manifest.modelType != "zipformer") return null
-        return SherpaOnnxStreamingRuntime(context, manifest)
+        val downloadedRoot = File(context.filesDir, VOICE_MODEL_DOWNLOADED_DIR)
+        if (resolveSherpaRuntimeModelFiles(selection, downloadedRoot) == null) return null
+        return SherpaOnnxStreamingRuntime(context, selection)
     }
 }
 
 /**
- * The bundled Chinese streaming Zipformer runtime. Model loading is lazy: the
- * 182 MB encoder is not mapped while the keyboard is merely being displayed,
- * and the loaded recognizer is reused across voice sessions.
+ * Streaming Zipformer runtime for either signed APK assets or a verified
+ * app-private downloaded package. Model loading is lazy and the recognizer is
+ * reused until the selected source changes or the lifecycle releases it.
  */
 private class SherpaOnnxStreamingRuntime(
     private val context: Context,
-    private val manifest: VoiceModelManifest,
+    initialSelection: VoiceModelSelection,
 ) : StreamingEmbeddedVoiceModelRuntime {
     companion object {
         private const val SAMPLE_RATE = LocalVoiceAudioSpec.SAMPLE_RATE
-        private const val MODEL_ROOT = "models/voice/bilingual-zipformer"
-        private const val ENCODER = "$MODEL_ROOT/encoder-epoch-99-avg-1.int8.onnx"
-        private const val DECODER = "$MODEL_ROOT/decoder-epoch-99-avg-1.onnx"
-        private const val JOINER = "$MODEL_ROOT/joiner-epoch-99-avg-1.int8.onnx"
-        private const val TOKENS = "$MODEL_ROOT/tokens.txt"
     }
 
     private val runtimeLock = Any()
+    private val downloadedRoot = File(context.filesDir, VOICE_MODEL_DOWNLOADED_DIR)
+    private var selection: VoiceModelSelection = initialSelection
+    private var modelFiles: SherpaRuntimeModelFiles? =
+        resolveSherpaRuntimeModelFiles(initialSelection, downloadedRoot)
     private var recognizer: OnlineRecognizer? = null
     private val activeSessions = mutableSetOf<SherpaSession>()
     private var legacySession: SherpaSession? = null
 
     override val isReady: Boolean
-        get() = manifest.modelType == "zipformer" && manifest.files.containsAll(
-            listOf(ENCODER, DECODER, JOINER, TOKENS),
-        )
+        get() = synchronized(runtimeLock) {
+            val manifest = selection.manifest
+            manifest?.modelType == "zipformer" && modelFiles != null
+        }
 
     override fun preload() {
         synchronized(runtimeLock) {
+            refreshSelectionLocked()
             ensureRecognizerLocked()
         }
     }
@@ -214,13 +202,15 @@ private class SherpaOnnxStreamingRuntime(
         languageTag: String,
         events: VoiceRecognitionEvents,
     ): StreamingVoiceModelSession = synchronized(runtimeLock) {
-        check(isReady) { "内置语音模型清单或文件不完整" }
+        refreshSelectionLocked()
+        check(isReady) { "本地语音模型清单或文件不完整" }
         openSessionLocked(languageTag, events)
     }
 
     /** Legacy non-AudioRecord path retained for the generic runtime boundary. */
     override fun start(languageTag: String, events: VoiceRecognitionEvents) {
         synchronized(runtimeLock) {
+            refreshSelectionLocked()
             legacySession?.closeLocked()
             legacySession = openSessionLocked(languageTag, events)
         }
@@ -235,38 +225,59 @@ private class SherpaOnnxStreamingRuntime(
 
     override fun release() {
         synchronized(runtimeLock) {
-            activeSessions.toList().forEach { it.closeLocked() }
-            legacySession = null
-            recognizer?.release()
-            recognizer = null
+            releaseRecognizerLocked()
         }
+    }
+
+    /**
+     * Repository selection is checked only on worker-thread preload/session
+     * boundaries. If source changes, every old stream is closed before the old
+     * native recognizer is released, then the next recognizer uses the new root.
+     */
+    private fun refreshSelectionLocked() {
+        val latest = VoiceModelRepository(context).selectAvailable()
+        if (latest.runtimeIdentity() == selection.runtimeIdentity()) return
+
+        releaseRecognizerLocked()
+        selection = latest
+        modelFiles = resolveSherpaRuntimeModelFiles(latest, downloadedRoot)
+    }
+
+    private fun releaseRecognizerLocked() {
+        activeSessions.toList().forEach { it.closeLocked() }
+        legacySession = null
+        recognizer?.release()
+        recognizer = null
     }
 
     private fun ensureRecognizerLocked(): OnlineRecognizer {
         recognizer?.let { return it }
-        check(isReady) { "内置语音模型清单或文件不完整" }
-        return OnlineRecognizer(
-            context.assets,
-            OnlineRecognizerConfig(
-                featConfig = FeatureConfig(sampleRate = SAMPLE_RATE, featureDim = 80),
-                modelConfig = OnlineModelConfig(
-                    transducer = OnlineTransducerModelConfig(
-                        encoder = ENCODER,
-                        decoder = DECODER,
-                        joiner = JOINER,
-                    ),
-                    tokens = TOKENS,
-                    numThreads = 2,
-                    provider = "cpu",
-                    modelType = "zipformer",
-                    modelingUnit = "cjkchar",
+        val files = checkNotNull(modelFiles) { "本地语音模型清单或文件不完整" }
+        val config = OnlineRecognizerConfig(
+            featConfig = FeatureConfig(sampleRate = SAMPLE_RATE, featureDim = 80),
+            modelConfig = OnlineModelConfig(
+                transducer = OnlineTransducerModelConfig(
+                    encoder = files.encoder,
+                    decoder = files.decoder,
+                    joiner = files.joiner,
                 ),
-                enableEndpoint = false,
-                decodingMethod = "modified_beam_search",
-                maxActivePaths = 4,
-                hotwordsScore = 1.8f,
+                tokens = files.tokens,
+                numThreads = 2,
+                provider = "cpu",
+                modelType = "zipformer",
+                modelingUnit = "cjkchar",
             ),
-        ).also { recognizer = it }
+            enableEndpoint = false,
+            decodingMethod = "modified_beam_search",
+            maxActivePaths = 4,
+            hotwordsScore = 1.8f,
+        )
+        val assetManager = if (files.storage == SherpaRuntimeStorage.ASSETS) {
+            context.assets
+        } else {
+            null
+        }
+        return OnlineRecognizer(assetManager, config).also { recognizer = it }
     }
 
     private fun openSessionLocked(
