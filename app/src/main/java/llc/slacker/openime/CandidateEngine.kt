@@ -118,9 +118,9 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
     }
 
     /**
-     * A compact T9 index. 9-key input must never enumerate every possible
-     * letter combination: 3^50 combinations would freeze the IME main
-     * thread before the user can see the next key feedback.
+     * A compact Chinese 9-key Pinyin index. It must never enumerate every
+     * possible letter combination: 3^50 combinations would freeze the IME
+     * main thread before the user can see the next key feedback.
      */
     private data class NineKeyEntry(
         val pinyin: String,
@@ -486,35 +486,13 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
         )
     }
 
-    fun getT9EnglishCandidates(digits: String): List<String> {
-        if (digits.isEmpty()) return emptyList()
-        val wanted = digits.filter { it.isDigit() }.ifEmpty { return emptyList() }
-        val matches = linkedSetOf<String>()
-        val words = ImeData.englishDict.values.flatten() + ImeData.englishDict.keys
-        words.distinct().forEach { word ->
-            if (wordToT9(word) == wanted) {
-                matches.add(word)
-                if (matches.size >= 12) return@forEach
-            }
-        }
-        return matches.toList().ifEmpty { listOf(wanted) }
-    }
-
-    private fun wordToT9(word: String): String {
-        val map = mapOf(
-            "abc" to "2",
-            "def" to "3",
-            "ghi" to "4",
-            "jkl" to "5",
-            "mno" to "6",
-            "pqrs" to "7",
-            "tuv" to "8",
-            "wxyz" to "9",
-        )
-        return word.lowercase().map { ch ->
-            map.entries.firstOrNull { it.key.contains(ch) }?.value ?: ""
-        }.joinToString("")
-    }
+    /**
+     * English T9 was removed from the product. Keep this empty compatibility
+     * surface only while legacy view/state code still references the old mode;
+     * it deliberately performs no dictionary scan or digit-to-word matching.
+     */
+    @Deprecated("English T9 is no longer supported")
+    fun getT9EnglishCandidates(@Suppress("UNUSED_PARAMETER") digits: String): List<String> = emptyList()
 
     private fun lowerBound(values: List<String>, target: String): Int {
         var low = 0
