@@ -19,6 +19,11 @@ class InputConnectionGateway(
     private val isPassword: () -> Boolean = { false },
 ) {
 
+    data class CursorSnapshot(
+        val text: String,
+        val cursor: Int,
+    )
+
     fun commitText(text: String) {
         if (text.isEmpty()) return
         connection()?.commitText(text, 1)
@@ -138,6 +143,17 @@ class InputConnectionGateway(
     fun currentSelectionEnd(): Int = surroundingText()?.selectionEnd ?: currentSelectionStart()
 
     fun currentTextLength(): Int = surroundingText()?.text?.length ?: 0
+
+    fun cursorSnapshot(maxChars: Int = 8_192): CursorSnapshot? {
+        if (isPassword()) return null
+        val ic = connection() ?: return null
+        val bounded = maxChars.coerceIn(64, 100_000)
+        val before = runCatching { ic.getTextBeforeCursor(bounded, 0)?.toString().orEmpty() }
+            .getOrDefault("")
+        val after = runCatching { ic.getTextAfterCursor(bounded, 0)?.toString().orEmpty() }
+            .getOrDefault("")
+        return CursorSnapshot(before + after, before.length)
+    }
 
     fun copySelection(): String {
         if (isPassword()) return ""

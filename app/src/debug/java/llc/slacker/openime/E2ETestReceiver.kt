@@ -33,6 +33,7 @@ class E2ETestReceiver : BroadcastReceiver() {
             Log.i(
                 TAG,
                 "STATE mode=${service.currentMode()} voice=${service.isVoiceActive()} " +
+                    "voiceModel=${service.voiceModelStateForTest()} " +
                     "rimeReady=${service.isRimeReadyForTest()} " +
                     "editorLength=${service.editorTextLengthForTest()} " +
                     "compositionLength=${service.compositionLengthForTest()} " +
@@ -44,6 +45,7 @@ class E2ETestReceiver : BroadcastReceiver() {
         val redacted = if (
             command.startsWith("type:") || command.startsWith("type64:") ||
             command.startsWith("nine-sequence:") || command.startsWith("voice-simulate64:") ||
+            command.startsWith("voice-final-only64:") ||
             command.startsWith("quick-phrase-edit64:") ||
             command.startsWith("quick-phrase-use64:") ||
             command.startsWith("quick-phrase-delete64:") ||

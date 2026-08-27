@@ -74,6 +74,7 @@ class VoiceModelRepository(private val context: Context) {
         private const val TAG = "LocalVoiceModel"
         private const val PREFS = "voice_models"
         private const val SELECTED_MODEL = "selected_model"
+        private const val VERIFIED_BUILT_IN = "verified_built_in"
         private const val BUILT_IN_MANIFEST = "models/voice/manifest.json"
         private const val DOWNLOADED_DIR = "voice-models"
     }
@@ -158,9 +159,35 @@ class VoiceModelRepository(private val context: Context) {
         val json = context.assets.open(BUILT_IN_MANIFEST).use { it.readBytes().toString(Charsets.UTF_8) }
         val manifest = VoiceModelManifest.parse(json)
         check(manifest.validateShape() == null) { manifest.validateShape().orEmpty() }
+        manifest.files.forEach { path ->
+            context.assets.open(path).use { Unit }
+        }
+        val signature = builtInVerificationSignature(manifest)
+        if (preferences.getString(VERIFIED_BUILT_IN, null) == signature) {
+            return@runCatching manifest
+        }
         check(sha256Assets(manifest.files) == manifest.fileHash) { "内置模型 SHA-256 不匹配" }
+        check(preferences.edit().putString(VERIFIED_BUILT_IN, signature).commit()) {
+            "无法保存内置模型校验状态"
+        }
         manifest
     }.onFailure { Log.w(TAG, "内置模型校验失败: ${it.message}") }.getOrNull()
+
+    @Suppress("DEPRECATION")
+    private fun builtInVerificationSignature(manifest: VoiceModelManifest): String {
+        val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+        val versionCode = if (android.os.Build.VERSION.SDK_INT >= 28) {
+            packageInfo.longVersionCode
+        } else {
+            packageInfo.versionCode.toLong()
+        }
+        return listOf(
+            versionCode.toString(),
+            manifest.modelId,
+            manifest.modelVersion,
+            manifest.fileHash,
+        ).joinToString(":")
+    }
 
     private fun validateDirectory(directory: File): VoiceModelManifest? = runCatching {
         val manifestFile = File(directory, "manifest.json")

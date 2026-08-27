@@ -14,6 +14,8 @@
 .\scripts\core_regression.ps1 -Serial <serial>
 .\scripts\nine_key_regression.ps1 -Serial <serial>
 .\scripts\clear_delete_voice_regression.ps1 -Serial <serial>
+.\scripts\voice_lifecycle_regression.ps1 -Serial <serial>
+.\scripts\voice_correction_regression.ps1 -Serial <serial>
 .\scripts\typing_engine_regression.ps1 -Serial <serial>
 .\scripts\extended_regression.ps1 -Serial <serial>
 .\scripts\panel_data_regression.ps1 -Serial <serial>
@@ -40,7 +42,11 @@ logcat、meminfo、gfxinfo、APK 哈希和设备元数据写入 `.local/test-run
 composition 清空及随后回删目标文本。它使用候选文本和调试状态定位，不依赖屏幕坐标。
 
 `clear_delete_voice_regression.ps1` 连续执行 3 轮输入、删除键上滑清空、拼音预编辑清空、
-逐字删除、长按空格语音回调和语音后再次删除，并逐步核对编辑器、composition 与语音状态。
+逐字删除、长按空格语音回调、final-only 回调和语音后再次删除，并逐步核对编辑器、composition 与语音状态。
+
+`voice_lifecycle_regression.ps1` 验证模型预热期间打字仍可响应、10 秒内热复用、超时释放
+和重新打开后的后台重载。`voice_correction_regression.ps1` 验证语音结果被用户紧接着
+删除和改正后，下一次相同 ASR 原结果会应用完全本地的纠正对。
 
 `panel_data_regression.ps1` 验证系统剪贴板读取/插入与常用语新增、保存、使用、编辑、删除。
 它只创建带唯一编号的测试短语并在通过后删除；建议在模拟器或专用测试设备上执行。

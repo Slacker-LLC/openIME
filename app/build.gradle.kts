@@ -38,6 +38,12 @@ android {
         }
     }
 
+    androidResources {
+        // sherpa-onnx can map the bundled models directly from the APK only
+        // when these large assets are stored without ZIP compression.
+        noCompress += listOf("onnx", "txt")
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

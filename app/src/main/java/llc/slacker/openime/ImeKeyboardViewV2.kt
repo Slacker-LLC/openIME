@@ -30,6 +30,12 @@ class ImeKeyboardViewV2(
         fun onVoiceError(message: String) {}
         fun onVoiceCommit() {}
         fun onVoiceCancel() {}
+        fun voiceModelState(): VoiceModelLifecycleState = VoiceModelLifecycleState.COLD
+        fun startVoiceRecognition(languageTag: String, events: VoiceRecognitionEvents) {
+            events.onError("本地语音服务未连接")
+        }
+        fun stopVoiceRecognition() {}
+        fun cancelVoiceRecognition() {}
         fun onEnter()
         fun onCompositionChanged(composition: String, candidates: List<String>)
         fun onNineKeyCompositionChanged(
@@ -75,6 +81,11 @@ class ImeKeyboardViewV2(
         override fun onVoiceError(message: String) = delegate.onVoiceError(message)
         override fun onVoiceCommit() = delegate.onVoiceCommit()
         override fun onVoiceCancel() = delegate.onVoiceCancel()
+        override fun voiceModelState() = delegate.voiceModelState()
+        override fun startVoiceRecognition(languageTag: String, events: VoiceRecognitionEvents) =
+            delegate.startVoiceRecognition(languageTag, events)
+        override fun stopVoiceRecognition() = delegate.stopVoiceRecognition()
+        override fun cancelVoiceRecognition() = delegate.cancelVoiceRecognition()
         override fun onEnter() = delegate.onEnter()
         override fun onCompositionChanged(composition: String, candidates: List<String>) =
             delegate.onCompositionChanged(composition, candidates)

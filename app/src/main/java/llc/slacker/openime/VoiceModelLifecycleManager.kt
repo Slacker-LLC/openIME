@@ -1,0 +1,313 @@
+package llc.slacker.openime
+
+import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import android.util.Log
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
+
+enum class VoiceModelLifecycleState {
+    COLD,
+    VERIFYING,
+    PRELOADING,
+    HOT,
+    RECORDING,
+    COOLDOWN,
+    ERROR,
+}
+
+/**
+ * Service-scoped owner of the offline ASR runtime.
+ *
+ * Model verification, native recognizer construction and release never run on
+ * the IME main thread. Closing the keyboard keeps the mapped model hot for a
+ * short cooldown so switching between editors does not repeatedly load 199 MB.
+ */
+class VoiceModelLifecycleManager(
+    context: Context,
+    private val cooldownMs: Long = DEFAULT_COOLDOWN_MS,
+) : StreamingVoiceRuntimeProvider {
+
+    companion object {
+        private const val TAG = "OpenImeVoiceLifecycle"
+        const val DEFAULT_COOLDOWN_MS = 10_000L
+    }
+
+    private val appContext = context.applicationContext
+    private val lock = Object()
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val executor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "openime-voice-lifecycle").apply { isDaemon = true }
+    }
+    private val lifecycleGeneration = AtomicLong(0L)
+    private val sessionGeneration = AtomicLong(0L)
+    private val backend = LocalAudioVoiceBackend(appContext, this)
+
+    @Volatile
+    private var state: VoiceModelLifecycleState = VoiceModelLifecycleState.COLD
+    private var runtime: StreamingEmbeddedVoiceModelRuntime? = null
+    private var preloadInFlight = false
+    private var inputViewActive = false
+    private var recording = false
+    private var destroyed = false
+
+    private val unloadRunnable = Runnable { unloadAfterCooldown() }
+
+    fun currentState(): VoiceModelLifecycleState = state
+
+    fun onStartInputView() {
+        mainHandler.removeCallbacks(unloadRunnable)
+        synchronized(lock) {
+            if (destroyed) return
+            inputViewActive = true
+            if (runtime != null && !recording) state = VoiceModelLifecycleState.HOT
+        }
+        preload()
+    }
+
+    fun onFinishInputView() {
+        synchronized(lock) {
+            if (destroyed) return
+            inputViewActive = false
+            if (runtime != null && !recording) state = VoiceModelLifecycleState.COOLDOWN
+        }
+        mainHandler.removeCallbacks(unloadRunnable)
+        mainHandler.postDelayed(unloadRunnable, cooldownMs)
+    }
+
+    fun preload() {
+        val token = synchronized(lock) {
+            if (
+                destroyed || runtime != null || preloadInFlight ||
+                state == VoiceModelLifecycleState.ERROR
+            ) {
+                return
+            }
+            preloadInFlight = true
+            state = VoiceModelLifecycleState.VERIFYING
+            lifecycleGeneration.incrementAndGet()
+        }
+        val startedAt = SystemClock.elapsedRealtime()
+        executor.execute {
+            var created: StreamingEmbeddedVoiceModelRuntime? = null
+            try {
+                val verifyStartedAt = SystemClock.elapsedRealtime()
+                val selection = VoiceModelRepository(appContext).selectAvailable()
+                val verifyMs = SystemClock.elapsedRealtime() - verifyStartedAt
+                if (selection.manifest == null) {
+                    throw IllegalStateException(selection.reason.ifBlank { "没有可用的本地语音模型" })
+                }
+                synchronized(lock) {
+                    if (destroyed || token != lifecycleGeneration.get()) return@execute
+                    state = if (recording) {
+                        VoiceModelLifecycleState.RECORDING
+                    } else {
+                        VoiceModelLifecycleState.PRELOADING
+                    }
+                }
+                val modelCreateStartedAt = SystemClock.elapsedRealtime()
+                created = EmbeddedVoiceRuntimeFactory.create(appContext, selection)
+                    as? StreamingEmbeddedVoiceModelRuntime
+                    ?: throw IllegalStateException("本地语音模型类型不受支持")
+                created.preload()
+                val modelCreateMs = SystemClock.elapsedRealtime() - modelCreateStartedAt
+                val accepted = synchronized(lock) {
+                    if (destroyed || token != lifecycleGeneration.get()) {
+                        false
+                    } else {
+                        runtime = created
+                        preloadInFlight = false
+                        state = when {
+                            recording -> VoiceModelLifecycleState.RECORDING
+                            inputViewActive -> VoiceModelLifecycleState.HOT
+                            else -> VoiceModelLifecycleState.COOLDOWN
+                        }
+                        lock.notifyAll()
+                        true
+                    }
+                }
+                if (!accepted) {
+                    created.release()
+                } else {
+                    Log.i(
+                        TAG,
+                        "preloadComplete verifyMs=$verifyMs modelCreateMs=$modelCreateMs " +
+                            "totalMs=${SystemClock.elapsedRealtime() - startedAt}",
+                    )
+                }
+            } catch (error: Throwable) {
+                runCatching { created?.release() }
+                synchronized(lock) {
+                    if (!destroyed && token == lifecycleGeneration.get()) {
+                        preloadInFlight = false
+                        state = VoiceModelLifecycleState.ERROR
+                        lock.notifyAll()
+                    }
+                }
+                Log.e(TAG, "preloadFailed elapsedMs=${SystemClock.elapsedRealtime() - startedAt}", error)
+            }
+        }
+    }
+
+    fun start(languageTag: String, events: VoiceRecognitionEvents) {
+        mainHandler.removeCallbacks(unloadRunnable)
+        preload()
+        val token = sessionGeneration.incrementAndGet()
+        val requestAt = SystemClock.elapsedRealtime()
+        VoicePerformanceTrace.begin()
+        synchronized(lock) {
+            if (destroyed) {
+                VoicePerformanceTrace.finish(droppedPcmSamples = 0L, failed = true)
+                events.onError("本地语音服务已关闭")
+                return
+            }
+            if (state == VoiceModelLifecycleState.ERROR) {
+                VoicePerformanceTrace.finish(droppedPcmSamples = 0L, failed = true)
+                events.onError("本地语音模型校验或加载失败")
+                return
+            }
+            recording = true
+            state = VoiceModelLifecycleState.RECORDING
+        }
+        backend.start(languageTag, object : VoiceRecognitionEvents {
+            override fun onPartial(text: String) {
+                if (isCurrentSession(token)) events.onPartial(text)
+            }
+
+            override fun onFinal(text: String) {
+                if (!isCurrentSession(token)) return
+                markSessionFinished(token)
+                events.onFinal(text)
+            }
+
+            override fun onRms(rms: Float) {
+                if (isCurrentSession(token)) events.onRms(rms)
+            }
+
+            override fun onError(message: String) {
+                if (!isCurrentSession(token)) return
+                markSessionFinished(token)
+                VoicePerformanceTrace.finish(droppedPcmSamples = 0L, failed = true)
+                events.onError(message)
+            }
+
+            override fun onReady() {
+                if (!isCurrentSession(token)) return
+                Log.i(TAG, "recordStartMs=${SystemClock.elapsedRealtime() - requestAt}")
+                events.onReady()
+            }
+
+            override fun onModelReady() {
+                if (isCurrentSession(token)) {
+                    VoicePerformanceTrace.markModelReady()
+                    events.onModelReady()
+                }
+            }
+        })
+    }
+
+    fun stop() {
+        backend.stop()
+    }
+
+    fun cancel() {
+        sessionGeneration.incrementAndGet()
+        backend.cancel()
+        synchronized(lock) {
+            recording = false
+            state = when {
+                runtime == null && state == VoiceModelLifecycleState.ERROR -> VoiceModelLifecycleState.ERROR
+                runtime == null -> VoiceModelLifecycleState.COLD
+                inputViewActive -> VoiceModelLifecycleState.HOT
+                else -> VoiceModelLifecycleState.COOLDOWN
+            }
+        }
+        scheduleUnloadIfHidden()
+    }
+
+    fun destroy() {
+        mainHandler.removeCallbacks(unloadRunnable)
+        sessionGeneration.incrementAndGet()
+        backend.cancel()
+        val toRelease = synchronized(lock) {
+            if (destroyed) return
+            destroyed = true
+            recording = false
+            inputViewActive = false
+            preloadInFlight = false
+            lifecycleGeneration.incrementAndGet()
+            val value = runtime
+            runtime = null
+            state = VoiceModelLifecycleState.COLD
+            lock.notifyAll()
+            value
+        }
+        if (toRelease != null) {
+            executor.execute { runCatching { toRelease.release() } }
+        }
+        executor.shutdown()
+    }
+
+    override fun isExpectedAvailable(): Boolean = synchronized(lock) {
+        !destroyed && state != VoiceModelLifecycleState.ERROR
+    }
+
+    override fun awaitRuntime(): StreamingEmbeddedVoiceModelRuntime? {
+        preload()
+        synchronized(lock) {
+            while (!destroyed && runtime == null && preloadInFlight) {
+                try {
+                    lock.wait(250L)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    return null
+                }
+            }
+            return runtime
+        }
+    }
+
+    private fun isCurrentSession(token: Long): Boolean =
+        token == sessionGeneration.get() && !destroyed
+
+    private fun markSessionFinished(token: Long) {
+        synchronized(lock) {
+            if (token != sessionGeneration.get() || destroyed) return
+            recording = false
+            state = when {
+                runtime == null && state == VoiceModelLifecycleState.ERROR -> VoiceModelLifecycleState.ERROR
+                runtime == null -> VoiceModelLifecycleState.COLD
+                inputViewActive -> VoiceModelLifecycleState.HOT
+                else -> VoiceModelLifecycleState.COOLDOWN
+            }
+        }
+        scheduleUnloadIfHidden()
+    }
+
+    private fun scheduleUnloadIfHidden() {
+        val shouldSchedule = synchronized(lock) { !destroyed && !inputViewActive && !recording }
+        if (!shouldSchedule) return
+        mainHandler.removeCallbacks(unloadRunnable)
+        mainHandler.postDelayed(unloadRunnable, cooldownMs)
+    }
+
+    private fun unloadAfterCooldown() {
+        val toRelease = synchronized(lock) {
+            if (destroyed || inputViewActive || recording || runtime == null) return
+            lifecycleGeneration.incrementAndGet()
+            val value = checkNotNull(runtime)
+            runtime = null
+            state = VoiceModelLifecycleState.COLD
+            lock.notifyAll()
+            value
+        }
+        executor.execute {
+            val startedAt = SystemClock.elapsedRealtime()
+            runCatching { toRelease.release() }
+                .onFailure { Log.w(TAG, "unloadFailed", it) }
+            Log.i(TAG, "unloadMs=${SystemClock.elapsedRealtime() - startedAt}")
+        }
+    }
+}

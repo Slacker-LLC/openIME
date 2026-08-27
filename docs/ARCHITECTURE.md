@@ -20,8 +20,11 @@ LocalVoiceImeService (InputMethodService)
         ├── InputConnectionGateway
         │       └── setComposingText / commitText / deleteSurroundingText
         │
-        └── LocalVoiceModelRepository → sherpa-onnx AAR + ONNX 模型
-                └── AudioRecord → 流式识别 → composing / commit
+        └── VoiceModelLifecycleManager → VoiceModelRepository
+                ├── 异步校验/预热 → 10 秒热驻留 → 异步释放
+                ├── VoiceAudioRouteManager → AudioRecord → PCM ring
+                ├── sherpa-onnx → 动态 hotwords → 流式识别
+                └── VoiceCorrectionRepository → composing / commit
 ```
 
 ## 输入提交原则
@@ -52,4 +55,5 @@ LocalVoiceImeService (InputMethodService)
 ## 测试边界
 
 debug 变体提供语义化 E2E Receiver，脚本通过 `tap:key:q`、`tap:候选`、`state` 和
-`bounds` 驱动测试。生产变体不暴露这套测试入口，也不依赖固定屏幕坐标。
+`bounds` 驱动测试。Receiver 和测试 Activity 受 `android.permission.DUMP` 保护，
+仅 adb shell/系统测试可调用；生产变体不包含这套入口，也不依赖固定屏幕坐标。

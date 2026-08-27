@@ -193,6 +193,12 @@ for ($round = 1; $round -le 3; $round++) {
     }
     ClearBySwipe "round-$round voice clear"
 
+    $finalOnlyText = "只有终态也能上屏${label}"
+    $finalOnlyEncoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($finalOnlyText))
+    SendCommand ('voice-final-only64:' + $finalOnlyEncoded) 240
+    AssertEditorText "round-$round final-only voice" $finalOnlyText
+    ClearBySwipe "round-$round final-only clear"
+
     DeleteOneByOne "round-$round post-voice-delete" "语音后逐字删除${label}"
     CaptureScreen "round-$round-complete"
 }

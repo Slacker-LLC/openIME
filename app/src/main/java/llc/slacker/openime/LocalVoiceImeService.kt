@@ -38,10 +38,18 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
         val latencyMs: Long,
     )
 
+    private data class PendingVoiceCorrection(
+        val original: String,
+        val start: Int,
+        val end: Int,
+        var edited: Boolean = false,
+    )
+
     private var keyboardView: ImeKeyboardView? = null
     private lateinit var gateway: InputConnectionGateway
     private lateinit var engine: CandidateEngine
     private lateinit var rime: RimeEngine
+    private lateinit var voiceLifecycle: VoiceModelLifecycleManager
     private var state = ImeState()
     private var lastComposition = ""
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -53,6 +61,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
     private var baseImeHeight: Int? = null
     private var voiceComposing = false
     private var voiceAutoCommitOnFinal = true
+    private var pendingVoiceCorrection: PendingVoiceCorrection? = null
     private val candidateExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "ime-candidates").apply { isDaemon = true }
     }
@@ -83,6 +92,11 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
         override fun onVoiceError(message: String) = this@LocalVoiceImeService.onVoiceError(message)
         override fun onVoiceCommit() = this@LocalVoiceImeService.onVoiceCommit()
         override fun onVoiceCancel() = this@LocalVoiceImeService.onVoiceCancel()
+        override fun voiceModelState() = this@LocalVoiceImeService.voiceModelState()
+        override fun startVoiceRecognition(languageTag: String, events: VoiceRecognitionEvents) =
+            this@LocalVoiceImeService.startVoiceRecognition(languageTag, events)
+        override fun stopVoiceRecognition() = this@LocalVoiceImeService.stopVoiceRecognition()
+        override fun cancelVoiceRecognition() = this@LocalVoiceImeService.cancelVoiceRecognition()
         override fun onEnter() = this@LocalVoiceImeService.onEnter()
         override fun onCompositionChanged(composition: String, candidates: List<String>) =
             this@LocalVoiceImeService.onCompositionChanged(composition, candidates)
@@ -117,6 +131,8 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
         super.onCreate()
         activeInstance = this
         UserPhraseRepository.configure(this)
+        VoiceCorrectionRepository.configure(this)
+        voiceLifecycle = VoiceModelLifecycleManager(this)
         engine = CandidateEngine(PinyinLexicon.load(this))
         rime = RimeEngine(this).also { it.start() }
         gateway = InputConnectionGateway(
@@ -178,21 +194,25 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
         super.onStartInputView(attribute, restarting)
         if (keyboardView == null) onCreateInputView()
         if (state.panel != Panel.GAMING) restoreImeWindow()
+        voiceLifecycle.onStartInputView()
     }
 
     override fun onFinishInput() {
         invalidateCandidateQueries()
+        finalizeVoiceCorrectionIfNeeded()
         keyboardView?.shutdown()
         gateway.cancelComposing()
         rime.clear()
         voiceComposing = false
         lastComposition = ""
         state = state.copy(composition = "", candidates = emptyList())
+        pendingVoiceCorrection = null
         super.onFinishInput()
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
         keyboardView?.shutdown()
+        if (::voiceLifecycle.isInitialized) voiceLifecycle.onFinishInputView()
         super.onFinishInputView(finishingInput)
     }
 
@@ -201,6 +221,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
         candidateExecutor.shutdownNow()
         invalidateCandidateQueries()
         if (::rime.isInitialized) rime.shutdown()
+        if (::voiceLifecycle.isInitialized) voiceLifecycle.destroy()
         activeInstance = null
         super.onDestroy()
     }
@@ -246,6 +267,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
             if (text.isBlank() || state.passwordField) {
                 false
             } else {
+                VoicePerformanceTrace.abandon()
                 // Emulator audio is nondeterministic. Feed a deterministic
                 // result through the exact same composing/final callbacks as
                 // the local recognizer while the real long-press UI is tested
@@ -253,6 +275,20 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
                 onVoiceSessionStarted(autoCommitOnFinal = true)
                 onVoicePartial(text)
                 onVoiceFinal(text)
+                true
+            }
+        }.getOrDefault(false)
+        command.startsWith("voice-final-only64:") -> runCatching {
+            val text = String(
+                java.util.Base64.getDecoder().decode(command.substringAfter("voice-final-only64:")),
+                Charsets.UTF_8,
+            )
+            if (text.isBlank() || state.passwordField) {
+                false
+            } else {
+                VoicePerformanceTrace.abandon()
+                onVoiceSessionStarted(autoCommitOnFinal = true)
+                onVoiceFinal(VoiceCorrectionRepository.apply(text))
                 true
             }
         }.getOrDefault(false)
@@ -311,6 +347,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
     internal fun compositionLengthForTest(): Int = lastComposition.length
 
     internal fun voiceComposingForTest(): Boolean = voiceComposing
+    internal fun voiceModelStateForTest(): VoiceModelLifecycleState = voiceModelState()
 
     internal fun editorTextLengthForTest(): Int = gateway.currentTextLength()
 
@@ -319,6 +356,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
     override fun onModeChanged(mode: KeyboardMode) {
         Log.i(TAG, "mode=$mode")
         commitPendingComposition()
+        finalizeVoiceCorrectionIfNeeded()
         invalidateCandidateQueries()
         rime.clear()
         state = state.withMode(mode)
@@ -332,12 +370,14 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
     }
 
     override fun onCharacter(char: String) {
+        noteVoiceReplacementInput()
         commitPendingComposition()
         keyboardView?.clearAssociationCandidates()
         gateway.commitText(char)
     }
 
     override fun onBackspace() {
+        noteVoiceBackspace()
         if (keyboardView?.deleteInlineEditorChar() == true) return
         keyboardView?.clearAssociationCandidates()
         if (lastComposition.isNotEmpty()) {
@@ -362,6 +402,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
         // pre-edit on the very next key press.
         clearImeCompositionState(render = false)
         gateway.clearAllText()
+        pendingVoiceCorrection = null
         voiceComposing = false
         state = state.copy(voiceState = VoiceUiState())
         keyboardView?.renderState(state)
@@ -394,6 +435,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
             commitFirstCandidate()
             return
         }
+        finalizeVoiceCorrectionIfNeeded()
         keyboardView?.clearAssociationCandidates()
         gateway.commitText(" ")
     }
@@ -405,6 +447,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
     override fun onVoicePressChanged(pressed: Boolean) {
         if (pressed) {
             commitPendingComposition()
+            finalizeVoiceCorrectionIfNeeded()
             voiceAutoCommitOnFinal = true
             keyboardView?.startVoiceFromSpace()
         } else {
@@ -416,10 +459,34 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
         voiceAutoCommitOnFinal = autoCommitOnFinal
     }
 
+    override fun voiceModelState(): VoiceModelLifecycleState =
+        if (::voiceLifecycle.isInitialized) {
+            voiceLifecycle.currentState()
+        } else {
+            VoiceModelLifecycleState.COLD
+        }
+
+    override fun startVoiceRecognition(languageTag: String, events: VoiceRecognitionEvents) {
+        if (::voiceLifecycle.isInitialized) {
+            voiceLifecycle.start(languageTag, events)
+        } else {
+            events.onError("本地语音服务尚未初始化")
+        }
+    }
+
+    override fun stopVoiceRecognition() {
+        if (::voiceLifecycle.isInitialized) voiceLifecycle.stop()
+    }
+
+    override fun cancelVoiceRecognition() {
+        if (::voiceLifecycle.isInitialized) voiceLifecycle.cancel()
+    }
+
     override fun onVoicePartial(text: String) {
         if (state.passwordField || text.isBlank()) return
         voiceComposing = true
         gateway.setComposingText(text)
+        VoicePerformanceTrace.markFirstDisplay()
         state = state.copy(
             voiceState = state.voiceState.copy(
                 listening = true,
@@ -430,11 +497,19 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
     }
 
     override fun onVoiceFinal(text: String) {
-        if (!state.passwordField && voiceComposing) {
-            if (text.isNotBlank()) gateway.setComposingText(text)
-            if (voiceAutoCommitOnFinal) gateway.finishComposing()
+        val plan = VoiceFinalPolicy.resolve(
+            passwordField = state.passwordField,
+            hadPartialComposition = voiceComposing,
+            autoCommit = voiceAutoCommitOnFinal,
+            finalText = text,
+        )
+        if (plan.setFinalText) {
+            gateway.setComposingText(text)
+            VoicePerformanceTrace.markFirstDisplay()
         }
-        voiceComposing = !voiceAutoCommitOnFinal && text.isNotBlank()
+        if (plan.finishComposing) gateway.finishComposing()
+        voiceComposing = plan.composingAfter
+        if (plan.finishComposing && text.isNotBlank()) beginVoiceCorrection(text)
         state = state.copy(
             voiceState = state.voiceState.copy(
                 listening = false,
@@ -486,6 +561,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
             commitFirstCandidate()
             return
         }
+        finalizeVoiceCorrectionIfNeeded()
         val action = state.editorAction
         when (action) {
             EditorInfo.IME_ACTION_GO,
@@ -499,6 +575,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
     }
 
     override fun onCompositionChanged(composition: String, candidates: List<String>) {
+        if (composition.isNotEmpty()) noteVoiceReplacementInput()
         handleCompositionChanged(
             composition = composition,
             candidates = candidates,
@@ -897,11 +974,66 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
         if (!rime.isReady) UserPhraseRepository.record(composition, committed)
         gateway.commitText(committed)
         gateway.finishComposing()
+        if (pendingVoiceCorrection != null) {
+            finalizeVoiceCorrectionIfNeeded()
+        }
         rime.clear()
         lastComposition = ""
         state = state.copy(composition = "", candidates = emptyList())
         keyboardView?.renderState(state)
         keyboardView?.setAssociationCandidates(engine.getAssociations(committed))
+    }
+
+    private fun beginVoiceCorrection(original: String) {
+        if (state.passwordField || original.isBlank()) {
+            pendingVoiceCorrection = null
+            return
+        }
+        val snapshot = gateway.cursorSnapshot() ?: run {
+            pendingVoiceCorrection = null
+            return
+        }
+        val start = snapshot.cursor - original.length
+        pendingVoiceCorrection = if (
+            start >= 0 && snapshot.cursor <= snapshot.text.length &&
+            snapshot.text.substring(start, snapshot.cursor) == original
+        ) {
+            PendingVoiceCorrection(original = original, start = start, end = snapshot.cursor)
+        } else {
+            null
+        }
+    }
+
+    private fun noteVoiceBackspace() {
+        val pending = pendingVoiceCorrection ?: return
+        val cursor = gateway.cursorSnapshot()?.cursor ?: run {
+            pendingVoiceCorrection = null
+            return
+        }
+        if (cursor in (pending.start + 1)..pending.end) {
+            pending.edited = true
+        } else if (!pending.edited) {
+            pendingVoiceCorrection = null
+        }
+    }
+
+    private fun noteVoiceReplacementInput() {
+        val pending = pendingVoiceCorrection ?: return
+        // Typing at the end without first deleting any part of the ASR result
+        // is ordinary continuation, not a correction pair.
+        if (!pending.edited) pendingVoiceCorrection = null
+    }
+
+    private fun finalizeVoiceCorrectionIfNeeded() {
+        val pending = pendingVoiceCorrection ?: return
+        pendingVoiceCorrection = null
+        if (!pending.edited || state.passwordField) return
+        val snapshot = gateway.cursorSnapshot() ?: return
+        val end = snapshot.cursor
+        if (pending.start !in 0..snapshot.text.length || end < pending.start) return
+        if (end - pending.start > 128 || end > snapshot.text.length) return
+        val corrected = snapshot.text.substring(pending.start, end)
+        VoiceCorrectionRepository.record(pending.original, corrected)
     }
 
     private fun dropLastCodePoint(text: String): String {

@@ -20,6 +20,8 @@
 | UNIT-017 | InputConnection | editor action | AUTO | PASS | `InputConnectionGatewayTest` |
 | UNIT-018 | Unicode | emoji commit | AUTO | PASS | `InputConnectionGatewayTest` |
 | UNIT-019 | Security | password blocks composition / clipboard | AUTO | PASS | `InputConnectionGatewayTest` |
+| UNIT-020 | Voice | final-only callback commits text | AUTO | PASS | `VoiceFinalPolicyTest` |
+| UNIT-021 | Voice | local correction pair and hotword encoding | AUTO | PASS | `VoiceCorrectionRepositoryTest`, `VoiceHotwordProviderTest` |
 | UI-001 | Instrumented | keyboard renders | AUTO | PASS | `TEST...GlassTest2...xml`, 4/4 |
 | UI-002 | Instrumented | interactive controls | AUTO | PASS | 4/4 |
 | UI-003 | Instrumented | root / tags | AUTO | PASS | 4/4 |
@@ -45,6 +47,11 @@
 | LIFECYCLE-003 | Lifecycle | app restart composition cleanup | AUTO | PASS | `lifecycle_regression.ps1` |
 | LIFECYCLE-004 | Lifecycle | Voice stop on panel close | AUTO | PASS | `state voice=false`, `lifecycle_regression.ps1` |
 | LIFECYCLE-005 | Lifecycle | Handwriting stroke cleanup on app switch | MANUAL | PARTIAL | source-only audit; no real provider strokes uploaded |
+| LIFECYCLE-006 | Voice | preload does not block typing | AUTO | PASS | `voice_lifecycle_regression.ps1` |
+| LIFECYCLE-007 | Voice | reopen within 10s reuses runtime | AUTO | PASS | `voice_lifecycle_regression.ps1` |
+| LIFECYCLE-008 | Voice | hidden >10s releases and cold reopen reloads | AUTO | PASS | `voice_lifecycle_regression.ps1` |
+| E2E-018 | Voice | final-only callback, clear and delete × 3 | AUTO | PASS | `clear_delete_voice_regression.ps1` |
+| E2E-019 | Voice | delete ASR text, correct, then auto-correct next result | AUTO | PASS | `voice_correction_regression.ps1` |
 | SEC-001 | Security | password string in logcat | AUTO | PASS | `SECRET_IME_TEST_739251` absent from logcat |
 | SEC-002 | Security | password string in app files | AUTO | PASS | `run-as ... find ... grep` clean |
 | SEC-003 | Security | password in clipboard/DataStore | AUTO | PASS | no clipboard hit; data dir only `ime_settings.xml` |

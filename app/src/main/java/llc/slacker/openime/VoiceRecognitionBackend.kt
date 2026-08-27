@@ -56,6 +56,9 @@ interface EmbeddedVoiceModelRuntime {
  * recording back through the model on every partial result.
  */
 interface StreamingEmbeddedVoiceModelRuntime : EmbeddedVoiceModelRuntime {
+    /** Map and initialize the local recognizer without starting a voice session. */
+    fun preload()
+
     fun acceptWaveform(samples: FloatArray)
 
     /** Finish the current stream and return the raw ASR text. */
@@ -63,6 +66,9 @@ interface StreamingEmbeddedVoiceModelRuntime : EmbeddedVoiceModelRuntime {
 
     /** Run punctuation once at the end; null means punctuation failed. */
     fun punctuate(text: String): String?
+
+    /** Release all native model resources after the IME cooldown expires. */
+    fun release()
 }
 
 /**
@@ -133,6 +139,13 @@ private class UnavailableLocalVoiceBackend : VoiceRecognitionBackend {
 object EmbeddedVoiceRuntimeFactory {
     fun create(context: Context): EmbeddedVoiceModelRuntime? {
         val selection = VoiceModelRepository(context).selectAvailable()
+        return create(context, selection)
+    }
+
+    fun create(
+        context: Context,
+        selection: VoiceModelSelection,
+    ): EmbeddedVoiceModelRuntime? {
         val manifest = selection.manifest ?: return null
         if (manifest.modelType != "zipformer") return null
         return SherpaOnnxStreamingRuntime(context, manifest)
@@ -168,31 +181,43 @@ private class SherpaOnnxStreamingRuntime(
             listOf(ENCODER, DECODER, JOINER, TOKENS),
         )
 
+    @Synchronized
+    override fun preload() {
+        if (recognizer != null) return
+        recognizer = OnlineRecognizer(
+            context.assets,
+            OnlineRecognizerConfig(
+                featConfig = FeatureConfig(sampleRate = SAMPLE_RATE, featureDim = 80),
+                modelConfig = OnlineModelConfig(
+                    transducer = OnlineTransducerModelConfig(
+                        encoder = ENCODER,
+                        decoder = DECODER,
+                        joiner = JOINER,
+                    ),
+                    tokens = TOKENS,
+                    numThreads = 2,
+                    provider = "cpu",
+                    modelType = "zipformer",
+                    modelingUnit = "cjkchar",
+                ),
+                enableEndpoint = false,
+                decodingMethod = "modified_beam_search",
+                maxActivePaths = 4,
+                hotwordsScore = 1.8f,
+            ),
+        )
+    }
+
     override fun start(languageTag: String, events: VoiceRecognitionEvents) {
         check(isReady) { "内置语音模型清单或文件不完整" }
-        if (recognizer == null) {
-            recognizer = OnlineRecognizer(
-                context.assets,
-                OnlineRecognizerConfig(
-                    featConfig = FeatureConfig(sampleRate = SAMPLE_RATE, featureDim = 80),
-                    modelConfig = OnlineModelConfig(
-                        transducer = OnlineTransducerModelConfig(
-                            encoder = ENCODER,
-                            decoder = DECODER,
-                            joiner = JOINER,
-                        ),
-                        tokens = TOKENS,
-                        numThreads = 2,
-                        provider = "cpu",
-                        modelType = "zipformer",
-                    ),
-                    enableEndpoint = false,
-                    decodingMethod = "greedy_search",
-                ),
-            )
-        }
+        preload()
         stream?.release()
-        stream = recognizer?.createStream()
+        val hotwords = VoiceHotwordProvider.current()
+        stream = if (hotwords.isBlank()) {
+            recognizer?.createStream()
+        } else {
+            recognizer?.createStream(hotwords)
+        }
         this.events = events
         this.languageTag = languageTag
         lastPartial = ""
@@ -223,6 +248,16 @@ private class SherpaOnnxStreamingRuntime(
         lastPartial = ""
         // Keep the recognizer mapped. The next long-press can start promptly
         // without remapping the large encoder into the IME process.
+    }
+
+    @Synchronized
+    override fun release() {
+        stream?.release()
+        stream = null
+        recognizer?.release()
+        recognizer = null
+        events = null
+        lastPartial = ""
     }
 
     private fun decodeReady(currentRecognizer: OnlineRecognizer, currentStream: OnlineStream) {

@@ -5,19 +5,24 @@
         <activity
             android:name=".DebugKeyboardActivity"
             android:exported="true"
+            android:permission="android.permission.DUMP"
             android:theme="@style/AppTheme" />
         <activity
             android:name=".ImeTestLabActivity"
-            android:exported="true" />
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
         <activity
             android:name=".SecurityTestActivity"
-            android:exported="true" />
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
         <activity
             android:name=".LifecycleTestActivity"
-            android:exported="true" />
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
         <receiver
             android:name=".E2ETestReceiver"
             android:exported="true"
+            android:permission="android.permission.DUMP"
             tools:ignore="ExportedReceiver">
             <intent-filter>
                 <action android:name="llc.slacker.openime.TEST_COMMAND" />

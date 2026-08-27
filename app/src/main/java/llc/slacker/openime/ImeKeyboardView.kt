@@ -62,6 +62,12 @@ open class ImeKeyboardView(
         fun onVoiceError(message: String) {}
         fun onVoiceCommit() {}
         fun onVoiceCancel() {}
+        fun voiceModelState(): VoiceModelLifecycleState = VoiceModelLifecycleState.COLD
+        fun startVoiceRecognition(languageTag: String, events: VoiceRecognitionEvents) {
+            events.onError("本地语音服务未连接")
+        }
+        fun stopVoiceRecognition() {}
+        fun cancelVoiceRecognition() {}
         fun onEnter()
         fun onCompositionChanged(composition: String, candidates: List<String>)
         fun onNineKeyCompositionChanged(
@@ -139,7 +145,6 @@ open class ImeKeyboardView(
     private var clipboardTab = 0
     private var voiceLanguageIndex = 0
     private var toolPage = 0
-    private var voiceProvider: SpeechRecognitionProvider? = null
     private var voiceActive = false
     private var voiceStartAction: (() -> Unit)? = null
     private var voiceStopAction: (() -> Unit)? = null
@@ -1951,11 +1956,18 @@ open class ImeKeyboardView(
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), dp(10), dp(12), dp(10))
         }
-        val initialProvider = SpeechRecognitionProvider(context)
-        voiceProvider = initialProvider
-        val modelReady = initialProvider.isAvailable()
+        val initialModelState = listener.voiceModelState()
+        val modelReady = initialModelState in setOf(
+            VoiceModelLifecycleState.HOT,
+            VoiceModelLifecycleState.RECORDING,
+            VoiceModelLifecycleState.COOLDOWN,
+        )
         val modelStatus = TextView(context).apply {
-            text = if (modelReady) "离线模型已就绪 · 音频不出设备" else "离线模型未就绪 · 未启用联网识别"
+            text = if (modelReady) {
+                "离线模型已就绪 · 音频不出设备"
+            } else {
+                "离线模型后台准备中 · 未启用联网识别"
+            }
             textSize = 11f
             includeFontPadding = false
             gravity = Gravity.CENTER_VERTICAL
@@ -2031,15 +2043,7 @@ open class ImeKeyboardView(
             dp(252),
         ))
         fun startVoice() {
-            val provider = voiceProvider ?: SpeechRecognitionProvider(context).also { voiceProvider = it }
             if (voiceActive) return
-            if (!provider.isAvailable()) {
-                modelStatus.text = "离线模型未就绪 · 请先放入已校验的模型包"
-                transcript.text = "当前不会调用联网识别；模型接入后这里显示实时结果"
-                showInlineVoiceState("本地语音模型未就绪")
-                hideInlineVoiceStateLater(1_500L)
-                return
-            }
             recognizedText = ""
             voiceCancelled = false
             cancelPreview = false
@@ -2051,7 +2055,7 @@ open class ImeKeyboardView(
             modelStatus.text = "正在使用离线模型 · 音频不出设备"
             transcript.text = "正在聆听… 松开空格结束"
             listener.onVoiceSessionStarted(true)
-            provider.start(languages[voiceLanguageIndex].second, object : SpeechRecognitionProvider.SpeechEvents {
+            listener.startVoiceRecognition(languages[voiceLanguageIndex].second, object : VoiceRecognitionEvents {
                 override fun onPartial(text: String) {
                     // AudioRecord inference callbacks arrive from the voice
                     // worker thread; keep view and InputConnection mutations
@@ -2136,7 +2140,7 @@ open class ImeKeyboardView(
         }
         fun stopVoice() {
             if (!voiceActive) return
-            voiceProvider?.stop()
+            listener.stopVoiceRecognition()
             micButton.text = "🎤"
             gestureHint.text = "整理识别结果…"
             voiceActive = false
@@ -2148,7 +2152,7 @@ open class ImeKeyboardView(
             voiceCancelled = true
             cancelPreview = false
             voiceActive = false
-            voiceProvider?.cancel()
+            listener.cancelVoiceRecognition()
             recognizedText = ""
             micButton.text = "🎤"
             gestureHint.text = "长按空格开始"
@@ -2179,8 +2183,7 @@ open class ImeKeyboardView(
     }
 
     private fun stopVoiceIfActive() {
-        voiceProvider?.cancel()
-        voiceProvider = null
+        listener.cancelVoiceRecognition()
         voiceActive = false
         voiceGestureSession = false
         spaceVoiceGestureActive = false

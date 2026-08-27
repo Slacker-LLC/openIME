@@ -78,6 +78,26 @@ object UserPhraseRepository {
         }
     }
 
+    /** Recent, repeatedly selected terms that can safely bias local ASR. */
+    fun voiceHotwords(
+        minimumFrequency: Int = 2,
+        limit: Int = 64,
+    ): List<String> {
+        val threshold = minimumFrequency.coerceAtLeast(1)
+        val boundedLimit = limit.coerceIn(0, 128)
+        if (boundedLimit == 0) return emptyList()
+        synchronized(lock) {
+            return entries.values
+                .asSequence()
+                .filter { it.frequency >= threshold }
+                .sortedWith(compareByDescending<Entry> { it.frequency }.thenByDescending { it.lastUsed })
+                .map { it.text }
+                .distinct()
+                .take(boundedLimit)
+                .toList()
+        }
+    }
+
     fun clear() {
         synchronized(lock) {
             entries.clear()
