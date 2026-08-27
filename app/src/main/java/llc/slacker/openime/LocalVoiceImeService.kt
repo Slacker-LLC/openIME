@@ -562,15 +562,11 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
             return
         }
         finalizeVoiceCorrectionIfNeeded()
-        val action = state.editorAction
-        when (action) {
-            EditorInfo.IME_ACTION_GO,
-            EditorInfo.IME_ACTION_SEARCH,
-            EditorInfo.IME_ACTION_SEND,
-            EditorInfo.IME_ACTION_NEXT,
-            EditorInfo.IME_ACTION_DONE,
-            -> gateway.performEditorAction(action)
-            else -> gateway.sendKeyDownUp(KeyEvent.KEYCODE_ENTER)
+        val action = state.editorInfo?.imeOptions?.let(::editorActionForEnter)
+        if (action != null) {
+            gateway.performEditorAction(action)
+        } else {
+            gateway.sendKeyDownUp(KeyEvent.KEYCODE_ENTER)
         }
     }
 
