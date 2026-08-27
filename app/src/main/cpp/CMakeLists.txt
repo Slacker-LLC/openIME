@@ -52,8 +52,12 @@ set(BUILD_PYTHON OFF CACHE BOOL "" FORCE)
 add_subdirectory(vendor/OpenCC EXCLUDE_FROM_ALL)
 include(OpenccWorkarounds)
 
-set(X11Keysym "${CMAKE_CURRENT_SOURCE_DIR}/vendor/librime/include")
-include_directories("${X11Keysym}")
+# librime 1.17.0 ships Darts, UTF8-CPP and X11 keysym compatibility headers
+# under include/. Fresh checkouts restore that exact directory in
+# scripts/fetch_rime_deps.sh; never use host /usr/include for an NDK target.
+set(RIME_BUNDLED_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/vendor/librime/include")
+include_directories("${RIME_BUNDLED_INCLUDE}")
+set(X11Keysym "${RIME_BUNDLED_INCLUDE}")
 
 # Do not auto-discover optional Rime plugins. The base engine already provides
 # the phonetic/table translators used by luna_pinyin and keeps the APK small.
@@ -65,11 +69,12 @@ set(BUILD_MERGED_PLUGINS ON CACHE BOOL "" FORCE)
 set(ENABLE_LOGGING OFF CACHE BOOL "" FORCE)
 set(ENABLE_TIMESTAMP OFF CACHE BOOL "" FORCE)
 add_subdirectory(vendor/librime)
+target_include_directories(rime-static PRIVATE "${RIME_BUNDLED_INCLUDE}")
 
 add_library(local_rime SHARED local_rime_jni.cc)
 target_include_directories(local_rime PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/vendor/librime/src"
-    "${CMAKE_CURRENT_SOURCE_DIR}/vendor/librime/include"
+    "${RIME_BUNDLED_INCLUDE}"
     "${CMAKE_BINARY_DIR}/vendor/librime/src"
     "${CMAKE_BINARY_DIR}/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/vendor/OpenCC"
