@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.os.Build
+import android.view.KeyEvent
 import android.view.inputmethod.ExtractedText
 import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputConnection
@@ -122,27 +123,74 @@ class InputConnectionGateway(
 
     fun sendKeyDownUp(keyCode: Int) {
         val ic = connection() ?: return
-        ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, keyCode))
-        ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, keyCode))
+        sendKeyDownUp(ic, keyCode)
     }
 
+    /**
+     * Prefer the editor's own select-all implementation. A bounded extracted
+     * window must never be mistaken for the complete document.
+     */
     fun selectAll() {
-        val info = surroundingText() ?: return
-        connection()?.setSelection(0, info.text.length)
+        if (isPassword()) return
+        val ic = connection() ?: return
+        if (runCatching { ic.performContextMenuAction(android.R.id.selectAll) }.getOrDefault(false)) return
+        val window = extractedWindow(ic) ?: return
+        if (window.windowStart == 0) {
+            ic.setSelection(0, window.text.length)
+        }
     }
 
+    /** Set an absolute editor selection; do not clamp it to a local extracted window. */
     fun selectStartEnd(start: Int, end: Int) {
-        val info = surroundingText() ?: return
-        val safeStart = start.coerceIn(0, info.text.length)
-        val safeEnd = end.coerceIn(safeStart, info.text.length)
+        if (isPassword()) return
+        val safeStart = start.coerceAtLeast(0)
+        val safeEnd = end.coerceAtLeast(safeStart)
         connection()?.setSelection(safeStart, safeEnd)
     }
 
-    fun currentSelectionStart(): Int = surroundingText()?.selectionStart ?: 0
+    fun currentSelectionStart(): Int = editorSelection()?.first ?: -1
 
-    fun currentSelectionEnd(): Int = surroundingText()?.selectionEnd ?: currentSelectionStart()
+    fun currentSelectionEnd(): Int = editorSelection()?.second ?: -1
 
-    fun currentTextLength(): Int = surroundingText()?.text?.length ?: 0
+    /** Returns -1 when the available extracted text does not start at document offset 0. */
+    fun currentTextLength(): Int {
+        if (isPassword()) return -1
+        val ic = connection() ?: return -1
+        val window = extractedWindow(ic) ?: return -1
+        return if (window.windowStart == 0) window.text.length else -1
+    }
+
+    /**
+     * Collapse an active selection to its left edge. If absolute editor
+     * coordinates are unavailable, delegate relative movement to the editor.
+     */
+    fun moveSelectionLeft() {
+        val ic = connection() ?: return
+        val selection = editorSelection(ic)
+        if (selection == null) {
+            sendKeyDownUp(ic, KeyEvent.KEYCODE_DPAD_LEFT)
+            return
+        }
+        val (start, end) = selection
+        val target = if (start != end) minOf(start, end) else (start - 1).coerceAtLeast(0)
+        ic.setSelection(target, target)
+    }
+
+    /**
+     * Collapse an active selection to its right edge. If absolute editor
+     * coordinates are unavailable, delegate relative movement to the editor.
+     */
+    fun moveSelectionRight() {
+        val ic = connection() ?: return
+        val selection = editorSelection(ic)
+        if (selection == null) {
+            sendKeyDownUp(ic, KeyEvent.KEYCODE_DPAD_RIGHT)
+            return
+        }
+        val (start, end) = selection
+        val target = if (start != end) maxOf(start, end) else end + 1
+        ic.setSelection(target, target)
+    }
 
     fun cursorSnapshot(maxChars: Int = 8_192): CursorSnapshot? {
         if (isPassword()) return null
@@ -158,13 +206,14 @@ class InputConnectionGateway(
     fun copySelection(): String {
         if (isPassword()) return ""
         val ic = connection() ?: return ""
-        val selected = ic.getSelectedText(0)?.toString()
+        val selected = runCatching { ic.getSelectedText(0)?.toString() }.getOrNull()
         if (!selected.isNullOrEmpty()) return selected
-        val info = surroundingText() ?: return ""
-        val start = info.selectionStart
-        val end = info.selectionEnd
-        if (start < 0 || end <= start || end > info.text.length) return ""
-        return info.text.substring(start, end)
+
+        val window = extractedWindow(ic) ?: return ""
+        val localStart = window.selectionStartAbsolute - window.windowStart
+        val localEnd = window.selectionEndAbsolute - window.windowStart
+        if (localStart < 0 || localEnd <= localStart || localEnd > window.text.length) return ""
+        return window.text.substring(localStart, localEnd)
     }
 
     fun copyToClipboard(text: String) {
@@ -196,32 +245,53 @@ class InputConnectionGateway(
     fun commitContent(info: InputContentInfo): Boolean =
         connection()?.commitContent(info, 0, null) == true
 
-    private fun surroundingText(): SurroundingText? {
+    private fun editorSelection(): Pair<Int, Int>? {
         if (isPassword()) return null
         val ic = connection() ?: return null
+        return editorSelection(ic)
+    }
+
+    private fun editorSelection(ic: InputConnection): Pair<Int, Int>? {
+        if (isPassword()) return null
+        val window = extractedWindow(ic) ?: return null
+        return window.selectionStartAbsolute to window.selectionEndAbsolute
+    }
+
+    private fun extractedWindow(ic: InputConnection): ExtractedWindow? {
+        if (isPassword()) return null
         val request = ExtractedTextRequest().apply {
             token = 1
             flags = 0
             hintMaxLines = 1
             hintMaxChars = 0
         }
-        val extracted: ExtractedText? = runCatching { ic.getExtractedText(request, 0) }.getOrNull()
-        if (extracted?.text != null) {
-            val text = extracted.text.toString()
-            val offset = extracted.startOffset.coerceAtLeast(0)
-            val start = (extracted.selectionStart + offset).coerceAtLeast(0)
-            val end = (extracted.selectionEnd + offset).coerceAtLeast(start)
-            return SurroundingText(text, start, end)
-        }
-        val before = ic.getTextBeforeCursor(8192, 0)?.toString() ?: ""
-        val after = ic.getTextAfterCursor(8192, 0)?.toString() ?: ""
-        val start = before.length
-        return SurroundingText(before + after, start, start)
+        val extracted: ExtractedText = runCatching { ic.getExtractedText(request, 0) }.getOrNull()
+            ?: return null
+        val rawText = extracted.text ?: return null
+        if (extracted.selectionStart < 0 || extracted.selectionEnd < 0) return null
+
+        val windowStart = extracted.startOffset.coerceAtLeast(0)
+        val localStart = extracted.selectionStart
+        val localEnd = extracted.selectionEnd
+        val selectionStartAbsolute = windowStart + localStart
+        val selectionEndAbsolute = windowStart + localEnd
+        return ExtractedWindow(
+            text = rawText.toString(),
+            windowStart = windowStart,
+            selectionStartAbsolute = selectionStartAbsolute,
+            selectionEndAbsolute = selectionEndAbsolute,
+        )
     }
 
-    private data class SurroundingText(
+    private fun sendKeyDownUp(ic: InputConnection, keyCode: Int) {
+        ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+        ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+    }
+
+    private data class ExtractedWindow(
         val text: String,
-        val selectionStart: Int,
-        val selectionEnd: Int,
+        val windowStart: Int,
+        val selectionStartAbsolute: Int,
+        val selectionEndAbsolute: Int,
     )
 }
