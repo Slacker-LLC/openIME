@@ -2,7 +2,6 @@ package llc.slacker.openime
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertNotNull
 import org.junit.Test
 
 class VoiceCorrectionRangeTest {
@@ -19,7 +18,7 @@ class VoiceCorrectionRangeTest {
             cursorAbsolute = windowStart + text.length,
         )
 
-        val range = assertNotNull(voiceCorrectionRange(original, snapshot)) as VoiceCorrectionRange
+        val range = requireNotNull(voiceCorrectionRange(original, snapshot))
 
         assertEquals(33_190, range.startAbsolute)
         assertEquals(33_194, range.endAbsolute)
@@ -36,7 +35,7 @@ class VoiceCorrectionRangeTest {
             windowStart = originalWindowStart,
             cursorAbsolute = originalWindowStart + originalText.length,
         )
-        val range = assertNotNull(voiceCorrectionRange(original, initial)) as VoiceCorrectionRange
+        val range = requireNotNull(voiceCorrectionRange(original, initial))
 
         val corrected = "澎湃系统"
         val shiftedWindowStart = originalWindowStart + 37
