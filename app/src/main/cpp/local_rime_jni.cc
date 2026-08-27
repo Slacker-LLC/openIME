@@ -228,6 +228,11 @@ std::vector<std::string> snapshot_locked() {
   return values;
 }
 
+bool select_schema_locked(const std::string& schema_id) {
+  return g_api && g_session && g_api->select_schema && !schema_id.empty() &&
+         g_api->select_schema(g_session, schema_id.c_str());
+}
+
 void shutdown_locked() {
   if (g_api && g_session) g_api->destroy_session(g_session);
   g_session = 0;
@@ -284,13 +289,20 @@ Java_llc_slacker_openime_RimeNative_nativeStartup(
   // A live session is not sufficient: without a selected schema every later
   // candidate query is empty. Require one of the bundled Pinyin schemas.
   const bool schema_selected =
-      g_api->select_schema &&
-      (g_api->select_schema(g_session, "luna_pinyin_simp") ||
-       g_api->select_schema(g_session, "luna_pinyin"));
+      select_schema_locked("luna_pinyin_simp") ||
+      select_schema_locked("luna_pinyin");
   if (!schema_selected) {
     g_api->destroy_session(g_session);
     g_session = 0;
   }
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_llc_slacker_openime_RimeNative_nativeSelectSchema(
+    JNIEnv* env, jclass, jstring schema_id) {
+  std::lock_guard<std::mutex> lock(g_mutex);
+  const std::string schema = jstring_to_utf8(env, schema_id);
+  return select_schema_locked(schema) ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL

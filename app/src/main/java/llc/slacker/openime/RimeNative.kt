@@ -10,6 +10,9 @@ internal object RimeNative {
     external fun nativeStartup(sharedDir: String, userDir: String)
 
     @JvmStatic
+    external fun nativeSelectSchema(schemaId: String): Boolean
+
+    @JvmStatic
     external fun nativeSetInput(input: String): Array<String>
 
     @JvmStatic
@@ -28,4 +31,3 @@ internal object RimeNative {
     @JvmStatic
     external fun nativeUtf8RoundTripForTest(input: String): String
 }
-

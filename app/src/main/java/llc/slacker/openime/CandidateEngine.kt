@@ -326,23 +326,7 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
         return best[py.length]?.takeIf { it.parts >= 2 }?.text
     }
 
-    private fun fuzzyVariants(py: String): List<String> {
-        val out = mutableSetOf<String>()
-        val pairs = listOf(
-            "z" to "zh",
-            "c" to "ch",
-            "s" to "sh",
-        )
-        for ((short, long) in pairs) {
-            if (py.startsWith(short) && !py.startsWith(long)) {
-                out.add(long + py.substring(short.length))
-            }
-            if (py.startsWith(long)) {
-                out.add(short + py.substring(long.length))
-            }
-        }
-        return out.toList()
-    }
+    private fun fuzzyVariants(py: String): List<String> = pinyinFuzzyVariants(py)
 
     fun get9KeyCandidates(numberStr: String): NineKeyResult {
         val digits = numberStr

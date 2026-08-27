@@ -1,0 +1,28 @@
+# Rime schema
+# encoding: utf-8
+
+__include: luna_pinyin_simp.schema:/
+
+schema:
+  schema_id: luna_pinyin_simp_fuzzy
+  name: 朙月拼音·简化字·模糊音
+  version: "0.22"
+  author:
+    - 佛振 <chen.sst@gmail.com>
+  description: |
+    朙月拼音简化字方案，额外启用 openIME 模糊音规则。
+
+speller:
+  algebra:
+    __patch:
+      - pinyin:/zh_z_bufen
+      - pinyin:/n_l_bufen
+      - pinyin:/en_eng_bufen
+      - pinyin:/abbreviation
+      - pinyin:/spelling_correction
+      - pinyin:/key_correction
+
+translator:
+  # Fuzzy algebra must use its own prism; reusing luna_pinyin_simp would keep
+  # the non-fuzzy compiled spelling graph even after selecting this schema.
+  prism: luna_pinyin_simp_fuzzy
