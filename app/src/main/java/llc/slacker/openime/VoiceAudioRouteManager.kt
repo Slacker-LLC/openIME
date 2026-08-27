@@ -1,11 +1,11 @@
 package llc.slacker.openime
 
+import android.annotation.TargetApi
 import android.content.Context
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Build
 import android.util.Log
-import androidx.annotation.RequiresApi
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -80,7 +80,7 @@ class VoiceAudioRouteManager(context: Context) {
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.S)
+    @TargetApi(Build.VERSION_CODES.S)
     private fun prepareManagedRoute(): RouteBaseline {
         val previousMode = audioManager.mode
         val previousDevice = runCatching { audioManager.communicationDevice }.getOrNull()
@@ -106,7 +106,7 @@ class VoiceAudioRouteManager(context: Context) {
         )
     }
 
-    @RequiresApi(Build.VERSION_CODES.S)
+    @TargetApi(Build.VERSION_CODES.S)
     private fun restoreManagedRoute(baseline: RouteBaseline) {
         if (baseline.changedDevice) {
             runCatching {
@@ -122,7 +122,7 @@ class VoiceAudioRouteManager(context: Context) {
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.S)
+    @TargetApi(Build.VERSION_CODES.S)
     private fun preferredExternalDevice(): AudioDeviceInfo? {
         val priority = listOf(
             AudioDeviceInfo.TYPE_BLE_HEADSET,
