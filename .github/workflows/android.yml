@@ -53,6 +53,10 @@ jobs:
             exit 1
           fi
 
+      - name: Fetch pinned librime dependencies
+        shell: bash
+        run: bash scripts/fetch_rime_deps.sh
+
       - name: Ensure Gradle wrapper is executable
         shell: bash
         run: chmod +x gradlew
