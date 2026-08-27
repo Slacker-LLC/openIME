@@ -60,6 +60,48 @@ object EditorInfoAdapter {
         else -> KeyboardMode.PINYIN_26
     }
 
+    /**
+     * Automatic sentence punctuation is only appropriate for prose-like text.
+     * Structured fields and editors explicitly asking for no suggestions are
+     * kept literal so ASR post-processing cannot mutate searches, identifiers,
+     * addresses or command/code-style input.
+     */
+    fun allowNaturalLanguageVoicePunctuation(info: EditorInfo?): Boolean {
+        if (info == null) return false
+        when (kind(info)) {
+            EditorKind.EMAIL,
+            EditorKind.URL,
+            EditorKind.PASSWORD,
+            EditorKind.NUMBER,
+            EditorKind.DECIMAL,
+            EditorKind.PHONE,
+            EditorKind.UNKNOWN,
+            -> return false
+            EditorKind.TEXT,
+            EditorKind.MULTILINE,
+            -> Unit
+        }
+
+        if ((info.imeOptions and EditorInfo.IME_MASK_ACTION) == EditorInfo.IME_ACTION_SEARCH) {
+            return false
+        }
+
+        val inputType = info.inputType
+        if ((inputType and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS) != 0) return false
+        val variation = inputType and InputType.TYPE_MASK_VARIATION
+        if (
+            variation in setOf(
+                InputType.TYPE_TEXT_VARIATION_FILTER,
+                InputType.TYPE_TEXT_VARIATION_PERSON_NAME,
+                InputType.TYPE_TEXT_VARIATION_POSTAL_ADDRESS,
+                InputType.TYPE_TEXT_VARIATION_EMAIL_SUBJECT,
+            )
+        ) {
+            return false
+        }
+        return true
+    }
+
     fun allowCandidates(kind: EditorKind): Boolean = kind != EditorKind.PASSWORD
 
     fun isPassword(kind: EditorKind): Boolean = kind == EditorKind.PASSWORD

@@ -1,15 +1,180 @@
 package llc.slacker.openime
 
 import android.content.Context
+import android.os.Build
+import android.util.TypedValue
+import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
+import android.view.WindowInsets
+import android.widget.LinearLayout
+import android.widget.TextView
 
 /**
- * Compatibility alias. The production path uses [ImeKeyboardView] directly;
- * this class exists to keep the newer service listener contract name stable.
+ * Production wrapper around the legacy renderer. Business state still lives in
+ * the service; this layer owns window geometry and production-only capability
+ * filtering that should not leak into key layout/state code.
  */
-class ImeKeyboardViewV2(
+class ImeKeyboardViewV2 private constructor(
     context: Context,
-    listener: Listener,
-) : ImeKeyboardView(context, Adapter(listener)) {
+    private val adapter: Adapter,
+) : ImeKeyboardView(context, adapter) {
+
+    constructor(context: Context, listener: Listener) : this(context, Adapter(listener))
+
+    private var navigationBottomInsetPx = 0
+
+    init {
+        adapter.afterPanelChanged = { panel ->
+            when (panel) {
+                Panel.TEXT_EDITOR -> {
+                    // The legacy renderer invokes onPanelChanged before renderPanel,
+                    // so defer capability filtering until the panel children exist.
+                    post { disableUnsupportedTextEditControls() }
+                }
+                Panel.CLIPBOARD -> post { decorateClipboardRetentionControls() }
+                else -> Unit
+            }
+        }
+
+        // Insets already consumed by the IME window arrive as zero, so this
+        // adds safe area only when Android actually reports an unconsumed nav
+        // region. The value is bounded to avoid pathological OEM geometry.
+        setOnApplyWindowInsetsListener { _, insets ->
+            val reported = if (Build.VERSION.SDK_INT >= 30) {
+                insets.getInsets(WindowInsets.Type.navigationBars()).bottom
+            } else {
+                @Suppress("DEPRECATION")
+                insets.systemWindowInsetBottom
+            }
+            val next = ImeBottomInsetPolicy.clampInset(reported, insetDp(32))
+            if (next != navigationBottomInsetPx) {
+                navigationBottomInsetPx = next
+                requestLayout()
+            }
+            insets
+        }
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        requestApplyInsets()
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+        if (navigationBottomInsetPx <= 0) return
+        val targetHeight = ImeBottomInsetPolicy.measuredHeight(
+            baseHeightPx = measuredHeight,
+            bottomInsetPx = navigationBottomInsetPx,
+            measureMode = View.MeasureSpec.getMode(heightMeasureSpec),
+            measureSizePx = View.MeasureSpec.getSize(heightMeasureSpec),
+        )
+        if (targetHeight != measuredHeight) {
+            // The inherited keyboard/panel remains at its existing 296dp body
+            // height. Extra measured height becomes a bottom safe area, so the
+            // last key row is not compressed upward or covered by navigation.
+            setMeasuredDimension(measuredWidth, targetHeight)
+        }
+    }
+
+    private fun disableUnsupportedTextEditControls() {
+        fun visit(view: View) {
+            if (view is TextView && TextEditControlPolicy.isUnavailableLabel(view.text.toString())) {
+                view.isEnabled = false
+                view.isClickable = false
+                view.alpha = 0.38f
+                view.contentDescription = "${view.text}（当前编辑器暂不支持）"
+            }
+            if (view is ViewGroup) {
+                for (index in 0 until view.childCount) visit(view.getChildAt(index))
+            }
+        }
+        visit(this)
+    }
+
+    private fun decorateClipboardRetentionControls() {
+        if (findViewWithTag<View>("quick-phrase-add") != null) return
+        val body = findViewWithTag<LinearLayout>("clipboard-panel") ?: return
+        if (body.findViewWithTag<View>("clipboard-retention-actions") != null) return
+        if (ClipboardHistoryRepository.load(context).isEmpty()) return
+
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            tag = "clipboard-retention-actions"
+        }
+        row.addView(
+            clipboardRetentionAction("清除未固定") {
+                ClipboardHistoryRepository.clearUnpinned(context)
+                hideClipboardCards(includePinned = false)
+                if (ClipboardHistoryRepository.load(context).isEmpty()) row.visibility = View.GONE
+            },
+            LinearLayout.LayoutParams(0, insetDp(36), 1f).apply { marginEnd = insetDp(6) },
+        )
+        row.addView(
+            clipboardRetentionAction("清空全部") {
+                ClipboardHistoryRepository.clearAll(context)
+                hideClipboardCards(includePinned = true)
+                row.visibility = View.GONE
+            },
+            LinearLayout.LayoutParams(0, insetDp(36), 1f),
+        )
+        body.addView(
+            row,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                insetDp(36),
+            ).apply { topMargin = insetDp(6) },
+        )
+    }
+
+    private fun clipboardRetentionAction(label: String, onClick: () -> Unit): TextView =
+        TextView(context).apply {
+            text = label
+            textSize = 12f
+            gravity = Gravity.CENTER
+            isClickable = true
+            isFocusable = true
+            contentDescription = label
+            val backgroundValue = TypedValue()
+            if (
+                context.theme.resolveAttribute(
+                    android.R.attr.selectableItemBackground,
+                    backgroundValue,
+                    true,
+                ) && backgroundValue.resourceId != 0
+            ) {
+                setBackgroundResource(backgroundValue.resourceId)
+            }
+            setOnClickListener { onClick() }
+        }
+
+    private fun hideClipboardCards(includePinned: Boolean) {
+        fun containsPinnedMarker(view: View): Boolean {
+            if (view is TextView && view.text.toString() == "已置顶") return true
+            if (view is ViewGroup) {
+                for (index in 0 until view.childCount) {
+                    if (containsPinnedMarker(view.getChildAt(index))) return true
+                }
+            }
+            return false
+        }
+
+        fun visit(view: View) {
+            if (view.tag == "clip-card") {
+                if (includePinned || !containsPinnedMarker(view)) view.visibility = View.GONE
+                return
+            }
+            if (view is ViewGroup) {
+                for (index in 0 until view.childCount) visit(view.getChildAt(index))
+            }
+        }
+        visit(this)
+    }
+
+    private fun insetDp(value: Int): Int =
+        (value * resources.displayMetrics.density).toInt()
 
     interface Listener {
         fun onModeChanged(mode: KeyboardMode)
@@ -63,8 +228,13 @@ class ImeKeyboardViewV2(
     }
 
     private class Adapter(private val delegate: Listener) : ImeKeyboardView.Listener {
+        var afterPanelChanged: ((Panel) -> Unit)? = null
+
         override fun onModeChanged(mode: KeyboardMode) = delegate.onModeChanged(mode)
-        override fun onPanelChanged(panel: Panel) = delegate.onPanelChanged(panel)
+        override fun onPanelChanged(panel: Panel) {
+            delegate.onPanelChanged(panel)
+            afterPanelChanged?.invoke(panel)
+        }
         override fun onCharacter(char: String) = delegate.onCharacter(char)
         override fun onBackspace() = delegate.onBackspace()
         override fun onClearAll() = delegate.onClearAll()

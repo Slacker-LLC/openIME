@@ -141,6 +141,10 @@ interface StreamingVoiceRuntimeProvider {
     fun isExpectedAvailable(): Boolean
 
     fun awaitRuntime(): StreamingEmbeddedVoiceModelRuntime?
+
+    /** Trace token created by the service before this voice gesture starts. */
+    fun performanceTraceToken(): VoicePerformanceTrace.Token? =
+        VoicePerformanceTrace.currentTokenForBackend()
 }
 
 private class FixedStreamingVoiceRuntimeProvider(
@@ -193,10 +197,11 @@ class LocalAudioVoiceBackend(
             return
         }
 
+        val traceToken = runtimeProvider.performanceTraceToken() ?: VoicePerformanceTrace.begin()
         val generation = startGeneration.incrementAndGet()
         stopRequestedGeneration.set(-1L)
         startExecutor.execute {
-            initializeSession(generation, languageTag, events)
+            initializeSession(generation, languageTag, events, traceToken)
         }
     }
 
@@ -205,14 +210,15 @@ class LocalAudioVoiceBackend(
         generation: Long,
         languageTag: String,
         events: VoiceRecognitionEvents,
+        traceToken: VoicePerformanceTrace.Token,
     ) {
-
         val minBufferBytes = AudioRecord.getMinBufferSize(
             LocalVoiceAudioSpec.SAMPLE_RATE,
             LocalVoiceAudioSpec.CHANNEL_MASK,
             LocalVoiceAudioSpec.ENCODING,
         )
         if (minBufferBytes <= 0) {
+            VoicePerformanceTrace.finish(traceToken, 0L, failed = true)
             events.onError("设备不支持 16kHz 麦克风采集")
             return
         }
@@ -240,12 +246,14 @@ class LocalAudioVoiceBackend(
                 .build()
         }.getOrElse {
             routeSession.close()
+            VoicePerformanceTrace.finish(traceToken, 0L, failed = true)
             events.onError("无法初始化本地麦克风：${it.message.orEmpty()}")
             return
         }
         if (record.state != AudioRecord.STATE_INITIALIZED) {
             record.release()
             routeSession.close()
+            VoicePerformanceTrace.finish(traceToken, 0L, failed = true)
             events.onError("无法初始化本地麦克风")
             return
         }
@@ -257,6 +265,7 @@ class LocalAudioVoiceBackend(
             ),
             events = events,
             routeSession = routeSession,
+            traceToken = traceToken,
         )
         val accepted = synchronized(lock) {
             if (startGeneration.get() != generation) {
@@ -269,14 +278,16 @@ class LocalAudioVoiceBackend(
         if (!accepted) {
             record.release()
             routeSession.close()
+            VoicePerformanceTrace.abandon(traceToken)
             return
         }
         session.stopRequested.set(stopRequestedGeneration.get() == generation)
+        if (session.stopRequested.get()) VoicePerformanceTrace.markVoiceRelease(traceToken)
 
         val modelEvents = object : VoiceRecognitionEvents {
             override fun onPartial(text: String) {
                 session.lastPartial = text
-                VoicePerformanceTrace.markFirstPartial()
+                VoicePerformanceTrace.markFirstPartial(session.traceToken)
                 events.onPartial(text)
             }
 
@@ -295,7 +306,7 @@ class LocalAudioVoiceBackend(
             if (record.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
                 throw IllegalStateException("AudioRecord 未进入录音状态")
             }
-            VoicePerformanceTrace.markAudioRecordStart()
+            VoicePerformanceTrace.markAudioRecordStart(session.traceToken)
             val canRun = synchronized(lock) {
                 if (startGeneration.get() != generation || this.session !== session) {
                     false
@@ -335,10 +346,15 @@ class LocalAudioVoiceBackend(
     }
 
     override fun stop() {
-        VoicePerformanceTrace.markVoiceRelease()
+        val current = synchronized(lock) { session }
+        if (current != null) {
+            VoicePerformanceTrace.markVoiceRelease(current.traceToken)
+        } else {
+            runtimeProvider.performanceTraceToken()?.let(VoicePerformanceTrace::markVoiceRelease)
+        }
         val generation = startGeneration.get()
         stopRequestedGeneration.set(generation)
-        val current = synchronized(lock) { session } ?: return
+        if (current == null) return
         current.stopRequested.set(true)
         requestCaptureStop(current)
         if (current.modelReady.get()) startInferenceThread(current)
@@ -355,6 +371,7 @@ class LocalAudioVoiceBackend(
             value
         } ?: return
         current.cancelled.set(true)
+        VoicePerformanceTrace.abandon(current.traceToken)
         requestCaptureStop(current)
         current.ring.clear()
         current.ring.wake()
@@ -375,6 +392,7 @@ class LocalAudioVoiceBackend(
         runCatching { value.record.release() }
         value.routeSession.close()
         value.ring.clear()
+        VoicePerformanceTrace.abandon(value.traceToken)
         synchronized(lock) {
             if (session === value) session = null
         }
@@ -405,7 +423,7 @@ class LocalAudioVoiceBackend(
                 val read = session.record.read(pcm, 0, pcm.size, AudioRecord.READ_BLOCKING)
                 when {
                     read > 0 -> {
-                        VoicePerformanceTrace.markFirstPcm()
+                        VoicePerformanceTrace.markFirstPcm(session.traceToken)
                         val droppedBefore = session.ring.droppedSamples
                         session.ring.offer(pcm, 0, read)
                         if (
@@ -454,11 +472,11 @@ class LocalAudioVoiceBackend(
                 if (pendingCount < pending.size && session.running.get()) continue
                 val chunk = pending.copyOf(pendingCount)
                 pendingCount = 0
-                VoicePerformanceTrace.markFirstDecode()
+                VoicePerformanceTrace.markFirstDecode(session.traceToken)
                 voiceSession.acceptWaveform(pcm16ToFloat(chunk))
             }
             if (pendingCount > 0) {
-                VoicePerformanceTrace.markFirstDecode()
+                VoicePerformanceTrace.markFirstDecode(session.traceToken)
                 voiceSession.acceptWaveform(pcm16ToFloat(pending.copyOf(pendingCount)))
             }
             if (
@@ -467,12 +485,12 @@ class LocalAudioVoiceBackend(
                 session.finished.compareAndSet(false, true)
             ) {
                 val raw = voiceSession.inputFinished().ifBlank { session.lastPartial }
-                VoicePerformanceTrace.markFinalAsr()
+                VoicePerformanceTrace.markFinalAsr(session.traceToken)
                 val punctuated = if (raw.isBlank()) raw else voiceSession.punctuate(raw) ?: raw
                 val final = VoiceCorrectionRepository.apply(punctuated)
-                VoicePerformanceTrace.markPunctuationDone()
+                VoicePerformanceTrace.markPunctuationDone(session.traceToken)
                 session.events.onFinal(final)
-                VoicePerformanceTrace.finish(session.ring.droppedSamples)
+                VoicePerformanceTrace.finish(session.traceToken, session.ring.droppedSamples)
             }
         } catch (error: Throwable) {
             fail(session, "本地语音推理失败：${error.message.orEmpty()}")
@@ -490,7 +508,11 @@ class LocalAudioVoiceBackend(
     private fun fail(session: Session, message: String) {
         if (session.failed.compareAndSet(false, true)) {
             requestCaptureStop(session)
-            VoicePerformanceTrace.finish(session.ring.droppedSamples, failed = true)
+            VoicePerformanceTrace.finish(
+                session.traceToken,
+                session.ring.droppedSamples,
+                failed = true,
+            )
             session.events.onError(message)
             if (!session.modelReady.get() && session.captureThread == null) {
                 cleanupStartingSession(session)
@@ -503,6 +525,7 @@ class LocalAudioVoiceBackend(
         val ring: PcmRingBuffer,
         val events: VoiceRecognitionEvents,
         val routeSession: VoiceAudioRouteManager.Session,
+        val traceToken: VoicePerformanceTrace.Token,
     ) {
         @Volatile
         var voiceSession: StreamingVoiceModelSession? = null
