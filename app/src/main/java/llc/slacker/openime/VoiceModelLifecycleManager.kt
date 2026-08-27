@@ -1,10 +1,13 @@
 package llc.slacker.openime
 
+import android.app.ActivityManager
 import android.content.Context
+import android.inputmethodservice.InputMethodService
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import android.view.inputmethod.EditorInfo
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
 
@@ -56,6 +59,77 @@ internal class VoicePreloadRetryPolicy(
         if (permanentlyBlocked) Long.MAX_VALUE else (retryNotBeforeMs - nowMs).coerceAtLeast(0L)
 }
 
+internal data class VoiceMemorySnapshot(
+    val lowRamDevice: Boolean,
+    val memoryClassBytes: Long,
+    val availableBytes: Long,
+    val lowMemoryThresholdBytes: Long,
+)
+
+internal data class VoiceMemoryAdmission(
+    val allowed: Boolean,
+    val reason: String = "",
+)
+
+/**
+ * Conservative admission for the large native ASR runtime. Android's Java heap
+ * memoryClass is only a device-capability signal here, not a hard native-memory
+ * limit; live system headroom is the primary gate.
+ */
+internal object VoiceMemoryAdmissionPolicy {
+    private const val MIN_HEADROOM_BYTES = 64L * 1024L * 1024L
+
+    fun evaluate(
+        requiredMemory: Long,
+        snapshot: VoiceMemorySnapshot,
+        automaticPreload: Boolean,
+    ): VoiceMemoryAdmission {
+        if (requiredMemory <= 0L) {
+            return VoiceMemoryAdmission(false, "模型内存需求无效")
+        }
+        if (automaticPreload && snapshot.lowRamDevice) {
+            return VoiceMemoryAdmission(false, "低内存设备跳过自动语音预热")
+        }
+
+        val headroom = maxOf(MIN_HEADROOM_BYTES, requiredMemory / 5L)
+        if (requiredMemory > Long.MAX_VALUE - headroom) {
+            return VoiceMemoryAdmission(false, "模型内存需求溢出")
+        }
+        val requiredWithHeadroom = requiredMemory + headroom
+        val usableAvailable =
+            (snapshot.availableBytes - snapshot.lowMemoryThresholdBytes).coerceAtLeast(0L)
+        if (usableAvailable < requiredWithHeadroom) {
+            return VoiceMemoryAdmission(
+                false,
+                "可用内存不足 required=$requiredMemory usable=$usableAvailable",
+            )
+        }
+
+        // memoryClass does not cap native ONNX allocations, but an extremely
+        // small heap class is a strong signal that loading a 400+ MB runtime is
+        // unsafe even when cached pages temporarily make availMem look large.
+        if (
+            snapshot.memoryClassBytes > 0L &&
+            snapshot.memoryClassBytes < requiredMemory / 2L
+        ) {
+            return VoiceMemoryAdmission(
+                false,
+                "设备内存等级过低 memoryClass=${snapshot.memoryClassBytes}",
+            )
+        }
+        return VoiceMemoryAdmission(true)
+    }
+}
+
+internal object VoiceAutoPreloadPolicy {
+    fun shouldPreload(
+        editorKind: EditorInfoAdapter.EditorKind,
+        imeOptions: Int,
+    ): Boolean =
+        !EditorInfoAdapter.isPassword(editorKind) &&
+            (imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING) == 0
+}
+
 private class PermanentVoiceModelException(message: String) : IllegalStateException(message)
 
 /**
@@ -73,9 +147,13 @@ class VoiceModelLifecycleManager(
     companion object {
         private const val TAG = "OpenImeVoiceLifecycle"
         const val DEFAULT_COOLDOWN_MS = 10_000L
+        private const val BYTES_PER_MIB = 1024L * 1024L
     }
 
     private val appContext = context.applicationContext
+    private val inputMethodService = context as? InputMethodService
+    private val activityManager =
+        appContext.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
     private val lock = Object()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor { runnable ->
@@ -105,7 +183,11 @@ class VoiceModelLifecycleManager(
             inputViewActive = true
             if (runtime != null && !recording) state = VoiceModelLifecycleState.HOT
         }
-        preload()
+        if (shouldAutoPreloadForCurrentEditor()) {
+            preload(automaticPreload = true)
+        } else {
+            Log.i(TAG, "preloadSkipped reason=privateEditor")
+        }
     }
 
     fun onFinishInputView() {
@@ -118,7 +200,19 @@ class VoiceModelLifecycleManager(
         mainHandler.postDelayed(unloadRunnable, cooldownMs)
     }
 
-    fun preload() {
+    fun preload(automaticPreload: Boolean = false) {
+        if (automaticPreload) {
+            val snapshot = currentMemorySnapshot()
+            if (snapshot == null) {
+                Log.w(TAG, "preloadSkipped reason=memorySnapshotUnavailable")
+                return
+            }
+            if (snapshot.lowRamDevice) {
+                Log.i(TAG, "preloadSkipped reason=lowRamDevice")
+                return
+            }
+        }
+
         val nowMs = SystemClock.elapsedRealtime()
         val token = synchronized(lock) {
             if (
@@ -138,11 +232,41 @@ class VoiceModelLifecycleManager(
                 val verifyStartedAt = SystemClock.elapsedRealtime()
                 val selection = VoiceModelRepository(appContext).selectAvailable()
                 val verifyMs = SystemClock.elapsedRealtime() - verifyStartedAt
-                if (selection.manifest == null) {
-                    throw PermanentVoiceModelException(
+                val manifest = selection.manifest
+                    ?: throw PermanentVoiceModelException(
                         selection.reason.ifBlank { "没有可用的本地语音模型" },
                     )
+
+                val admission = currentMemorySnapshot()?.let { snapshot ->
+                    VoiceMemoryAdmissionPolicy.evaluate(
+                        requiredMemory = manifest.requiredMemory,
+                        snapshot = snapshot,
+                        automaticPreload = automaticPreload,
+                    )
+                } ?: VoiceMemoryAdmission(false, "无法读取设备内存状态")
+                if (!admission.allowed) {
+                    val deniedAt = SystemClock.elapsedRealtime()
+                    var retryDelay = 0L
+                    synchronized(lock) {
+                        if (destroyed || token != lifecycleGeneration.get()) return@execute
+                        preloadInFlight = false
+                        if (automaticPreload) {
+                            state = VoiceModelLifecycleState.COLD
+                        } else {
+                            retryPolicy.recordFailure(permanent = false, nowMs = deniedAt)
+                            retryDelay = retryPolicy.retryDelayMs(deniedAt)
+                            state = VoiceModelLifecycleState.ERROR
+                        }
+                        lock.notifyAll()
+                    }
+                    Log.w(
+                        TAG,
+                        "preloadDenied automatic=$automaticPreload retryDelayMs=$retryDelay " +
+                            "reason=${admission.reason}",
+                    )
+                    return@execute
                 }
+
                 synchronized(lock) {
                     if (destroyed || token != lifecycleGeneration.get()) return@execute
                     state = if (recording) {
@@ -208,7 +332,7 @@ class VoiceModelLifecycleManager(
 
     fun start(languageTag: String, events: VoiceRecognitionEvents) {
         mainHandler.removeCallbacks(unloadRunnable)
-        preload()
+        preload(automaticPreload = false)
         val token = sessionGeneration.incrementAndGet()
         val requestAt = SystemClock.elapsedRealtime()
         VoicePerformanceTrace.begin()
@@ -310,7 +434,7 @@ class VoiceModelLifecycleManager(
     }
 
     override fun awaitRuntime(): StreamingEmbeddedVoiceModelRuntime? {
-        preload()
+        preload(automaticPreload = false)
         synchronized(lock) {
             while (!destroyed && runtime == null && preloadInFlight) {
                 try {
@@ -322,6 +446,28 @@ class VoiceModelLifecycleManager(
             }
             return runtime
         }
+    }
+
+    private fun shouldAutoPreloadForCurrentEditor(): Boolean {
+        val info = inputMethodService?.currentInputEditorInfo ?: return true
+        return VoiceAutoPreloadPolicy.shouldPreload(
+            editorKind = EditorInfoAdapter.kind(info),
+            imeOptions = info.imeOptions,
+        )
+    }
+
+    private fun currentMemorySnapshot(): VoiceMemorySnapshot? {
+        val manager = activityManager ?: return null
+        val memoryInfo = ActivityManager.MemoryInfo()
+        return runCatching {
+            manager.getMemoryInfo(memoryInfo)
+            VoiceMemorySnapshot(
+                lowRamDevice = manager.isLowRamDevice,
+                memoryClassBytes = manager.memoryClass.toLong() * BYTES_PER_MIB,
+                availableBytes = memoryInfo.availMem,
+                lowMemoryThresholdBytes = memoryInfo.threshold,
+            )
+        }.getOrNull()
     }
 
     private fun isCurrentSession(token: Long): Boolean =
