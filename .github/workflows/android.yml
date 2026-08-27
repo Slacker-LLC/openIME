@@ -53,6 +53,10 @@ jobs:
             exit 1
           fi
 
+      - name: Ensure Gradle wrapper is executable
+        shell: bash
+        run: chmod +x gradlew
+
       - name: Run unit tests, lint, and assemble
         run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon --console=plain
 
