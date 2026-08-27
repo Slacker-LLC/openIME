@@ -39,4 +39,12 @@ class RimeStartupGateTest {
         assertFalse(gate.fail(first))
         assertNull(gate.begin())
     }
+
+    @Test
+    fun healthProbeRequiresCandidateBeyondInputAndPreedit() {
+        assertFalse(rimeProbeHasCandidate(emptyArray()))
+        assertFalse(rimeProbeHasCandidate(arrayOf("ni", "ni")))
+        assertFalse(rimeProbeHasCandidate(arrayOf("ni", "ni", "", "  ")))
+        assertTrue(rimeProbeHasCandidate(arrayOf("ni", "ni", "你")))
+    }
 }
