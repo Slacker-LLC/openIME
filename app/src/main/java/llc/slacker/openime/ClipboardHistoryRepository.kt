@@ -33,10 +33,27 @@ internal object ClipboardPrivacyPolicy {
             (imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING) == 0
 }
 
+internal object ClipboardRetentionPolicy {
+    const val UNPINNED_TTL_MS = 24L * 60L * 60L * 1_000L
+
+    fun retain(entry: ClipboardEntry, nowMs: Long): Boolean {
+        if (entry.pinned) return true
+        if (entry.timestamp <= 0L) return false
+        val age = nowMs - entry.timestamp
+        // Keep future timestamps when the wall clock moved backwards; they
+        // become eligible for expiry naturally after real time catches up.
+        return age < 0L || age <= UNPINNED_TTL_MS
+    }
+
+    fun prune(entries: List<ClipboardEntry>, nowMs: Long): List<ClipboardEntry> =
+        entries.filter { retain(it, nowMs) }
+}
+
 /**
  * Tiny persistent clipboard history. Clipboard capture is best-effort; no
  * clipboard content is logged. Password and no-personalized-learning editors
- * cannot read from or write to the persistent history at all.
+ * cannot read from or write to the persistent history at all. Unpinned items
+ * expire after 24 hours; pinned items remain until the user removes them.
  */
 object ClipboardHistoryRepository {
     private const val PREFS = "ime_clipboard_history"
@@ -97,6 +114,16 @@ object ClipboardHistoryRepository {
         save(context, loadStored(context).filterNot { it.text == text })
     }
 
+    fun clearUnpinned(context: Context) {
+        if (!canUsePersistentHistory(context)) return
+        save(context, loadStored(context).filter { it.pinned })
+    }
+
+    fun clearAll(context: Context) {
+        if (!canUsePersistentHistory(context)) return
+        save(context, emptyList())
+    }
+
     private fun canUsePersistentHistory(context: Context): Boolean {
         val service = context as? InputMethodService ?: return true
         val editorInfo = service.currentInputEditorInfo ?: return true
@@ -109,7 +136,7 @@ object ClipboardHistoryRepository {
     private fun loadStored(context: Context): List<ClipboardEntry> {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY_ITEMS, "[]") ?: "[]"
-        return runCatching {
+        val parsed = runCatching {
             val arr = JSONArray(raw)
             buildList {
                 for (i in 0 until arr.length()) {
@@ -124,6 +151,9 @@ object ClipboardHistoryRepository {
                 }
             }
         }.getOrElse { emptyList() }
+        val retained = ClipboardRetentionPolicy.prune(parsed, System.currentTimeMillis())
+        if (retained.size != parsed.size) save(context, retained)
+        return retained
     }
 
     private fun save(context: Context, items: List<ClipboardEntry>) {
