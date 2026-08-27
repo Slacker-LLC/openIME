@@ -12,7 +12,7 @@ namespace {
 std::mutex g_mutex;
 RimeApi* g_api = nullptr;
 RimeSessionId g_session = 0;
-bool g_started = false;
+bool g_initialized = false;
 
 std::string jstring_to_string(JNIEnv* env, jstring value) {
   if (!value) return {};
@@ -102,13 +102,26 @@ std::vector<std::string> snapshot_locked() {
   return values;
 }
 
+void shutdown_locked() {
+  if (g_api && g_session) g_api->destroy_session(g_session);
+  g_session = 0;
+  // initialize() can succeed even when create_session()/schema selection later
+  // fails. Track initialization independently so every partial startup is
+  // finalized and a subsequent startup begins from a clean process state.
+  if (g_api && g_initialized) g_api->finalize();
+  g_api = nullptr;
+  g_initialized = false;
+}
+
 }  // namespace
 
 extern "C" JNIEXPORT void JNICALL
 Java_llc_slacker_openime_RimeNative_nativeStartup(
     JNIEnv* env, jclass, jstring shared_dir, jstring user_dir) {
   std::lock_guard<std::mutex> lock(g_mutex);
-  if (g_started) return;
+  if (g_api && g_session) return;
+  // Recover from any previous partial initialization before retrying.
+  if (g_api || g_initialized) shutdown_locked();
 
   const std::string shared = jstring_to_string(env, shared_dir);
   const std::string user = jstring_to_string(env, user_dir);
@@ -128,6 +141,7 @@ Java_llc_slacker_openime_RimeNative_nativeStartup(
   traits.log_dir = "";
   g_api->setup(&traits);
   g_api->initialize(&traits);
+  g_initialized = true;
 
   // Deployment is performed off the Android main thread by RimeEngine. Wait
   // here so the first keyboard session never races schema generation.
@@ -144,7 +158,6 @@ Java_llc_slacker_openime_RimeNative_nativeStartup(
       g_api->select_schema(g_session, "luna_pinyin");
     }
   }
-  g_started = g_session != 0;
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
@@ -200,9 +213,5 @@ extern "C" JNIEXPORT void JNICALL
 Java_llc_slacker_openime_RimeNative_nativeShutdown(
     JNIEnv*, jclass) {
   std::lock_guard<std::mutex> lock(g_mutex);
-  if (g_api && g_session) g_api->destroy_session(g_session);
-  g_session = 0;
-  if (g_api && g_started) g_api->finalize();
-  g_api = nullptr;
-  g_started = false;
+  shutdown_locked();
 }
