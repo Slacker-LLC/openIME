@@ -4,11 +4,13 @@
     <subtype
         android:imeSubtypeLocale="zh_CN"
         android:imeSubtypeMode="keyboard"
-        android:isAsciiCapable="false"
+        android:imeSubtypeExtraValue="AsciiCapable"
+        android:isAsciiCapable="true"
         android:label="@string/subtitle_zh" />
     <subtype
         android:imeSubtypeLocale="en_US"
         android:imeSubtypeMode="keyboard"
+        android:imeSubtypeExtraValue="AsciiCapable"
         android:isAsciiCapable="true"
         android:label="@string/subtitle_en" />
 </input-method>

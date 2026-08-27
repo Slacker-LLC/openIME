@@ -10,6 +10,8 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
+import android.view.inputmethod.InputMethodSubtype
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
 
@@ -176,7 +178,10 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
             editorAction = attribute?.imeOptions?.and(EditorInfo.IME_MASK_ACTION)
                 ?: EditorInfo.IME_ACTION_NONE,
             passwordField = EditorInfoAdapter.isPassword(kind),
-            keyboardMode = EditorInfoAdapter.defaultKeyboardMode(kind),
+            keyboardMode = InputMethodSubtypePolicy.defaultKeyboardMode(
+                kind,
+                currentSystemSubtypeLocale(),
+            ),
             panel = Panel.NONE,
             composition = "",
             candidates = emptyList(),
@@ -185,6 +190,40 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
         rime.clear()
         keyboardView?.clearAssociationCandidates()
         keyboardView?.setMode(state.keyboardMode)
+        keyboardView?.renderState(state)
+    }
+
+    override fun onCurrentInputMethodSubtypeChanged(newSubtype: InputMethodSubtype) {
+        super.onCurrentInputMethodSubtypeChanged(newSubtype)
+        if (!::gateway.isInitialized || !::rime.isInitialized) return
+
+        @Suppress("DEPRECATION")
+        val nextMode = InputMethodSubtypePolicy.defaultKeyboardMode(
+            EditorInfoAdapter.kind(state.editorInfo),
+            newSubtype.locale,
+        )
+
+        // A subtype switch changes the input language contract. Discard the old
+        // pre-edit rather than committing it under the newly selected language.
+        clearImeCompositionState(render = false)
+        gateway.cancelComposing()
+        voiceComposing = false
+        pendingVoiceCorrection = null
+        state = state.copy(
+            panel = Panel.NONE,
+            composition = "",
+            candidates = emptyList(),
+            expandedCandidates = emptyList(),
+            pinyin9Filters = emptyList(),
+            selectedPinyin9Filter = "",
+        )
+        if (keyboardView != null) {
+            // setMode clears the View-side 26/9-key buffers and synchronously
+            // feeds the effective mode back through onModeChanged().
+            keyboardView?.setMode(nextMode)
+        } else {
+            state = state.withMode(nextMode)
+        }
         keyboardView?.renderState(state)
     }
 
@@ -1131,6 +1170,12 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    @Suppress("DEPRECATION")
+    private fun currentSystemSubtypeLocale(): String? =
+        (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
+            ?.currentInputMethodSubtype
+            ?.locale
 
     private fun clearImeCompositionState(render: Boolean) {
         invalidateCandidateQueries()
