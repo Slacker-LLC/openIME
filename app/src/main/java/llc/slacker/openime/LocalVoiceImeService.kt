@@ -155,7 +155,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
     }
 
     override fun onCreateInputView(): View {
-        keyboardView = ImeKeyboardView(this, legacyAdapter)
+        keyboardView = ImeKeyboardViewV2(this, this)
         keyboardView?.setMode(state.keyboardMode)
         keyboardView?.setTheme(state.theme)
         keyboardView?.setAppearance(state.appearance)

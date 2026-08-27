@@ -1,15 +1,66 @@
 package llc.slacker.openime
 
 import android.content.Context
+import android.os.Build
+import android.view.View
+import android.view.WindowInsets
 
 /**
- * Compatibility alias. The production path uses [ImeKeyboardView] directly;
- * this class exists to keep the newer service listener contract name stable.
+ * Production wrapper around the legacy renderer. Business state still lives in
+ * the service; this layer owns window geometry that should not leak into key
+ * layout/state code.
  */
 class ImeKeyboardViewV2(
     context: Context,
     listener: Listener,
 ) : ImeKeyboardView(context, Adapter(listener)) {
+
+    private var navigationBottomInsetPx = 0
+
+    init {
+        // Insets already consumed by the IME window arrive as zero, so this
+        // adds safe area only when Android actually reports an unconsumed nav
+        // region. The value is bounded to avoid pathological OEM geometry.
+        setOnApplyWindowInsetsListener { _, insets ->
+            val reported = if (Build.VERSION.SDK_INT >= 30) {
+                insets.getInsets(WindowInsets.Type.navigationBars()).bottom
+            } else {
+                @Suppress("DEPRECATION")
+                insets.systemWindowInsetBottom
+            }
+            val next = ImeBottomInsetPolicy.clampInset(reported, insetDp(32))
+            if (next != navigationBottomInsetPx) {
+                navigationBottomInsetPx = next
+                requestLayout()
+            }
+            insets
+        }
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        requestApplyInsets()
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+        if (navigationBottomInsetPx <= 0) return
+        val targetHeight = ImeBottomInsetPolicy.measuredHeight(
+            baseHeightPx = measuredHeight,
+            bottomInsetPx = navigationBottomInsetPx,
+            measureMode = View.MeasureSpec.getMode(heightMeasureSpec),
+            measureSizePx = View.MeasureSpec.getSize(heightMeasureSpec),
+        )
+        if (targetHeight != measuredHeight) {
+            // The inherited keyboard/panel remains at its existing 296dp body
+            // height. Extra measured height becomes a bottom safe area, so the
+            // last key row is not compressed upward or covered by navigation.
+            setMeasuredDimension(measuredWidth, targetHeight)
+        }
+    }
+
+    private fun insetDp(value: Int): Int =
+        (value * resources.displayMetrics.density).toInt()
 
     interface Listener {
         fun onModeChanged(mode: KeyboardMode)
