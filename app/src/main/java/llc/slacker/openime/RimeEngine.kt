@@ -16,6 +16,9 @@ internal fun rimeProbeHasCandidate(snapshot: Array<String>): Boolean =
 
 internal fun rimeDataRevision(versionCode: Long): String = "apk-$versionCode"
 
+internal fun rimeSchemaId(fuzzyEnabled: Boolean): String =
+    if (fuzzyEnabled) "luna_pinyin_simp_fuzzy" else "luna_pinyin_simp"
+
 /**
  * One serial lane for native mutations that must never stall the IME thread.
  * Candidate discovery stays synchronous for the existing background candidate
@@ -106,6 +109,7 @@ class RimeEngine(private val context: Context) {
     private val startupExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "local-rime-startup").apply { isDaemon = true }
     }
+    private var activeSchemaId: String? = null
     @Volatile
     var isReady: Boolean = false
         private set
@@ -136,6 +140,12 @@ class RimeEngine(private val context: Context) {
                 }
 
                 synchronized(lock) {
+                    // The persisted fuzzy setting is the source of truth for the
+                    // live native session. Select the matching schema before the
+                    // health probe so READY never publishes with stale semantics.
+                    check(syncSchemaFromSettingsLocked()) {
+                        "librime requested schema unavailable"
+                    }
                     // Prove that the selected schema and translator are actually
                     // usable. An empty-input snapshot can look non-empty even
                     // when no schema can produce candidates.
@@ -154,7 +164,7 @@ class RimeEngine(private val context: Context) {
                 }
                 errorMessage = ""
                 isReady = true
-                Log.i(TAG, "librime ready")
+                Log.i(TAG, "librime ready schema=$activeSchemaId")
             } catch (throwable: Throwable) {
                 if (nativeStartupReturned) cleanupNative()
                 if (startupGate.fail(generation)) {
@@ -181,7 +191,11 @@ class RimeEngine(private val context: Context) {
         if (!isReady || normalized.isBlank()) return emptyList()
         return synchronized(lock) {
             runCatching {
-                snapshotCandidateEntries(RimeNative.nativeSetInput(normalized))
+                if (!syncSchemaFromSettingsLocked()) {
+                    emptyList()
+                } else {
+                    snapshotCandidateEntries(RimeNative.nativeSetInput(normalized))
+                }
             }.getOrDefault(emptyList())
         }
     }
@@ -192,6 +206,7 @@ class RimeEngine(private val context: Context) {
         if (!isReady || normalized.isBlank()) return ""
         return synchronized(lock) {
             runCatching {
+                if (!syncSchemaFromSettingsLocked()) return@runCatching ""
                 val snapshot = RimeNative.nativeSetInput(normalized)
                 val entry = snapshotCandidateEntries(snapshot).firstOrNull { it.text == candidate }
                 if (entry != null) RimeNative.nativeSelectCandidate(entry.nativeIndex) else ""
@@ -212,6 +227,7 @@ class RimeEngine(private val context: Context) {
                 synchronized(lock) {
                     if (isReady) {
                         runCatching {
+                            if (!syncSchemaFromSettingsLocked()) return@runCatching
                             RimeNative.nativeSetInput(normalized)
                             RimeNative.nativeSelectCandidate(nativeIndex)
                         }
@@ -227,6 +243,7 @@ class RimeEngine(private val context: Context) {
         if (!isReady || normalized.isBlank()) return ""
         return synchronized(lock) {
             runCatching {
+                if (!syncSchemaFromSettingsLocked()) return@runCatching ""
                 RimeNative.nativeSetInput(normalized)
                 RimeNative.nativeCommitFirst()
             }.getOrDefault("")
@@ -253,8 +270,19 @@ class RimeEngine(private val context: Context) {
         startupExecutor.shutdownNow()
     }
 
+    private fun syncSchemaFromSettingsLocked(): Boolean {
+        val desiredSchemaId = rimeSchemaId(ImeSettingsRepository.loadFuzzy(context))
+        if (activeSchemaId == desiredSchemaId) return true
+        if (!RimeNative.nativeSelectSchema(desiredSchemaId)) return false
+        activeSchemaId = desiredSchemaId
+        RimeNative.nativeClear()
+        Log.i(TAG, "librime schema=$desiredSchemaId")
+        return true
+    }
+
     private fun cleanupNative() {
         synchronized(lock) {
+            activeSchemaId = null
             runCatching { RimeNative.nativeShutdown() }
         }
     }
@@ -274,7 +302,10 @@ class RimeEngine(private val context: Context) {
         // generation is disabled and automatically changes on every upgrade.
         val revision = rimeDataRevision(installedVersionCode())
         val marker = File(sharedDir, ".openime-rime-$revision")
-        if (marker.exists() && File(sharedDir, "luna_pinyin_simp.schema.yaml").exists()) return
+        val requiredSchemasPresent =
+            File(sharedDir, "luna_pinyin_simp.schema.yaml").exists() &&
+                File(sharedDir, "luna_pinyin_simp_fuzzy.schema.yaml").exists()
+        if (marker.exists() && requiredSchemasPresent) return
         deleteChildren(sharedDir)
         copyAssetTree("rime-data", sharedDir)
         marker.writeText("openIME Rime data revision $revision\n")
