@@ -5,7 +5,45 @@ import android.util.Log
 import org.json.JSONObject
 import java.io.File
 import java.io.InputStream
+import java.nio.file.Files
 import java.security.MessageDigest
+
+internal fun isSafeVoiceModelId(modelId: String): Boolean =
+    modelId.length in 1..128 &&
+        modelId != "." &&
+        modelId != ".." &&
+        modelId.matches(Regex("[A-Za-z0-9][A-Za-z0-9._-]*"))
+
+internal fun isSafeVoiceModelRelativePath(path: String): Boolean {
+    if (path.isBlank() || path.length > 512 || '\u0000' in path || '\\' in path) return false
+    if (path.startsWith('/') || File(path).isAbsolute) return false
+    val segments = path.split('/')
+    return segments.all { segment -> segment.isNotEmpty() && segment != "." && segment != ".." }
+}
+
+/**
+ * Resolve a package member without allowing traversal or symlink indirection.
+ * The package is untrusted input, so both lexical and filesystem containment
+ * are checked before any model bytes are opened.
+ */
+internal fun resolveContainedVoiceModelFile(root: File, relativePath: String): File {
+    require(isSafeVoiceModelRelativePath(relativePath)) { "非法模型文件路径: $relativePath" }
+    val canonicalRoot = root.canonicalFile
+    require(canonicalRoot.isDirectory) { "模型包目录不存在" }
+
+    val unresolved = File(canonicalRoot, relativePath)
+    var cursor: File? = unresolved
+    while (cursor != null && cursor != canonicalRoot) {
+        require(!Files.isSymbolicLink(cursor.toPath())) { "模型文件不能使用符号链接: $relativePath" }
+        cursor = cursor.parentFile
+    }
+    require(cursor == canonicalRoot) { "模型文件不在包目录内: $relativePath" }
+
+    val resolved = unresolved.canonicalFile
+    val prefix = canonicalRoot.path + File.separator
+    require(resolved.path.startsWith(prefix)) { "模型文件越出包目录: $relativePath" }
+    return resolved
+}
 
 /** Metadata required for an installable offline voice model package. */
 data class VoiceModelManifest(
@@ -43,7 +81,7 @@ data class VoiceModelManifest(
     }
 
     fun validateShape(): String? = when {
-        modelId.isBlank() -> "缺少 modelId"
+        !isSafeVoiceModelId(modelId) -> "modelId 非法"
         modelVersion.isBlank() -> "缺少 modelVersion"
         language.isBlank() -> "缺少 language"
         modelType.isBlank() -> "缺少 modelType"
@@ -51,6 +89,8 @@ data class VoiceModelManifest(
         !fileHash.matches(Regex("[0-9a-f]{64}")) -> "fileHash 不是 SHA-256"
         requiredMemory <= 0L -> "requiredMemory 无效"
         files.isEmpty() -> "没有模型文件列表"
+        files.distinct().size != files.size -> "模型文件列表包含重复项"
+        files.any { !isSafeVoiceModelRelativePath(it) } -> "模型文件路径非法"
         else -> null
     }
 }
@@ -85,9 +125,9 @@ class VoiceModelRepository(private val context: Context) {
 
     fun selectAvailable(): VoiceModelSelection {
         val selectedId = preferences.getString(SELECTED_MODEL, null)
-        if (!selectedId.isNullOrBlank()) {
+        if (!selectedId.isNullOrBlank() && isSafeVoiceModelId(selectedId)) {
             val downloaded = downloadedRoot.listFiles()
-                ?.firstOrNull { it.isDirectory && it.name == selectedId }
+                ?.firstOrNull { it.isDirectory && !Files.isSymbolicLink(it.toPath()) && it.name == selectedId }
             if (downloaded != null) {
                 val checked = validateDirectory(downloaded)
                 if (checked != null) {
@@ -110,8 +150,11 @@ class VoiceModelRepository(private val context: Context) {
     }
 
     fun setSelectedModel(modelId: String): Boolean {
+        if (!isSafeVoiceModelId(modelId)) return false
         val model = downloadedRoot.listFiles()
-            ?.firstOrNull { it.isDirectory && it.name == modelId }
+            ?.firstOrNull {
+                it.isDirectory && !Files.isSymbolicLink(it.toPath()) && it.name == modelId
+            }
             ?: return false
         if (validateDirectory(model) == null) return false
         preferences.edit().putString(SELECTED_MODEL, modelId).apply()
@@ -120,10 +163,11 @@ class VoiceModelRepository(private val context: Context) {
 
     /** Copies a verified downloaded package into the private model directory. */
     fun installDownloadedModel(sourceDirectory: File, modelId: String): Boolean {
-        if (modelId.isBlank() || !sourceDirectory.isDirectory) return false
+        if (!isSafeVoiceModelId(modelId) || !sourceDirectory.isDirectory) return false
+        if (Files.isSymbolicLink(sourceDirectory.toPath())) return false
         if (validateDirectory(sourceDirectory)?.modelId != modelId) return false
         downloadedRoot.mkdirs()
-        val staging = File(downloadedRoot, ".${modelId}.staging")
+        val staging = File(downloadedRoot, ".$modelId.staging")
         val target = File(downloadedRoot, modelId)
         runCatching {
             if (staging.exists()) staging.deleteRecursively()
@@ -141,7 +185,7 @@ class VoiceModelRepository(private val context: Context) {
     fun deleteDownloadedModel(modelId: String): Boolean {
         if (!canDelete(modelId)) return false
         val target = File(downloadedRoot, modelId)
-        if (!target.isDirectory) return false
+        if (!target.isDirectory || Files.isSymbolicLink(target.toPath())) return false
         if (preferences.getString(SELECTED_MODEL, null) == modelId) useBuiltInModel()
         return target.deleteRecursively()
     }
@@ -153,7 +197,7 @@ class VoiceModelRepository(private val context: Context) {
     fun isBuiltInAvailable(): Boolean = validateBuiltIn() != null
 
     fun canDelete(modelId: String): Boolean =
-        modelId.isNotBlank() && modelId != validateBuiltIn()?.modelId
+        isSafeVoiceModelId(modelId) && modelId != validateBuiltIn()?.modelId
 
     private fun validateBuiltIn(): VoiceModelManifest? = runCatching {
         val json = context.assets.open(BUILT_IN_MANIFEST).use { it.readBytes().toString(Charsets.UTF_8) }
@@ -190,7 +234,8 @@ class VoiceModelRepository(private val context: Context) {
     }
 
     private fun validateDirectory(directory: File): VoiceModelManifest? = runCatching {
-        val manifestFile = File(directory, "manifest.json")
+        check(directory.isDirectory && !Files.isSymbolicLink(directory.toPath())) { "模型包目录非法" }
+        val manifestFile = resolveContainedVoiceModelFile(directory, "manifest.json")
         check(manifestFile.isFile) { "缺少 manifest.json" }
         val manifest = VoiceModelManifest.parse(manifestFile.readText(Charsets.UTF_8))
         check(manifest.validateShape() == null) { manifest.validateShape().orEmpty() }
@@ -210,7 +255,7 @@ class VoiceModelRepository(private val context: Context) {
     private fun sha256Files(directory: File, paths: List<String>): String {
         val digest = MessageDigest.getInstance("SHA-256")
         paths.sorted().forEach { path ->
-            val file = File(directory, path)
+            val file = resolveContainedVoiceModelFile(directory, path)
             check(file.isFile) { "缺少模型文件: $path" }
             file.inputStream().use { input -> digest.updateStream(input) }
         }
