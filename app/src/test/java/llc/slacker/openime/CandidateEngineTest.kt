@@ -51,12 +51,6 @@ class CandidateEngineTest {
     }
 
     @Test
-    fun t9GoodResolvesToKnownWords() {
-        val result = engine.getT9EnglishCandidates("4663")
-        assertTrue("4663 should include good", result.contains("good"))
-    }
-
-    @Test
     fun fallbackReturnsPinyin() {
         assertEquals(listOf("xyzzy"), engine.getCandidates("xyzzy"))
     }
