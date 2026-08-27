@@ -1,5 +1,6 @@
 package llc.slacker.openime
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -46,5 +47,11 @@ class RimeStartupGateTest {
         assertFalse(rimeProbeHasCandidate(arrayOf("ni", "ni")))
         assertFalse(rimeProbeHasCandidate(arrayOf("ni", "ni", "", "  ")))
         assertTrue(rimeProbeHasCandidate(arrayOf("ni", "ni", "你")))
+    }
+
+    @Test
+    fun rimeDataRevisionTracksApkVersionCode() {
+        assertEquals("apk-1", rimeDataRevision(1))
+        assertEquals("apk-42", rimeDataRevision(42))
     }
 }
