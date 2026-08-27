@@ -41,3 +41,8 @@ fetch_dep "glog" "google/glog" "7b134a5c82c0c0b5698bb6bf7a835b230c5638e4"
 fetch_dep "leveldb" "google/leveldb" "99b3c03b3284f5886f9ef9a4ef703d57373e61be"
 fetch_dep "marisa-trie" "s-yata/marisa-trie" "3e87d53b78e15f2f43783d5e376561a8c9722051"
 fetch_dep "yaml-cpp" "jbeder/yaml-cpp" "2f86d13775d119edbb69af52e5f566fd65c6953b"
+
+# librime includes <utf8.h> directly. Desktop package managers provide this
+# header via UTF8-CPP, but Android cross-compilation must not depend on host
+# /usr/include. Pin the Ubuntu 24.04-compatible UTF8-CPP release explicitly.
+fetch_dep "utfcpp" "nemtrif/utfcpp" "f23474118c5c544c1403883976d78128d17125f9"
