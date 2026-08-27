@@ -10,6 +10,9 @@ internal data class RimeCandidateEntry(
     val nativeIndex: Int,
 )
 
+internal fun rimeProbeHasCandidate(snapshot: Array<String>): Boolean =
+    snapshot.drop(2).any { it.isNotBlank() }
+
 /**
  * Tracks ownership of one asynchronous startup attempt. Destroy invalidates the
  * current generation immediately; a stale worker may clean native state, but it
@@ -98,10 +101,17 @@ class RimeEngine(private val context: Context) {
                 }
 
                 synchronized(lock) {
-                    // A session with no candidates is not useful; the native
-                    // side has already completed synchronous deployment here.
-                    val probe = RimeNative.nativeSetInput("")
-                    check(probe.isNotEmpty()) { "librime session unavailable" }
+                    // Prove that the selected schema and translator are actually
+                    // usable. An empty-input snapshot can look non-empty even
+                    // when no schema can produce candidates.
+                    val probe = try {
+                        RimeNative.nativeSetInput(HEALTH_PROBE_INPUT)
+                    } finally {
+                        RimeNative.nativeClear()
+                    }
+                    check(rimeProbeHasCandidate(probe)) {
+                        "librime schema/candidate pipeline unavailable"
+                    }
                 }
                 if (!startupGate.complete(generation)) {
                     cleanupNative()
@@ -238,5 +248,6 @@ class RimeEngine(private val context: Context) {
 
     private companion object {
         const val TAG = "RimeEngine"
+        const val HEALTH_PROBE_INPUT = "ni"
     }
 }
