@@ -10,6 +10,12 @@ import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputContentInfo
 
+internal fun relativeCursorKeyCode(delta: Int): Int? = when (delta) {
+    -1 -> KeyEvent.KEYCODE_DPAD_LEFT
+    1 -> KeyEvent.KEYCODE_DPAD_RIGHT
+    else -> null
+}
+
 /**
  * Single funnel for all editor side effects. Password fields are never logged,
  * uploaded or added to history; direct typing is still forwarded to the editor.
@@ -157,9 +163,8 @@ class InputConnectionGateway(
             }
             is SelectionSnapshot.Relative -> {
                 if (start != end) return
-                when (start - selection.cursor) {
-                    -1 -> sendKeyDownUp(ic, KeyEvent.KEYCODE_DPAD_LEFT)
-                    1 -> sendKeyDownUp(ic, KeyEvent.KEYCODE_DPAD_RIGHT)
+                relativeCursorKeyCode(start - selection.cursor)?.let { keyCode ->
+                    sendKeyDownUp(ic, keyCode)
                 }
             }
             null -> Unit
