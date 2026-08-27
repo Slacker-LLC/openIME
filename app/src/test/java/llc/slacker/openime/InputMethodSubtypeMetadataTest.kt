@@ -12,15 +12,18 @@ class InputMethodSubtypeMetadataTest {
         File("app/src/main/res/xml/method.xml"),
     ).firstOrNull { it.isFile } ?: error("missing method.xml")
 
+    private fun occurrences(text: String, needle: String): Int =
+        text.split(needle).size - 1
+
     @Test
     fun bothDeclaredSubtypesAreAsciiCapableIncludingLegacyExtra() {
         val xml = methodXml().readText()
         assertTrue(xml.contains("android:imeSubtypeLocale=\"zh_CN\""))
         assertTrue(xml.contains("android:imeSubtypeLocale=\"en_US\""))
-        assertEquals(2, Regex("android:isAsciiCapable=\\\"true\\\"").findAll(xml).count())
+        assertEquals(2, occurrences(xml, "android:isAsciiCapable=\"true\""))
         assertEquals(
             2,
-            Regex("android:imeSubtypeExtraValue=\\\"AsciiCapable\\\"").findAll(xml).count(),
+            occurrences(xml, "android:imeSubtypeExtraValue=\"AsciiCapable\""),
         )
     }
 }
