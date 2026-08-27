@@ -17,6 +17,37 @@ internal fun rimeProbeHasCandidate(snapshot: Array<String>): Boolean =
 internal fun rimeDataRevision(versionCode: Long): String = "apk-$versionCode"
 
 /**
+ * One serial lane for native mutations that must never stall the IME thread.
+ * Candidate discovery stays synchronous for the existing background candidate
+ * worker; selection learning and clear operations are queued here instead.
+ */
+internal class RimeMutationQueue(
+    threadName: String = "local-rime-mutations",
+) : AutoCloseable {
+    private val executor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, threadName).apply { isDaemon = true }
+    }
+
+    @Volatile
+    private var closed = false
+
+    fun submit(operation: () -> Unit): Boolean {
+        if (closed) return false
+        return runCatching {
+            executor.execute {
+                if (!closed) operation()
+            }
+            true
+        }.getOrDefault(false)
+    }
+
+    override fun close() {
+        closed = true
+        executor.shutdownNow()
+    }
+}
+
+/**
  * Tracks ownership of one asynchronous startup attempt. Destroy invalidates the
  * current generation immediately; a stale worker may clean native state, but it
  * can never publish READY after its owner has gone away.
@@ -71,6 +102,7 @@ internal class RimeStartupGate {
 class RimeEngine(private val context: Context) {
     private val lock = Any()
     private val startupGate = RimeStartupGate()
+    private val mutationQueue = RimeMutationQueue()
     private val startupExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "local-rime-startup").apply { isDaemon = true }
     }
@@ -167,16 +199,27 @@ class RimeEngine(private val context: Context) {
         }
     }
 
-    /** Select an entry previously returned by [candidateEntries]. */
+    /**
+     * Queue learning for an already-rendered native entry and return
+     * immediately. The editor commit is owned by CandidateSnapshot, so the IME
+     * thread never needs native committed text here.
+     */
     fun selectCandidate(input: String, nativeIndex: Int): String {
         val normalized = RimeInputNormalizer.normalize(input)
         if (!isReady || normalized.isBlank() || nativeIndex < 0) return ""
-        return synchronized(lock) {
-            runCatching {
-                RimeNative.nativeSetInput(normalized)
-                RimeNative.nativeSelectCandidate(nativeIndex)
-            }.getOrDefault("")
+        mutationQueue.submit {
+            if (isReady) {
+                synchronized(lock) {
+                    if (isReady) {
+                        runCatching {
+                            RimeNative.nativeSetInput(normalized)
+                            RimeNative.nativeSelectCandidate(nativeIndex)
+                        }
+                    }
+                }
+            }
         }
+        return ""
     }
 
     fun commitFirst(input: String): String {
@@ -190,16 +233,22 @@ class RimeEngine(private val context: Context) {
         }
     }
 
+    /** Queue session cleanup instead of waiting for an in-flight native query. */
     fun clear() {
         if (!isReady) return
-        synchronized(lock) {
-            runCatching { RimeNative.nativeClear() }
+        mutationQueue.submit {
+            if (isReady) {
+                synchronized(lock) {
+                    if (isReady) runCatching { RimeNative.nativeClear() }
+                }
+            }
         }
     }
 
     fun shutdown() {
         startupGate.destroy()
         isReady = false
+        mutationQueue.close()
         cleanupNative()
         startupExecutor.shutdownNow()
     }
