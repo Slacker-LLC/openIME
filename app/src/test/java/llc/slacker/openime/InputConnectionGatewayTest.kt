@@ -10,6 +10,7 @@ import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputContentInfo
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -25,6 +26,8 @@ class InputConnectionGatewayTest {
             selectionStart = 0
             selectionEnd = 0
             startOffset = 0
+            partialStartOffset = -1
+            partialEndOffset = -1
         },
         var contextMenuResult: Boolean = false,
     ) : InputConnection {
@@ -91,11 +94,15 @@ class InputConnectionGatewayTest {
         startOffset: Int,
         selectionStart: Int,
         selectionEnd: Int,
+        partialStartOffset: Int = -1,
+        partialEndOffset: Int = -1,
     ) = ExtractedText().apply {
         this.text = text
         this.startOffset = startOffset
         this.selectionStart = selectionStart
         this.selectionEnd = selectionEnd
+        this.partialStartOffset = partialStartOffset
+        this.partialEndOffset = partialEndOffset
     }
 
     @Test
@@ -216,11 +223,31 @@ class InputConnectionGatewayTest {
     }
 
     @Test
-    fun clearAllCancelsCompositionThenUsesOneBatchDelete() {
+    fun selectAllDoesNotTreatPartialWindowAsWholeDocument() {
         val fake = FakeInputConnection(
-            beforeText = "旧😀",
-            selectedText = "选中",
-            afterText = "文本",
+            extractedText = extracted(
+                text = "window",
+                startOffset = 0,
+                selectionStart = 0,
+                selectionEnd = 0,
+                partialStartOffset = 0,
+                partialEndOffset = 6,
+            ),
+        )
+        val gateway = InputConnectionGateway(null, { fake })
+
+        gateway.selectAll()
+
+        assertTrue(fake.events.contains("context:${android.R.id.selectAll}"))
+        assertTrue(fake.events.none { it.startsWith("selection:") })
+        assertEquals(-1, gateway.currentTextLength())
+    }
+
+    @Test
+    fun clearAllUsesEditorSelectAllThenSingleReplacement() {
+        val fake = FakeInputConnection(
+            selectedText = "旧😀选中文本",
+            contextMenuResult = true,
         )
         val gateway = InputConnectionGateway(null, { fake })
 
@@ -228,12 +255,64 @@ class InputConnectionGatewayTest {
 
         assertEquals("compose:", fake.events[0])
         assertEquals("finish", fake.events[1])
-        assertEquals(1, fake.events.count { it.startsWith("delete") })
-        assertTrue(
-            fake.events.any {
-                it == "deleteCodePoints:2:2" || it == "delete:3:2"
-            },
+        assertTrue(fake.events.contains("context:${android.R.id.selectAll}"))
+        assertEquals(1, fake.events.count { it == "commit:" })
+        assertTrue(fake.events.none { it.startsWith("delete") })
+    }
+
+    @Test
+    fun clearAllHandlesOver200kCharactersThroughEditorOwnedSelection() {
+        val fake = FakeInputConnection(
+            selectedText = "x".repeat(200_001),
+            contextMenuResult = true,
         )
+        val gateway = InputConnectionGateway(null, { fake })
+
+        assertTrue(gateway.clearAllText())
+        assertEquals(1, fake.events.count { it == "commit:" })
+        assertTrue(fake.events.none { it.startsWith("delete") })
+    }
+
+    @Test
+    fun clearAllCanUseCompleteExtractedDocumentWithoutBoundedDelete() {
+        val document = "x".repeat(200_001)
+        val fake = FakeInputConnection(
+            contextMenuResult = false,
+            extractedText = extracted(
+                text = document,
+                startOffset = 0,
+                selectionStart = 100_000,
+                selectionEnd = 100_000,
+            ),
+        )
+        val gateway = InputConnectionGateway(null, { fake })
+
+        assertTrue(gateway.clearAllText())
+        assertTrue(fake.events.contains("selection:0:200001"))
+        assertEquals(1, fake.events.count { it == "commit:" })
+        assertTrue(fake.events.none { it.startsWith("delete") })
+    }
+
+    @Test
+    fun clearAllRefusesPartialWindowInsteadOfSilentlyDeletingNearbyText() {
+        val fake = FakeInputConnection(
+            beforeText = "a".repeat(100_000),
+            afterText = "b".repeat(100_000),
+            contextMenuResult = false,
+            extractedText = extracted(
+                text = "window",
+                startOffset = 0,
+                selectionStart = 3,
+                selectionEnd = 3,
+                partialStartOffset = 0,
+                partialEndOffset = 6,
+            ),
+        )
+        val gateway = InputConnectionGateway(null, { fake })
+
+        assertFalse(gateway.clearAllText())
+        assertTrue(fake.events.none { it.startsWith("delete") })
+        assertTrue(fake.events.none { it == "commit:" })
     }
 
     @Test
