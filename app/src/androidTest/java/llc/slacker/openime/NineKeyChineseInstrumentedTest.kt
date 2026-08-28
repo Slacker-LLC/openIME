@@ -56,7 +56,7 @@ class NineKeyChineseInstrumentedTest {
                 val mode = root.findViewWithTag<View>("key:mode") ?: return@awaitMain null
                 if (!mode.isShown) return@awaitMain null
                 mode.performClick()
-                true
+                mode
             }
         }
         harness.awaitMain { activity ->
@@ -72,7 +72,7 @@ class NineKeyChineseInstrumentedTest {
                 val key = root.findViewWithTag<View>("key-9:$digit") ?: return@awaitMain null
                 if (!key.isShown) return@awaitMain null
                 key.performClick()
-                true
+                key
             }
         }
     }
