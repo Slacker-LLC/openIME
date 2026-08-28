@@ -39,20 +39,33 @@ class TextEditControlsInstrumentedTest {
 
         rule.scenario.onActivity {
             listOf("撤销", "▲", "▼").forEach { label ->
-                val control = findTextView(keyboard, label)
+                val control = findInteractiveControl(keyboard, label)
+                val labelView = findTextView(keyboard, label)
                 assertNotNull("missing disabled text-edit control $label", control)
+                assertNotNull("missing disabled text-edit label $label", labelView)
                 assertFalse("$label must not remain clickable", control!!.isClickable)
                 assertFalse("$label must expose disabled state", control.isEnabled)
-                assertTrue("$label should look unavailable", control.alpha < 1f)
+                assertTrue("$label should look unavailable", labelView!!.alpha < 1f)
             }
 
             listOf("全选", "复制", "剪切", "粘贴", "◀", "▶").forEach { label ->
-                val control = findTextView(keyboard, label)
+                val control = findInteractiveControl(keyboard, label)
                 assertNotNull("missing supported text-edit control $label", control)
                 assertTrue("$label should remain clickable", control!!.isClickable)
                 assertTrue("$label should remain enabled", control.isEnabled)
             }
         }
+    }
+
+    private fun findInteractiveControl(root: View, label: String): View? {
+        if (root is ImeKeyView && root.contentDescription?.toString() == label) return root
+        if (root is TextView && root.text.toString() == label && root.parent !is ImeKeyView) return root
+        if (root is ViewGroup) {
+            for (index in 0 until root.childCount) {
+                findInteractiveControl(root.getChildAt(index), label)?.let { return it }
+            }
+        }
+        return null
     }
 
     private fun findTextView(root: View, label: String): TextView? {
