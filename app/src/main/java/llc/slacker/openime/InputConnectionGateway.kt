@@ -129,32 +129,66 @@ class InputConnectionGateway(
         }
     }
 
-    /** Clear the current editor text around the cursor, including a selection. */
+    /**
+     * Clear the complete editor document in one batch operation.
+     *
+     * The editor-owned select-all action is authoritative and handles documents
+     * far larger than any surrounding-text query. If that capability is absent,
+     * manual selection is used only when ExtractedText explicitly represents the
+     * complete document. A bounded/local window is never partially deleted while
+     * returning success: callers receive false instead and can present an
+     * unsupported-capability state.
+     */
     fun clearAllText(): Boolean {
         if (isPassword()) return false
         val ic = connection() ?: return false
         ic.beginBatchEdit()
         return try {
-            // Remove the active pre-edit instead of finishing (committing) it.
-            // Query surrounding text only afterwards so delete counts cannot
-            // include a stale composing span that an editor may resurrect.
+            // Remove active pre-edit rather than committing it before selecting.
             ic.setComposingText("", 1)
             ic.finishComposingText()
-            val before = ic.getTextBeforeCursor(100_000, 0)?.toString().orEmpty()
-            val after = ic.getTextAfterCursor(100_000, 0)?.toString().orEmpty()
-            val selected = ic.getSelectedText(0)?.toString().orEmpty()
-            if (selected.isNotEmpty()) ic.commitText("", 1)
-            val beforeCount = before.codePointCount(0, before.length)
-            val afterCount = after.codePointCount(0, after.length)
-            if (beforeCount > 0 || afterCount > 0) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    ic.deleteSurroundingTextInCodePoints(beforeCount, afterCount)
-                } else {
-                    ic.deleteSurroundingText(before.length, after.length)
+
+            if (runCatching { ic.performContextMenuAction(android.R.id.selectAll) }.getOrDefault(false)) {
+                val selected = runCatching { ic.getSelectedText(0)?.toString().orEmpty() }
+                    .getOrDefault("")
+                if (selected.isNotEmpty()) {
+                    val cleared = runCatching { ic.commitText("", 1) }.getOrDefault(false)
+                    ic.finishComposingText()
+                    return cleared
                 }
+
+                // Empty selection can mean either an empty document or an editor
+                // that claimed select-all without exposing/creating a selection.
+                // Only the complete extracted state can distinguish those safely.
+                val selectedWindow = extractedWindow(ic)
+                if (selectedWindow?.isCompleteDocument == true) {
+                    if (selectedWindow.text.isEmpty()) {
+                        ic.finishComposingText()
+                        return true
+                    }
+                    val fullSelection = selectedWindow.selectionStartAbsolute == 0 &&
+                        selectedWindow.selectionEndAbsolute == selectedWindow.text.length
+                    if (fullSelection) {
+                        val cleared = runCatching { ic.commitText("", 1) }.getOrDefault(false)
+                        ic.finishComposingText()
+                        return cleared
+                    }
+                }
+                return false
             }
+
+            val window = extractedWindow(ic) ?: return false
+            if (!window.isCompleteDocument) return false
+            if (window.text.isEmpty()) {
+                ic.finishComposingText()
+                return true
+            }
+            if (!runCatching { ic.setSelection(0, window.text.length) }.getOrDefault(false)) {
+                return false
+            }
+            val cleared = runCatching { ic.commitText("", 1) }.getOrDefault(false)
             ic.finishComposingText()
-            true
+            cleared
         } finally {
             ic.endBatchEdit()
         }
@@ -178,7 +212,7 @@ class InputConnectionGateway(
         val ic = connection() ?: return
         if (runCatching { ic.performContextMenuAction(android.R.id.selectAll) }.getOrDefault(false)) return
         val window = extractedWindow(ic) ?: return
-        if (window.windowStart == 0) {
+        if (window.isCompleteDocument) {
             ic.setSelection(0, window.text.length)
         }
     }
@@ -231,12 +265,12 @@ class InputConnectionGateway(
         null -> currentSelectionStart()
     }
 
-    /** Returns -1 when the available extracted text does not begin at document offset 0. */
+    /** Returns -1 unless ExtractedText explicitly represents the complete document. */
     fun currentTextLength(): Int {
         if (isPassword()) return -1
         val ic = connection() ?: return -1
         val window = extractedWindow(ic) ?: return -1
-        return if (window.windowStart == 0) window.text.length else -1
+        return if (window.isCompleteDocument) window.text.length else -1
     }
 
     fun cursorSnapshot(maxChars: Int = 8_192): CursorSnapshot? {
@@ -350,6 +384,9 @@ class InputConnectionGateway(
             windowStart = windowStart,
             selectionStartAbsolute = windowStart + extracted.selectionStart,
             selectionEndAbsolute = windowStart + extracted.selectionEnd,
+            isCompleteDocument = windowStart == 0 &&
+                extracted.partialStartOffset < 0 &&
+                extracted.partialEndOffset < 0,
         )
     }
 
@@ -368,6 +405,7 @@ class InputConnectionGateway(
         val windowStart: Int,
         val selectionStartAbsolute: Int,
         val selectionEndAbsolute: Int,
+        val isCompleteDocument: Boolean,
     )
 
     private companion object {
