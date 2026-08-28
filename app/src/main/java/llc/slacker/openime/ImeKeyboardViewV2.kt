@@ -1,14 +1,20 @@
 package llc.slacker.openime
 
 import android.content.Context
+import android.inputmethodservice.InputMethodService
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.widget.LinearLayout
 import android.widget.TextView
+import kotlin.math.abs
 
 /**
  * Production wrapper around the legacy renderer. Business state still lives in
@@ -25,17 +31,27 @@ class ImeKeyboardViewV2 private constructor(
     private var navigationBottomInsetPx = 0
 
     init {
+        adapter.afterModeChanged = {
+            post { syncProductionKeyPresentation() }
+        }
         adapter.afterPanelChanged = { panel ->
             when (panel) {
                 Panel.TEXT_EDITOR -> {
                     // The legacy renderer invokes onPanelChanged before renderPanel,
                     // so defer capability filtering until the panel children exist.
-                    post { disableUnsupportedTextEditControls() }
+                    post {
+                        disableUnsupportedTextEditControls()
+                        syncProductionKeyPresentation()
+                    }
                 }
-                Panel.CLIPBOARD -> post { decorateClipboardRetentionControls() }
-                else -> Unit
+                Panel.CLIPBOARD -> post {
+                    decorateClipboardRetentionControls()
+                    syncProductionKeyPresentation()
+                }
+                else -> post { syncProductionKeyPresentation() }
             }
         }
+        post { syncProductionKeyPresentation() }
 
         // Insets already consumed by the IME window arrive as zero, so this
         // adds safe area only when Android actually reports an unconsumed nav
@@ -56,12 +72,26 @@ class ImeKeyboardViewV2 private constructor(
         }
     }
 
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        // The legacy space implementation reports only pressed=true/false to
+        // the listener. Preserve whether the release was a cancellation so the
+        // adapter can recover a 150..system-timeout hold as a normal space only
+        // on a real ACTION_UP, never on ACTION_CANCEL.
+        adapter.releaseWasCancel = event.actionMasked == MotionEvent.ACTION_CANCEL
+        return super.dispatchTouchEvent(event)
+    }
+
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         requestApplyInsets()
+        post { syncProductionKeyPresentation() }
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        // EditorInfo can change while Android reuses the same input view. Keep
+        // the visible Enter label and bottom-row geometry synchronized before
+        // children are measured instead of relying on one-time construction.
+        syncProductionKeyPresentation()
         super.onMeasure(widthMeasureSpec, heightMeasureSpec)
         if (navigationBottomInsetPx <= 0) return
         val targetHeight = ImeBottomInsetPolicy.measuredHeight(
@@ -76,6 +106,78 @@ class ImeKeyboardViewV2 private constructor(
             // last key row is not compressed upward or covered by navigation.
             setMeasuredDimension(measuredWidth, targetHeight)
         }
+    }
+
+    private fun syncProductionKeyPresentation() {
+        normalizeSpaceRowGeometry()
+        syncEnterKeyPresentation()
+    }
+
+    /**
+     * The old renderer centered each key's label but gave the left/right
+     * function groups different total weights. Balance only the two outside
+     * keys so the middle space key remains visually centered without changing
+     * its touch target width.
+     */
+    private fun normalizeSpaceRowGeometry() {
+        val space = findViewWithTag<View>("key-space") ?: return
+        val row = space.parent as? LinearLayout ?: return
+        val spaceIndex = row.indexOfChild(space)
+        if (spaceIndex <= 0 || spaceIndex >= row.childCount - 1) return
+        if (spaceIndex * 2 != row.childCount - 1) return
+
+        fun paramsAt(index: Int): LinearLayout.LayoutParams? =
+            row.getChildAt(index).layoutParams as? LinearLayout.LayoutParams
+
+        val leftParams = (0 until spaceIndex).mapNotNull(::paramsAt)
+        val rightParams = (spaceIndex + 1 until row.childCount).mapNotNull(::paramsAt)
+        if (leftParams.size != spaceIndex || rightParams.size != row.childCount - spaceIndex - 1) return
+        val leftTotal = leftParams.sumOf { it.weight.toDouble() }.toFloat()
+        val rightTotal = rightParams.sumOf { it.weight.toDouble() }.toFloat()
+        if (abs(leftTotal - rightTotal) < 0.001f) return
+
+        val leftOuter = paramsAt(0) ?: return
+        val rightOuter = paramsAt(row.childCount - 1) ?: return
+        val balanced = ProductionKeyPolicy.balancedOuterWeights(
+            leftTotal = leftTotal,
+            rightTotal = rightTotal,
+            leftOuter = leftOuter.weight,
+            rightOuter = rightOuter.weight,
+        )
+        if (abs(leftOuter.weight - balanced.leftOuter) >= 0.001f) {
+            leftOuter.weight = balanced.leftOuter
+            row.getChildAt(0).layoutParams = leftOuter
+        }
+        if (abs(rightOuter.weight - balanced.rightOuter) >= 0.001f) {
+            rightOuter.weight = balanced.rightOuter
+            row.getChildAt(row.childCount - 1).layoutParams = rightOuter
+        }
+    }
+
+    /** Keep every visible Enter key honest about what onEnter() will dispatch. */
+    private fun syncEnterKeyPresentation() {
+        val service = context as? InputMethodService ?: return
+        val imeOptions = service.currentInputEditorInfo?.imeOptions ?: return
+        val label = enterKeyPresentationFor(imeOptions).label
+        val enterLabels = setOf(
+            "发送", "搜索", "前往", "下一项", "上一项", "完成", "换行", "回车", "确定", "Go",
+        )
+
+        fun visit(view: View) {
+            if (view is ImeKeyView) {
+                val standardEnter = view.tag == "key-enter"
+                val gamingEnter = view.tag == "game-mini" &&
+                    view.contentDescription?.toString() in enterLabels
+                if (standardEnter || gamingEnter) {
+                    view.setMainText(label)
+                    view.contentDescription = label
+                }
+            }
+            if (view is ViewGroup) {
+                for (index in 0 until view.childCount) visit(view.getChildAt(index))
+            }
+        }
+        visit(this)
     }
 
     private fun disableUnsupportedTextEditControls() {
@@ -228,9 +330,18 @@ class ImeKeyboardViewV2 private constructor(
     }
 
     private class Adapter(private val delegate: Listener) : ImeKeyboardView.Listener {
+        var afterModeChanged: ((KeyboardMode) -> Unit)? = null
         var afterPanelChanged: ((Panel) -> Unit)? = null
+        var releaseWasCancel: Boolean = false
 
-        override fun onModeChanged(mode: KeyboardMode) = delegate.onModeChanged(mode)
+        private val voiceHandler = Handler(Looper.getMainLooper())
+        private var pendingVoiceStart: Runnable? = null
+        private var voiceStartForwarded = false
+
+        override fun onModeChanged(mode: KeyboardMode) {
+            delegate.onModeChanged(mode)
+            afterModeChanged?.invoke(mode)
+        }
         override fun onPanelChanged(panel: Panel) {
             delegate.onPanelChanged(panel)
             afterPanelChanged?.invoke(panel)
@@ -243,7 +354,41 @@ class ImeKeyboardViewV2 private constructor(
         override fun onFloatingKeyboardDragged(deltaX: Float, deltaY: Float) =
             delegate.onFloatingKeyboardDragged(deltaX, deltaY)
         override fun onVoiceToggle() = delegate.onVoiceToggle()
-        override fun onVoicePressChanged(pressed: Boolean) = delegate.onVoicePressChanged(pressed)
+        override fun onVoicePressChanged(pressed: Boolean) {
+            if (pressed) {
+                if (voiceStartForwarded || pendingVoiceStart != null) return
+                val start = Runnable {
+                    pendingVoiceStart = null
+                    if (!releaseWasCancel) {
+                        voiceStartForwarded = true
+                        delegate.onVoicePressChanged(true)
+                    }
+                }
+                pendingVoiceStart = start
+                voiceHandler.postDelayed(
+                    start,
+                    ProductionKeyPolicy.remainingVoiceDelayMs(
+                        ViewConfiguration.getLongPressTimeout().toLong(),
+                    ),
+                )
+                return
+            }
+
+            val pending = pendingVoiceStart
+            if (pending != null) {
+                voiceHandler.removeCallbacks(pending)
+                pendingVoiceStart = null
+                // The legacy renderer has already consumed this release because
+                // it crossed its old 150 ms threshold. Recover it as the normal
+                // space action unless Android cancelled the gesture.
+                if (!releaseWasCancel) delegate.onSpace()
+                return
+            }
+            if (voiceStartForwarded) {
+                voiceStartForwarded = false
+                delegate.onVoicePressChanged(false)
+            }
+        }
         override fun onVoiceSessionStarted(autoCommitOnFinal: Boolean) =
             delegate.onVoiceSessionStarted(autoCommitOnFinal)
         override fun onVoicePartial(text: String) = delegate.onVoicePartial(text)
