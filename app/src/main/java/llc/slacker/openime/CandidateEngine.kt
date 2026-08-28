@@ -19,6 +19,8 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
     }
 
     private val sortedPinyinKeys = pinyinDict.keys.sorted()
+    private val phrasePrefixIndex = PrefixRangeIndex(ImeData.phraseDict)
+    private val associationKeysByLength = ImeData.associationDict.keys.sortedByDescending { it.length }
     private val syllablesByFirst: Map<Char, List<String>> = pinyinDict
         .asSequence()
         .filter { (key, values) ->
@@ -50,6 +52,7 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
      */
     private val initialIndex: Map<String, List<String>> =
         PinyinInitialIndexCache.get(externalPinyin) { buildInitialIndex() }
+    private val initialPrefixIndex = PrefixRangeIndex(initialIndex)
 
     private fun buildInitialIndex(): Map<String, List<String>> {
         val index = LinkedHashMap<String, MutableList<String>>()
@@ -171,8 +174,11 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
         }
         result.addAll(pinyinDict[py].orEmpty())
 
-        ImeData.phraseDict.forEach { (key, list) ->
-            if (key.startsWith(py)) result.addAll(list)
+        // Compact phrase fallback used to scan every phrase on every key.
+        // Jump to the sorted prefix interval, then restore source-map order so
+        // ranking stays byte-for-byte compatible with the old forEach path.
+        phrasePrefixIndex.lookup(py).values.forEach { candidates ->
+            result.addAll(candidates)
         }
         var prefixIndex = lowerBound(sortedPinyinKeys, py)
         while (prefixIndex < sortedPinyinKeys.size) {
@@ -216,8 +222,7 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
     fun getAssociations(context: String): List<String> {
         if (context.isEmpty()) return emptyList()
         val result = linkedSetOf<String>()
-        ImeData.associationDict.keys
-            .sortedByDescending { it.length }
+        associationKeysByLength
             .firstOrNull { context.endsWith(it) }
             ?.let { result.addAll(ImeData.associationDict[it].orEmpty()) }
         context.lastOrNull()?.toString()?.let { result.addAll(ImeData.associationDict[it].orEmpty()) }
@@ -231,8 +236,8 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
         val result = linkedSetOf<String>()
         initialIndex[initials]?.let { result.addAll(it) }
         if (result.isEmpty()) {
-            initialIndex.forEach { (key, values) ->
-                if (key.startsWith(initials)) result.addAll(values)
+            initialPrefixIndex.lookup(initials).values.forEach { values ->
+                result.addAll(values)
             }
         }
         return result.take(96)
