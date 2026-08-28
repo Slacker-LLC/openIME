@@ -46,7 +46,21 @@ class ImeKeyView(
         }
 
         mainTextView = if (text.isNotEmpty()) {
-            TextView(context).apply {
+            object : TextView(context) {
+                override fun setEnabled(enabled: Boolean) {
+                    super.setEnabled(enabled)
+                    // Production capability filtering historically disabled only
+                    // the label child, while the enclosing ImeKeyView retained its
+                    // click listener. Once attached, mirror the disabled state to
+                    // the actual interactive node so accessibility/touch cannot
+                    // still invoke an unsupported action.
+                    if (parent != null) {
+                        this@ImeKeyView.isEnabled = enabled
+                        this@ImeKeyView.isClickable = enabled
+                        this@ImeKeyView.isLongClickable = enabled
+                    }
+                }
+            }.apply {
                 this.text = text
                 textSize = mainTextSize
                 gravity = Gravity.CENTER
