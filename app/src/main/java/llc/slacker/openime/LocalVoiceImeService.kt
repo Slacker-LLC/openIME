@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicLong
  * Native system IME service. The view is a thin native renderer; all candidate
  * state, editor side effects and privacy rules live here.
  */
-class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
+class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, CandidateResolver {
 
     private data class CandidateDiagnostics(
         val learnedCount: Int = 0,
@@ -47,7 +47,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
 
     private var keyboardView: ImeKeyboardView? = null
     private lateinit var gateway: InputConnectionGateway
-    private lateinit var engine: CandidateEngine
+    private lateinit var candidatePipeline: CandidatePipeline
     private lateinit var rime: RimeEngine
     private lateinit var voiceLifecycle: VoiceModelLifecycleManager
     private var state = ImeState()
@@ -133,7 +133,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
         UserPhraseRepository.configure(this)
         VoiceCorrectionRepository.configure(this)
         voiceLifecycle = VoiceModelLifecycleManager(this)
-        engine = CandidateEngine(PinyinLexicon.load(this))
+        candidatePipeline = CandidatePipeline(CandidateEngine(PinyinLexicon.load(this)))
         rime = RimeEngine(this).also { it.start() }
         gateway = InputConnectionGateway(
             context = this,
@@ -153,6 +153,24 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
             skinPrimaryColor = ImeSettingsRepository.loadSkinColor(this),
         )
     }
+
+    override fun candidatesFor(
+        mode: KeyboardMode,
+        composition: String,
+        fuzzy: Boolean,
+    ): List<String> = candidatePipeline.candidatesFor(mode, composition, fuzzy)
+
+    override fun resolveNineKey(
+        digits: String,
+        segmentPrefix: String,
+        preferredSuffix: String?,
+        fuzzy: Boolean,
+    ): CandidatePipeline.NineKeyResolution = candidatePipeline.resolveNineKey(
+        digits = digits,
+        segmentPrefix = segmentPrefix,
+        preferredSuffix = preferredSuffix,
+        fuzzy = fuzzy,
+    )
 
     override fun onCreateInputView(): View {
         keyboardView = ImeKeyboardViewV2(this, this)
@@ -690,9 +708,9 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
             return
         }
         val modeAtRequest = state.keyboardMode
-        // The view has already produced the bounded local result for this
-        // key event. Reusing it avoids running the same dictionary work a
-        // second time on the IME main thread during rapid 9-key input.
+        // The service-owned pipeline has already produced the bounded local
+        // result for this key event. Reuse that immutable list while the native
+        // Rime query runs instead of performing dictionary work twice.
         val fallback = candidates.ifEmpty {
             fallbackCandidatesFor(composition, modeAtRequest)
         }
@@ -848,18 +866,8 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
         commitFirstCandidate()
     }
 
-    private fun fallbackCandidatesFor(composition: String, mode: KeyboardMode): List<String> = when (mode) {
-        KeyboardMode.ENGLISH_26 -> engine.getEnglishCompletions(composition)
-        KeyboardMode.PINYIN_26,
-        -> engine.getCandidates(composition, state.fuzzyPinyinEnabled)
-        KeyboardMode.PINYIN_9 -> if (composition.length <= 32) {
-            engine.getCandidates(composition, state.fuzzyPinyinEnabled)
-        } else {
-            emptyList()
-        }
-        KeyboardMode.ENGLISH_T9 -> engine.getT9EnglishCandidates(composition)
-        else -> emptyList()
-    }
+    private fun fallbackCandidatesFor(composition: String, mode: KeyboardMode): List<String> =
+        candidatePipeline.candidatesFor(mode, composition, state.fuzzyPinyinEnabled)
 
     /** The extra learner is only a repeated-choice fallback while Rime is unavailable. */
     private fun immediateCandidates(composition: String, fallback: List<String>): List<String> {
@@ -1049,7 +1057,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener {
         lastComposition = ""
         state = state.copy(composition = "", candidates = emptyList())
         keyboardView?.renderState(state)
-        keyboardView?.setAssociationCandidates(engine.getAssociations(committed))
+        keyboardView?.setAssociationCandidates(candidatePipeline.associationsFor(committed))
     }
 
     private fun beginVoiceCorrection(original: String) {

@@ -11,14 +11,18 @@ import android.widget.LinearLayout
 import android.widget.TextView
 
 /** Debug-only keyboard renderer used by instrumented and visual tests. */
-class DebugKeyboardActivity : Activity(), ImeKeyboardView.Listener {
+class DebugKeyboardActivity : Activity(), ImeKeyboardView.Listener, CandidateResolver {
 
     private lateinit var input: TextView
     private lateinit var status: TextView
     private lateinit var keyboard: ImeKeyboardView
+    private val candidatePipeline by lazy {
+        CandidatePipeline(CandidateEngine(PinyinLexicon.load(this)))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        UserPhraseRepository.configure(this)
 
         val density = resources.displayMetrics.density
         fun dp(value: Int): Int = (value * density).toInt()
@@ -66,6 +70,24 @@ class DebugKeyboardActivity : Activity(), ImeKeyboardView.Listener {
         )
         setContentView(root)
     }
+
+    override fun candidatesFor(
+        mode: KeyboardMode,
+        composition: String,
+        fuzzy: Boolean,
+    ): List<String> = candidatePipeline.candidatesFor(mode, composition, fuzzy)
+
+    override fun resolveNineKey(
+        digits: String,
+        segmentPrefix: String,
+        preferredSuffix: String?,
+        fuzzy: Boolean,
+    ): CandidatePipeline.NineKeyResolution = candidatePipeline.resolveNineKey(
+        digits = digits,
+        segmentPrefix = segmentPrefix,
+        preferredSuffix = preferredSuffix,
+        fuzzy = fuzzy,
+    )
 
     override fun onModeChanged(mode: KeyboardMode) {
         status.text = "mode=$mode"
