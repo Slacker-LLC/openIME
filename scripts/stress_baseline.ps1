@@ -1,4 +1,8 @@
-﻿param([string]$Serial = '')
+﻿param(
+    [string]$Serial = '',
+    [int]$Iterations = 2500,
+    [int]$CommandDelayMs = 10
+)
 
 $ErrorActionPreference = 'Stop'
 $project = Split-Path $PSScriptRoot -Parent
@@ -25,15 +29,30 @@ function WaitIme {
 
 function Push([string]$cmd) {
     Adb shell am broadcast -n $receiver -a $action --es cmd $cmd | Out-Null
-    Start-Sleep -Milliseconds 60
+    if ($CommandDelayMs -gt 0) { Start-Sleep -Milliseconds $CommandDelayMs }
 }
 
+function ReadPid {
+    return (Adb shell pidof $pkg | Out-String).Trim()
+}
+
+function ReadPssKb {
+    $memory = Adb shell dumpsys meminfo $pkg | Out-String
+    $match = [regex]::Match($memory, 'TOTAL PSS:\s*(\d+)')
+    if (-not $match.Success) { return -1 }
+    return [int]$match.Groups[1].Value
+}
+
+if ($Iterations -lt 2500) {
+    throw 'Iterations must be at least 2500 so the default 4-command loop executes >=10,000 commands'
+}
 if (-not (Test-Path -LiteralPath $apk)) { throw 'missing APK' }
+
 Adb install -r $apk | Out-Null
 Adb shell settings put --user 0 secure default_input_method "$pkg/.LocalVoiceImeService"
 Adb shell settings put --user 0 secure show_ime_with_hard_keyboard 1
-Adb shell ime enable --user 0 "$pkg/.LocalVoiceImeService"
-Adb shell ime set --user 0 "$pkg/.LocalVoiceImeService"
+Adb shell ime enable --user 0 "$pkg/.LocalVoiceImeService" | Out-Null
+Adb shell ime set --user 0 "$pkg/.LocalVoiceImeService" | Out-Null
 Adb shell am force-stop $pkg | Out-Null
 Start-Sleep -Seconds 1
 Adb shell am start -n "$pkg/.LifecycleTestActivity" | Out-Null
@@ -48,24 +67,60 @@ if ($node.bounds -match '\[(\d+),(\d+)\]\[(\d+),(\d+)\]') {
 }
 WaitIme
 
+$initialPid = ReadPid
+if ([string]::IsNullOrWhiteSpace($initialPid)) { throw 'IME process is not alive before stress run' }
+$initialPssKb = ReadPssKb
+Adb logcat -c | Out-Null
+
 $start = Get-Date
-for ($i = 0; $i -lt 500; $i++) {
-    Push 'tap:key:mode'
-    Push 'tap:Emoji'
-    Push 'tap:key-panel-back'
+$commands = 0
+$processRestarted = $false
+for ($i = 0; $i -lt $Iterations; $i++) {
+    # Exercise candidate/composition work, deletion, and two mode transitions.
+    Push 'tap:key:n'; $commands++
+    Push 'tap:key-backspace'; $commands++
+    Push 'tap:key:mode'; $commands++
+    Push 'tap:key:mode'; $commands++
+
+    if (($i + 1) % 250 -eq 0) {
+        $pidNow = ReadPid
+        if ([string]::IsNullOrWhiteSpace($pidNow)) {
+            throw "IME process died after $commands commands"
+        }
+        if ($pidNow -ne $initialPid) { $processRestarted = $true }
+    }
 }
 $elapsed = ((Get-Date) - $start).TotalSeconds
-$pidValue = (Adb shell pidof $pkg | Out-String).Trim()
-$memory = Adb shell dumpsys meminfo $pkg | Out-String
-$fatal = Adb logcat -d -t 2000 | Out-String
-$json = Join-Path $outDir 'stress-500.json'
-[PSCustomObject]@{
+
+$finalPid = ReadPid
+$finalPssKb = ReadPssKb
+$logcat = Adb logcat -d -v threadtime | Out-String
+$packageFatalPattern = "FATAL EXCEPTION|ANR in $([regex]::Escape($pkg))|Process: $([regex]::Escape($pkg))"
+$fatalAnr = $logcat -match $packageFatalPattern
+
+$result = [PSCustomObject]@{
     Device = $Serial
-    Iterations = 500
-    Commands = 1500
+    MeasuredAt = (Get-Date -Format o)
+    Iterations = $Iterations
+    Commands = $commands
+    CommandMix = 'key:n + backspace + mode + mode'
+    CommandDelayMs = $CommandDelayMs
     ElapsedSeconds = [Math]::Round($elapsed, 2)
-    Pid = $pidValue
-    PssKb = ([regex]::Match($memory, 'TOTAL PSS:\s*(\d+)').Groups[1].Value)
-    FatalAnr = ($fatal -match 'FATAL|ANR|AndroidRuntime')
-} | ConvertTo-Json | Set-Content -LiteralPath $json -Encoding utf8
+    InitialPid = $initialPid
+    FinalPid = $finalPid
+    ProcessRestarted = $processRestarted
+    InitialPssKb = $initialPssKb
+    FinalPssKb = $finalPssKb
+    PssDeltaKb = if ($initialPssKb -ge 0 -and $finalPssKb -ge 0) { $finalPssKb - $initialPssKb } else { -1 }
+    FatalOrAnr = $fatalAnr
+    Acceptance = if (-not $fatalAnr -and -not [string]::IsNullOrWhiteSpace($finalPid) -and -not $processRestarted) { 'PASS' } else { 'FAIL' }
+}
+
+$json = Join-Path $outDir 'stress-10k.json'
+$result | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $json -Encoding utf8
 Get-Content -LiteralPath $json -Raw
+
+if ($commands -lt 10000) { throw "stress command count below acceptance floor: $commands" }
+if ([string]::IsNullOrWhiteSpace($finalPid)) { throw 'IME process not alive after stress run' }
+if ($processRestarted) { throw 'IME process restarted during stress run' }
+if ($fatalAnr) { throw 'FATAL/ANR evidence detected for openIME during stress run' }
