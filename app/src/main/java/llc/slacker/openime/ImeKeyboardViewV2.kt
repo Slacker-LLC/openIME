@@ -111,6 +111,7 @@ class ImeKeyboardViewV2 private constructor(
     private fun syncProductionKeyPresentation() {
         normalizeSpaceRowGeometry()
         syncEnterKeyPresentation()
+        syncHandwritingCapability()
     }
 
     /**
@@ -172,6 +173,36 @@ class ImeKeyboardViewV2 private constructor(
                     view.setMainText(label)
                     view.contentDescription = label
                 }
+            }
+            if (view is ViewGroup) {
+                for (index in 0 until view.childCount) visit(view.getChildAt(index))
+            }
+        }
+        visit(this)
+    }
+
+    /** Do not expose a dead handwriting flow while production has no recognizer. */
+    private fun syncHandwritingCapability() {
+        if (HandwritingFeaturePolicy.entryEnabled(UnavailableHandwritingProvider)) return
+
+        fun markUnavailableLabel(view: View) {
+            if (view is TextView && view.text.toString() == "手写输入") {
+                view.text = "手写输入·未配置"
+            }
+            if (view is ViewGroup) {
+                for (index in 0 until view.childCount) markUnavailableLabel(view.getChildAt(index))
+            }
+        }
+
+        fun visit(view: View) {
+            if (view.contentDescription?.toString() == "手写输入") {
+                view.isEnabled = false
+                view.isClickable = false
+                view.isLongClickable = false
+                view.alpha = 0.38f
+                view.contentDescription = "手写输入（未配置）"
+                markUnavailableLabel(view)
+                return
             }
             if (view is ViewGroup) {
                 for (index in 0 until view.childCount) visit(view.getChildAt(index))
