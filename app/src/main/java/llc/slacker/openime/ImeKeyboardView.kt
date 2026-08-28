@@ -117,9 +117,7 @@ open class ImeKeyboardView(
     private var backspaceClearUiAction: ((Boolean) -> Unit)? = null
     private var backspaceRepeatStartAction: Runnable? = null
 
-    private val engine = CandidateEngine(PinyinLexicon.load(context).also {
-        UserPhraseRepository.configure(context)
-    })
+    private val candidateProvider = context as? CandidateResolver
     private var theme = ImeTheme.IOS
     private var appearance = ImeAppearance.SYSTEM
     private var mode = KeyboardMode.PINYIN_26
@@ -1065,7 +1063,7 @@ open class ImeKeyboardView(
                     filterChip(f, f == t9Filter) {
                         t9Filter = f
                         renderModeBody()
-                        publishComposition(lastT9Digits, engine.getT9EnglishCandidates(lastT9Digits))
+                        publishComposition(lastT9Digits, candidatesForComposition(lastT9Digits))
                     },
                     LinearLayout.LayoutParams(
                         0,
@@ -2894,16 +2892,20 @@ open class ImeKeyboardView(
         if (!insertIntoInlineEditor(text)) listener.onCharacter(text)
     }
 
+    private fun requireCandidateProvider(): CandidateResolver = requireNotNull(candidateProvider) {
+        "Candidate-producing keyboard modes require a CandidateResolver host"
+    }
+
     private fun onKeyTapped(base: String) {
         if (insertIntoInlineEditor(base)) return
         clearAssociationCandidates()
         if (mode == KeyboardMode.PINYIN_26) {
             val (py, selection) = replaceCompositionSelection(base)
-            publishComposition(py, engine.getCandidates(py, fuzzyEnabled), selection)
+            publishComposition(py, candidatesForComposition(py), selection)
         } else if (mode == KeyboardMode.ENGLISH_26) {
             val ch = if (shiftState != ShiftState.LOWERCASE) base.uppercase() else base
             val (py, selection) = replaceCompositionSelection(ch)
-            publishComposition(py, engine.getEnglishCompletions(py), selection)
+            publishComposition(py, candidatesForComposition(py), selection)
             if (shiftState == ShiftState.SHIFT_ONCE) {
                 shiftState = ShiftState.LOWERCASE
                 listener.onShiftStateChanged(shiftState)
@@ -2931,7 +2933,7 @@ open class ImeKeyboardView(
         if (mode == KeyboardMode.ENGLISH_T9) {
             val (digits, selection) = replaceCompositionSelection(num)
             lastT9Digits = digits
-            publishComposition(digits, engine.getT9EnglishCandidates(digits), selection)
+            publishComposition(digits, candidatesForComposition(digits), selection)
         } else if (mode == KeyboardMode.PINYIN_9) {
             if (lastNineDigits.isEmpty()) {
                 lastNineSegmentPrefix = composition.text
@@ -2950,40 +2952,15 @@ open class ImeKeyboardView(
         digits: String,
         preferredSuffix: String? = null,
     ) {
-        val result = engine.get9KeyCandidates(digits)
-        val fallbackPath = digits.mapNotNull { digit ->
-            ImeData.keypad9Map[digit.toString()]
-                ?.firstOrNull { it.length == 1 && it[0] in 'a'..'z' }
-        }.joinToString("")
-        val stableSuffix = preferredSuffix
-            ?.lowercase()
-            ?.takeIf { suffix -> nineKeyDigitsFor(suffix) == digits }
-        val pinyinPaths = (listOfNotNull(stableSuffix) + result.pinyins)
-            .asSequence()
-            .filter { it.isNotBlank() }
-            .map { lastNineSegmentPrefix + it }
-            .distinct()
-            .take(8)
-            .toList()
-            .ifEmpty {
-                listOf(lastNineSegmentPrefix + fallbackPath).filter { it.isNotBlank() }
-            }
-        val preview = pinyinPaths.firstOrNull().orEmpty()
-        val localCandidates = if (preview.length <= 32) {
-            engine.getCandidates(preview, fuzzyEnabled)
-        } else {
-            emptyList()
-        }
-        val candidates = (
-            if (lastNineSegmentPrefix.isEmpty()) {
-                result.candidates + localCandidates
-            } else {
-                localCandidates + result.candidates
-            }
-            )
-            .filter { it.isNotEmpty() && it.none(Char::isDigit) }
-            .distinct()
-            .take(96)
+        val resolution = requireCandidateProvider().resolveNineKey(
+            digits = digits,
+            segmentPrefix = lastNineSegmentPrefix,
+            preferredSuffix = preferredSuffix,
+            fuzzy = fuzzyEnabled,
+        )
+        val preview = resolution.preview
+        val pinyinPaths = resolution.pinyinPaths
+        val candidates = resolution.candidates
         lastNineDigits = digits
         lastNinePinyinPaths = pinyinPaths
         lastNineCandidates = candidates
@@ -3000,26 +2977,6 @@ open class ImeKeyboardView(
             candidates = candidates,
         )
         applyCandidateTheme()
-    }
-
-    private fun nineKeyDigitsFor(pinyin: String): String? {
-        val digits = StringBuilder(pinyin.length)
-        pinyin.forEach { ch ->
-            digits.append(
-                when (ch) {
-                    in 'a'..'c' -> '2'
-                    in 'd'..'f' -> '3'
-                    in 'g'..'i' -> '4'
-                    in 'j'..'l' -> '5'
-                    in 'm'..'o' -> '6'
-                    in 'p'..'s' -> '7'
-                    in 't'..'v' -> '8'
-                    in 'w'..'z' -> '9'
-                    else -> return null
-                },
-            )
-        }
-        return digits.toString()
     }
 
     /** Insert an editable syllable boundary without committing the text. */
@@ -3079,12 +3036,9 @@ open class ImeKeyboardView(
         applyCandidateTheme()
     }
 
-    private fun candidatesForComposition(text: String): List<String> = when (mode) {
-        KeyboardMode.PINYIN_26 -> engine.getCandidates(text, fuzzyEnabled)
-        KeyboardMode.ENGLISH_26 -> engine.getEnglishCompletions(text)
-        KeyboardMode.PINYIN_9 -> engine.getCandidates(text, fuzzyEnabled)
-        KeyboardMode.ENGLISH_T9 -> engine.getT9EnglishCandidates(text)
-        KeyboardMode.DIGITS -> emptyList()
+    private fun candidatesForComposition(text: String): List<String> {
+        if (text.isEmpty()) return emptyList()
+        return requireCandidateProvider().candidatesFor(mode, text, fuzzyEnabled)
     }
 
     private fun replaceCompositionSelection(insert: String): Pair<String, Int> {
@@ -3784,8 +3738,8 @@ open class ImeKeyboardView(
         weight,
     ).apply {
         marginStart = dp(gapDp)
-            marginEnd = dp(gapDp)
-        }
+        marginEnd = dp(gapDp)
+    }
     private fun gridCellParams(
         heightDp: Int,
         columns: Int,
