@@ -11,6 +11,10 @@ data class StrokePoint(val x: Float, val y: Float, val timestamp: Long, val pres
 data class Stroke(val points: List<StrokePoint>)
 
 interface HandwritingProvider {
+    /** Capability used by production UI before exposing the handwriting entry. */
+    val isAvailable: Boolean
+        get() = true
+
     fun recognize(strokes: List<Stroke>): HandwritingResult
 }
 
@@ -20,7 +24,13 @@ sealed class HandwritingResult {
     data class Error(val message: String) : HandwritingResult()
 }
 
+internal object HandwritingFeaturePolicy {
+    fun entryEnabled(provider: HandwritingProvider): Boolean = provider.isAvailable
+}
+
 object UnavailableHandwritingProvider : HandwritingProvider {
+    override val isAvailable: Boolean = false
+
     override fun recognize(strokes: List<Stroke>): HandwritingResult =
         HandwritingResult.NotConfigured
 }
