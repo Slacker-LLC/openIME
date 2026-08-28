@@ -159,7 +159,9 @@ class ImeKeyboardViewV2 private constructor(
         val service = context as? InputMethodService ?: return
         val imeOptions = service.currentInputEditorInfo?.imeOptions ?: return
         val label = enterKeyPresentationFor(imeOptions).label
-        val enterLabels = setOf("发送", "搜索", "前往", "下一项", "完成", "换行", "确定", "Go")
+        val enterLabels = setOf(
+            "发送", "搜索", "前往", "下一项", "上一项", "完成", "换行", "回车", "确定", "Go",
+        )
 
         fun visit(view: View) {
             if (view is ImeKeyView) {
@@ -421,5 +423,7 @@ class ImeKeyboardViewV2 private constructor(
         override fun onHapticChanged(enabled: Boolean) = delegate.onHapticChanged(enabled)
         override fun onPopupChanged(enabled: Boolean) = delegate.onPopupChanged(enabled)
         override fun onFuzzyChanged(enabled: Boolean) = delegate.onFuzzyChanged(enabled)
+        override fun onSkinChanged(opacity: Int, radius: Int, fontSize: Int, primaryColor: String) =
+            delegate.onSkinChanged(opacity, radius, fontSize, primaryColor)
     }
 }
