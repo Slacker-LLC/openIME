@@ -423,7 +423,5 @@ class ImeKeyboardViewV2 private constructor(
         override fun onHapticChanged(enabled: Boolean) = delegate.onHapticChanged(enabled)
         override fun onPopupChanged(enabled: Boolean) = delegate.onPopupChanged(enabled)
         override fun onFuzzyChanged(enabled: Boolean) = delegate.onFuzzyChanged(enabled)
-        override fun onSkinChanged(opacity: Int, radius: Int, fontSize: Int, primaryColor: String) =
-            delegate.onSkinChanged(opacity, radius, fontSize, primaryColor)
     }
 }
