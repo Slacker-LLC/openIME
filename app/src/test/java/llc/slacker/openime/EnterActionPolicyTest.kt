@@ -29,6 +29,7 @@ class EnterActionPolicyTest {
             EditorInfo.IME_ACTION_SEARCH to "搜索",
             EditorInfo.IME_ACTION_GO to "前往",
             EditorInfo.IME_ACTION_NEXT to "下一项",
+            EditorInfo.IME_ACTION_PREVIOUS to "上一项",
         )
         cases.forEach { (action, label) ->
             assertEquals(action, editorActionForEnter(action))
@@ -45,11 +46,11 @@ class EnterActionPolicyTest {
     }
 
     @Test
-    fun noActionFallsBackToRealEnterAndNewlineLabel() {
+    fun noActionFallsBackToRawEnterLabel() {
         listOf(EditorInfo.IME_ACTION_NONE, EditorInfo.IME_ACTION_UNSPECIFIED).forEach { options ->
             assertNull(editorActionForEnter(options))
             val presentation = enterKeyPresentationFor(options)
-            assertEquals("换行", presentation.label)
+            assertEquals("回车", presentation.label)
             assertNull(presentation.editorAction)
         }
     }
