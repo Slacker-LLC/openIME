@@ -3,6 +3,8 @@ package llc.slacker.openime
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Small private user dictionary for selected Pinyin candidates. It is kept
@@ -14,6 +16,8 @@ import org.json.JSONObject
 object UserPhraseRepository {
     private const val PREFS = "user_phrases"
     private const val KEY = "entries"
+    private const val MAX_ENTRIES = 2000
+    private const val SAVE_DEBOUNCE_MS = 500L
 
     private data class Entry(
         val code: String,
@@ -25,6 +29,17 @@ object UserPhraseRepository {
     private val lock = Any()
     private var preferences: android.content.SharedPreferences? = null
     private val entries = LinkedHashMap<String, Entry>()
+
+    /**
+     * Persisting used to happen inline on the IME thread: every commit built a
+     * JSONArray over up to 2 000 entries and serialized it to a string before
+     * apply() handed the write off. Coalesce a burst of commits instead, and
+     * do the serialization off the IME thread entirely.
+     */
+    private val saveExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "user-phrase-save").apply { isDaemon = true }
+    }
+    private val saveScheduled = AtomicBoolean(false)
 
     fun configure(context: Context) {
         synchronized(lock) {
@@ -74,7 +89,46 @@ object UserPhraseRepository {
                 current.frequency = (current.frequency + 1).coerceAtMost(1_000_000)
                 current.lastUsed = System.currentTimeMillis()
             }
-            saveLocked()
+            trimLocked()
+            scheduleSaveLocked()
+        }
+    }
+
+    /**
+     * Write any pending learning immediately. Call when an input session ends
+     * so a process kill cannot lose more than the debounce window.
+     */
+    fun flush() {
+        synchronized(lock) {
+            if (preferences == null) return
+            writeLocked()
+        }
+    }
+
+    /**
+     * The map used to grow without bound: saveLocked() persisted only the last
+     * 2 000 entries, so memory and disk silently diverged and a long-lived
+     * process kept every phrase it had ever seen.
+     */
+    private fun trimLocked() {
+        if (entries.size <= MAX_ENTRIES) return
+        val keep = entries.entries
+            .sortedWith(
+                compareByDescending<Map.Entry<String, Entry>> { it.value.lastUsed }
+                    .thenByDescending { it.value.frequency },
+            )
+            .take(MAX_ENTRIES)
+            .mapTo(HashSet()) { it.key }
+        entries.keys.retainAll(keep)
+    }
+
+    private fun scheduleSaveLocked() {
+        if (preferences == null) return
+        if (!saveScheduled.compareAndSet(false, true)) return
+        saveExecutor.execute {
+            runCatching { Thread.sleep(SAVE_DEBOUNCE_MS) }
+            saveScheduled.set(false)
+            synchronized(lock) { writeLocked() }
         }
     }
 
@@ -135,10 +189,10 @@ object UserPhraseRepository {
         }
     }
 
-    private fun saveLocked() {
+    private fun writeLocked() {
         val target = preferences ?: return
         val array = JSONArray()
-        entries.values.toList().takeLast(2_000).forEach { entry ->
+        entries.values.toList().takeLast(MAX_ENTRIES).forEach { entry ->
             array.put(
                 JSONObject()
                     .put("code", entry.code)

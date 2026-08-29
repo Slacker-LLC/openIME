@@ -30,8 +30,25 @@ class ImeKeyboardViewV2 private constructor(
 
     private var navigationBottomInsetPx = 0
 
+    /**
+     * [syncProductionKeyPresentation] walks the whole key tree three times
+     * (space geometry, Enter label, handwriting capability). onMeasure fires on
+     * every key tap, every async candidate callback, every insets change and
+     * every rotation, so the previous unconditional call made ~450 node visits
+     * per keystroke. Geometry only depends on the editor's IME options and on
+     * explicit invalidate calls; gate on those.
+     */
+    private var presentationDirty = true
+    private var lastSyncedImeOptions: Int? = null
+
+    /** Force the next measure pass to resynchronize key presentation. */
+    fun invalidatePresentation() {
+        presentationDirty = true
+    }
+
     init {
         adapter.afterModeChanged = {
+            presentationDirty = true
             post { syncProductionKeyPresentation() }
         }
         adapter.afterPanelChanged = { panel ->
@@ -83,8 +100,14 @@ class ImeKeyboardViewV2 private constructor(
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        presentationDirty = true
         requestApplyInsets()
         post { syncProductionKeyPresentation() }
+    }
+
+    override fun onDetachedFromWindow() {
+        adapter.shutdown()
+        super.onDetachedFromWindow()
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -109,6 +132,10 @@ class ImeKeyboardViewV2 private constructor(
     }
 
     private fun syncProductionKeyPresentation() {
+        val imeOptions = (context as? InputMethodService)?.currentInputEditorInfo?.imeOptions
+        if (!presentationDirty && imeOptions == lastSyncedImeOptions) return
+        presentationDirty = false
+        lastSyncedImeOptions = imeOptions
         normalizeSpaceRowGeometry()
         syncEnterKeyPresentation()
         syncHandwritingCapability()
@@ -345,6 +372,14 @@ class ImeKeyboardViewV2 private constructor(
             onCompositionChanged(composition, candidates)
         }
         fun onCandidateSelected(candidate: String)
+
+        /**
+         * Association chips are shown after a commit, when no composition is
+         * live. They must not be funnelled through [onCandidateSelected], which
+         * is guarded on an active composition and silently drops them.
+         */
+        fun onAssociationSelected(text: String) = Unit
+
         fun onCompositionBackspace()
         fun onThemeChanged(theme: ImeTheme)
         fun onAppearanceChanged(appearance: ImeAppearance)
@@ -442,6 +477,7 @@ class ImeKeyboardViewV2 private constructor(
             candidates: List<String>,
         ) = delegate.onNineKeyCompositionChanged(composition, digitBuffer, pinyinPaths, candidates)
         override fun onCandidateSelected(candidate: String) = delegate.onCandidateSelected(candidate)
+        override fun onAssociationSelected(text: String) = delegate.onAssociationSelected(text)
         override fun onCompositionBackspace() = delegate.onCompositionBackspace()
         override fun onThemeChanged(theme: ImeTheme) = delegate.onThemeChanged(theme)
         override fun onAppearanceChanged(appearance: ImeAppearance) = delegate.onAppearanceChanged(appearance)
@@ -454,5 +490,18 @@ class ImeKeyboardViewV2 private constructor(
         override fun onHapticChanged(enabled: Boolean) = delegate.onHapticChanged(enabled)
         override fun onPopupChanged(enabled: Boolean) = delegate.onPopupChanged(enabled)
         override fun onFuzzyChanged(enabled: Boolean) = delegate.onFuzzyChanged(enabled)
+
+        /**
+         * A pending voice-start runnable survives for the long-press delay. If
+         * the editor goes away first it would still fire and begin recording,
+         * writing partial recognition into whichever InputConnection became
+         * current in the meantime.
+         */
+        fun shutdown() {
+            pendingVoiceStart?.let { voiceHandler.removeCallbacks(it) }
+            pendingVoiceStart = null
+            voiceStartForwarded = false
+            releaseWasCancel = false
+        }
     }
 }

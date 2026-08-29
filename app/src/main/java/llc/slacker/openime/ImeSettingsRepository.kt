@@ -17,11 +17,23 @@ object ImeSettingsRepository {
     private const val KEY_SKIN_FONT = "skin_font"
     private const val KEY_SKIN_COLOR = "skin_color"
 
-    fun loadTheme(context: Context): ImeTheme = ImeTheme.IOS
+    /**
+     * Every ImeTheme ships a complete token set in ImeDesignTokens, but the
+     * getter used to hard-code IOS, which made four finished skins unreachable
+     * and made a persisted choice impossible to restore.
+     */
+    fun loadTheme(context: Context): ImeTheme =
+        runCatching {
+            ImeTheme.valueOf(
+                context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getString(KEY_THEME, ImeTheme.IOS.name)
+                    ?: ImeTheme.IOS.name,
+            )
+        }.getOrDefault(ImeTheme.IOS)
 
     fun saveTheme(context: Context, theme: ImeTheme) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putString(KEY_THEME, ImeTheme.IOS.name).apply()
+            .edit().putString(KEY_THEME, theme.name).apply()
     }
 
     fun loadAppearance(context: Context): ImeAppearance =

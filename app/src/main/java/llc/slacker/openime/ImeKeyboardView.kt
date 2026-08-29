@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.BitmapFactory
 import android.graphics.drawable.GradientDrawable
@@ -15,6 +16,7 @@ import android.text.InputType
 import android.text.TextUtils
 import android.text.TextWatcher
 import android.util.Log
+import android.util.LruCache
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
@@ -79,6 +81,16 @@ open class ImeKeyboardView(
             onCompositionChanged(composition, candidates)
         }
         fun onCandidateSelected(candidate: String)
+
+        /**
+         * An association ("联想") chip is rendered only *after* a candidate was
+         * committed, i.e. when the composition is already empty. Routing those
+         * clicks through [onCandidateSelected] is therefore always a no-op:
+         * that path guards on a non-empty composition. Associations need their
+         * own commit funnel that does not depend on a live composition.
+         */
+        fun onAssociationSelected(text: String) = Unit
+
         fun onCompositionBackspace()
         fun onThemeChanged(theme: ImeTheme)
         fun onAppearanceChanged(appearance: ImeAppearance)
@@ -98,6 +110,30 @@ open class ImeKeyboardView(
     /** Visual class marker for the gray side/action column in nine-key layouts. */
     private val MARK_SIDE_KEY = 0x1F000002
     private val MARK_FUNCTION_KEY = 0x1F000003
+    /** Cached "is this label a function key" decision, stored per key view. */
+    private val MARK_FUNC_LABEL = 0x1F000011
+    private val MARK_FUNC_LABEL_VALUE = 0x1F000012
+
+    companion object {
+        /** Compiled once. [applyThemeRecursive] walks ~150 nodes per pass. */
+        private val DIGITS_ONLY = Regex("[0-9]+")
+
+        /**
+         * Emoji cells used to decode their PNG from assets inline on the UI
+         * thread: 23-40 synchronous decodes every time the panel opened or
+         * switched category, with no reuse and no recycling. Cache by asset
+         * path so the cost is paid once per process, not once per render.
+         */
+        private const val EMOJI_CACHE_BYTES = 4 * 1024 * 1024
+        private val emojiBitmaps = object : LruCache<String, Bitmap>(EMOJI_CACHE_BYTES) {
+            override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
+        }
+
+        private fun emojiBitmap(context: Context, assetPath: String): Bitmap? =
+            emojiBitmaps.get(assetPath) ?: runCatching {
+                context.assets.open(assetPath).use { BitmapFactory.decodeStream(it) }
+            }.getOrNull()?.also { emojiBitmaps.put(assetPath, it) }
+    }
 
     private val repeatHandler = Handler(Looper.getMainLooper())
     private val repeatAction = object : Runnable {
@@ -682,7 +718,7 @@ open class ImeKeyboardView(
                     tag = "association-candidate"
                     isClickable = true
                     setPadding(dp(8), 0, dp(8), 0)
-                    setOnClickListener { listener.onCandidateSelected(candidate) }
+                    setOnClickListener { listener.onAssociationSelected(candidate) }
                 },
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -721,9 +757,37 @@ open class ImeKeyboardView(
         fuzzyEnabled = fuzzy
     }
 
+    /**
+     * Shift state is owned by this view, and nothing else could reset it. A
+     * Caps Lock engaged in one app therefore survived into the next editor,
+     * including password and banking fields. Called from onStartInput.
+     */
+    fun setShiftState(next: ShiftState) {
+        if (shiftState == next) return
+        shiftState = next
+        listener.onShiftStateChanged(next)
+    }
+
     fun shutdown() {
         stopVoiceIfActive()
-        repeatHandler.removeCallbacks(repeatAction)
+        // Drop every pending callback, not just the repeat one. A surviving
+        // backspace/voice runnable fires after the editor changed and would
+        // delete or compose into whichever InputConnection is current then.
+        repeatHandler.removeCallbacksAndMessages(null)
+        removeCallbacks(null)
+        backspaceRepeatStartAction?.let { repeatHandler.removeCallbacks(it) }
+        backspaceRepeatStartAction = null
+        backspaceGestureActive = false
+        backspaceClearArmed = false
+        backspaceRepeatStarted = false
+        backspaceAnchor?.isPressed = false
+        backspaceAnchor = null
+        backspaceClearUiAction = null
+        spaceVoiceGestureActive = false
+        spaceVoiceGestureCancel = false
+        voiceInlineActive = false
+        voiceInlineCancel = false
+        hidePopup()
     }
 
     internal fun isVoiceActive(): Boolean = voiceActive
@@ -2323,9 +2387,7 @@ open class ImeKeyboardView(
         val assetPath = FluentEmojiAssetRepository.pathFor(context, emoji)
         val view = if (assetPath != null) {
             ImageView(context).apply {
-                val bitmap = runCatching {
-                    context.assets.open(assetPath).use { BitmapFactory.decodeStream(it) }
-                }.getOrNull()
+                val bitmap = emojiBitmap(context, assetPath)
                 if (bitmap != null) setImageBitmap(bitmap)
                 scaleType = ImageView.ScaleType.FIT_CENTER
             }
@@ -3082,7 +3144,11 @@ open class ImeKeyboardView(
         val end = composition.selectionEnd.coerceIn(start, current.length)
         val deleteStart = if (start == end) {
             if (start == 0) return true
-            start - 1
+            // Step back by one full Unicode code point, not by one UTF-16 unit.
+            // Otherwise a backspace on an emoji / extension-B Han character
+            // leaves an orphaned high surrogate behind and every later
+            // candidate for this composition is computed from broken text.
+            Character.offsetByCodePoints(current, start, -1).coerceAtLeast(0)
         } else {
             start
         }
@@ -3496,13 +3562,13 @@ open class ImeKeyboardView(
             is ImeKeyView -> {
                 val side = view.getTag(MARK_SIDE_KEY) == true ||
                     (view.parent as? View)?.tag in setOf("pinyin9-actions", "t9-actions", "digits-actions")
-                val function = view.getTag(MARK_FUNCTION_KEY) == true ||
-                    labelIsFunc(view.contentDescription?.toString().orEmpty())
+                val label = view.contentDescription?.toString().orEmpty()
+                val function = view.getTag(MARK_FUNCTION_KEY) == true || view.isFunctionKey(label)
                 // Numeric glyphs are white grid keys only when they are real
                 // number keys. Function labels such as 123 must stay gray.
                 val white = !side && (
                     view.getTag(MARK_WHITE_KEY) == true ||
-                        (!function && view.contentDescription?.toString()?.matches(Regex("[0-9]+")) == true)
+                        (!function && DIGITS_ONLY.matches(label))
                     )
                 val primary = !side && (view.tag == "tab-active" ||
                     view.tag == "key-shift-caps" ||
@@ -3649,8 +3715,18 @@ open class ImeKeyboardView(
         }
     }
 
-    private fun ImeKeyView.mainIsFunc(): Boolean {
-        return labelIsFunc(contentDescription?.toString().orEmpty())
+    /**
+     * [labelIsFunc] runs ~45 substring scans. It used to execute twice per key
+     * on every theme pass, and a theme pass happens on every key tap in the
+     * 26-key layout. Memoize the decision on the view, keyed by the label that
+     * produced it, so a re-labelled key still recomputes correctly.
+     */
+    private fun ImeKeyView.isFunctionKey(label: String): Boolean {
+        if (getTag(MARK_FUNC_LABEL) == label) return getTag(MARK_FUNC_LABEL_VALUE) == true
+        val value = labelIsFunc(label)
+        setTag(MARK_FUNC_LABEL, label)
+        setTag(MARK_FUNC_LABEL_VALUE, value)
+        return value
     }
 
     private fun labelIsFunc(text: String): Boolean =
