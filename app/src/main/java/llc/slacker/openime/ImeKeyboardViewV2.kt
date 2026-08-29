@@ -378,7 +378,7 @@ class ImeKeyboardViewV2 private constructor(
          * live. They must not be funnelled through [onCandidateSelected], which
          * is guarded on an active composition and silently drops them.
          */
-        fun onAssociationSelected(text: String)
+        fun onAssociationSelected(text: String) = Unit
 
         fun onCompositionBackspace()
         fun onThemeChanged(theme: ImeTheme)
