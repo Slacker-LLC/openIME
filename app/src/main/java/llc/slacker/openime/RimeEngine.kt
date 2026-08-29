@@ -5,14 +5,15 @@ import android.os.Build
 import android.util.Log
 import java.io.File
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 internal data class RimeCandidateEntry(
     val text: String,
     val nativeIndex: Int,
 )
 
-internal fun rimeProbeHasCandidate(snapshot: Array<String>): Boolean =
-    snapshot.drop(2).any { it.isNotBlank() }
+internal fun rimeProbeHasCandidate(snapshot: Array<String>?): Boolean =
+    snapshot.orEmpty().drop(2).any { !it.isNullOrBlank() }
 
 internal fun rimeDataRevision(versionCode: Long): String = "apk-$versionCode"
 
@@ -172,6 +173,12 @@ class RimeEngine(private val context: Context) {
                     errorMessage = throwable.message ?: throwable.javaClass.simpleName
                     Log.w(TAG, "librime unavailable; keeping Kotlin fallback", throwable)
                 }
+                // An Error (OutOfMemoryError, StackOverflowError) is not made
+                // recoverable by falling back to a second dictionary: the
+                // fallback needs the same memory that is already gone. Record
+                // it, clean up, then let it surface instead of hiding a fatal
+                // condition behind a silent "fallback" state.
+                if (throwable is Error) throw throwable
             }
         }
     }
@@ -209,7 +216,7 @@ class RimeEngine(private val context: Context) {
                 if (!syncSchemaFromSettingsLocked()) return@runCatching ""
                 val snapshot = RimeNative.nativeSetInput(normalized)
                 val entry = snapshotCandidateEntries(snapshot).firstOrNull { it.text == candidate }
-                if (entry != null) RimeNative.nativeSelectCandidate(entry.nativeIndex) else ""
+                if (entry != null) RimeNative.nativeSelectCandidate(entry.nativeIndex).orEmpty() else ""
             }.getOrDefault("")
         }
     }
@@ -248,7 +255,7 @@ class RimeEngine(private val context: Context) {
             runCatching {
                 if (!syncSchemaFromSettingsLocked()) return@runCatching ""
                 RimeNative.nativeSetInput(normalized)
-                RimeNative.nativeCommitFirst()
+                RimeNative.nativeCommitFirst().orEmpty()
             }.getOrDefault("")
         }
     }
@@ -269,12 +276,42 @@ class RimeEngine(private val context: Context) {
         startupGate.destroy()
         isReady = false
         mutationQueue.close()
-        cleanupNative()
+        // shutdownNow() does not wait for the task currently running. If that
+        // task is inside nativeStartup it can re-initialize librime *after*
+        // the cleanup below finalized it, leaving a live session nobody owns
+        // and no way to destroy. Give it a bounded grace period first.
         startupExecutor.shutdownNow()
+        runCatching {
+            if (!startupExecutor.awaitTermination(STARTUP_SHUTDOWN_GRACE_MS, TimeUnit.MILLISECONDS)) {
+                Log.w(TAG, "librime startup did not settle before shutdown")
+            }
+        }
+        cleanupNative()
+    }
+
+    /**
+     * Mirrors the persisted fuzzy setting. [syncSchemaFromSettingsLocked] runs
+     * inside every candidate query, and reading SharedPreferences is a disk
+     * read plus an XML parse — it used to happen once per keystroke even when
+     * the value had not changed in months.
+     */
+    @Volatile
+    private var cachedFuzzyPinyin: Boolean? = null
+
+    /** Drop the cached fuzzy setting so the next query re-reads it. */
+    fun invalidateSettingsCache() {
+        cachedFuzzyPinyin = null
+    }
+
+    private fun fuzzyPinyinEnabled(): Boolean {
+        cachedFuzzyPinyin?.let { return it }
+        val value = ImeSettingsRepository.loadFuzzy(context)
+        cachedFuzzyPinyin = value
+        return value
     }
 
     private fun syncSchemaFromSettingsLocked(): Boolean {
-        val desiredSchemaId = rimeSchemaId(ImeSettingsRepository.loadFuzzy(context))
+        val desiredSchemaId = rimeSchemaId(fuzzyPinyinEnabled())
         if (activeSchemaId == desiredSchemaId) return true
         if (!RimeNative.nativeSelectSchema(desiredSchemaId)) return false
         activeSchemaId = desiredSchemaId
@@ -290,11 +327,19 @@ class RimeEngine(private val context: Context) {
         }
     }
 
-    private fun snapshotCandidateEntries(snapshot: Array<String>): List<RimeCandidateEntry> =
-        snapshot.drop(2)
+    private fun snapshotCandidateEntries(snapshot: Array<String>?): List<RimeCandidateEntry> =
+        snapshot.orEmpty()
+            .drop(2)
             .mapIndexedNotNull { index, text ->
-                text.takeIf { it.isNotBlank() }?.let {
-                    RimeCandidateEntry(text = it, nativeIndex = index)
+                // make_strings() can return null outright, or an array whose
+                // tail slots are still null after an allocation failure. The
+                // old code dereferenced the element unconditionally, threw
+                // NPE, and the surrounding runCatching turned that into a
+                // silent empty candidate list with no diagnostic at all.
+                if (text.isNullOrBlank()) {
+                    null
+                } else {
+                    RimeCandidateEntry(text = text, nativeIndex = index)
                 }
             }
             .distinctBy { it.text }
@@ -349,5 +394,11 @@ class RimeEngine(private val context: Context) {
     private companion object {
         const val TAG = "RimeEngine"
         const val HEALTH_PROBE_INPUT = "ni"
+        /**
+         * Upper bound for waiting on an in-flight startup before tearing down.
+         * Short enough to stay off the IME shutdown path, long enough for the
+         * common case where the worker is between cancellation checks.
+         */
+        const val STARTUP_SHUTDOWN_GRACE_MS = 1_500L
     }
 }
