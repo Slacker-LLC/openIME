@@ -33,18 +33,27 @@ function Tap([string]$target, [int]$waitMs = 80) {
 }
 
 function FocusEditor {
-    for ($attempt = 0; $attempt -lt 8; $attempt++) {
+    $local = Join-Path $env:TEMP 'openime-clear-delete-focus.xml'
+    for ($attempt = 0; $attempt -lt 10; $attempt++) {
+        Remove-Item -LiteralPath $local -Force -ErrorAction SilentlyContinue
+        Adb shell rm -f /sdcard/openime-focus.xml | Out-Null
         Adb shell uiautomator dump /sdcard/openime-focus.xml | Out-Null
-        $local = Join-Path $env:TEMP 'openime-clear-delete-focus.xml'
-        Adb pull /sdcard/openime-focus.xml $local | Out-Null
-        $hierarchy = [xml](Get-Content -Raw -Encoding UTF8 -LiteralPath $local)
-        $node = $hierarchy.SelectNodes('//node[@resource-id="llc.slacker.openime:id/test_input"]') |
-            Select-Object -First 1
-        if ($node -and $node.bounds -match '\[(\d+),(\d+)\]\[(\d+),(\d+)\]') {
-            $x = ([int]$Matches[1] + [int]$Matches[3]) / 2
-            $y = ([int]$Matches[2] + [int]$Matches[4]) / 2
-            Adb shell input tap ([int]$x) ([int]$y) | Out-Null
-            return
+        Adb pull /sdcard/openime-focus.xml $local 2>$null | Out-Null
+        if (Test-Path -LiteralPath $local) {
+            try {
+                $raw = Get-Content -Raw -Encoding UTF8 -LiteralPath $local
+                if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                    $hierarchy = [xml]$raw
+                    $node = $hierarchy.SelectNodes('//node[@resource-id="llc.slacker.openime:id/test_input"]') |
+                        Select-Object -First 1
+                    if ($node -and $node.bounds -match '\[(\d+),(\d+)\]\[(\d+),(\d+)\]') {
+                        $x = ([int]$Matches[1] + [int]$Matches[3]) / 2
+                        $y = ([int]$Matches[2] + [int]$Matches[4]) / 2
+                        Adb shell input tap ([int]$x) ([int]$y) | Out-Null
+                        return
+                    }
+                }
+            } catch { }
         }
         Start-Sleep -Milliseconds 400
     }
@@ -105,16 +114,32 @@ function AssertClean([string]$name) {
 }
 
 function AssertEditorText([string]$name, [string]$expected) {
-    Adb shell uiautomator dump /sdcard/openime-state.xml | Out-Null
     $local = Join-Path $env:TEMP 'openime-clear-delete-state.xml'
-    Adb pull /sdcard/openime-state.xml $local | Out-Null
-    $hierarchy = [xml](Get-Content -Raw -Encoding UTF8 -LiteralPath $local)
-    $actual = ($hierarchy.SelectNodes('//node[@resource-id="llc.slacker.openime:id/test_input"]') |
-        Select-Object -First 1).text
-    if ($actual -ne $expected) {
-        throw "FAIL $name expected=[$expected] actual=[$actual]"
+    for ($attempt = 0; $attempt -lt 6; $attempt++) {
+        Remove-Item -LiteralPath $local -Force -ErrorAction SilentlyContinue
+        Adb shell rm -f /sdcard/openime-state.xml | Out-Null
+        Adb shell uiautomator dump /sdcard/openime-state.xml | Out-Null
+        Adb pull /sdcard/openime-state.xml $local 2>$null | Out-Null
+        if (Test-Path -LiteralPath $local) {
+            try {
+                $raw = Get-Content -Raw -Encoding UTF8 -LiteralPath $local
+                if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                    $hierarchy = [xml]$raw
+                    $actual = ($hierarchy.SelectNodes('//node[@resource-id="llc.slacker.openime:id/test_input"]') |
+                        Select-Object -First 1).text
+                    if ($actual -ne $expected) {
+                        throw "FAIL $name expected=[$expected] actual=[$actual]"
+                    }
+                    "PASS $name text verified length=$($expected.Length)"
+                    return
+                }
+            } catch {
+                if ($_.Exception.Message -match '^FAIL ') { throw }
+            }
+        }
+        Start-Sleep -Milliseconds 400
     }
-    "PASS $name text verified length=$($expected.Length)"
+    throw "AssertEditorText failed for $name"
 }
 
 function ClearBySwipe([string]$name) {

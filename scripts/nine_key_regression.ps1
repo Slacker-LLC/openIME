@@ -31,19 +31,28 @@ function WaitForIme {
 }
 
 function FocusEditor {
+    $local = Join-Path $env:TEMP 'p9-focus.xml'
     for ($attempt = 0; $attempt -lt 10; $attempt++) {
+        Remove-Item -LiteralPath $local -Force -ErrorAction SilentlyContinue
+        Adb shell rm -f /sdcard/p9-focus.xml | Out-Null
         Adb shell uiautomator dump /sdcard/p9-focus.xml | Out-Null
-        $local = Join-Path $env:TEMP 'p9-focus.xml'
-        Adb pull /sdcard/p9-focus.xml $local | Out-Null
-        $hierarchy = [xml](Get-Content -Raw -Encoding UTF8 -LiteralPath $local)
-        $node = $hierarchy.SelectNodes('//node[@resource-id="llc.slacker.openime:id/test_input"]') |
-            Select-Object -First 1
-        if ($node -and $node.bounds -match '\[(\d+),(\d+)\]\[(\d+),(\d+)\]') {
-            $x = ([int]$Matches[1] + [int]$Matches[3]) / 2
-            $y = ([int]$Matches[2] + [int]$Matches[4]) / 2
-            Adb shell input tap ([int]$x) ([int]$y) | Out-Null
-            WaitForIme
-            return
+        Adb pull /sdcard/p9-focus.xml $local 2>$null | Out-Null
+        if (Test-Path -LiteralPath $local) {
+            try {
+                $raw = Get-Content -Raw -Encoding UTF8 -LiteralPath $local
+                if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                    $hierarchy = [xml]$raw
+                    $node = $hierarchy.SelectNodes('//node[@resource-id="llc.slacker.openime:id/test_input"]') |
+                        Select-Object -First 1
+                    if ($node -and $node.bounds -match '\[(\d+),(\d+)\]\[(\d+),(\d+)\]') {
+                        $x = ([int]$Matches[1] + [int]$Matches[3]) / 2
+                        $y = ([int]$Matches[2] + [int]$Matches[4]) / 2
+                        Adb shell input tap ([int]$x) ([int]$y) | Out-Null
+                        WaitForIme
+                        return
+                    }
+                }
+            } catch { }
         }
         Start-Sleep -Milliseconds 500
     }
@@ -84,14 +93,27 @@ function StartReal {
 }
 
 function GetText([string]$name) {
-    Adb shell uiautomator dump /sdcard/p9.xml | Out-Null
     $local = Join-Path $env:TEMP ($name + '.xml')
-    Adb pull /sdcard/p9.xml $local | Out-Null
-    $hierarchy = [xml](Get-Content -Raw -Encoding UTF8 -LiteralPath $local)
-    $text = ($hierarchy.SelectNodes('//node[@resource-id="llc.slacker.openime:id/test_input"]') |
-        Select-Object -First 1).text
-    if ($text -eq '在这里测试本地输入法') { return '' }
-    $text
+    for ($attempt = 0; $attempt -lt 6; $attempt++) {
+        Remove-Item -LiteralPath $local -Force -ErrorAction SilentlyContinue
+        Adb shell rm -f /sdcard/p9.xml | Out-Null
+        Adb shell uiautomator dump /sdcard/p9.xml | Out-Null
+        Adb pull /sdcard/p9.xml $local 2>$null | Out-Null
+        if (Test-Path -LiteralPath $local) {
+            try {
+                $raw = Get-Content -Raw -Encoding UTF8 -LiteralPath $local
+                if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                    $hierarchy = [xml]$raw
+                    $text = ($hierarchy.SelectNodes('//node[@resource-id="llc.slacker.openime:id/test_input"]') |
+                        Select-Object -First 1).text
+                    if ($text -eq '在这里测试本地输入法') { return '' }
+                    return $text
+                }
+            } catch { }
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    throw "GetText failed for $name"
 }
 
 function AssertEqual([string]$name, [string]$expected, [string]$actual) {

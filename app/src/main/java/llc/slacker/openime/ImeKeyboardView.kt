@@ -803,7 +803,11 @@ open class ImeKeyboardView(
             }
             return null
         }
-        return deep(this)
+        return deep(this) ?: if (query == "确定" || query == "key:确定") {
+            findViewWithTag<View>("key-enter")
+        } else {
+            null
+        }
     }
 
     internal fun tapTestTarget(query: String): Boolean {

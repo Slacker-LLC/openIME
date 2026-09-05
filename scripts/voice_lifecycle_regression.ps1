@@ -18,19 +18,30 @@ function SendCommand([string]$command, [int]$waitMs = 100) {
 }
 
 function FocusById([string]$id) {
+    $local = Join-Path $env:TEMP 'openime-voice-lifecycle.xml'
     for ($attempt = 0; $attempt -lt 12; $attempt++) {
+        Remove-Item -LiteralPath $local -Force -ErrorAction SilentlyContinue
+        Adb shell rm -f /sdcard/openime-voice-lifecycle.xml | Out-Null
         Adb shell uiautomator dump /sdcard/openime-voice-lifecycle.xml | Out-Null
-        $local = Join-Path $env:TEMP 'openime-voice-lifecycle.xml'
-        Adb pull /sdcard/openime-voice-lifecycle.xml $local | Out-Null
-        $hierarchy = [xml](Get-Content -Raw -Encoding UTF8 -LiteralPath $local)
-        $node = $hierarchy.SelectNodes("//node[@resource-id='$id']") | Select-Object -First 1
-        if ($node -and $node.bounds -match '\[(\d+),(\d+)\]\[(\d+),(\d+)\]') {
-            $x = ([int]$Matches[1] + [int]$Matches[3]) / 2
-            $y = ([int]$Matches[2] + [int]$Matches[4]) / 2
-            Adb shell input tap ([int]$x) ([int]$y) | Out-Null
-            WaitForIme
-            return
+        Adb pull /sdcard/openime-voice-lifecycle.xml $local 2>$null | Out-Null
+        if (-not (Test-Path -LiteralPath $local)) {
+            Start-Sleep -Milliseconds 500
+            continue
         }
+        try {
+            $raw = Get-Content -Raw -Encoding UTF8 -LiteralPath $local
+            if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                $hierarchy = [xml]$raw
+                $node = $hierarchy.SelectNodes("//node[@resource-id='$id']") | Select-Object -First 1
+                if ($node -and $node.bounds -match '\[(\d+),(\d+)\]\[(\d+),(\d+)\]') {
+                    $x = ([int]$Matches[1] + [int]$Matches[3]) / 2
+                    $y = ([int]$Matches[2] + [int]$Matches[4]) / 2
+                    Adb shell input tap ([int]$x) ([int]$y) | Out-Null
+                    WaitForIme
+                    return
+                }
+            }
+        } catch { }
         Start-Sleep -Milliseconds 500
     }
     throw "editor not found: $id"
@@ -72,6 +83,12 @@ Adb shell pm grant $pkg android.permission.RECORD_AUDIO | Out-Null
 Adb shell settings put --user 0 secure show_ime_with_hard_keyboard 1
 Adb shell ime enable --user 0 "$pkg/.LocalVoiceImeService" | Out-Null
 Adb shell ime set --user 0 "$pkg/.LocalVoiceImeService" | Out-Null
+$growthLimit = (Adb shell getprop dalvik.vm.heapgrowthlimit | Out-String).Trim()
+if ($growthLimit -match '^(\d+)m' -and [int]$Matches[1] -lt 256) {
+    Adb root | Out-Null
+    Start-Sleep -Seconds 1
+    Adb shell setprop dalvik.vm.heapgrowthlimit 256m | Out-Null
+}
 Adb shell am force-stop $pkg | Out-Null
 Adb logcat -c
 Adb shell am start -n "$pkg/.LifecycleTestActivity" | Out-Null

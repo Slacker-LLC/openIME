@@ -1,4 +1,4 @@
-﻿param(
+param(
     [string]$Serial = '',
     [string]$OutputDir = '',
     [string]$NamePrefix = '',
@@ -26,20 +26,31 @@ New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 function Adb { & $adb -s $Serial @args }
 
 function FocusEditor {
-    for ($attempt = 0; $attempt -lt 8; $attempt++) {
+    $local = Join-Path $env:TEMP 'visual-focus.xml'
+    for ($attempt = 0; $attempt -lt 10; $attempt++) {
+        Remove-Item -LiteralPath $local -Force -ErrorAction SilentlyContinue
+        Adb shell rm -f /sdcard/v.xml | Out-Null
         Adb shell uiautomator dump /sdcard/v.xml | Out-Null
-        $local = Join-Path $env:TEMP 'visual-focus.xml'
-        Adb pull /sdcard/v.xml $local | Out-Null
-        $h = [xml](Get-Content -Raw -Encoding UTF8 -LiteralPath $local)
-        $node = $h.SelectNodes('//node[@resource-id="llc.slacker.openime:id/lifecycle_a"]') |
-            Select-Object -First 1
-        if ($node -and $node.bounds -match '\[(\d+),(\d+)\]\[(\d+),(\d+)\]') {
-            $x = ([int]$Matches[1] + [int]$Matches[3]) / 2
-            $y = ([int]$Matches[2] + [int]$Matches[4]) / 2
-            Adb shell input tap ([int]$x) ([int]$y) | Out-Null
-            WaitIme
-            return
+        Adb pull /sdcard/v.xml $local 2>$null | Out-Null
+        if (-not (Test-Path -LiteralPath $local)) {
+            Start-Sleep -Milliseconds 500
+            continue
         }
+        try {
+            $raw = Get-Content -Raw -Encoding UTF8 -LiteralPath $local
+            if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                $h = [xml]$raw
+                $node = $h.SelectNodes('//node[@resource-id="llc.slacker.openime:id/lifecycle_a"]') |
+                    Select-Object -First 1
+                if ($node -and $node.bounds -match '\[(\d+),(\d+)\]\[(\d+),(\d+)\]') {
+                    $x = ([int]$Matches[1] + [int]$Matches[3]) / 2
+                    $y = ([int]$Matches[2] + [int]$Matches[4]) / 2
+                    Adb shell input tap ([int]$x) ([int]$y) | Out-Null
+                    WaitIme
+                    return
+                }
+            }
+        } catch { }
         Start-Sleep -Seconds 1
     }
     throw 'test_input not found'

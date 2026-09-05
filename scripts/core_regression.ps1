@@ -1,4 +1,4 @@
-﻿param([string]$Serial = '')
+param([string]$Serial = '')
 
 $ErrorActionPreference = 'Stop'
 $project = Split-Path $PSScriptRoot -Parent
@@ -35,20 +35,27 @@ function WaitForIme {
 }
 
 function FocusEditor {
-    for ($attempt = 0; $attempt -lt 6; $attempt++) {
+    $local = Join-Path $env:TEMP 'core-focus.xml'
+    for ($attempt = 0; $attempt -lt 10; $attempt++) {
+        Remove-Item -LiteralPath $local -Force -ErrorAction SilentlyContinue
+        Adb shell rm -f /sdcard/focus.xml | Out-Null
         Adb shell uiautomator dump /sdcard/focus.xml | Out-Null
-        $local = Join-Path $env:TEMP 'focus.xml'
-        Adb pull /sdcard/focus.xml $local | Out-Null
-        $h = [xml](Get-Content -Raw -Encoding UTF8 -LiteralPath $local)
-        $node = $h.SelectNodes('//node[@resource-id="llc.slacker.openime:id/test_input"]') |
-            Select-Object -First 1
-        if ($node) {
-            if ($node.bounds -match '\[(\d+),(\d+)\]\[(\d+),(\d+)\]') {
-                $x = ([int]$Matches[1] + [int]$Matches[3]) / 2
-                $y = ([int]$Matches[2] + [int]$Matches[4]) / 2
-                Adb shell input tap ([int]$x) ([int]$y) | Out-Null
-                return
-            }
+        Adb pull /sdcard/focus.xml $local 2>$null | Out-Null
+        if (Test-Path -LiteralPath $local) {
+            try {
+                $raw = Get-Content -Raw -Encoding UTF8 -LiteralPath $local
+                if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                    $h = [xml]$raw
+                    $node = $h.SelectNodes('//node[@resource-id="llc.slacker.openime:id/test_input"]') |
+                        Select-Object -First 1
+                    if ($node -and $node.bounds -match '\[(\d+),(\d+)\]\[(\d+),(\d+)\]') {
+                        $x = ([int]$Matches[1] + [int]$Matches[3]) / 2
+                        $y = ([int]$Matches[2] + [int]$Matches[4]) / 2
+                        Adb shell input tap ([int]$x) ([int]$y) | Out-Null
+                        return
+                    }
+                }
+            } catch { }
         }
         Start-Sleep -Seconds 1
     }
@@ -76,11 +83,25 @@ function Mode([string]$mode) {
 }
 
 function GetText([string]$name) {
-    Adb shell uiautomator dump /sdcard/ui.xml | Out-Null
     $local = Join-Path $env:TEMP ($name + '.xml')
-    Adb pull /sdcard/ui.xml $local | Out-Null
-    $h = [xml](Get-Content -Raw -Encoding UTF8 -LiteralPath $local)
-    ($h.SelectNodes('//node[@resource-id="llc.slacker.openime:id/test_input"]') | Select-Object -First 1).text
+    for ($attempt = 0; $attempt -lt 6; $attempt++) {
+        Remove-Item -LiteralPath $local -Force -ErrorAction SilentlyContinue
+        Adb shell rm -f /sdcard/ui.xml | Out-Null
+        Adb shell uiautomator dump /sdcard/ui.xml | Out-Null
+        Adb pull /sdcard/ui.xml $local 2>$null | Out-Null
+        if (Test-Path -LiteralPath $local) {
+            try {
+                $raw = Get-Content -Raw -Encoding UTF8 -LiteralPath $local
+                if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                    $h = [xml]$raw
+                    $node = $h.SelectNodes('//node[@resource-id="llc.slacker.openime:id/test_input"]') | Select-Object -First 1
+                    if ($node) { return $node.text }
+                }
+            } catch { }
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    throw "GetText failed for $name"
 }
 
 function AssertText([string]$name, [string]$expected, [string]$actual) {
