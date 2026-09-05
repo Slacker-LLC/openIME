@@ -342,17 +342,21 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
         val pinyins = linkedSetOf<String>()
         val candidates = linkedSetOf<String>()
 
-        fun addEntry(entry: NineKeyEntry, resolvePinyin: Boolean) {
-            pinyins.add(entry.pinyin)
+        fun addEntry(
+            entry: NineKeyEntry,
+            resolvePinyin: Boolean,
+            exposePinyin: Boolean = true,
+        ) {
+            if (exposePinyin) pinyins.add(entry.pinyin)
             candidates.addAll(entry.candidates)
             if (resolvePinyin && entry.pinyin.length <= MAX_LOCAL_RESOLVE_LENGTH) {
                 candidates.addAll(getCandidates(entry.pinyin))
             }
         }
 
-        // Keep the hand-written high-confidence mappings first, then enrich
-        // them with the complete embedded dictionary below.
-        ImeData.keypad9Combinations[digits].orEmpty().forEach { pinyin ->
+        // Legacy hand-written mappings are only hints. Never allow a dirty
+        // digit -> Pinyin entry to outrank the generated dictionary index.
+        highConfidenceNineKeyPinyins(digits).forEach { pinyin ->
             pinyins.add(pinyin)
             candidates.addAll(getCandidates(pinyin))
         }
@@ -374,23 +378,34 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
             }
         }
 
-        // While the current key stream is only a prefix, expose likely full
-        // Pinyin entries so the candidate strip remains useful immediately.
+        // Prefix matches may enrich the candidate strip, but they are not a
+        // stable pre-edit path yet. Do not expose a longer phrase as the main
+        // Pinyin preview for a short digit prefix. Prefer the shortest useful
+        // completions so early key presses remain predictable.
         matchingEntries
             .asSequence()
-            .filter { it.digits.startsWith(digits) }
+            .filter { it.digits.length > digits.length && it.digits.startsWith(digits) }
             .sortedWith(
-                compareByDescending<NineKeyEntry> { it.phrase }
-                    .thenByDescending { it.digits.length },
+                compareBy<NineKeyEntry> { it.digits.length }
+                    .thenByDescending { it.phrase }
+                    .thenBy { it.pinyin },
             )
             .take(MAX_NINE_MATCHES)
-            .forEach { addEntry(it, resolvePinyin = false) }
+            .forEach { addEntry(it, resolvePinyin = false, exposePinyin = false) }
 
         return NineKeyResult(
             pinyins = pinyins.take(MAX_NINE_MATCHES),
             candidates = candidates.filter { it.isNotEmpty() }.take(96),
         )
     }
+
+    private fun highConfidenceNineKeyPinyins(digits: String): List<String> =
+        (ImeData.keypad9Combinations[digits].orEmpty() + NINE_KEY_CORRECTIONS[digits].orEmpty())
+            .asSequence()
+            .map { it.lowercase() }
+            .filter { pinyin -> nineKeyDigitsForPinyin(pinyin) == digits }
+            .distinct()
+            .toList()
 
     private fun buildNineKeyEntries(): List<NineKeyEntry> {
         val merged = LinkedHashMap<String, MutableList<String>>()
@@ -402,7 +417,7 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
         }
         val phraseKeys = ImeData.phraseDict.keys
         return merged.mapNotNull { (pinyin, values) ->
-            val digits = pinyinToNineDigits(pinyin) ?: return@mapNotNull null
+            val digits = nineKeyDigitsForPinyin(pinyin) ?: return@mapNotNull null
             NineKeyEntry(
                 pinyin = pinyin,
                 digits = digits,
@@ -414,25 +429,6 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
                 .thenByDescending { it.digits.length }
                 .thenBy { it.pinyin },
         )
-    }
-
-    private fun pinyinToNineDigits(pinyin: String): String? {
-        val digits = StringBuilder(pinyin.length)
-        pinyin.lowercase().forEach { ch ->
-            val digit = when (ch) {
-                in 'a'..'c' -> '2'
-                in 'd'..'f' -> '3'
-                in 'g'..'i' -> '4'
-                in 'j'..'l' -> '5'
-                in 'm'..'o' -> '6'
-                in 'p'..'s' -> '7'
-                in 't'..'v' -> '8'
-                in 'w'..'z' -> '9'
-                else -> return null
-            }
-            digits.append(digit)
-        }
-        return digits.toString().ifEmpty { null }
     }
 
     private fun decodeNineKey(digits: String): NineKeyDecode? {
@@ -497,6 +493,37 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
         const val MAX_NINE_KEY_DIGITS = 64
         private const val MAX_NINE_MATCHES = 12
         private const val MAX_LOCAL_RESOLVE_LENGTH = 32
+
+        /**
+         * Correct common legacy table mistakes without trusting the table at
+         * runtime. Every value still passes nineKeyDigitsForPinyin() before it
+         * can influence ranking.
+         */
+        private val NINE_KEY_CORRECTIONS = mapOf(
+            "4664" to listOf("gong"),
+            "943" to listOf("zhe"),
+            "94264" to listOf("xiang"),
+            "934946" to listOf("weixin"),
+        )
+
+        fun nineKeyDigitsForPinyin(pinyin: String): String? {
+            val digits = StringBuilder(pinyin.length)
+            pinyin.lowercase().forEach { ch ->
+                val digit = when (ch) {
+                    in 'a'..'c' -> '2'
+                    in 'd'..'f' -> '3'
+                    in 'g'..'i' -> '4'
+                    in 'j'..'l' -> '5'
+                    in 'm'..'o' -> '6'
+                    in 'p'..'s' -> '7'
+                    in 't'..'v' -> '8'
+                    in 'w'..'z' -> '9'
+                    else -> return null
+                }
+                digits.append(digit)
+            }
+            return digits.toString().ifEmpty { null }
+        }
     }
 }
 
