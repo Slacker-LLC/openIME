@@ -157,13 +157,17 @@ open class ImeKeyboardView(
     private var theme = ImeTheme.IOS
     private var appearance = ImeAppearance.SYSTEM
     private var mode = KeyboardMode.PINYIN_26
-    private var panel = Panel.NONE
+    private var lastTextMode = KeyboardMode.PINYIN_26
+    private var preferredChineseMode = KeyboardMode.PINYIN_26
+    protected var panel = Panel.NONE
     private var shiftState = ShiftState.LOWERCASE
     private var soundEnabled = true
     private var hapticEnabled = true
     private var popupEnabled = true
     private var fuzzyEnabled = false
     private var skinRadius = 8
+
+    protected open fun onViewHierarchyRebuilt() = Unit
 
     private val pinyinBuffer = StringBuilder()
     private var lastNineDigits = ""
@@ -604,13 +608,10 @@ open class ImeKeyboardView(
 
     fun cycleMode() {
         val next = when (mode) {
-            KeyboardMode.PINYIN_26 -> KeyboardMode.ENGLISH_26
-            KeyboardMode.ENGLISH_26 -> KeyboardMode.PINYIN_9
-            KeyboardMode.PINYIN_9 -> KeyboardMode.DIGITS
-            // Kept only for compatibility with old saved/test state; it is no
-            // longer exposed as an English nine-key layout.
-            KeyboardMode.ENGLISH_T9 -> KeyboardMode.DIGITS
-            KeyboardMode.DIGITS -> KeyboardMode.PINYIN_26
+            KeyboardMode.PINYIN_26, KeyboardMode.PINYIN_9 -> KeyboardMode.ENGLISH_26
+            KeyboardMode.ENGLISH_26 -> preferredChineseMode
+            KeyboardMode.DIGITS -> lastTextMode
+            KeyboardMode.ENGLISH_T9 -> preferredChineseMode
         }
         setMode(next)
     }
@@ -620,6 +621,12 @@ open class ImeKeyboardView(
             KeyboardMode.PINYIN_26
         } else {
             newMode
+        }
+        if (effectiveMode != KeyboardMode.DIGITS) {
+            lastTextMode = effectiveMode
+            if (effectiveMode == KeyboardMode.PINYIN_26 || effectiveMode == KeyboardMode.PINYIN_9) {
+                preferredChineseMode = effectiveMode
+            }
         }
         if (panel != Panel.NONE) closePanelToKeyboard()
         repeatHandler.removeCallbacks(nineTapReset)
@@ -693,10 +700,17 @@ open class ImeKeyboardView(
             lastNineSegmentPrefix = ""
             lastNinePinyinPaths = emptyList()
             lastT9Digits = ""
+            if (candidateExpandedOpen) {
+                renderExpanded(false)
+                listener.onCandidateExpanded(false)
+            }
         } else {
             pinyinBuffer.setLength(0)
             pinyinBuffer.append(state.composition)
             if (mode == KeyboardMode.ENGLISH_T9) lastT9Digits = state.composition
+            if (candidateExpandedOpen) {
+                renderExpanded(true)
+            }
         }
         updateTopZone(state.composition.isNotEmpty())
         renderCandidateRow()
@@ -768,7 +782,7 @@ open class ImeKeyboardView(
         listener.onShiftStateChanged(next)
     }
 
-    fun shutdown() {
+    open fun shutdown() {
         stopVoiceIfActive()
         // Drop every pending callback, not just the repeat one. A surviving
         // backspace/voice runnable fires after the editor changed and would
@@ -1009,6 +1023,7 @@ open class ImeKeyboardView(
         updateTopZone(composition.text?.isNotEmpty() == true)
         if (width > 0) updateResponsiveGeometry(width)
         applyTheme()
+        onViewHierarchyRebuilt()
     }
 
     private fun renderPinyin26() {
@@ -1072,7 +1087,7 @@ open class ImeKeyboardView(
         val bottom = rowHost()
         bottom.addView(key("123", true, null, 1f, 15f) { setMode(KeyboardMode.DIGITS) }, flexKeyParams(1.3f))
         bottom.addView(
-            key(if (mode == KeyboardMode.ENGLISH_26) "." else "，。", true, null, 1f, 15f) {
+            key(if (mode == KeyboardMode.ENGLISH_26) "." else "，", true, null, 1f, 15f) {
                 commitKeyboardCharacter(if (mode == KeyboardMode.ENGLISH_26) "." else "，")
             },
             flexKeyParams(0.95f),
@@ -1202,11 +1217,7 @@ open class ImeKeyboardView(
         )
         side.addView(
             key(if (chinese) "确定" else "Go", true, null, 1f, 13f) {
-                if (composition.text.isNotEmpty()) {
-                    listener.onCandidateSelected(firstCandidateOrComposition())
-                } else {
-                    listener.onEnter()
-                }
+                listener.onEnter()
             }.apply {
                 tag = "key-enter"
                 setTag(MARK_SIDE_KEY, true)
@@ -1351,7 +1362,7 @@ open class ImeKeyboardView(
         ))
         val centerBottom = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         centerBottom.addView(
-            key("返回", true, null, 1f, 14f) { setMode(KeyboardMode.PINYIN_26) }.apply {
+            key("返回", true, null, 1f, 14f) { setMode(lastTextMode) }.apply {
                 tag = "key:mode"
                 setTag(MARK_SIDE_KEY, true)
             },
@@ -1437,11 +1448,15 @@ open class ImeKeyboardView(
                     }
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    val shouldCancel = spaceVoiceGestureCancel
+                    val isCancel = spaceVoiceGestureCancel || event.actionMasked == MotionEvent.ACTION_CANCEL
                     spaceVoiceGestureActive = false
                     spaceVoiceGestureCancel = false
-                    if (shouldCancel) {
-                        voiceCancelAction?.invoke()
+                    if (isCancel) {
+                        if (voiceCancelAction != null) {
+                            voiceCancelAction?.invoke()
+                        } else {
+                            cancelVoiceGesture()
+                        }
                     } else {
                         listener.onVoicePressChanged(false)
                     }
@@ -1507,8 +1522,13 @@ open class ImeKeyboardView(
                         voiceLongPressed = false
                         spaceVoiceGestureActive = false
                         spaceVoiceGestureCancel = false
-                        if (voiceCancelPreview) {
-                            voiceCancelAction?.invoke()
+                        val isCancel = voiceCancelPreview || event.actionMasked == MotionEvent.ACTION_CANCEL
+                        if (isCancel) {
+                            if (voiceCancelAction != null) {
+                                voiceCancelAction?.invoke()
+                            } else {
+                                cancelVoiceGesture()
+                            }
                         } else {
                             listener.onVoicePressChanged(false)
                         }
@@ -1552,6 +1572,19 @@ open class ImeKeyboardView(
         hideInlineVoiceStateLater(4_000L)
     }
 
+    private fun cancelVoiceGesture() {
+        voiceGestureSession = false
+        voiceActive = false
+        spaceVoiceGestureActive = false
+        spaceVoiceGestureCancel = false
+        voiceInlineGeneration++
+        stopInlineVoicePulse()
+        showInlineVoiceState("已取消")
+        hideInlineVoiceStateLater(260L)
+        listener.cancelVoiceRecognition()
+        listener.onVoiceCancel()
+    }
+
     private fun renderPanel(panel: Panel) {
         mainDock.visibility = View.GONE
         candidateOverlay.visibility = View.GONE
@@ -1574,6 +1607,7 @@ open class ImeKeyboardView(
             else -> closePanelToKeyboard()
         }
         applyTheme()
+        onViewHierarchyRebuilt()
     }
 
     /** Build the voice controller while it remains hidden, so a space gesture does not relayout the IME. */
@@ -1742,15 +1776,14 @@ open class ImeKeyboardView(
                 ToolEntry("剪贴板", Panel.CLIPBOARD, R.drawable.ic_clipboard),
                 ToolEntry("手写输入", Panel.HANDWRITING, R.drawable.ic_handwriting),
                 ToolEntry("符号", Panel.SYMBOLS, R.drawable.ic_symbols),
-                ToolEntry("更多设置", Panel.SETTINGS, R.drawable.ic_settings),
                 ToolEntry("切换键盘", Panel.KEYBOARD_SELECT, R.drawable.ic_grid),
-                ToolEntry("繁体输入", Panel.SETTINGS, glyph = "繁"),
-                ToolEntry("主题设置", Panel.SETTINGS, glyph = "Aa"),
+                ToolEntry("外观设置", Panel.SETTINGS, glyph = "Aa"),
+                ToolEntry("文本编辑", Panel.TEXT_EDITOR, R.drawable.ic_keyboard),
+                ToolEntry("更多设置", Panel.SETTINGS, R.drawable.ic_settings),
             )
         } else {
             listOf(
-                ToolEntry("浮动键盘", Panel.GAMING, R.drawable.ic_game),
-                ToolEntry("文本编辑", Panel.TEXT_EDITOR, R.drawable.ic_keyboard),
+                ToolEntry("游戏键盘", Panel.GAMING, R.drawable.ic_game),
             )
         }
         cards.chunked(4).forEach { chunk ->
@@ -1926,6 +1959,7 @@ open class ImeKeyboardView(
     }
 
     private fun renderEmoji() {
+        expandedPanel.removeAllViews()
         addPanelHead("黄豆脸")
         val body = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -1972,6 +2006,7 @@ open class ImeKeyboardView(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(252),
         ))
+        applyTheme()
     }
 
     private fun renderHandwriting() {
@@ -2385,6 +2420,8 @@ open class ImeKeyboardView(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(252),
         ))
+        applyTheme()
+        onViewHierarchyRebuilt()
     }
 
     private fun emojiCell(emoji: String): View {
@@ -2803,7 +2840,7 @@ open class ImeKeyboardView(
     }
 
     private fun renderGaming() {
-        addPanelHead("浮动键盘")
+        addPanelHead("游戏键盘")
         listener.onFloatingKeyboardChanged(floatingKeyboard)
         val macros = listOf("收到！", "集合进攻！", "稳住能赢！", "请求集合！", "保护输出！")
         val hud = LinearLayout(context).apply {
@@ -2819,12 +2856,12 @@ open class ImeKeyboardView(
             tag = "floating-header"
         }
         val dragHandle = TextView(context).apply {
-            text = "⠿  拖动浮动键盘"
+            text = "⠿  拖动键盘"
             textSize = 12f
             gravity = Gravity.CENTER_VERTICAL
             includeFontPadding = false
             tag = "floating-drag-handle"
-            contentDescription = "拖动浮动键盘"
+            contentDescription = "拖动键盘"
             setPadding(dp(4), 0, dp(8), 0)
             isClickable = true
             setOnTouchListener { _, event ->
@@ -2888,8 +2925,14 @@ open class ImeKeyboardView(
                 )
             }
             if (rowText.startsWith("z")) {
+                row.addView(
+                    key("空格", true, null, 1.2f, 11f) { listener.onSpace() }.apply {
+                        tag = "game-mini"
+                    },
+                    LinearLayout.LayoutParams(0, dp(34), 1.2f).apply { marginEnd = dp(4) },
+                )
                 val gameBackspace = backspaceKey().apply { tag = "game-mini" }
-                row.addView(gameBackspace, LinearLayout.LayoutParams(0, dp(34), 1.2f))
+                row.addView(gameBackspace, LinearLayout.LayoutParams(0, dp(34), 1.2f).apply { marginEnd = dp(4) })
                 row.addView(
                     key("发送", true, null, 1.6f, 12f) { listener.onEnter() }.apply {
                         tag = "game-mini"
@@ -3001,13 +3044,48 @@ open class ImeKeyboardView(
             lastT9Digits = digits
             publishComposition(digits, candidatesForComposition(digits), selection)
         } else if (mode == KeyboardMode.PINYIN_9) {
-            if (lastNineDigits.isEmpty()) {
-                lastNineSegmentPrefix = composition.text
-                    .toString()
-                    .takeIf { it.endsWith(' ') }
-                    .orEmpty()
+            val current = composition.text.toString()
+            val rawStart = composition.selectionStart.takeIf { it >= 0 }?.coerceIn(0, current.length) ?: current.length
+            val rawEnd = composition.selectionEnd.takeIf { it >= 0 }?.coerceIn(0, current.length) ?: rawStart
+            val selStart = minOf(rawStart, rawEnd)
+            val selEnd = maxOf(rawStart, rawEnd)
+
+            val lastSpace = current.lastIndexOf(' ')
+            if (selStart > lastSpace) {
+                val prefix = if (lastSpace >= 0) current.substring(0, lastSpace + 1) else ""
+                val suffix = if (lastSpace >= 0) current.substring(lastSpace + 1) else current
+                val suffixStart = (selStart - prefix.length).coerceIn(0, suffix.length)
+                val suffixEnd = (selEnd - prefix.length).coerceIn(0, suffix.length)
+                val isAtEnd = (selStart == selEnd && selStart == current.length && prefix == lastNineSegmentPrefix && lastNineDigits.isNotEmpty())
+                val suffixDigits = if (isAtEnd) {
+                    lastNineDigits
+                } else if (lastNineDigits.isNotEmpty() && lastNineDigits.length == suffix.length && prefix == lastNineSegmentPrefix) {
+                    lastNineDigits
+                } else {
+                    CandidatePipeline.nineKeyDigitsFor(suffix) ?: lastNineDigits
+                }
+                val insertPos = if (isAtEnd) suffixDigits.length else suffixStart
+                val deleteEnd = if (isAtEnd) suffixDigits.length else suffixEnd
+                val newDigits = (suffixDigits.substring(0, insertPos) + num + suffixDigits.substring(deleteEnd)).take(64)
+                lastNineSegmentPrefix = prefix
+                val newCursor = if (isAtEnd) null else (prefix.length + suffixStart + 1)
+                publishNineKeyDigits(newDigits, cursorPosition = newCursor)
+            } else {
+                val (nextText, newCursor) = replaceCompositionSelection(num)
+                val newLastSpace = nextText.lastIndexOf(' ')
+                val newPrefix = if (newLastSpace >= 0) nextText.substring(0, newLastSpace + 1) else ""
+                val newSuffix = if (newLastSpace >= 0) nextText.substring(newLastSpace + 1) else nextText
+                val newDigits = CandidatePipeline.nineKeyDigitsFor(newSuffix)
+                if (newDigits != null) {
+                    lastNineDigits = newDigits
+                    lastNineSegmentPrefix = newPrefix
+                } else {
+                    lastNineDigits = ""
+                    lastNineSegmentPrefix = nextText
+                }
+                lastNinePinyinPaths = emptyList()
+                publishComposition(nextText, candidatesForComposition(nextText), newCursor)
             }
-            publishNineKeyDigits((lastNineDigits + num).take(64))
         } else {
             listener.onCharacter(num)
         }
@@ -3017,6 +3095,7 @@ open class ImeKeyboardView(
     private fun publishNineKeyDigits(
         digits: String,
         preferredSuffix: String? = null,
+        cursorPosition: Int? = null,
     ) {
         val resolution = requireCandidateProvider().resolveNineKey(
             digits = digits,
@@ -3030,7 +3109,8 @@ open class ImeKeyboardView(
         lastNineDigits = digits
         lastNinePinyinPaths = pinyinPaths
         lastNineCandidates = candidates
-        setCompositionText(preview)
+        val finalCursor = cursorPosition ?: preview.length
+        setCompositionText(preview, finalCursor)
         pinyinBuffer.clear()
         pinyinBuffer.append(preview)
         currentCandidates = candidates
@@ -3087,8 +3167,17 @@ open class ImeKeyboardView(
         pinyinBuffer.append(text)
         when (mode) {
             KeyboardMode.PINYIN_9 -> {
-                lastNineDigits = ""
-                lastNineSegmentPrefix = ""
+                val lastSpace = text.lastIndexOf(' ')
+                val prefix = if (lastSpace >= 0) text.substring(0, lastSpace + 1) else ""
+                val suffix = if (lastSpace >= 0) text.substring(lastSpace + 1) else text
+                val suffixDigits = CandidatePipeline.nineKeyDigitsFor(suffix)
+                if (suffixDigits != null) {
+                    lastNineDigits = suffixDigits
+                    lastNineSegmentPrefix = prefix
+                } else {
+                    lastNineDigits = ""
+                    lastNineSegmentPrefix = text
+                }
                 lastNinePinyinPaths = emptyList()
             }
             KeyboardMode.ENGLISH_T9 -> lastT9Digits = text
@@ -3109,43 +3198,86 @@ open class ImeKeyboardView(
 
     private fun replaceCompositionSelection(insert: String): Pair<String, Int> {
         val current = composition.text.toString()
-        val start = composition.selectionStart.takeIf { it >= 0 }?.coerceIn(0, current.length)
+        val rawStart = composition.selectionStart.takeIf { it >= 0 }?.coerceIn(0, current.length)
             ?: current.length
-        val end = composition.selectionEnd.takeIf { it >= 0 }?.coerceIn(start, current.length)
-            ?: start
+        val rawEnd = composition.selectionEnd.takeIf { it >= 0 }?.coerceIn(0, current.length)
+            ?: rawStart
+        val start = minOf(rawStart, rawEnd)
+        val end = maxOf(rawStart, rawEnd)
         return (current.substring(0, start) + insert + current.substring(end)) to (start + insert.length)
     }
 
     /** Delete at the visible pre-edit cursor; fall back to target-text deletion otherwise. */
     private fun deleteCompositionAtCursor(): Boolean {
-        if (mode == KeyboardMode.PINYIN_9 && lastNineDigits.isNotEmpty()) {
-            val length = composition.text.length
-            val editingInsideVisiblePinyin = composition.hasFocus() &&
-                (composition.selectionStart != length || composition.selectionEnd != length)
-            if (!editingInsideVisiblePinyin) {
-                val nextDigits = lastNineDigits.dropLast(1)
-                if (nextDigits.isNotEmpty()) {
-                    val currentSuffix = composition.text
-                        .toString()
-                        .removePrefix(lastNineSegmentPrefix)
-                    publishNineKeyDigits(nextDigits, currentSuffix.dropLast(1))
+        if (mode == KeyboardMode.PINYIN_9) {
+            val current = composition.text.toString()
+            if (current.isNotEmpty()) {
+                val rawStart = if (composition.hasFocus()) {
+                    composition.selectionStart.takeIf { it >= 0 }?.coerceIn(0, current.length) ?: current.length
                 } else {
-                    lastNineDigits = ""
-                    lastNinePinyinPaths = emptyList()
-                    val prefix = lastNineSegmentPrefix
-                    publishComposition(
-                        prefix,
-                        if (prefix.isEmpty()) emptyList() else candidatesForComposition(prefix),
-                        prefix.length,
-                    )
+                    current.length
                 }
-                return true
+                val rawEnd = if (composition.hasFocus()) {
+                    composition.selectionEnd.takeIf { it >= 0 }?.coerceIn(0, current.length) ?: rawStart
+                } else {
+                    current.length
+                }
+                val start = minOf(rawStart, rawEnd)
+                val end = maxOf(rawStart, rawEnd)
+
+                val lastSpace = current.lastIndexOf(' ')
+                if (start > lastSpace) {
+                    val prefix = if (lastSpace >= 0) current.substring(0, lastSpace + 1) else ""
+                    val suffix = if (lastSpace >= 0) current.substring(lastSpace + 1) else current
+                    val suffixStart = (start - prefix.length).coerceIn(0, suffix.length)
+                    val suffixEnd = (end - prefix.length).coerceIn(0, suffix.length)
+                    val suffixDigits = if (lastNineDigits.isNotEmpty() && lastNineDigits.length == suffix.length && prefix == lastNineSegmentPrefix) {
+                        lastNineDigits
+                    } else {
+                        CandidatePipeline.nineKeyDigitsFor(suffix)
+                    }
+
+                    if (suffixDigits != null && suffixDigits.isNotEmpty()) {
+                        val (nextDigits, newCursor, expectedSuffix) = if (suffixStart == suffixEnd) {
+                            if (suffixStart == 0) {
+                                Triple(null, null, null)
+                            } else {
+                                val deleteIdx = suffixStart - 1
+                                val remDigits = suffixDigits.removeRange(deleteIdx, suffixStart)
+                                val remSuffix = if (suffix.length >= suffixStart) suffix.removeRange(deleteIdx, suffixStart) else null
+                                Triple(remDigits, prefix.length + deleteIdx, remSuffix)
+                            }
+                        } else {
+                            val remDigits = suffixDigits.removeRange(suffixStart, suffixEnd)
+                            val remSuffix = if (suffix.length >= suffixEnd) suffix.removeRange(suffixStart, suffixEnd) else null
+                            Triple(remDigits, prefix.length + suffixStart, remSuffix)
+                        }
+
+                        if (nextDigits != null) {
+                            lastNineSegmentPrefix = prefix
+                            if (nextDigits.isNotEmpty()) {
+                                publishNineKeyDigits(nextDigits, preferredSuffix = expectedSuffix, cursorPosition = newCursor)
+                            } else {
+                                lastNineDigits = ""
+                                lastNinePinyinPaths = emptyList()
+                                publishComposition(
+                                    prefix,
+                                    if (prefix.isEmpty()) emptyList() else candidatesForComposition(prefix),
+                                    prefix.length,
+                                )
+                            }
+                            return true
+                        }
+                    }
+                }
             }
         }
         if (!composition.hasFocus() || composition.text.isEmpty()) return false
         val current = composition.text.toString()
-        val start = composition.selectionStart.coerceIn(0, current.length)
-        val end = composition.selectionEnd.coerceIn(start, current.length)
+        val rawStart = composition.selectionStart.coerceIn(0, current.length)
+        val rawEnd = composition.selectionEnd.coerceIn(0, current.length)
+        val start = minOf(rawStart, rawEnd)
+        val end = maxOf(rawStart, rawEnd)
         val deleteStart = if (start == end) {
             if (start == 0) return true
             // Step back by one full Unicode code point, not by one UTF-16 unit.
@@ -3158,8 +3290,17 @@ open class ImeKeyboardView(
         }
         val next = current.removeRange(deleteStart, end)
         if (mode == KeyboardMode.PINYIN_9) {
-            lastNineDigits = ""
-            lastNineSegmentPrefix = ""
+            val lastSpace = next.lastIndexOf(' ')
+            val prefix = if (lastSpace >= 0) next.substring(0, lastSpace + 1) else ""
+            val suffix = if (lastSpace >= 0) next.substring(lastSpace + 1) else next
+            val suffixDigits = CandidatePipeline.nineKeyDigitsFor(suffix)
+            if (suffixDigits != null) {
+                lastNineDigits = suffixDigits
+                lastNineSegmentPrefix = prefix
+            } else {
+                lastNineDigits = ""
+                lastNineSegmentPrefix = next
+            }
             lastNinePinyinPaths = emptyList()
         }
         publishComposition(next, candidatesForComposition(next), deleteStart)
@@ -3256,7 +3397,10 @@ open class ImeKeyboardView(
             if (popupEnabled) {
                 setOnTouchListener { _, event ->
                     when (event.actionMasked) {
-                        MotionEvent.ACTION_DOWN -> if (text.isNotEmpty()) showPopup(this, text)
+                        MotionEvent.ACTION_DOWN -> {
+                            val activeText = (this as? ImeKeyView)?.currentMainText?.ifEmpty { text } ?: text
+                            if (activeText.isNotEmpty()) showPopup(this, activeText)
+                        }
                         MotionEvent.ACTION_UP,
                         MotionEvent.ACTION_CANCEL,
                         -> if (keepPopupAfterKeyUp) {

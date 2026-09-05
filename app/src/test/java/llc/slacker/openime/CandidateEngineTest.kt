@@ -27,6 +27,8 @@ class CandidateEngineTest {
     @Test
     fun nineKeyPresetResolves() {
         val result = engine.get9KeyCandidates("64426")
+        println("DEBUG_PINYINS=" + result.pinyins)
+        println("DEBUG_CANDIDATES=" + result.candidates.take(10))
         assertTrue(result.pinyins.contains("nihao"))
         assertTrue(result.candidates.contains("你好"))
     }

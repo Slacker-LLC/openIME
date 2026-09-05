@@ -97,35 +97,112 @@ class InputConnectionGateway(
         finishComposing()
     }
 
+    @Volatile
+    private var knownSelectionStart: Int = -1
+    @Volatile
+    private var knownSelectionEnd: Int = -1
+
+    fun updateSelection(start: Int, end: Int) {
+        knownSelectionStart = start
+        knownSelectionEnd = end
+    }
+
     fun deleteBackwards() {
         val ic = connection() ?: return
+        if (deleteSelection()) return
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            ic.deleteSurroundingTextInCodePoints(1, 0)
+            val deleted = runCatching { ic.deleteSurroundingTextInCodePoints(1, 0) }.getOrDefault(false)
+            if (!deleted) {
+                val before = runCatching { ic.getTextBeforeCursor(2, 0) }.getOrNull()
+                val utf16Units = previousCodePointUtf16Length(before).coerceAtLeast(1)
+                val fallbackDeleted = runCatching { ic.deleteSurroundingText(utf16Units, 0) }.getOrDefault(false)
+                if (!fallbackDeleted) {
+                    sendKeyDownUp(ic, KeyEvent.KEYCODE_DEL)
+                }
+            }
         } else {
-            // API 26/27 only exposes UTF-16-unit deletion. Inspect the two
-            // units before the cursor so one backspace never leaves half of a
-            // supplementary code point (emoji / extension Han) behind.
             val before = runCatching { ic.getTextBeforeCursor(2, 0) }.getOrNull()
             val utf16Units = previousCodePointUtf16Length(before).coerceAtLeast(1)
-            ic.deleteSurroundingText(utf16Units, 0)
+            val deleted = runCatching { ic.deleteSurroundingText(utf16Units, 0) }.getOrDefault(false)
+            if (!deleted) {
+                sendKeyDownUp(ic, KeyEvent.KEYCODE_DEL)
+            }
         }
     }
 
     /** Delete the active selection without falling back to one-character delete. */
     fun deleteSelection(): Boolean {
-        if (isPassword()) return false
         val ic = connection() ?: return false
+        if (isPassword()) {
+            if (knownSelectionStart >= 0 && knownSelectionEnd >= 0 && knownSelectionStart != knownSelectionEnd) {
+                val collapsed = minOf(knownSelectionStart, knownSelectionEnd)
+                knownSelectionStart = collapsed
+                knownSelectionEnd = collapsed
+                val committed = runCatching { ic.commitText("", 1) }.getOrDefault(false)
+                if (!committed) {
+                    sendKeyDownUp(ic, KeyEvent.KEYCODE_DEL)
+                }
+                return true
+            }
+            return false
+        }
         val selected = runCatching { ic.getSelectedText(0)?.toString().orEmpty() }.getOrDefault("")
-        if (selected.isEmpty()) return false
-        return ic.commitText("", 1)
+        if (selected.isNotEmpty()) {
+            if (knownSelectionStart >= 0 && knownSelectionEnd >= 0) {
+                val collapsed = minOf(knownSelectionStart, knownSelectionEnd)
+                knownSelectionStart = collapsed
+                knownSelectionEnd = collapsed
+            } else {
+                knownSelectionStart = -1
+                knownSelectionEnd = -1
+            }
+            val committed = runCatching { ic.commitText("", 1) }.getOrDefault(false)
+            if (!committed) {
+                sendKeyDownUp(ic, KeyEvent.KEYCODE_DEL)
+            }
+            return true
+        }
+        val window = extractedWindow(ic)
+        if (window != null && window.selectionStartAbsolute != window.selectionEndAbsolute) {
+            val collapsed = minOf(window.selectionStartAbsolute, window.selectionEndAbsolute)
+            knownSelectionStart = collapsed
+            knownSelectionEnd = collapsed
+            val committed = runCatching { ic.commitText("", 1) }.getOrDefault(false)
+            if (!committed) {
+                sendKeyDownUp(ic, KeyEvent.KEYCODE_DEL)
+            }
+            return true
+        }
+        if (knownSelectionStart >= 0 && knownSelectionEnd >= 0 && knownSelectionStart != knownSelectionEnd) {
+            val collapsed = minOf(knownSelectionStart, knownSelectionEnd)
+            knownSelectionStart = collapsed
+            knownSelectionEnd = collapsed
+            val committed = runCatching { ic.commitText("", 1) }.getOrDefault(false)
+            if (!committed) {
+                sendKeyDownUp(ic, KeyEvent.KEYCODE_DEL)
+            }
+            return true
+        }
+        return false
     }
 
     fun deleteForwards() {
         val ic = connection() ?: return
+        if (deleteSelection()) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            ic.deleteSurroundingTextInCodePoints(0, 1)
+            val deleted = runCatching { ic.deleteSurroundingTextInCodePoints(0, 1) }.getOrDefault(false)
+            if (!deleted) {
+                val fallbackDeleted = runCatching { ic.deleteSurroundingText(0, 1) }.getOrDefault(false)
+                if (!fallbackDeleted) {
+                    sendKeyDownUp(ic, KeyEvent.KEYCODE_FORWARD_DEL)
+                }
+            }
         } else {
-            ic.deleteSurroundingText(0, 1)
+            val deleted = runCatching { ic.deleteSurroundingText(0, 1) }.getOrDefault(false)
+            if (!deleted) {
+                sendKeyDownUp(ic, KeyEvent.KEYCODE_FORWARD_DEL)
+            }
         }
     }
 

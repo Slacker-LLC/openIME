@@ -74,4 +74,34 @@ class CandidatePipelineTest {
         assertTrue(resolution.pinyinPaths.size <= 8)
         assertTrue(resolution.candidates.size <= 96)
     }
+
+    @Test
+    fun nineKeyDigitsForMapsPinyinToKeypadDigits() {
+        assertEquals("64426", CandidatePipeline.nineKeyDigitsFor("nihao"))
+        assertEquals("64426", CandidatePipeline.nineKeyDigitsFor("NiHao"))
+        assertEquals("426", CandidatePipeline.nineKeyDigitsFor("hao"))
+        assertEquals("6446", CandidatePipeline.nineKeyDigitsFor("niho"))
+        // Invalid non-alphabetic characters return null
+        org.junit.Assert.assertNull(CandidatePipeline.nineKeyDigitsFor("ni hao"))
+        org.junit.Assert.assertNull(CandidatePipeline.nineKeyDigitsFor("ni2hao"))
+        org.junit.Assert.assertNull(CandidatePipeline.nineKeyDigitsFor("你好"))
+    }
+
+    @Test
+    fun nineKeyInternalEditRecoversDigitsAndDecodesCorrectly() {
+        // User typed 64426 -> nihao, then edited to niho
+        val suffixDigits = CandidatePipeline.nineKeyDigitsFor("niho")
+        assertEquals("6446", suffixDigits)
+
+        // Middle insert digit 2 at index 3 (between h and o) gives 64426 -> nihao
+        val inserted = suffixDigits!!.substring(0, 3) + "2" + suffixDigits.substring(3)
+        assertEquals("64426", inserted)
+        val resolution = pipeline.resolveNineKey(inserted, "", null, false)
+        assertEquals("nihao", resolution.preview)
+        assertTrue(resolution.candidates.contains("你好"))
+
+        // Middle delete: 64426 deleting at index 3 gives 6446
+        val deleted = "64426".removeRange(3, 4)
+        assertEquals("6446", deleted)
+    }
 }

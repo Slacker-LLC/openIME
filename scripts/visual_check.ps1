@@ -73,7 +73,12 @@ function Send([string]$cmd) {
 function Mode([string]$mode) {
     for ($attempt = 0; $attempt -lt 8; $attempt++) {
         Send 'state'
-        $log = Adb logcat -d -t 300 | Select-String -Pattern 'OpenImeE2E' | Out-String
+        $log = Adb logcat -d -t 300 | Select-String -Pattern 'OpenImeE2E: STATE' | Select-Object -Last 1 | Out-String
+        if ($log -match ('OpenImeE2E: STATE mode=' + $mode)) { return }
+        Send ('mode:' + $mode)
+        Start-Sleep -Milliseconds 150
+        Send 'state'
+        $log = Adb logcat -d -t 300 | Select-String -Pattern 'OpenImeE2E: STATE' | Select-Object -Last 1 | Out-String
         if ($log -match ('OpenImeE2E: STATE mode=' + $mode)) { return }
         Send 'tap:key:mode'
     }

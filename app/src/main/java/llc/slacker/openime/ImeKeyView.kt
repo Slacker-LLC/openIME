@@ -132,6 +132,9 @@ class ImeKeyView(
         iconView?.imageTintList = ColorStateList.valueOf(iconColor)
     }
 
+    val currentMainText: String
+        get() = mainTextView?.text?.toString().orEmpty()
+
     fun setMainText(value: String) {
         if (iconView != null) return
         mainTextView?.text = value

@@ -231,6 +231,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
             voiceState = VoiceUiState(),
         )
         if (!preserve) lastComposition = ""
+        attribute?.let { gateway.updateSelection(it.initialSelStart, it.initialSelEnd) }
         rime.clear()
         keyboardView?.clearAssociationCandidates()
         keyboardView?.setShiftState(ShiftState.LOWERCASE)
@@ -306,6 +307,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
         candidatesStart: Int,
         candidatesEnd: Int,
     ) {
+        gateway.updateSelection(newSelStart, newSelEnd)
         super.onUpdateSelection(
             oldSelStart,
             oldSelEnd,
@@ -349,6 +351,14 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
     }
 
     internal fun handleTestCommand(command: String): Boolean = when {
+        command.startsWith("mode:") -> {
+            val targetName = command.substringAfter("mode:").trim()
+            val targetMode = KeyboardMode.entries.find { it.name.equals(targetName, ignoreCase = true) }
+            if (targetMode != null) {
+                keyboardView?.setMode(targetMode)
+                true
+            } else false
+        }
         command.startsWith("tap:") ->
             keyboardView?.tapTestTarget(command.substringAfter("tap:")) == true
         command.startsWith("longtap:") ->
@@ -895,6 +905,8 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
                 }
             }
             "paste" -> {
+                commitPendingComposition()
+                keyboardView?.clearAssociationCandidates()
                 val text = gateway.pasteClipboard()
                 if (text.isNotEmpty()) ClipboardHistoryRepository.add(this, text)
             }

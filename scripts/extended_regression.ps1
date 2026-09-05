@@ -113,10 +113,15 @@ function AssertContains([string]$name, [string]$expected, [string]$actual) {
 function WaitForMode([string]$mode) {
     for ($i = 0; $i -lt 8; $i++) {
         SendCommand 'state'
-        $log = Adb logcat -d -t 300 | Select-String -Pattern 'OpenImeE2E' | Out-String
-        if ($log -match ('OpenImeE2E: STATE mode=' + $mode)) { return }
+        $log = Adb logcat -d -t 100 | Select-String -Pattern 'OpenImeE2E: STATE' | Select-Object -Last 1 | Out-String
+        if ($log -match ('mode=' + $mode)) { return }
+        SendCommand ('mode:' + $mode)
+        Start-Sleep -Milliseconds 150
+        SendCommand 'state'
+        $log = Adb logcat -d -t 100 | Select-String -Pattern 'OpenImeE2E: STATE' | Select-Object -Last 1 | Out-String
+        if ($log -match ('mode=' + $mode)) { return }
         Tap 'key:mode'
-        Start-Sleep -Milliseconds 350
+        Start-Sleep -Milliseconds 250
     }
     throw ('mode not reached: ' + $mode)
 }

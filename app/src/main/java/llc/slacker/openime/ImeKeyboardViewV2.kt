@@ -52,6 +52,7 @@ class ImeKeyboardViewV2 private constructor(
             post { syncProductionKeyPresentation() }
         }
         adapter.afterPanelChanged = { panel ->
+            presentationDirty = true
             when (panel) {
                 Panel.TEXT_EDITOR -> {
                     // The legacy renderer invokes onPanelChanged before renderPanel,
@@ -89,12 +90,27 @@ class ImeKeyboardViewV2 private constructor(
         }
     }
 
+    override fun onViewHierarchyRebuilt() {
+        super.onViewHierarchyRebuilt()
+        presentationDirty = true
+        post {
+            when (panel) {
+                Panel.TEXT_EDITOR -> disableUnsupportedTextEditControls()
+                Panel.CLIPBOARD -> decorateClipboardRetentionControls()
+                else -> Unit
+            }
+            syncProductionKeyPresentation()
+        }
+    }
+
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         // The legacy space implementation reports only pressed=true/false to
         // the listener. Preserve whether the release was a cancellation so the
         // adapter can recover a 150..system-timeout hold as a normal space only
         // on a real ACTION_UP, never on ACTION_CANCEL.
-        adapter.releaseWasCancel = event.actionMasked == MotionEvent.ACTION_CANCEL
+        if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            adapter.releaseWasCancel = true
+        }
         return super.dispatchTouchEvent(event)
     }
 
@@ -108,6 +124,11 @@ class ImeKeyboardViewV2 private constructor(
     override fun onDetachedFromWindow() {
         adapter.shutdown()
         super.onDetachedFromWindow()
+    }
+
+    override fun shutdown() {
+        adapter.shutdown()
+        super.shutdown()
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -423,6 +444,7 @@ class ImeKeyboardViewV2 private constructor(
         override fun onVoicePressChanged(pressed: Boolean) {
             if (pressed) {
                 if (voiceStartForwarded || pendingVoiceStart != null) return
+                releaseWasCancel = false
                 val start = Runnable {
                     pendingVoiceStart = null
                     if (!releaseWasCancel) {
@@ -448,11 +470,18 @@ class ImeKeyboardViewV2 private constructor(
                 // it crossed its old 150 ms threshold. Recover it as the normal
                 // space action unless Android cancelled the gesture.
                 if (!releaseWasCancel) delegate.onSpace()
+                releaseWasCancel = false
                 return
             }
             if (voiceStartForwarded) {
                 voiceStartForwarded = false
-                delegate.onVoicePressChanged(false)
+                if (releaseWasCancel) {
+                    delegate.cancelVoiceRecognition()
+                    delegate.onVoiceCancel()
+                } else {
+                    delegate.onVoicePressChanged(false)
+                }
+                releaseWasCancel = false
             }
         }
         override fun onVoiceSessionStarted(autoCommitOnFinal: Boolean) =
@@ -461,12 +490,25 @@ class ImeKeyboardViewV2 private constructor(
         override fun onVoiceFinal(text: String) = delegate.onVoiceFinal(text)
         override fun onVoiceError(message: String) = delegate.onVoiceError(message)
         override fun onVoiceCommit() = delegate.onVoiceCommit()
-        override fun onVoiceCancel() = delegate.onVoiceCancel()
+        override fun onVoiceCancel() {
+            cancelPendingVoiceStart()
+            delegate.onVoiceCancel()
+        }
         override fun voiceModelState() = delegate.voiceModelState()
         override fun startVoiceRecognition(languageTag: String, events: VoiceRecognitionEvents) =
             delegate.startVoiceRecognition(languageTag, events)
         override fun stopVoiceRecognition() = delegate.stopVoiceRecognition()
-        override fun cancelVoiceRecognition() = delegate.cancelVoiceRecognition()
+        override fun cancelVoiceRecognition() {
+            cancelPendingVoiceStart()
+            delegate.cancelVoiceRecognition()
+        }
+
+        private fun cancelPendingVoiceStart() {
+            pendingVoiceStart?.let { voiceHandler.removeCallbacks(it) }
+            pendingVoiceStart = null
+            voiceStartForwarded = false
+            releaseWasCancel = false
+        }
         override fun onEnter() = delegate.onEnter()
         override fun onCompositionChanged(composition: String, candidates: List<String>) =
             delegate.onCompositionChanged(composition, candidates)

@@ -78,6 +78,8 @@ function WaitForRime {
 function ModeP9 {
     for ($attempt = 0; $attempt -lt 8; $attempt++) {
         if ((StateLog) -match 'mode=PINYIN_9') { return }
+        SendCommand 'mode:PINYIN_9' 120
+        if ((StateLog) -match 'mode=PINYIN_9') { return }
         Tap 'key:mode' 120
     }
     throw 'PINYIN_9 mode not reached'

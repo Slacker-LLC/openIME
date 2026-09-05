@@ -93,4 +93,20 @@ class CandidateSnapshotTest {
         )
         assertNull(snapshot.candidateForCommit("市", 13, "7464", KeyboardMode.PINYIN_9))
     }
+
+    @Test
+    fun noCandidateChipCommitsVisibleRawCompositionForNineKey() {
+        val rawDigits = "9".repeat(64)
+        val snapshot = CandidateSnapshot.rendered(
+            generation = 14,
+            composition = rawDigits,
+            mode = KeyboardMode.PINYIN_9,
+            candidates = emptyList(),
+        )
+
+        val entry = snapshot.firstForCommit(14, rawDigits, KeyboardMode.PINYIN_9)
+
+        assertEquals(rawDigits, entry?.text)
+        assertNull(entry?.nativeReference)
+    }
 }
