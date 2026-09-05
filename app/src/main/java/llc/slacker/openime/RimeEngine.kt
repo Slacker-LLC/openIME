@@ -1,6 +1,7 @@
 package llc.slacker.openime
 
 import android.content.Context
+import android.inputmethodservice.InputMethodService
 import android.os.Build
 import android.util.Log
 import java.io.File
@@ -118,6 +119,10 @@ class RimeEngine(private val context: Context) {
     var errorMessage: String = ""
         private set
 
+    init {
+        PersonalizationRepository.configure(context)
+    }
+
     fun start() {
         if (isReady) return
         val generation = startupGate.begin() ?: return
@@ -211,7 +216,10 @@ class RimeEngine(private val context: Context) {
     fun selectCandidate(input: String, candidate: String): String {
         val normalized = RimeInputNormalizer.normalize(input)
         if (!isReady || normalized.isBlank()) return ""
-        return synchronized(lock) {
+        val allowPersonalization = PersonalizationPolicy.allow(
+            (context as? InputMethodService)?.currentInputEditorInfo,
+        )
+        val committed = synchronized(lock) {
             runCatching {
                 if (!syncSchemaFromSettingsLocked()) return@runCatching ""
                 val snapshot = RimeNative.nativeSetInput(normalized)
@@ -219,6 +227,10 @@ class RimeEngine(private val context: Context) {
                 if (entry != null) RimeNative.nativeSelectCandidate(entry.nativeIndex).orEmpty() else ""
             }.getOrDefault("")
         }
+        if (allowPersonalization && committed.isNotBlank()) {
+            PersonalizationRepository.record(committed)
+        }
+        return committed
     }
 
     /**
@@ -229,20 +241,24 @@ class RimeEngine(private val context: Context) {
     fun selectCandidate(input: String, nativeIndex: Int): String {
         val normalized = RimeInputNormalizer.normalize(input)
         if (!isReady || normalized.isBlank() || nativeIndex < 0) return ""
+        val allowPersonalization = PersonalizationPolicy.allow(
+            (context as? InputMethodService)?.currentInputEditorInfo,
+        )
         mutationQueue.submit {
-            if (isReady) {
-                synchronized(lock) {
-                    if (isReady) {
-                        runCatching {
-                            // nativeIndex belongs to the schema that produced the
-                            // rendered snapshot. Do not switch schemas between
-                            // rendering and consuming that index; the next native
-                            // candidate query will synchronize a changed setting.
-                            RimeNative.nativeSetInput(normalized)
-                            RimeNative.nativeSelectCandidate(nativeIndex)
-                        }
-                    }
-                }
+            if (!isReady) return@submit
+            val committed = synchronized(lock) {
+                if (!isReady) return@synchronized ""
+                runCatching {
+                    // nativeIndex belongs to the schema that produced the
+                    // rendered snapshot. Do not switch schemas between
+                    // rendering and consuming that index; the next native
+                    // candidate query will synchronize a changed setting.
+                    RimeNative.nativeSetInput(normalized)
+                    RimeNative.nativeSelectCandidate(nativeIndex)
+                }.getOrDefault("")
+            }
+            if (allowPersonalization && committed.isNotBlank()) {
+                PersonalizationRepository.record(committed)
             }
         }
         return ""
