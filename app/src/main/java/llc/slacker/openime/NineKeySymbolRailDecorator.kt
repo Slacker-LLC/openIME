@@ -173,6 +173,10 @@ internal object NineKeySymbolRailDecorator {
             val current = choices.indexOf(active).coerceAtLeast(0)
             onSelect(choices[(current + 1) % choices.size])
         }
+        // Symbols can leave this column scrolled down between compositions.
+        // A newly available ambiguity filter is more important than preserving
+        // that symbol offset, so make the active filter immediately visible.
+        if (scroll.scrollY != 0) scroll.post { scroll.scrollTo(0, 0) }
     }
 
     private fun commonSymbols(): List<String> = ImeData.symbols["常用"]
