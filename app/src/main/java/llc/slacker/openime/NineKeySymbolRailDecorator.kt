@@ -1,10 +1,13 @@
 package llc.slacker.openime
 
 import android.content.Context
+import android.text.Editable
+import android.text.TextWatcher
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -19,6 +22,7 @@ internal object NineKeySymbolRailDecorator {
     private const val CONTENT_TAG = "nine-symbol-scroll-content"
     private const val FILTER_TAG = "nine-pinyin-path-filter"
     private const val CELL_HEIGHT_DP = 48
+    private const val WATCHER_TAG = 0x1F000081
 
     fun decorate(root: View, onCommit: (String) -> Unit) {
         val tagged = root.findViewWithTag<View>(LEGACY_TAG) ?: return
@@ -36,25 +40,92 @@ internal object NineKeySymbolRailDecorator {
             symbols.indices.all { index ->
                 (content.getChildAt(index + offset) as? TextView)?.text?.toString() == symbols[index]
             }
-        if (alreadyDecorated) return
 
-        val inheritedTextColor = (0 until content.childCount)
-            .asSequence()
-            .mapNotNull { content.getChildAt(it) as? TextView }
-            .firstOrNull { it.tag != FILTER_TAG }
-            ?.currentTextColor
+        if (!alreadyDecorated) {
+            val inheritedTextColor = (0 until content.childCount)
+                .asSequence()
+                .mapNotNull { content.getChildAt(it) as? TextView }
+                .firstOrNull { it.tag != FILTER_TAG }
+                ?.currentTextColor
 
-        content.removeAllViews()
-        content.contentDescription = null
-        if (filter != null) {
-            inheritedTextColor?.let(filter::setTextColor)
-            content.addView(filter, cellParams(content.context, withGap = true))
+            content.removeAllViews()
+            content.contentDescription = null
+            if (filter != null) {
+                inheritedTextColor?.let(filter::setTextColor)
+                content.addView(filter, cellParams(content.context, withGap = true))
+            }
+            symbols.forEachIndexed { index, symbol ->
+                content.addView(
+                    symbolCell(content.context, symbol, inheritedTextColor, onCommit),
+                    cellParams(content.context, withGap = index < symbols.lastIndex),
+                )
+            }
         }
-        symbols.forEachIndexed { index, symbol ->
-            content.addView(
-                symbolCell(content.context, symbol, inheritedTextColor, onCommit),
-                cellParams(content.context, withGap = index < symbols.lastIndex),
-            )
+
+        installFilterWatcher(root)
+        refreshPinyinFilters(root)
+    }
+
+    /**
+     * Keep the filter tied to the actual editable preedit. This avoids a second
+     * nine-key state machine: choosing a path edits the same preedit field, so
+     * the existing TextWatcher republishes candidates through the service and
+     * the decoder records that path as the preferred continuation.
+     */
+    private fun installFilterWatcher(root: View) {
+        val editor = root.findViewWithTag<EditText>("pinyin-composition-editor") ?: return
+        if (editor.getTag(WATCHER_TAG) != null) return
+        val watcher = object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+            override fun afterTextChanged(s: Editable?) {
+                root.post { refreshPinyinFilters(root) }
+            }
+        }
+        editor.addTextChangedListener(watcher)
+        editor.setTag(WATCHER_TAG, watcher)
+    }
+
+    private fun refreshPinyinFilters(root: View) {
+        val scroll = root.findViewWithTag<ScrollView>(LEGACY_TAG) ?: return
+        val content = scroll.getChildAt(0) as? LinearLayout ?: return
+        if (root.findViewWithTag<View>("pinyin9-layout") == null) {
+            content.findViewWithTag<View>(FILTER_TAG)?.let(content::removeView)
+            return
+        }
+
+        val editor = root.findViewWithTag<EditText>("pinyin-composition-editor") ?: return
+        val text = editor.text?.toString().orEmpty()
+        if (text.isBlank()) {
+            setPinyinFilters(root, emptyList(), null) { }
+            return
+        }
+
+        val lastSpace = text.lastIndexOf(' ')
+        val prefix = if (lastSpace >= 0) text.substring(0, lastSpace + 1) else ""
+        val suffix = if (lastSpace >= 0) text.substring(lastSpace + 1) else text
+        val digits = CandidatePipeline.nineKeyDigitsFor(suffix)
+        if (digits.isNullOrEmpty()) {
+            setPinyinFilters(root, emptyList(), null) { }
+            return
+        }
+
+        val resolver = root.context as? CandidateResolver ?: return
+        val fuzzy = ImeSettingsRepository.loadFuzzy(root.context)
+        val resolution = resolver.resolveNineKey(
+            digits = digits,
+            segmentPrefix = prefix,
+            preferredSuffix = suffix,
+            fuzzy = fuzzy,
+        )
+        setPinyinFilters(
+            root = root,
+            filters = resolution.displayPinyinPaths,
+            selected = text,
+        ) { chosen ->
+            if (chosen == editor.text?.toString()) return@setPinyinFilters
+            editor.setText(chosen)
+            editor.setSelection(chosen.length)
         }
     }
 
