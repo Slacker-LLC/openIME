@@ -133,6 +133,7 @@ object UserPhraseRepository {
     private fun persistenceSnapshotLocked(): Pair<SharedPreferences, List<Entry>>? {
         val target = preferences ?: return null
         val snapshot = entries.values
+            .toList()
             .takeLast(MAX_ENTRIES)
             .map { it.copy() }
         return target to snapshot
