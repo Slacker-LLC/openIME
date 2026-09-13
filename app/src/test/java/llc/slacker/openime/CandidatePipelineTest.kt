@@ -2,6 +2,8 @@ package llc.slacker.openime
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -33,7 +35,7 @@ class CandidatePipelineTest {
     }
 
     @Test
-    fun nineKeyResolutionOwnsPreviewPathsAndCandidateOrdering() {
+    fun nineKeyResolutionUsesOneNativeDigitCode() {
         val resolution = pipeline.resolveNineKey(
             digits = "64426",
             segmentPrefix = "",
@@ -42,14 +44,15 @@ class CandidatePipelineTest {
         )
 
         assertEquals("nihao", resolution.preview)
-        assertEquals("nihao", resolution.pinyinPaths.first())
+        assertEquals(listOf("64426"), resolution.pinyinPaths)
         assertTrue(resolution.candidates.isNotEmpty())
+        assertTrue(resolution.candidates.contains("你好"))
         assertFalse(resolution.candidates.any { candidate -> candidate.any(Char::isDigit) })
         assertEquals(resolution.candidates.distinct(), resolution.candidates)
     }
 
     @Test
-    fun segmentedNineKeyKeepsPrefixAheadOfRawDigitCandidates() {
+    fun segmentedNineKeyPreservesBoundaryInNativeCode() {
         val resolution = pipeline.resolveNineKey(
             digits = "426",
             segmentPrefix = "ni ",
@@ -58,22 +61,22 @@ class CandidatePipelineTest {
         )
 
         assertEquals("ni hao", resolution.preview)
-        assertTrue(resolution.pinyinPaths.all { it.startsWith("ni ") })
-        assertTrue(resolution.candidates.none { it.any(Char::isDigit) })
+        assertEquals(listOf("64'426"), resolution.pinyinPaths)
         assertFalse("Suffix-only choices would drop ni when selected", resolution.candidates.contains("好"))
         assertTrue(resolution.candidates.contains("你好"))
     }
 
     @Test
-    fun nineKeyInputIsBoundedBeforeEngineResolution() {
+    fun nineKeyInputIsBoundedBeforeNativeResolution() {
         val resolution = pipeline.resolveNineKey(
-            digits = "6".repeat(CandidateEngine.MAX_NINE_KEY_DIGITS + 20),
+            digits = "6".repeat(NineKeyLocalDecoder.MAX_DIGITS + 20),
             segmentPrefix = "",
             preferredSuffix = null,
             fuzzy = false,
         )
 
-        assertTrue(resolution.pinyinPaths.size <= 8)
+        assertTrue(resolution.pinyinPaths.size <= 1)
+        assertTrue(resolution.pinyinPaths.firstOrNull()?.length ?: 0 <= NineKeyLocalDecoder.MAX_DIGITS)
         assertTrue(resolution.candidates.size <= 96)
     }
 
@@ -83,26 +86,44 @@ class CandidatePipelineTest {
         assertEquals("64426", CandidatePipeline.nineKeyDigitsFor("NiHao"))
         assertEquals("426", CandidatePipeline.nineKeyDigitsFor("hao"))
         assertEquals("6446", CandidatePipeline.nineKeyDigitsFor("niho"))
-        // Invalid non-alphabetic characters return null
-        org.junit.Assert.assertNull(CandidatePipeline.nineKeyDigitsFor("ni hao"))
-        org.junit.Assert.assertNull(CandidatePipeline.nineKeyDigitsFor("ni2hao"))
-        org.junit.Assert.assertNull(CandidatePipeline.nineKeyDigitsFor("你好"))
+        assertNull(CandidatePipeline.nineKeyDigitsFor("ni hao"))
+        assertNull(CandidatePipeline.nineKeyDigitsFor("ni2hao"))
+        assertNull(CandidatePipeline.nineKeyDigitsFor("你好"))
+    }
+
+    @Test
+    fun everyProductionPresetMatchesItsDigitCode() {
+        NineKeyPresets.combinations.forEach { (digits, pinyins) ->
+            assertTrue(pinyins.isNotEmpty())
+            pinyins.forEach { pinyin ->
+                assertEquals("preset $digits -> $pinyin is invalid", digits, NineKeyLocalDecoder.digitsForPinyin(pinyin))
+            }
+        }
+        assertEquals(listOf("gong"), NineKeyPresets.combinations["4664"])
+        assertEquals(listOf("zhe"), NineKeyPresets.combinations["943"])
+        assertEquals(listOf("xiang"), NineKeyPresets.combinations["94264"])
+        assertEquals(listOf("weixin"), NineKeyPresets.combinations["934946"])
+    }
+
+    @Test
+    fun nativeCodeKeepsExplicitSegmentationAndRejectsGarbage() {
+        assertEquals("64'426", NineKeyLocalDecoder.nativeCode("ni ", "426"))
+        assertEquals("94'26'426", NineKeyLocalDecoder.nativeCode("xi an ", "426"))
+        assertNotNull(NineKeyLocalDecoder.nativeCode("", "64426"))
+        assertNull(NineKeyLocalDecoder.nativeCode("你 ", "426"))
     }
 
     @Test
     fun nineKeyInternalEditRecoversDigitsAndDecodesCorrectly() {
-        // User typed 64426 -> nihao, then edited to niho
         val suffixDigits = CandidatePipeline.nineKeyDigitsFor("niho")
         assertEquals("6446", suffixDigits)
 
-        // Middle insert digit 2 at index 3 (between h and o) gives 64426 -> nihao
         val inserted = suffixDigits!!.substring(0, 3) + "2" + suffixDigits.substring(3)
         assertEquals("64426", inserted)
         val resolution = pipeline.resolveNineKey(inserted, "", null, false)
         assertEquals("nihao", resolution.preview)
         assertTrue(resolution.candidates.contains("你好"))
 
-        // Middle delete: 64426 deleting at index 3 gives 6446
         val deleted = "64426".removeRange(3, 4)
         assertEquals("6446", deleted)
     }
