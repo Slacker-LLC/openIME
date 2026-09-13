@@ -20,18 +20,24 @@ interface CandidateResolver {
  * Service-owned local candidate pipeline.
  *
  * The View may keep transient key/composition buffers, but it must not own a
- * CandidateEngine or candidate ordering rules. Keeping the engine behind this
- * boundary makes the service the single authoritative owner for 26-key,
- * English, T9, 9-key, and association fallback semantics.
+ * CandidateEngine or candidate ordering rules. Rime is authoritative for
+ * Chinese ranking; the local 9-key decoder provides only the immediate frame.
  */
 class CandidatePipeline(
     private val engine: CandidateEngine,
 ) : CandidateResolver {
+    /**
+     * [pinyinPaths] keeps its historical name for Listener compatibility. For
+     * PINYIN_9 it now contains exactly one native Rime T9 code (digits plus
+     * apostrophe boundaries), not a list of guessed full-Pinyin paths.
+     */
     data class NineKeyResolution(
         val preview: String,
         val pinyinPaths: List<String>,
         val candidates: List<String>,
     )
+
+    private val nineKeyDecoder = NineKeyLocalDecoder(engine)
 
     override fun candidatesFor(
         mode: KeyboardMode,
@@ -59,78 +65,75 @@ class CandidatePipeline(
     ): NineKeyResolution {
         val boundedDigits = digits
             .filter { it in '2'..'9' }
-            .take(CandidateEngine.MAX_NINE_KEY_DIGITS)
+            .take(NineKeyLocalDecoder.MAX_DIGITS)
         if (boundedDigits.isEmpty()) {
             return NineKeyResolution(
                 preview = segmentPrefix,
-                pinyinPaths = listOf(segmentPrefix).filter { it.isNotBlank() },
+                pinyinPaths = emptyList(),
                 candidates = emptyList(),
             )
         }
 
-        val result = engine.get9KeyCandidates(boundedDigits)
-        val fallbackPath = boundedDigits.mapNotNull { digit ->
-            ImeData.keypad9Map[digit.toString()]
-                ?.firstOrNull { it.length == 1 && it[0] in 'a'..'z' }
-        }.joinToString("")
-        val stableSuffix = preferredSuffix
-            ?.lowercase()
-            ?.takeIf { suffix -> nineKeyDigitsFor(suffix) == boundedDigits }
-        val pinyinPaths = (listOfNotNull(stableSuffix) + result.pinyins)
-            .asSequence()
-            .filter { it.isNotBlank() }
-            .map { segmentPrefix + it }
-            .distinct()
-            .take(8)
-            .toList()
-            .ifEmpty {
-                listOf(segmentPrefix + fallbackPath).filter { it.isNotBlank() }
-            }
-        val preview = pinyinPaths.firstOrNull().orEmpty()
-        val localCandidates = candidatesFor(
-            mode = KeyboardMode.PINYIN_9,
-            composition = preview,
+        val local = nineKeyDecoder.resolve(
+            digits = boundedDigits,
+            preferredSuffix = preferredSuffix,
             fuzzy = fuzzy,
         )
-        val candidates = (
-            if (segmentPrefix.isEmpty()) {
-                result.candidates + localCandidates
-            } else {
-                // Suffix-only choices would replace the entire composition,
-                // silently discarding every syllable before the boundary.
-                localCandidates
-            }
-            )
-            .filter { it.isNotEmpty() && it.none(Char::isDigit) }
+        val preview = segmentPrefix + local.previewSuffix
+        val displayPaths = local.pinyinSuffixes
+            .map { segmentPrefix + it }
             .distinct()
-            .take(96)
 
+        val candidates = if (segmentPrefix.isEmpty()) {
+            local.candidates
+        } else {
+            // A suffix-only candidate must never replace the entire composition.
+            // Re-resolve complete explicitly segmented paths, but interleave
+            // equal ranks so one guessed path cannot occupy all 96 slots.
+            roundRobin(
+                displayPaths.map { path ->
+                    engine.getCandidates(path, fuzzy)
+                        .filter(::isChineseDisplayCandidate)
+                        .take(PER_PATH_CANDIDATES)
+                },
+                MAX_CANDIDATES,
+            )
+        }
+
+        val nativeInput = NineKeyLocalDecoder.nativeCode(segmentPrefix, boundedDigits)
         return NineKeyResolution(
             preview = preview,
-            pinyinPaths = pinyinPaths,
-            candidates = candidates,
+            pinyinPaths = listOfNotNull(nativeInput),
+            candidates = candidates
+                .filter(::isChineseDisplayCandidate)
+                .distinct()
+                .take(MAX_CANDIDATES),
         )
     }
 
-    companion object {
-        fun nineKeyDigitsFor(pinyin: String): String? {
-            val digits = StringBuilder(pinyin.length)
-            pinyin.lowercase().forEach { ch ->
-                digits.append(
-                    when (ch) {
-                        in 'a'..'c' -> '2'
-                        in 'd'..'f' -> '3'
-                        in 'g'..'i' -> '4'
-                        in 'j'..'l' -> '5'
-                        in 'm'..'o' -> '6'
-                        in 'p'..'s' -> '7'
-                        in 't'..'v' -> '8'
-                        in 'w'..'z' -> '9'
-                        else -> return null
-                    },
-                )
+    private fun roundRobin(batches: List<List<String>>, limit: Int): List<String> {
+        if (batches.isEmpty() || limit <= 0) return emptyList()
+        val out = ArrayList<String>(limit)
+        val seen = HashSet<String>()
+        val max = batches.maxOfOrNull { it.size } ?: 0
+        for (rank in 0 until max) {
+            batches.forEach { batch ->
+                val value = batch.getOrNull(rank) ?: return@forEach
+                if (seen.add(value)) out += value
+                if (out.size >= limit) return out
             }
-            return digits.toString()
         }
+        return out
+    }
+
+    private fun isChineseDisplayCandidate(value: String): Boolean =
+        value.isNotBlank() && value.none(Char::isDigit) && value.any { it.code > 0x7f }
+
+    companion object {
+        private const val MAX_CANDIDATES = 96
+        private const val PER_PATH_CANDIDATES = 24
+
+        fun nineKeyDigitsFor(pinyin: String): String? =
+            NineKeyLocalDecoder.digitsForPinyin(pinyin)
     }
 }
