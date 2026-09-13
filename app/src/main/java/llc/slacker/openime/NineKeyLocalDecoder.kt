@@ -40,19 +40,26 @@ internal class NineKeyLocalDecoder(
     }
 
     private val root = TrieNode()
+    private var previousDigits = ""
+    private var previousPreview = ""
 
     init {
         buildEntries().forEach(::insert)
         sortTrie(root)
     }
 
+    @Synchronized
     fun resolve(
         digits: String,
         preferredSuffix: String?,
         fuzzy: Boolean,
     ): Resolution {
         val bounded = digits.filter { it in '2'..'9' }.take(MAX_DIGITS)
-        if (bounded.isEmpty()) return Resolution("", emptyList(), emptyList())
+        if (bounded.isEmpty()) {
+            previousDigits = ""
+            previousPreview = ""
+            return Resolution("", emptyList(), emptyList())
+        }
 
         val exactEntries = nodeFor(bounded)?.exact.orEmpty().take(MAX_PATHS)
         val decoded = decodePaths(bounded)
@@ -64,11 +71,37 @@ internal class NineKeyLocalDecoder(
             .orEmpty()
             .filter { digitsForPinyin(it) == bounded }
 
-        val paths = buildList {
-            stable?.let(::add)
+        val rankedPool = buildList {
             addAll(validPreset)
             addAll(exactEntries.map { it.pinyin })
             addAll(decoded.map { it.pinyin })
+        }
+            .filter { it.isNotBlank() }
+            .distinct()
+
+        // Ordinary key appends historically re-picked the first ambiguous
+        // Pinyin path on every frame. Preserve the previous visible path when
+        // the new code is a strict extension and that path can still be
+        // extended to a currently valid full path. Explicit edits still win
+        // through preferredSuffix above.
+        val continuous = if (
+            stable == null &&
+            previousDigits.isNotEmpty() &&
+            bounded.length > previousDigits.length &&
+            bounded.startsWith(previousDigits) &&
+            previousPreview.isNotEmpty()
+        ) {
+            rankedPool.firstOrNull { candidate ->
+                candidate.startsWith(previousPreview) && digitsForPinyin(candidate) == bounded
+            }
+        } else {
+            null
+        }
+
+        val paths = buildList {
+            stable?.let(::add)
+            continuous?.let(::add)
+            addAll(rankedPool)
         }
             .asSequence()
             .filter { it.isNotBlank() }
@@ -94,8 +127,11 @@ internal class NineKeyLocalDecoder(
             if (clean.isNotEmpty()) batches += clean
         }
 
+        val preview = paths.firstOrNull() ?: fallbackLetters(bounded)
+        previousDigits = bounded
+        previousPreview = preview
         return Resolution(
-            previewSuffix = paths.firstOrNull() ?: fallbackLetters(bounded),
+            previewSuffix = preview,
             pinyinSuffixes = paths,
             candidates = roundRobin(batches, MAX_CANDIDATES),
         )
