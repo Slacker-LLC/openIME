@@ -59,7 +59,7 @@ class AuditInteractionInstrumentedTest {
     }
 
     private fun withKeyboard(
-        test: (DirectActivityHarness<DebugKeyboardActivity>, Recorder, ImeKeyboardViewV2) -> Unit,
+        test: (DirectActivityHarness<DebugKeyboardActivity>, Recorder, ImeKeyboardViewV2) -> Any?,
     ) {
         DirectActivityHarness(DebugKeyboardActivity::class.java).use { harness ->
             harness.launch()
