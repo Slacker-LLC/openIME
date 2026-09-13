@@ -193,13 +193,17 @@ class InputConnectionGateway(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             val deleted = runCatching { ic.deleteSurroundingTextInCodePoints(0, 1) }.getOrDefault(false)
             if (!deleted) {
-                val fallbackDeleted = runCatching { ic.deleteSurroundingText(0, 1) }.getOrDefault(false)
+                val after = runCatching { ic.getTextAfterCursor(2, 0) }.getOrNull()
+                val utf16Units = nextCodePointUtf16Length(after).coerceAtLeast(1)
+                val fallbackDeleted = runCatching { ic.deleteSurroundingText(0, utf16Units) }.getOrDefault(false)
                 if (!fallbackDeleted) {
                     sendKeyDownUp(ic, KeyEvent.KEYCODE_FORWARD_DEL)
                 }
             }
         } else {
-            val deleted = runCatching { ic.deleteSurroundingText(0, 1) }.getOrDefault(false)
+            val after = runCatching { ic.getTextAfterCursor(2, 0) }.getOrNull()
+            val utf16Units = nextCodePointUtf16Length(after).coerceAtLeast(1)
+            val deleted = runCatching { ic.deleteSurroundingText(0, utf16Units) }.getOrDefault(false)
             if (!deleted) {
                 sendKeyDownUp(ic, KeyEvent.KEYCODE_FORWARD_DEL)
             }
