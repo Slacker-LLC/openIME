@@ -1,6 +1,7 @@
 package llc.slacker.openime
 
 import android.content.Context
+import android.content.SharedPreferences
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.Executors
@@ -17,7 +18,6 @@ object UserPhraseRepository {
     private const val PREFS = "user_phrases"
     private const val KEY = "entries"
     private const val MAX_ENTRIES = 2000
-    private const val SAVE_DEBOUNCE_MS = 500L
 
     private data class Entry(
         val code: String,
@@ -27,14 +27,15 @@ object UserPhraseRepository {
     )
 
     private val lock = Any()
-    private var preferences: android.content.SharedPreferences? = null
+    private var preferences: SharedPreferences? = null
     private val entries = LinkedHashMap<String, Entry>()
 
     /**
-     * Persisting used to happen inline on the IME thread: every commit built a
-     * JSONArray over up to 2 000 entries and serialized it to a string before
-     * apply() handed the write off. Coalesce a burst of commits instead, and
-     * do the serialization off the IME thread entirely.
+     * Persisting must stay off the IME thread. Unlike the old 500 ms debounce,
+     * an accepted learning event now queues a snapshot immediately so ending an
+     * input session or a fast process reclaim does not create a deliberate loss
+     * window. Serialization and the durable disk write both happen in the
+     * background; records arriving after a snapshot queue the next snapshot.
      */
     private val saveExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "user-phrase-save").apply { isDaemon = true }
@@ -94,15 +95,10 @@ object UserPhraseRepository {
         }
     }
 
-    /**
-     * Write any pending learning immediately. Call when an input session ends
-     * so a process kill cannot lose more than the debounce window.
-     */
+    /** Write the latest immutable snapshot synchronously when a lifecycle owner needs durability now. */
     fun flush() {
-        synchronized(lock) {
-            if (preferences == null) return
-            writeLocked()
-        }
+        val snapshot = synchronized(lock) { persistenceSnapshotLocked() } ?: return
+        writeSnapshot(snapshot.first, snapshot.second, durable = true)
     }
 
     /**
@@ -126,10 +122,20 @@ object UserPhraseRepository {
         if (preferences == null) return
         if (!saveScheduled.compareAndSet(false, true)) return
         saveExecutor.execute {
-            runCatching { Thread.sleep(SAVE_DEBOUNCE_MS) }
-            saveScheduled.set(false)
-            synchronized(lock) { writeLocked() }
+            val snapshot = synchronized(lock) {
+                saveScheduled.set(false)
+                persistenceSnapshotLocked()
+            } ?: return@execute
+            writeSnapshot(snapshot.first, snapshot.second, durable = true)
         }
+    }
+
+    private fun persistenceSnapshotLocked(): Pair<SharedPreferences, List<Entry>>? {
+        val target = preferences ?: return null
+        val snapshot = entries.values
+            .takeLast(MAX_ENTRIES)
+            .map { it.copy() }
+        return target to snapshot
     }
 
     /** Recent, repeatedly selected terms that can safely bias local ASR. */
@@ -189,10 +195,13 @@ object UserPhraseRepository {
         }
     }
 
-    private fun writeLocked() {
-        val target = preferences ?: return
+    private fun writeSnapshot(
+        target: SharedPreferences,
+        snapshot: List<Entry>,
+        durable: Boolean,
+    ) {
         val array = JSONArray()
-        entries.values.toList().takeLast(MAX_ENTRIES).forEach { entry ->
+        snapshot.forEach { entry ->
             array.put(
                 JSONObject()
                     .put("code", entry.code)
@@ -201,7 +210,8 @@ object UserPhraseRepository {
                     .put("lastUsed", entry.lastUsed),
             )
         }
-        target.edit().putString(KEY, array.toString()).apply()
+        val editor = target.edit().putString(KEY, array.toString())
+        if (durable) editor.commit() else editor.apply()
     }
 
     private const val DEFAULT_MINIMUM_FREQUENCY = 3
