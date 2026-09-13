@@ -92,8 +92,14 @@ internal object NativeCandidatePipeline {
             }
         }
 
-        // A native callback used to replace the entire immediate list. Keep
-        // Rime's authoritative ordering first, but retain useful first-frame
+        // If librime returned nothing, leave the result empty. The service then
+        // follows its established offline path, including UserPhraseRepository.
+        // Only a real native refresh is allowed to keep the immediate fallback
+        // tail so an unavailable Rime session is never misclassified as native.
+        if (result.isEmpty()) return result
+
+        // A non-empty native callback used to replace the entire immediate list.
+        // Keep Rime's authoritative ordering first, but retain useful first-frame
         // choices that native did not return on its current page. Deferred
         // references make those choices learnable if tapped after the refresh.
         for ((input, _) in batches) {
