@@ -27,6 +27,7 @@ object UserPhraseRepository {
     )
 
     private val lock = Any()
+    private val persistenceLock = Any()
     private var preferences: SharedPreferences? = null
     private val entries = LinkedHashMap<String, Entry>()
 
@@ -97,8 +98,10 @@ object UserPhraseRepository {
 
     /** Write the latest immutable snapshot synchronously when a lifecycle owner needs durability now. */
     fun flush() {
-        val snapshot = synchronized(lock) { persistenceSnapshotLocked() } ?: return
-        writeSnapshot(snapshot.first, snapshot.second, durable = true)
+        synchronized(persistenceLock) {
+            val snapshot = synchronized(lock) { persistenceSnapshotLocked() } ?: return
+            writeSnapshot(snapshot.first, snapshot.second, durable = true)
+        }
     }
 
     /**
@@ -122,11 +125,13 @@ object UserPhraseRepository {
         if (preferences == null) return
         if (!saveScheduled.compareAndSet(false, true)) return
         saveExecutor.execute {
-            val snapshot = synchronized(lock) {
-                saveScheduled.set(false)
-                persistenceSnapshotLocked()
-            } ?: return@execute
-            writeSnapshot(snapshot.first, snapshot.second, durable = true)
+            synchronized(persistenceLock) {
+                val snapshot = synchronized(lock) {
+                    saveScheduled.set(false)
+                    persistenceSnapshotLocked()
+                } ?: return@synchronized
+                writeSnapshot(snapshot.first, snapshot.second, durable = true)
+            }
         }
     }
 
@@ -160,9 +165,11 @@ object UserPhraseRepository {
     }
 
     fun clear() {
-        synchronized(lock) {
-            entries.clear()
-            preferences?.edit()?.remove(KEY)?.apply()
+        synchronized(persistenceLock) {
+            synchronized(lock) {
+                entries.clear()
+                preferences?.edit()?.remove(KEY)?.commit()
+            }
         }
     }
 
