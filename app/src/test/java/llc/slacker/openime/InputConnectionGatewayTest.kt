@@ -31,6 +31,7 @@ class InputConnectionGatewayTest {
         },
         var contextMenuResult: Boolean = false,
         var deleteSurroundingResult: Boolean = true,
+        var commitTextResult: Boolean = true,
     ) : InputConnection {
         val events = mutableListOf<String>()
 
@@ -42,7 +43,7 @@ class InputConnectionGatewayTest {
         override fun commitCorrection(correctionInfo: CorrectionInfo?): Boolean = false
         override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
             events += "commit:${text?.toString().orEmpty()}"
-            return true
+            return commitTextResult
         }
         override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean {
             events += "delete:$beforeLength:$afterLength"
@@ -150,6 +151,21 @@ class InputConnectionGatewayTest {
                 it == "deleteCodePoints:1:0" || it == "delete:1:0"
             },
         )
+    }
+
+    @Test
+    fun forwardDeleteDoesNotSplitSupplementaryCodePoint() {
+        val fake = FakeInputConnection(afterText = "😀x")
+        val gateway = InputConnectionGateway(null, { fake })
+
+        gateway.deleteForwards()
+
+        assertTrue(
+            fake.events.any {
+                it == "deleteCodePoints:0:1" || it == "delete:0:2"
+            },
+        )
+        assertFalse(fake.events.contains("delete:0:1"))
     }
 
     @Test
@@ -292,10 +308,34 @@ class InputConnectionGatewayTest {
 
         assertTrue(gateway.clearAllText())
 
-        assertEquals("compose:", fake.events[0])
-        assertEquals("finish", fake.events[1])
-        assertTrue(fake.events.contains("context:${android.R.id.selectAll}"))
+        assertEquals("context:${android.R.id.selectAll}", fake.events.first())
+        assertTrue(fake.events.none { it.startsWith("compose:") })
         assertEquals(1, fake.events.count { it == "commit:" })
+        assertEquals(1, fake.events.count { it == "finish" })
+        assertTrue(fake.events.none { it.startsWith("delete") })
+    }
+
+    @Test
+    fun failedClearAllRestoresSelectionWithoutPreDeletingContent() {
+        val fake = FakeInputConnection(
+            selectedText = "234",
+            extractedText = extracted(
+                text = "0123456789",
+                startOffset = 0,
+                selectionStart = 2,
+                selectionEnd = 5,
+            ),
+            contextMenuResult = true,
+            commitTextResult = false,
+        )
+        val gateway = InputConnectionGateway(null, { fake })
+        gateway.updateSelection(2, 5)
+
+        assertFalse(gateway.clearAllText())
+
+        assertTrue(fake.events.contains("commit:"))
+        assertTrue(fake.events.contains("selection:2:5"))
+        assertTrue(fake.events.none { it.startsWith("compose:") })
         assertTrue(fake.events.none { it.startsWith("delete") })
     }
 
@@ -350,6 +390,7 @@ class InputConnectionGatewayTest {
         val gateway = InputConnectionGateway(null, { fake })
 
         assertFalse(gateway.clearAllText())
+        assertTrue(fake.events.none { it.startsWith("compose:") })
         assertTrue(fake.events.none { it.startsWith("delete") })
         assertTrue(fake.events.none { it == "commit:" })
     }
