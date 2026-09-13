@@ -219,16 +219,17 @@ class InputConnectionGateway(
      * complete document. A bounded/local window is never partially deleted while
      * returning success: callers receive false instead and can present an
      * unsupported-capability state.
+     *
+     * Nothing in this method mutates composing text before a full-document
+     * selection has been established. That matters because setComposingText("")
+     * can replace an ordinary user selection in editors that expose no active
+     * composing span. A failed clear therefore leaves document content intact.
      */
     fun clearAllText(): Boolean {
         if (isPassword()) return false
         val ic = connection() ?: return false
         ic.beginBatchEdit()
         return try {
-            // Remove active pre-edit rather than committing it before selecting.
-            ic.setComposingText("", 1)
-            ic.finishComposingText()
-
             val originalSelection = selectionBeforeDestructiveSelectAll(ic)
 
             if (runCatching { ic.performContextMenuAction(android.R.id.selectAll) }.getOrDefault(false)) {
@@ -236,8 +237,11 @@ class InputConnectionGateway(
                     .getOrDefault("")
                 if (selected.isNotEmpty()) {
                     val cleared = runCatching { ic.commitText("", 1) }.getOrDefault(false)
-                    if (!cleared) restoreSelectionAfterFailedClear(ic, originalSelection)
-                    ic.finishComposingText()
+                    if (!cleared) {
+                        restoreSelectionAfterFailedClear(ic, originalSelection)
+                    } else {
+                        ic.finishComposingText()
+                    }
                     return cleared
                 }
 
@@ -246,16 +250,16 @@ class InputConnectionGateway(
                 // Only the complete extracted state can distinguish those safely.
                 val selectedWindow = extractedWindow(ic)
                 if (selectedWindow?.isCompleteDocument == true) {
-                    if (selectedWindow.text.isEmpty()) {
-                        ic.finishComposingText()
-                        return true
-                    }
+                    if (selectedWindow.text.isEmpty()) return true
                     val fullSelection = selectedWindow.selectionStartAbsolute == 0 &&
                         selectedWindow.selectionEndAbsolute == selectedWindow.text.length
                     if (fullSelection) {
                         val cleared = runCatching { ic.commitText("", 1) }.getOrDefault(false)
-                        if (!cleared) restoreSelectionAfterFailedClear(ic, originalSelection)
-                        ic.finishComposingText()
+                        if (!cleared) {
+                            restoreSelectionAfterFailedClear(ic, originalSelection)
+                        } else {
+                            ic.finishComposingText()
+                        }
                         return cleared
                     }
                 }
@@ -265,16 +269,16 @@ class InputConnectionGateway(
 
             val window = extractedWindow(ic) ?: return false
             if (!window.isCompleteDocument) return false
-            if (window.text.isEmpty()) {
-                ic.finishComposingText()
-                return true
-            }
+            if (window.text.isEmpty()) return true
             if (!runCatching { ic.setSelection(0, window.text.length) }.getOrDefault(false)) {
                 return false
             }
             val cleared = runCatching { ic.commitText("", 1) }.getOrDefault(false)
-            if (!cleared) restoreSelectionAfterFailedClear(ic, originalSelection)
-            ic.finishComposingText()
+            if (!cleared) {
+                restoreSelectionAfterFailedClear(ic, originalSelection)
+            } else {
+                ic.finishComposingText()
+            }
             cleared
         } finally {
             ic.endBatchEdit()
