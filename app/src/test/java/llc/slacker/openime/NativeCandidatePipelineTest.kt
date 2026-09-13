@@ -48,4 +48,26 @@ class NativeCandidatePipelineTest {
         assertEquals("64'426" to "你好", NativeCandidateReference.decodeDeferred(reference.input))
         assertNull(NativeCandidateReference.decodeDeferred("64'426"))
     }
+
+    @Test
+    fun nativeNineKeyRefreshKeepsMissingImmediateChoicesLearnable() {
+        NineKeyFallbackRegistry.remember("64426", listOf("你好", "你号", "拟好"))
+
+        val merged = NativeCandidatePipeline.mergeRoundRobin(
+            listOf(
+                "64426" to listOf(
+                    RimeCandidateEntry("你好", 0),
+                    RimeCandidateEntry("泥好", 1),
+                ),
+            ),
+        )
+
+        assertEquals(listOf("你好", "泥好", "你号", "拟好"), merged.map { it.text })
+        assertEquals(0, merged[0].reference.nativeIndex)
+        assertEquals(
+            "64426" to "你号",
+            NativeCandidateReference.decodeDeferred(merged[2].reference.input),
+        )
+        assertEquals(NativeCandidateReference.DEFERRED_INDEX, merged[2].reference.nativeIndex)
+    }
 }
