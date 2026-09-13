@@ -33,6 +33,18 @@ class CompatibilityApiInstrumentedTest {
     }
 
     @Test
+    fun pPlusForwardDeleteUsesCodePointDeletionForUnicodeSafety() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val connection = RecordingInputConnection(View(context))
+        val gateway = InputConnectionGateway(context, { connection })
+
+        gateway.deleteForwards()
+
+        assertTrue("API 29+ forward delete must use code-point deletion", connection.codePointDeleteCalled)
+        assertFalse("API 29+ forward delete must not fall back to UTF-16 unit deletion", connection.utf16DeleteCalled)
+    }
+
+    @Test
     fun sensitiveClipboardIsNeverCapturedIntoPersistentHistory() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         ClipboardHistoryRepository.clearAll(context)
