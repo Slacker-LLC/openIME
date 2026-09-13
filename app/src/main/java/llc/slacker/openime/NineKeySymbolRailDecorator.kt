@@ -37,8 +37,12 @@ internal object NineKeySymbolRailDecorator {
             .toList()
             .ifEmpty { listOf("，", "。", "？", "！") }
 
-        val signature = symbols.joinToString(separator = "\u0001")
-        if (content.contentDescription?.toString() == signature && content.childCount == symbols.size) return
+        val alreadyDecorated = tagged is ScrollView &&
+            content.childCount == symbols.size &&
+            symbols.indices.all { index ->
+                (content.getChildAt(index) as? TextView)?.text?.toString() == symbols[index]
+            }
+        if (alreadyDecorated) return
 
         val inheritedTextColor = (0 until content.childCount)
             .asSequence()
@@ -47,7 +51,7 @@ internal object NineKeySymbolRailDecorator {
             ?.currentTextColor
 
         content.removeAllViews()
-        content.contentDescription = signature
+        content.contentDescription = null
         symbols.forEachIndexed { index, symbol ->
             content.addView(
                 symbolCell(content.context, symbol, inheritedTextColor, onCommit),
