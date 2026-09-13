@@ -354,23 +354,23 @@ internal class NineKeyLocalDecoder(
 
         fun digitsForPinyin(pinyin: String): String? {
             if (pinyin.isBlank()) return null
-            return buildString(pinyin.length) {
-                pinyin.lowercase().forEach { ch ->
-                    append(
-                        when (ch) {
-                            in 'a'..'c' -> '2'
-                            in 'd'..'f' -> '3'
-                            in 'g'..'i' -> '4'
-                            in 'j'..'l' -> '5'
-                            in 'm'..'o' -> '6'
-                            in 'p'..'s' -> '7'
-                            in 't'..'v', 'ü' -> '8'
-                            in 'w'..'z' -> '9'
-                            else -> return null
-                        },
-                    )
+            val digits = StringBuilder(pinyin.length)
+            pinyin.lowercase().forEach { ch ->
+                val mapped = when (ch) {
+                    in 'a'..'c' -> '2'
+                    in 'd'..'f' -> '3'
+                    in 'g'..'i' -> '4'
+                    in 'j'..'l' -> '5'
+                    in 'm'..'o' -> '6'
+                    in 'p'..'s' -> '7'
+                    in 't'..'v', 'ü' -> '8'
+                    in 'w'..'z' -> '9'
+                    ' ', '\'', '|' -> null
+                    else -> return null
                 }
+                if (mapped != null) digits.append(mapped)
             }
+            return digits.toString().ifEmpty { null }
         }
 
         /** Build the one authoritative Rime code for an explicitly segmented composition. */
