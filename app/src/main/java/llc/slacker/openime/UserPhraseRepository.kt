@@ -129,8 +129,10 @@ object UserPhraseRepository {
                 val snapshot = synchronized(lock) {
                     saveScheduled.set(false)
                     persistenceSnapshotLocked()
-                } ?: return@synchronized
-                writeSnapshot(snapshot.first, snapshot.second, durable = true)
+                }
+                if (snapshot != null) {
+                    writeSnapshot(snapshot.first, snapshot.second, durable = true)
+                }
             }
         }
     }
