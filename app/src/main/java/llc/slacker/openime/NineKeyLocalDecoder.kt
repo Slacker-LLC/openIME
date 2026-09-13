@@ -60,7 +60,7 @@ internal class NineKeyLocalDecoder(
             ?.lowercase()
             ?.takeIf { digitsForPinyin(it) == bounded }
 
-        val validPreset = ImeData.keypad9Combinations[bounded]
+        val validPreset = NineKeyPresets.combinations[bounded]
             .orEmpty()
             .filter { digitsForPinyin(it) == bounded }
 
