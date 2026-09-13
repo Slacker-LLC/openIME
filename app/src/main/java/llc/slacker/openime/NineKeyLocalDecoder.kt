@@ -37,6 +37,7 @@ internal class NineKeyLocalDecoder(
     private class TrieNode {
         val children = HashMap<Char, TrieNode>()
         val exact = ArrayList<Entry>()
+        var bestDescendant: Entry? = null
     }
 
     private val root = TrieNode()
@@ -61,7 +62,8 @@ internal class NineKeyLocalDecoder(
             return Resolution("", emptyList(), emptyList())
         }
 
-        val exactEntries = nodeFor(bounded)?.exact.orEmpty().take(MAX_PATHS)
+        val node = nodeFor(bounded)
+        val exactEntries = node?.exact.orEmpty().take(MAX_PATHS)
         val decoded = decodePaths(bounded)
         val stable = preferredSuffix
             ?.lowercase()
@@ -79,11 +81,6 @@ internal class NineKeyLocalDecoder(
             .filter { it.isNotBlank() }
             .distinct()
 
-        // Ordinary key appends historically re-picked the first ambiguous
-        // Pinyin path on every frame. Preserve the previous visible path when
-        // the new code is a strict extension and that path can still be
-        // extended to a currently valid full path. Explicit edits still win
-        // through preferredSuffix above.
         val continuous = if (
             stable == null &&
             previousDigits.isNotEmpty() &&
@@ -127,7 +124,18 @@ internal class NineKeyLocalDecoder(
             if (clean.isNotEmpty()) batches += clean
         }
 
-        val preview = paths.firstOrNull() ?: fallbackLetters(bounded)
+        // A prefix that is not yet a complete dictionary spelling must still
+        // look like the path the user is building. The trie caches the best
+        // descendant entry, so this is O(digits) and never exposes that future
+        // word as a committable candidate before all of its digits are typed.
+        val prefixPreview = node?.bestDescendant
+            ?.pinyin
+            ?.take(bounded.length)
+            ?.takeIf { digitsForPinyin(it) == bounded }
+        val preview = paths.firstOrNull()
+            ?: prefixPreview
+            ?: fallbackLetters(bounded)
+
         previousDigits = bounded
         previousPreview = preview
         return Resolution(
@@ -178,12 +186,19 @@ internal class NineKeyLocalDecoder(
         node.exact += entry
     }
 
-    private fun sortTrie(node: TrieNode) {
+    /** Sort exact entries and cache the best scoring entry reachable below each prefix. */
+    private fun sortTrie(node: TrieNode): Entry? {
         node.exact.sortWith(
             compareByDescending<Entry>(::entryScore)
                 .thenBy { it.pinyin },
         )
-        node.children.values.forEach(::sortTrie)
+        val childBest = node.children.values.mapNotNull(::sortTrie)
+        node.bestDescendant = (node.exact.asSequence() + childBest.asSequence())
+            .maxWithOrNull(
+                compareBy<Entry>(::entryScore)
+                    .thenByDescending { it.pinyin },
+            )
+        return node.bestDescendant
     }
 
     private fun nodeFor(digits: String): TrieNode? {
