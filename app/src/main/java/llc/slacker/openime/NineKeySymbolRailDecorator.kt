@@ -11,14 +11,13 @@ import android.widget.TextView
 
 /**
  * Upgrades the legacy 9-key punctuation stack into a real vertical symbol rail.
- *
- * The legacy renderer owns layout construction, so production replaces only the
- * tagged punctuation slot after each hierarchy rebuild. Keeping this outside the
- * renderer avoids coupling 9-key candidate state to a purely visual interaction.
+ * When one digit code has several valid Pinyin paths, the first cell becomes a
+ * real path filter; the remaining cells stay the normal scrollable symbols.
  */
 internal object NineKeySymbolRailDecorator {
     private const val LEGACY_TAG = "nine-punct-stack"
     private const val CONTENT_TAG = "nine-symbol-scroll-content"
+    private const val FILTER_TAG = "nine-pinyin-path-filter"
     private const val CELL_HEIGHT_DP = 48
 
     fun decorate(root: View, onCommit: (String) -> Unit) {
@@ -29,41 +28,94 @@ internal object NineKeySymbolRailDecorator {
             else -> return
         }
         val content = scroll.getChildAt(0) as? LinearLayout ?: return
-        val symbols = ImeData.symbols["常用"]
-            .orEmpty()
-            .asSequence()
-            .filter { it.isNotBlank() }
-            .distinct()
-            .toList()
-            .ifEmpty { listOf("，", "。", "？", "！") }
-
+        val symbols = commonSymbols()
+        val filter = content.findViewWithTag<TextView>(FILTER_TAG)
+        val offset = if (filter != null) 1 else 0
         val alreadyDecorated = tagged is ScrollView &&
-            content.childCount == symbols.size &&
+            content.childCount == symbols.size + offset &&
             symbols.indices.all { index ->
-                (content.getChildAt(index) as? TextView)?.text?.toString() == symbols[index]
+                (content.getChildAt(index + offset) as? TextView)?.text?.toString() == symbols[index]
             }
         if (alreadyDecorated) return
 
         val inheritedTextColor = (0 until content.childCount)
             .asSequence()
             .mapNotNull { content.getChildAt(it) as? TextView }
-            .firstOrNull()
+            .firstOrNull { it.tag != FILTER_TAG }
             ?.currentTextColor
 
         content.removeAllViews()
         content.contentDescription = null
+        if (filter != null) {
+            inheritedTextColor?.let(filter::setTextColor)
+            content.addView(filter, cellParams(content.context, withGap = true))
+        }
         symbols.forEachIndexed { index, symbol ->
             content.addView(
                 symbolCell(content.context, symbol, inheritedTextColor, onCommit),
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    dp(content.context, CELL_HEIGHT_DP),
-                ).apply {
-                    if (index < symbols.lastIndex) bottomMargin = dp(content.context, 1)
-                },
+                cellParams(content.context, withGap = index < symbols.lastIndex),
             )
         }
     }
+
+    /**
+     * Show a selectable Pinyin path only when the current T9 code is genuinely
+     * ambiguous. Selecting it is a real input constraint supplied by the caller,
+     * not a cosmetic label.
+     */
+    fun setPinyinFilters(
+        root: View,
+        filters: List<String>,
+        selected: String?,
+        onSelect: (String) -> Unit,
+    ) {
+        val scroll = root.findViewWithTag<ScrollView>(LEGACY_TAG) ?: return
+        val content = scroll.getChildAt(0) as? LinearLayout ?: return
+        val choices = filters
+            .asSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .take(8)
+            .toList()
+        val existing = content.findViewWithTag<TextView>(FILTER_TAG)
+        if (choices.size <= 1) {
+            if (existing != null) content.removeView(existing)
+            return
+        }
+
+        val active = selected?.takeIf { it in choices } ?: choices.first()
+        val view = existing ?: TextView(content.context).apply {
+            tag = FILTER_TAG
+            textSize = 12f
+            gravity = Gravity.CENTER
+            isClickable = true
+            isFocusable = true
+            minimumHeight = dp(content.context, CELL_HEIGHT_DP)
+            val inherited = (0 until content.childCount)
+                .asSequence()
+                .mapNotNull { content.getChildAt(it) as? TextView }
+                .firstOrNull { it.tag != FILTER_TAG }
+                ?.currentTextColor
+            inherited?.let(::setTextColor)
+            applySelectableBackground(this)
+            content.addView(this, 0, cellParams(content.context, withGap = true))
+        }
+        view.text = active.replace(" ", "·") + " ›"
+        view.contentDescription = "九键拼音筛选，当前${active.replace(" ", "、")}，点击切换"
+        view.setOnClickListener {
+            val current = choices.indexOf(active).coerceAtLeast(0)
+            onSelect(choices[(current + 1) % choices.size])
+        }
+    }
+
+    private fun commonSymbols(): List<String> = ImeData.symbols["常用"]
+        .orEmpty()
+        .asSequence()
+        .filter { it.isNotBlank() }
+        .distinct()
+        .toList()
+        .ifEmpty { listOf("，", "。", "？", "！") }
 
     private fun wrapLegacyStack(stack: LinearLayout): ScrollView {
         val parent = stack.parent as? ViewGroup ?: return ScrollView(stack.context)
@@ -113,18 +165,28 @@ internal object NineKeySymbolRailDecorator {
         isFocusable = true
         minimumHeight = dp(context, CELL_HEIGHT_DP)
         inheritedTextColor?.let(::setTextColor)
+        applySelectableBackground(this)
+        setOnClickListener { onCommit(symbol) }
+    }
 
+    private fun applySelectableBackground(view: TextView) {
         val selectable = TypedValue()
         if (
-            context.theme.resolveAttribute(
+            view.context.theme.resolveAttribute(
                 android.R.attr.selectableItemBackground,
                 selectable,
                 true,
             ) && selectable.resourceId != 0
         ) {
-            setBackgroundResource(selectable.resourceId)
+            view.setBackgroundResource(selectable.resourceId)
         }
-        setOnClickListener { onCommit(symbol) }
+    }
+
+    private fun cellParams(context: Context, withGap: Boolean) = LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams.MATCH_PARENT,
+        dp(context, CELL_HEIGHT_DP),
+    ).apply {
+        if (withGap) bottomMargin = dp(context, 1)
     }
 
     private fun dp(context: Context, value: Int): Int =
