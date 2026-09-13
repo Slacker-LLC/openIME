@@ -298,17 +298,28 @@ internal class NineKeyLocalDecoder(
 
     private fun roundRobin(batches: List<List<String>>, limit: Int): List<String> {
         if (batches.isEmpty() || limit <= 0) return emptyList()
-        val result = ArrayList<String>(limit)
-        val seen = HashSet<String>()
-        val max = batches.maxOfOrNull { it.size } ?: 0
-        for (rank in 0 until max) {
-            batches.forEach { batch ->
-                val value = batch.getOrNull(rank) ?: return@forEach
-                if (seen.add(value)) result += value
-                if (result.size >= limit) return result
+        // Batches are already ordered by path quality. Round-robin made the
+        // first result of a weak path outrank every second result of the best
+        // path, which produced surprising candidates for ambiguous digits.
+        // Aggregate rank evidence instead, while retaining first-seen order as
+        // a deterministic tie breaker.
+        data class Ranked(val value: String, val score: Int, val order: Int)
+        val scores = LinkedHashMap<String, Ranked>()
+        var order = 0
+        batches.forEachIndexed { batchIndex, batch ->
+            batch.forEachIndexed { rank, value ->
+                val score = (batches.size - batchIndex) * 100 - rank * 8
+                val current = scores[value]
+                if (current == null || score > current.score) {
+                    scores[value] = Ranked(value, score, current?.order ?: order)
+                }
+                order++
             }
         }
-        return result
+        return scores.values
+            .sortedWith(compareByDescending<Ranked> { it.score }.thenBy { it.order })
+            .take(limit)
+            .map { it.value }
     }
 
     private fun isDisplayCandidate(value: String): Boolean =
