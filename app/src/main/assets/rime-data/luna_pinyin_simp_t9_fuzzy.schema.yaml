@@ -1,0 +1,42 @@
+# Rime schema
+# encoding: utf-8
+
+__include: luna_pinyin_simp.schema:/
+
+schema:
+  schema_id: luna_pinyin_simp_t9_fuzzy
+  name: 朙月拼音·简化字·九键·模糊音
+  version: "0.23"
+  author:
+    - openIME
+  description: |
+    openIME 中文九键模糊音方案。先扩展模糊音/容错拼写，再映射到 2-9 数字键。
+
+speller:
+  alphabet: 987654321zyxwvutsrqponmlkjihgfedcba
+  initials: 987654321zyxwvutsrqponmlkjihgfedcba
+  delimiter: " '"
+  algebra:
+    __patch:
+      - pinyin:/zh_z_bufen
+      - pinyin:/n_l_bufen
+      - pinyin:/en_eng_bufen
+      - pinyin:/abbreviation
+      - pinyin:/spelling_correction
+      - pinyin:/key_correction
+      - derive/[abc]/2/
+      - derive/[def]/3/
+      - derive/[ghi]/4/
+      - derive/[jkl]/5/
+      - derive/[mno]/6/
+      - derive/[pqrs]/7/
+      - derive/[tuv]/8/
+      - derive/[wxyz]/9/
+
+translator:
+  prism: luna_pinyin_simp_t9_fuzzy
+  spelling_hints: 100
+  preedit_format:
+    - xform/([nl])v/$1ü/
+    - xform/([nl])ue/$1üe/
+    - xform/([jqxy])v/$1u/
