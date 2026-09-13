@@ -202,6 +202,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
 
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
+        reloadPersistedSettings()
         pendingVoiceCorrection = null
         val previousRimeInputs = activeRimeInputs
         invalidateCandidateQueries()
@@ -257,6 +258,36 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
                 generation, state.composition, state.keyboardMode, state.candidates,
             )
         }
+    }
+
+    /** Keep the live IME instance in sync with settings changed from the app page. */
+    private fun reloadPersistedSettings() {
+        state = state.copy(
+            theme = ImeSettingsRepository.loadTheme(this),
+            appearance = ImeSettingsRepository.loadAppearance(this),
+            soundEnabled = ImeSettingsRepository.loadSound(this),
+            hapticEnabled = ImeSettingsRepository.loadHaptic(this),
+            popupEnabled = ImeSettingsRepository.loadPopup(this),
+            fuzzyPinyinEnabled = ImeSettingsRepository.loadFuzzy(this),
+            skinOpacity = ImeSettingsRepository.loadSkinOpacity(this),
+            skinRadius = ImeSettingsRepository.loadSkinRadius(this),
+            skinFontSize = ImeSettingsRepository.loadSkinFont(this),
+            skinPrimaryColor = ImeSettingsRepository.loadSkinColor(this),
+        )
+        keyboardView?.setTheme(state.theme)
+        keyboardView?.setAppearance(state.appearance)
+        keyboardView?.setSettings(
+            state.soundEnabled,
+            state.hapticEnabled,
+            state.popupEnabled,
+            state.fuzzyPinyinEnabled,
+        )
+        keyboardView?.setSkin(
+            state.skinOpacity,
+            state.skinRadius,
+            state.skinFontSize,
+            state.skinPrimaryColor,
+        )
     }
 
     override fun onCurrentInputMethodSubtypeChanged(newSubtype: InputMethodSubtype) {

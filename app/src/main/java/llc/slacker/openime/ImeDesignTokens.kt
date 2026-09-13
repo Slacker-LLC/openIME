@@ -43,14 +43,18 @@ enum class ImeTheme(val key: String, val label: String) {
         val panelHeadBackground: Int,
     )
 
-    fun tokens(appearance: ImeAppearance = ImeAppearance.DARK, systemDark: Boolean = false): Tokens {
+    fun tokens(
+        appearance: ImeAppearance = ImeAppearance.DARK,
+        systemDark: Boolean = false,
+        accentOverride: Int? = null,
+    ): Tokens {
         fun c(hex: String): Int = Color.parseColor(hex)
         val useDark = when (appearance) {
             ImeAppearance.SYSTEM -> systemDark
             ImeAppearance.LIGHT -> false
             ImeAppearance.DARK -> true
         }
-        return when (this) {
+        val base = when (this) {
             // minis_ime_dual_theme_renderer.html 的 Dark Obsidian / Light Crystal
             // 调色板。390 × 296 只是设计基准，尺寸仍由原生 View 的实际窗口计算。
             IOS -> if (useDark) {
@@ -93,5 +97,7 @@ enum class ImeTheme(val key: String, val label: String) {
                 c("#ffffff"), c("#0f172a"), c("#cbd5e1"), c("#0f172a"), c("#f1f5f9"), c("#e2e8f0"),
             )
         }
+        val accent = accentOverride ?: return base
+        return base.copy(primary = accent)
     }
 }

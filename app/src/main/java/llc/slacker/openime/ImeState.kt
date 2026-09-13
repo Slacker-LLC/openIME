@@ -63,7 +63,7 @@ data class ImeState(
     val skinOpacity: Int = 95,
     val skinRadius: Int = 8,
     val skinFontSize: Int = 17,
-    val skinPrimaryColor: String = "#2563eb",
+    val skinPrimaryColor: String = AccentPalette.DEFAULT,
 ) {
     fun withMode(mode: KeyboardMode): ImeState = copy(
         previousKeyboardMode = keyboardMode,

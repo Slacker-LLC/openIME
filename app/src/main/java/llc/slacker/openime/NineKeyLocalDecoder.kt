@@ -142,10 +142,18 @@ internal class NineKeyLocalDecoder(
             ?.pinyin
             ?.take(bounded.length)
             ?.takeIf { digitsForPinyin(it) == bounded }
+        val preferredFallbackPreview = continuationBase?.let { base ->
+            val baseDigits = digitsForPinyin(base) ?: return@let null
+            if (!bounded.startsWith(baseDigits) || bounded.length <= baseDigits.length) {
+                return@let null
+            }
+            base + fallbackLetters(bounded.removePrefix(baseDigits))
+        }
         val preview = when {
             stable != null -> stable
             continuous != null -> continuous
             continuationBase != null && prefixPreview != null -> prefixPreview
+            preferredFallbackPreview != null -> preferredFallbackPreview
             paths.isNotEmpty() -> paths.first()
             prefixPreview != null -> prefixPreview
             else -> fallbackLetters(bounded)
@@ -365,10 +373,10 @@ internal class NineKeyLocalDecoder(
                     in 'p'..'s' -> '7'
                     in 't'..'v', 'ü' -> '8'
                     in 'w'..'z' -> '9'
-                    ' ', '\'', '|' -> null
+                    ' ', '\'', '|' -> return null
                     else -> return null
                 }
-                if (mapped != null) digits.append(mapped)
+                digits.append(mapped)
             }
             return digits.toString().ifEmpty { null }
         }

@@ -73,6 +73,7 @@ class ImeKeyView(
             ImageView(context).apply {
                 setImageResource(iconRes)
                 contentDescription = null
+                isDuplicateParentStateEnabled = true
             }
         } else {
             null
@@ -102,6 +103,7 @@ class ImeKeyView(
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                isDuplicateParentStateEnabled = true
             }
         } else {
             null
@@ -115,6 +117,7 @@ class ImeKeyView(
                 isAllCaps = false
                 includeFontPadding = false
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                isDuplicateParentStateEnabled = true
             }
         }
 

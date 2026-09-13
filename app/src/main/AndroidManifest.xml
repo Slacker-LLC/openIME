@@ -24,6 +24,11 @@
         </activity>
 
         <activity
+            android:name=".ImeSettingsActivity"
+            android:exported="false"
+            android:label="偏好设置" />
+
+        <activity
             android:name=".QuickPhraseEditActivity"
             android:exported="false"
             android:label="常用语" />

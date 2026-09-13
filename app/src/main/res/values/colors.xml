@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="setup_page_bg">#F4F6FA</color>
+    <color name="setup_surface">#FFFFFFFF</color>
+    <color name="setup_title">#1C1D21</color>
+    <color name="setup_body">#6B7280</color>
+    <color name="setup_primary">#3B6CFF</color>
+    <color name="setup_primary_pressed">#2F5AE6</color>
+    <color name="setup_on_primary">#FFFFFFFF</color>
+    <color name="setup_muted">#EEF1F6</color>
+    <color name="setup_muted_pressed">#E3E7EE</color>
+    <color name="setup_muted_text">#9AA3B2</color>
+    <color name="setup_ready">#1F8A4C</color>
+    <color name="setup_mark_done_bg">#E8F7EE</color>
+    <color name="setup_mark_done">#1F8A4C</color>
+    <color name="setup_mark_todo_bg">#E8EEFF</color>
+    <color name="setup_input_line">#D7DCE5</color>
+    <color name="setup_icon_ring">#E8EEFF</color>
+</resources>

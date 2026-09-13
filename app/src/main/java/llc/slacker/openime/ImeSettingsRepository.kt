@@ -70,7 +70,7 @@ object ImeSettingsRepository {
 
     fun loadPopup(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean(KEY_POPUP, true)
+            .getBoolean(KEY_POPUP, false)
 
     fun savePopup(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -100,7 +100,7 @@ object ImeSettingsRepository {
 
     fun loadSkinColor(context: Context): String =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(KEY_SKIN_COLOR, "#2563eb") ?: "#2563eb"
+            .getString(KEY_SKIN_COLOR, AccentPalette.DEFAULT) ?: AccentPalette.DEFAULT
 
     fun saveSkin(context: Context, opacity: Int, radius: Int, fontSize: Int, primaryColor: String) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -108,7 +108,31 @@ object ImeSettingsRepository {
             .putInt(KEY_SKIN_OPACITY, opacity)
             .putInt(KEY_SKIN_RADIUS, radius)
             .putInt(KEY_SKIN_FONT, fontSize)
-            .putString(KEY_SKIN_COLOR, primaryColor)
+            .putString(KEY_SKIN_COLOR, AccentPalette.normalize(primaryColor))
             .apply()
+    }
+}
+
+
+object AccentPalette {
+    const val DEFAULT = "#5B6B7A"
+    val presets = listOf(
+        "#5B6B7A" to "雾灰",
+        "#3F5D4A" to "松绿",
+        "#6A4E3A" to "暖褐",
+        "#4A5C78" to "青灰",
+        "#7A4E57" to "玫瑰灰",
+        "#3D6B7A" to "湖青",
+        "#245BC7" to "原蓝",
+    )
+
+    fun parse(value: String?): Int = runCatching {
+        android.graphics.Color.parseColor(normalize(value))
+    }.getOrDefault(android.graphics.Color.parseColor(DEFAULT))
+
+    fun normalize(value: String?): String {
+        val raw = value.orEmpty().trim()
+        val hex = if (raw.startsWith("#")) raw else "#$raw"
+        return if (hex.matches(Regex("#?[0-9a-fA-F]{6}"))) hex.uppercase() else DEFAULT
     }
 }

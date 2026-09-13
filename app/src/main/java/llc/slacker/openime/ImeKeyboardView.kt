@@ -43,6 +43,7 @@ import java.util.concurrent.Executors
 open class ImeKeyboardView(
     context: Context,
     private val listener: Listener,
+    private val standalonePanel: Boolean = false,
 ) : FrameLayout(context) {
 
     interface Listener {
@@ -104,6 +105,7 @@ open class ImeKeyboardView(
         fun onHapticChanged(enabled: Boolean)
         fun onPopupChanged(enabled: Boolean)
         fun onFuzzyChanged(enabled: Boolean)
+        fun onSkinChanged(opacity: Int, radius: Int, fontSize: Int, primaryColor: String) {}
     }
 
     /** Visual class marker for white keys (nine/digits grid). */
@@ -201,12 +203,16 @@ open class ImeKeyboardView(
     private var lastTextMode = KeyboardMode.PINYIN_26
     private var preferredChineseMode = KeyboardMode.PINYIN_26
     protected var panel = Panel.NONE
+    fun currentPanel(): Panel = panel
     private var shiftState = ShiftState.LOWERCASE
     private var soundEnabled = true
     private var hapticEnabled = true
-    private var popupEnabled = true
+    private var popupEnabled = false
     private var fuzzyEnabled = false
-    private var skinRadius = 10
+    private var skinRadius = ImeSettingsRepository.loadSkinRadius(context)
+    private var skinOpacity = ImeSettingsRepository.loadSkinOpacity(context)
+    private var skinFontSize = ImeSettingsRepository.loadSkinFont(context)
+    private var skinPrimaryColor = ImeSettingsRepository.loadSkinColor(context)
 
     protected open fun onViewHierarchyRebuilt() = Unit
 
@@ -300,16 +306,26 @@ open class ImeKeyboardView(
 
     init {
         tag = "ime_root"
+        val rootHeight = if (standalonePanel) {
+            FrameLayout.LayoutParams.MATCH_PARENT
+        } else {
+            dp(fixedImeHeightDp)
+        }
+        val dockHeight = if (standalonePanel) {
+            FrameLayout.LayoutParams.MATCH_PARENT
+        } else {
+            dp(fixedImeHeightDp)
+        }
         layoutParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
-            dp(fixedImeHeightDp),
+            rootHeight,
         )
         mainDock = LinearLayout(context).apply {
             tag = "main-dock"
             orientation = LinearLayout.VERTICAL
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
-                dp(fixedImeHeightDp),
+                dockHeight,
             )
         }
         keyboardHost = FrameLayout(context).apply {
@@ -352,14 +368,14 @@ open class ImeKeyboardView(
             mainDock,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
-                dp(fixedImeHeightDp),
+                rootHeight,
             ),
         )
         addView(
             expandedPanel,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
-                dp(fixedImeHeightDp),
+                rootHeight,
             ),
         )
         renderModeBody()
@@ -389,6 +405,10 @@ open class ImeKeyboardView(
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        if (standalonePanel) {
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+            return
+        }
         val desiredHeight = dp(fixedImeHeightDp)
         val mode = MeasureSpec.getMode(heightMeasureSpec)
         val size = MeasureSpec.getSize(heightMeasureSpec)
@@ -708,6 +728,7 @@ open class ImeKeyboardView(
 
     fun showPanel(newPanel: Panel) {
         if (newPanel == Panel.NONE || newPanel == Panel.CANDIDATE_EXPANDED) return
+        hidePopup()
         if (panel == Panel.VOICE && newPanel != Panel.VOICE) stopVoiceIfActive()
         panel = newPanel
         mainDock.visibility = View.GONE
@@ -785,7 +806,6 @@ open class ImeKeyboardView(
         }
         updateTopZone(state.composition.isNotEmpty())
         renderCandidateRow()
-        applyCandidateTheme()
     }
 
     fun setAssociationCandidates(candidates: List<String>) {
@@ -811,7 +831,7 @@ open class ImeKeyboardView(
                 ).apply { marginEnd = dp(5) },
             )
         }
-        applyCandidateTheme()
+        applyAssociationTheme()
     }
 
     fun clearAssociationCandidates() {
@@ -826,6 +846,15 @@ open class ImeKeyboardView(
 
     fun setAppearance(newAppearance: ImeAppearance) {
         appearance = newAppearance
+        applyTheme()
+    }
+
+    /** Apply persisted visual settings when another entry point changed them. */
+    fun setSkin(opacity: Int, radius: Int, fontSize: Int, primaryColor: String) {
+        skinOpacity = opacity
+        skinRadius = radius
+        skinFontSize = fontSize
+        skinPrimaryColor = AccentPalette.normalize(primaryColor)
         applyTheme()
     }
 
@@ -1015,7 +1044,7 @@ open class ImeKeyboardView(
         if (!::voiceInlineZone.isInitialized) return
         val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val tokens = theme.tokens(appearance, night)
+        val tokens = theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor))
         val backgroundColor = if (voiceInlineCancel) Color.rgb(220, 38, 38) else tokens.primary
         if (inlineVoicePaletteColor == backgroundColor) return
         inlineVoicePaletteColor = backgroundColor
@@ -1049,26 +1078,43 @@ open class ImeKeyboardView(
         val previousScrollX = if (keepScroll) scroll?.scrollX ?: 0 else 0
         renderedStripCandidates = visibleCandidates.toList()
         renderedStripComposition = preview
-        candidateRow.removeAllViews()
         if (currentCandidates.isEmpty()) {
-            candidateRow.addView(
-                TextView(context).apply {
-                    text = if (composeZone.visibility == View.VISIBLE) composition.text else ""
-                    textSize = 12f
-                    setPadding(dp(10), 0, dp(10), 0)
-                },
-                wrapParams(),
-            )
+            if (candidateRow.childCount != 1 || candidateRow.getChildAt(0) !is TextView ||
+                candidateRow.getChildAt(0).tag != "candidate-empty"
+            ) {
+                candidateRow.removeAllViews()
+                candidateRow.addView(
+                    TextView(context).apply {
+                        tag = "candidate-empty"
+                        textSize = 12f
+                        setPadding(dp(10), 0, dp(10), 0)
+                    },
+                    wrapParams(),
+                )
+            }
+            (candidateRow.getChildAt(0) as TextView).text =
+                if (composeZone.visibility == View.VISIBLE) composition.text else ""
+            if (!keepScroll) scroll?.scrollTo(0, 0)
             return
         }
+        if (candidateRow.childCount == 1 && candidateRow.getChildAt(0).tag == "candidate-empty") {
+            candidateRow.removeAllViews()
+        }
+        val extra = candidateRow.childCount - visibleCandidates.size
+        if (extra > 0) candidateRow.removeViews(visibleCandidates.size, extra)
         visibleCandidates.forEachIndexed { index, cand ->
-            candidateRow.addView(
-                candidateItemView(index, cand),
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    dp(42),
-                ).apply { marginEnd = dp(6) },
-            )
+            val existing = candidateRow.getChildAt(index) as? LinearLayout
+            if (existing == null) {
+                candidateRow.addView(
+                    candidateItemView(index, cand),
+                    LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        dp(42),
+                    ).apply { marginEnd = dp(6) },
+                )
+            } else {
+                bindCandidateItem(existing, index, cand)
+            }
         }
         if (keepScroll && previousScrollX > 0) {
             scroll?.post { scroll.scrollTo(previousScrollX.coerceAtMost(candidateRow.width), 0) }
@@ -1078,30 +1124,47 @@ open class ImeKeyboardView(
     }
 
     private fun candidateItemView(index: Int, cand: String): LinearLayout {
-        val word = TextView(context).apply {
-            text = cand
-            textSize = 14f
-            if (index == 0) typeface = android.graphics.Typeface.DEFAULT_BOLD
-            maxLines = 1
-            setPadding(dp(12), 0, dp(12), 0)
-            tag = if (index == 0) "candidate-first" else "candidate-word"
-            isClickable = false
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-        }
         return LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            tag = if (index == 0) "candidate-first-row" else null
-            contentDescription = "候选:$cand"
             minimumHeight = dp(42)
             isFocusable = true
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
-            addView(word, wrapParams())
             isClickable = true
-            setOnClickListener {
-                feedback()
-                listener.onCandidateSelected(cand)
-            }
+            addView(
+                TextView(context).apply {
+                    textSize = 14f
+                    maxLines = 1
+                    includeFontPadding = false
+                    setPadding(dp(12), 0, dp(12), 0)
+                    isClickable = false
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                },
+                wrapParams(),
+            )
+            bindCandidateItem(this, index, cand)
+        }
+    }
+
+    private fun bindCandidateItem(row: LinearLayout, index: Int, cand: String) {
+        row.tag = if (index == 0) "candidate-first-row" else "candidate-row"
+        row.contentDescription = "候选:$cand"
+        val word = row.getChildAt(0) as TextView
+        if (word.text.toString() != cand) word.text = cand
+        word.tag = if (index == 0) "candidate-first" else "candidate-word"
+        word.typeface = if (index == 0) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
+        val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        val t = theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor))
+        word.setTextColor(if (index == 0) t.keyText else t.candidateText)
+        row.background = statefulRounded(
+            if (index == 0) t.keyBackground else Color.TRANSPARENT,
+            t.keyPressedBackground,
+            dp(8),
+        )
+        row.setOnClickListener {
+            feedback()
+            listener.onCandidateSelected(cand)
         }
     }
 
@@ -1529,6 +1592,12 @@ open class ImeKeyboardView(
      * exactly once without falling back to a stream of synthetic taps.
      */
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            popupView?.let { popup ->
+                if (event.x < popup.left || event.x >= popup.right ||
+                    event.y < popup.top || event.y >= popup.bottom) hidePopup()
+            }
+        }
         val handled = super.dispatchTouchEvent(event)
         if (backspaceGestureActive) {
             when (event.actionMasked) {
@@ -1760,7 +1829,7 @@ open class ImeKeyboardView(
             tag = "panel-head"
         }
         nav.addView(
-            button("‹", 22f, true).apply {
+            button("‹", 18f, true).apply {
                 tag = "key-panel-back"
                 minimumHeight = dp(44)
                 contentDescription = "✕ 键盘"
@@ -2267,7 +2336,7 @@ open class ImeKeyboardView(
             }
         }
         controls.addView(langButton, LinearLayout.LayoutParams(0, dp(58), 1f))
-        val micButton = button("🎤", 22f, false).apply {
+        val micButton = button("🎤", 18f, false).apply {
             tag = "voice-mic"
             isEnabled = false
             contentDescription = "语音状态，仅支持长按空格启动"
@@ -2599,6 +2668,7 @@ open class ImeKeyboardView(
 
     private fun emojiCell(emoji: String): View {
         val cell = FrameLayout(context).apply {
+            tag = "emoji-cell"
             contentDescription = emoji
             isClickable = true
             isFocusable = true
@@ -2767,12 +2837,20 @@ open class ImeKeyboardView(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(44),
         ).apply { bottomMargin = dp(12) })
+        content.addView(sectionTitle("强调色"), wrapParams())
+        content.addView(
+            accentColorRow(),
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { bottomMargin = dp(12) },
+        )
         content.addView(sectionTitle("按键与输入"), wrapParams())
         content.addView(
             settingGroup(
                 settingToggleRow("按键音效", "机械轴敲击反馈"),
                 settingToggleRow("触感震动", "轻微触感反馈"),
-                settingToggleRow("按键气泡", "字母预览"),
+                settingToggleRow("按键气泡", "可选字母预览，默认仅按键变色"),
             ),
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -2915,7 +2993,7 @@ open class ImeKeyboardView(
             }, weightParams(1f))
             addView(TextView(context).apply {
                 text = "›"
-                textSize = 26f
+                textSize = 18f
                 gravity = Gravity.CENTER
                 tag = "setting-chevron"
             }, LinearLayout.LayoutParams(dp(28), dp(44)))
@@ -3023,6 +3101,89 @@ open class ImeKeyboardView(
         "按键气泡" -> { { popupEnabled = it; listener.onPopupChanged(it) } }
         else -> null
     }
+
+
+    private fun accentColorRow(): LinearLayout {
+        val current = AccentPalette.normalize(skinPrimaryColor)
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            tag = "setting-group"
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+        }
+        val swatches = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        AccentPalette.presets.forEach { (hex, label) ->
+            val selected = AccentPalette.normalize(hex) == current
+            swatches.addView(
+                View(context).apply {
+                    contentDescription = "强调色$label"
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(AccentPalette.parse(hex))
+                        if (selected) setStroke(dp(2), contrastText(AccentPalette.parse(hex)))
+                    }
+                    isClickable = true
+                    setOnClickListener { applyAccentColor(hex) }
+                },
+                LinearLayout.LayoutParams(dp(28), dp(28)).apply { marginEnd = dp(8) },
+            )
+        }
+        swatches.addView(
+            TextView(context).apply {
+                text = "自定义"
+                textSize = 12f
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                setPadding(dp(10), 0, dp(10), 0)
+                background = rounded(theme.tokens(appearance, isNight(), AccentPalette.parse(skinPrimaryColor)).panelHeadBackground, dp(14))
+                isClickable = true
+                contentDescription = "自定义强调色"
+                setOnClickListener { showCustomAccentDialog() }
+            },
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(28)),
+        )
+        row.addView(swatches, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+        ))
+        row.addView(TextView(context).apply {
+            text = AccentPalette.presets.firstOrNull { AccentPalette.normalize(it.first) == current }?.second ?: current
+            textSize = 12f
+            setPadding(0, dp(8), 0, 0)
+            tag = "panel-note"
+        }, wrapParams())
+        return row
+    }
+
+    private fun applyAccentColor(hex: String) {
+        skinPrimaryColor = AccentPalette.normalize(hex)
+        listener.onSkinChanged(skinOpacity, skinRadius, skinFontSize, skinPrimaryColor)
+        applyTheme()
+        if (panel == Panel.SETTINGS) renderSettings(reusePanel = true)
+    }
+
+    private fun showCustomAccentDialog() {
+        val field = EditText(context).apply {
+            setText(AccentPalette.normalize(skinPrimaryColor).removePrefix("#"))
+            hint = "RRGGBB"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setSingleLine(true)
+            filters = arrayOf(android.text.InputFilter.LengthFilter(6))
+        }
+        android.app.AlertDialog.Builder(context)
+            .setTitle("自定义强调色")
+            .setMessage("输入 6 位十六进制颜色，例如 5B6B7A")
+            .setView(field)
+            .setPositiveButton("应用") { _, _ -> applyAccentColor(field.text.toString()) }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun isNight(): Boolean =
+        (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
 
     private fun settingsSlider(labelText: String, min: Int, max: Int, initial: Int, onChange: (Int) -> Unit): LinearLayout {
         val row = LinearLayout(context).apply {
@@ -3333,7 +3494,6 @@ open class ImeKeyboardView(
             pinyinPaths = pinyinPaths,
             candidates = candidates,
         )
-        applyCandidateTheme()
     }
 
     /** Insert an editable syllable boundary without committing the text. */
@@ -3359,7 +3519,6 @@ open class ImeKeyboardView(
         updateTopZone(text.isNotEmpty())
         renderCandidateRow()
         listener.onCompositionChanged(text, candidates)
-        applyCandidateTheme()
     }
 
     /** Keep the editable pre-edit field in sync without re-entering its watcher. */
@@ -3403,7 +3562,6 @@ open class ImeKeyboardView(
         updateTopZone(text.isNotEmpty())
         renderCandidateRow()
         listener.onCompositionChanged(text, candidates)
-        applyCandidateTheme()
     }
 
     private fun candidatesForComposition(text: String): List<String> {
@@ -3557,7 +3715,22 @@ open class ImeKeyboardView(
                 ShiftState.CAPS_LOCK -> "大写锁定"
             }
         }
-        applyTheme()
+        applyShiftTheme(shift)
+    }
+
+    /** Restyle only the Shift key after a label/icon change. */
+    private fun applyShiftTheme(shift: ImeKeyView?) {
+        val target = shift ?: return
+        val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        applyThemeRecursive(target, theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor)))
+    }
+
+    private fun applyAssociationTheme() {
+        if (!::associationRow.isInitialized) return
+        val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        applyThemeRecursive(associationRow, theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor)))
     }
 
     private fun firstCandidateOrComposition(): String =
@@ -3663,8 +3836,11 @@ open class ImeKeyboardView(
                     when (event.actionMasked) {
                         MotionEvent.ACTION_DOWN -> {
                             feedback()
+                            isPressed = true
+                            refreshDrawableState()
+                            invalidate()
                             val activeText = (this as? ImeKeyView)?.currentMainText?.ifEmpty { text } ?: text
-                            if (popupEnabled && activeText.isNotEmpty()) showPopup(this, activeText)
+                            if (popupEnabled && !func && activeText.isNotEmpty()) showPopup(this, activeText)
                         }
                         MotionEvent.ACTION_UP,
                         MotionEvent.ACTION_CANCEL,
@@ -3772,18 +3948,18 @@ open class ImeKeyboardView(
             isPressed = false
             parent?.requestDisallowInterceptTouchEvent(false)
         }
-        backspaceClearUiAction?.invoke(false)
         backspaceGestureActive = false
+        backspaceClearUiAction?.invoke(false)
         backspaceClearArmed = false
         backspaceRepeatStarted = false
         backspaceAnchor = null
         backspaceClearUiAction = null
+        hidePopup()
         when {
             clearAll -> {
                 // One callback performs one batch clear. Never emulate this by
                 // dispatching hundreds of backspace events.
                 listener.onClearAll()
-                repeatHandler.postDelayed(popupHideRunnable, 320L)
             }
             deleteOnce -> {
                 hidePopup()
@@ -3809,12 +3985,14 @@ open class ImeKeyboardView(
             isFocusable = false
             tag = "backspace-clear-hint"
             contentDescription = null
+            visibility = View.INVISIBLE
         }
         addView(clearHint, FrameLayout.LayoutParams(dp(30), dp(14)).apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
             topMargin = dp(2)
         })
         fun setClearHintActive(active: Boolean) {
+            clearHint.visibility = if (backspaceGestureActive) View.VISIBLE else View.INVISIBLE
             if (active) {
                 clearHint.text = "清空"
                 clearHint.setTextColor(Color.WHITE)
@@ -3859,20 +4037,23 @@ open class ImeKeyboardView(
         keepPopupAfterKeyUp = false
         val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val t = theme.tokens(appearance, night)
-        val popupWidth = (anchor.width * 1.12f).toInt().coerceIn(dp(40), dp(68))
-        val popupHeight = dp(74)
+        val t = theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor))
+        val popupWidth = (anchor.width * 1.08f).toInt().coerceIn(dp(40), dp(64))
+        val popupHeight = dp(if (char == "清空") 36 else 48)
         val p = TextView(context).apply {
             text = char
-            textSize = if (char == "清空") 17f else 24f
+            textSize = if (char.length > 1) 13f else 16f
+            includeFontPadding = false
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
             gravity = Gravity.CENTER
             setPadding(dp(8), dp(6), dp(8), dp(6))
-            setTextColor(if (char == "清空") Color.WHITE else contrastText(t.primary))
+            setTextColor(if (char == "清空") Color.WHITE else t.keyText)
             background = rounded(
-                if (char == "清空") Color.rgb(211, 47, 47) else t.primary,
-                dp(12),
+                if (char == "清空") Color.rgb(185, 40, 40) else t.keyBackground,
+                dp(10),
             )
-            elevation = dp(4).toFloat()
+            elevation = dp(2).toFloat()
         }
         val anchorLocation = IntArray(2)
         val rootLocation = IntArray(2)
@@ -3899,21 +4080,23 @@ open class ImeKeyboardView(
         keepPopupAfterKeyUp = true
         val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val t = theme.tokens(appearance, night)
+        val t = theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor))
         val row = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             setPadding(dp(5), dp(5), dp(5), dp(5))
-            background = rounded(t.primary, dp(12))
-            elevation = dp(4).toFloat()
+            background = rounded(t.keyBackground, dp(10))
+            elevation = dp(2).toFloat()
             contentDescription = "长按符号选择"
         }
         choices.forEach { symbol ->
             row.addView(TextView(context).apply {
                 text = symbol
-                textSize = 22f
+                textSize = 16f
+                includeFontPadding = false
                 gravity = Gravity.CENTER
-                setTextColor(Color.WHITE)
+                setTextColor(t.keyText)
+                background = statefulRounded(Color.TRANSPARENT, t.keyPressedBackground, dp(8))
                 isClickable = true
                 isFocusable = true
                 contentDescription = "输入$symbol"
@@ -3955,7 +4138,7 @@ open class ImeKeyboardView(
     private fun applyTheme() {
         val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val t = theme.tokens(appearance, night)
+        val t = theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor))
         setBackgroundColor(t.keyboardBackground)
         mainDock.setBackgroundColor(t.expandedBackground)
         keyboardBody.setBackgroundColor(t.keyboardBackground)
@@ -3966,16 +4149,6 @@ open class ImeKeyboardView(
         composition.setTextColor(t.keySecondaryText)
         candidateExpandBtn.setTextColor(t.keySecondaryText)
         if (voiceInlineActive) applyInlineVoicePalette()
-    }
-
-    private fun applyCandidateTheme() {
-        if (!::candidateRow.isInitialized) return
-        val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-            android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val t = theme.tokens(appearance, night)
-        applyThemeRecursive(candidateRow, t)
-        composition.setTextColor(t.keySecondaryText)
-        candidateExpandBtn.setTextColor(t.keySecondaryText)
     }
 
     private fun applyThemeRecursive(view: View, t: ImeTheme.Tokens) {
@@ -4009,7 +4182,7 @@ open class ImeKeyboardView(
                     else -> t.keyPressedBackground
                 }
                 view.background = statefulRounded(color, pressedColor, dp(skinRadius))
-                view.elevation = dp(1).toFloat()
+                view.elevation = 0f
                 when {
                     primary -> view.setColors(contrastText(t.primary), t.keySecondaryText, contrastText(t.primary))
                     white -> view.setColors(t.lightKeyText, t.lightKeyText, t.lightKeyText)
@@ -4021,23 +4194,32 @@ open class ImeKeyboardView(
             is LinearLayout -> {
                 when (view.tag) {
                     "candidate-first-row" -> view.background = statefulRounded(
-                        t.primary,
-                        dim(t.primary),
+                        t.keyBackground,
+                        t.keyPressedBackground,
                         dp(8),
                     )
+                    "candidate-row" -> view.background = statefulRounded(
+                        Color.TRANSPARENT, t.keyPressedBackground, dp(8),
+                    )
+                    "setting-row" -> if (view.isClickable) {
+                        view.background = statefulRounded(Color.TRANSPARENT, t.keyPressedBackground, dp(10))
+                    }
                     "nine-punct-stack", "digits-symbol-stack" -> view.background = rounded(t.sideKeyBackground, dp(9))
                     "setting-group" -> view.background = rounded(t.toolCardBackground, dp(12))
                     "clip-card" -> view.background = rounded(t.toolCardBackground, dp(10))
                     "gaming-panel" -> view.background = rounded(t.toolCardBackground, dp(12))
                 }
                 if (view.contentDescription != null && view.isClickable && view.tag == null) {
-                    view.background = rounded(t.toolCardBackground, dp(14))
+                    view.background = statefulRounded(t.toolCardBackground, t.keyPressedBackground, dp(10))
                 }
             }
             is ImageView -> {
                 if ((view.parent is LinearLayout && (view.parent as LinearLayout).tag == "toolbar-row") ||
                     hasAncestorTag(view, "tools-panel")) {
                     view.imageTintList = ColorStateList.valueOf(t.keyText)
+                    if (view.isClickable) {
+                        view.background = statefulRounded(Color.TRANSPARENT, t.keyPressedBackground, dp(10))
+                    }
                 }
             }
             is TextView -> {
@@ -4058,7 +4240,7 @@ open class ImeKeyboardView(
                         view.setTextColor(t.keySecondaryText)
                     }
                     tag == "candidate-first" -> {
-                        view.setTextColor(contrastText(t.primary))
+                        view.setTextColor(t.keyText)
                     }
                     tag == "candidate-word" -> {
                         view.setTextColor(t.candidateText)
@@ -4118,6 +4300,7 @@ open class ImeKeyboardView(
                 }
             }
             is FrameLayout -> when (view.tag) {
+                "emoji-cell" -> view.background = statefulRounded(Color.TRANSPARENT, t.keyPressedBackground, dp(8))
                 "toggle" -> {
                     val enabled = onState(view.contentDescription?.toString().orEmpty())
                     view.background = rounded(

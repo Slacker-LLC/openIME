@@ -94,7 +94,14 @@ class CandidatePipeline(
             if (NineKeyLocalDecoder.digitsForPinyin(local.previewSuffix) == boundedDigits) {
                 add(preview)
             }
-            addAll(local.pinyinSuffixes.map { segmentPrefix + it })
+            addAll(
+                local.pinyinSuffixes
+                    // An unsegmented 9-key display path must remain a direct
+                    // filterable spelling. Explicit boundaries are rendered
+                    // only when the already-committed prefix owns them.
+                    .filter { segmentPrefix.isNotEmpty() || it.none { ch -> ch.isWhitespace() || ch == '\'' || ch == '|' } }
+                    .map { segmentPrefix + it },
+            )
         }.distinct()
 
         val candidates = if (segmentPrefix.isEmpty()) {
