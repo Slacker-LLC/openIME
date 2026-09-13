@@ -87,9 +87,15 @@ class CandidatePipeline(
             fuzzy = fuzzy,
         )
         val preview = segmentPrefix + local.previewSuffix
-        val displayPaths = local.pinyinSuffixes
-            .map { segmentPrefix + it }
-            .distinct()
+        val displayPaths = buildList {
+            // An incomplete-but-valid continuation (for example nia after
+            // selecting ni and typing one more digit) must stay visible in the
+            // side filter even before it becomes a complete dictionary syllable.
+            if (NineKeyLocalDecoder.digitsForPinyin(local.previewSuffix) == boundedDigits) {
+                add(preview)
+            }
+            addAll(local.pinyinSuffixes.map { segmentPrefix + it })
+        }.distinct()
 
         val candidates = if (segmentPrefix.isEmpty()) {
             local.candidates
