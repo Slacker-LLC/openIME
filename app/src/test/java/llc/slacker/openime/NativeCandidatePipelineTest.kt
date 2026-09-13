@@ -2,6 +2,7 @@ package llc.slacker.openime
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NativeCandidatePipelineTest {
@@ -69,5 +70,16 @@ class NativeCandidatePipelineTest {
             NativeCandidateReference.decodeDeferred(merged[2].reference.input),
         )
         assertEquals(NativeCandidateReference.DEFERRED_INDEX, merged[2].reference.nativeIndex)
+    }
+
+    @Test
+    fun emptyNativeNineKeyResultDoesNotMasqueradeAsNativeFallback() {
+        NineKeyFallbackRegistry.remember("64426", listOf("你好", "你号"))
+
+        val merged = NativeCandidatePipeline.mergeRoundRobin(
+            listOf("64426" to emptyList()),
+        )
+
+        assertTrue(merged.isEmpty())
     }
 }
