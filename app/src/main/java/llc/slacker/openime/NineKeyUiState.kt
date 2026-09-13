@@ -71,7 +71,10 @@ internal object NineKeyUiState {
             val fullPath = selectedPath ?: return@synchronized null
             if (!key.startsWith(sourceCode)) return@synchronized null
             if (!fullPath.startsWith(segmentPrefix)) return@synchronized null
-            fullPath.removePrefix(segmentPrefix).trimStart().ifBlank { null }
+
+            val selectedSuffix = fullPath.removePrefix(segmentPrefix).trimStart()
+            val extraCode = key.removePrefix(sourceCode).filter { it in '2'..'9' }
+            (selectedSuffix + continuationLetters(extraCode)).ifBlank { null }
         }
     }
 
@@ -79,6 +82,24 @@ internal object NineKeyUiState {
         synchronized(lock) {
             selectedCode = null
             selectedPath = null
+        }
+    }
+
+    private fun continuationLetters(code: String): String = buildString(code.length) {
+        code.forEach { digit ->
+            append(
+                when (digit) {
+                    '2' -> 'a'
+                    '3' -> 'd'
+                    '4' -> 'g'
+                    '5' -> 'j'
+                    '6' -> 'm'
+                    '7' -> 'p'
+                    '8' -> 't'
+                    '9' -> 'w'
+                    else -> return@forEach
+                },
+            )
         }
     }
 
