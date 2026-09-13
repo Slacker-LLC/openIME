@@ -131,10 +131,10 @@ internal class NineKeyLocalDecoder(
         }
 
         // A prefix that is not yet a complete dictionary spelling must still
-        // look like the path the user is building. For an explicit user choice,
-        // prefer a descendant that keeps that spelling prefix; otherwise use the
-        // trie node's cached best descendant. Future words are preview-only and
-        // are never exposed as committable candidates before all digits arrive.
+        // look like the path the user is building. For an explicit/continuous
+        // path choice, keep that descendant ahead of an automatically decoded
+        // segmented path. Future words remain preview-only until their full
+        // digit spelling has actually been typed.
         val preferredDescendant = continuationBase?.let { base ->
             bestDescendantStartingWith(node, base)
         }
@@ -142,9 +142,14 @@ internal class NineKeyLocalDecoder(
             ?.pinyin
             ?.take(bounded.length)
             ?.takeIf { digitsForPinyin(it) == bounded }
-        val preview = paths.firstOrNull()
-            ?: prefixPreview
-            ?: fallbackLetters(bounded)
+        val preview = when {
+            stable != null -> stable
+            continuous != null -> continuous
+            continuationBase != null && prefixPreview != null -> prefixPreview
+            paths.isNotEmpty() -> paths.first()
+            prefixPreview != null -> prefixPreview
+            else -> fallbackLetters(bounded)
+        }
 
         previousDigits = bounded
         previousPreview = preview
