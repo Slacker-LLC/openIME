@@ -741,7 +741,12 @@ open class ImeKeyboardView(
         if (panel == Panel.NONE) return false
         stopVoiceIfActive()
         panel = Panel.NONE
-        renderModeBody()
+        expandedPanel.animate().cancel()
+        expandedPanel.visibility = View.GONE
+        mainDock.animate().cancel()
+        mainDock.visibility = View.VISIBLE
+        keyboardBody.visibility = View.VISIBLE
+        candidateOverlay.visibility = View.GONE
         mainDock.alpha = 0.96f
         mainDock.animate().alpha(1f).setDuration(100L).start()
         listener.onPanelChanged(Panel.NONE)
@@ -1755,11 +1760,11 @@ open class ImeKeyboardView(
         nav.addView(
             button("‹", 22f, true).apply {
                 tag = "key-panel-back"
-                minimumHeight = dp(40)
+                minimumHeight = dp(44)
                 contentDescription = "✕ 键盘"
                 setOnClickListener { closePanelToKeyboard() }
             },
-            LinearLayout.LayoutParams(dp(40), dp(40)),
+            LinearLayout.LayoutParams(dp(44), dp(44)),
         )
         nav.addView(TextView(context).apply {
             text = name
@@ -2026,138 +2031,154 @@ open class ImeKeyboardView(
             setPadding(dp(12), dp(12), dp(12), dp(12))
             tag = "symbols-panel"
         }
-        val cats = listOf("常用", "中文", "英文", "数学", "序号", "单位", "特殊", "编程", "自定义")
-        val tabs = panelChipScroll(cats, symbolCategory) { cat ->
-            if (cat != symbolCategory) {
-                symbolCategory = cat
-                renderPanel(Panel.SYMBOLS)
-            }
-        }
-        body.addView(tabs, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(32),
-        ).apply { bottomMargin = dp(10) })
-        val railItems = symbolItems(symbolCategory).distinct().take(10)
-        val rail = SymbolRailView(context).apply {
-            setSymbols(railItems)
-            onSymbolCommit = { symbol ->
-                feedback()
-                listener.onSymbolSelected(symbol)
-            }
-            onGroupSwipe = { direction ->
-                val current = cats.indexOf(symbolCategory).coerceAtLeast(0)
-                symbolCategory = cats[(current + direction).mod(cats.size)]
-                renderPanel(Panel.SYMBOLS)
-            }
-        }
-        body.addView(rail, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(48),
-        ).apply { bottomMargin = dp(8) })
-        body.addView(LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            addView(button("管理自定义", 12f, true).apply {
-                contentDescription = "管理自定义符号"
-                setOnClickListener {
-                    context.startActivity(Intent(context, SymbolManagerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                }
-            }, LinearLayout.LayoutParams(0, dp(38), 1f).apply { marginEnd = dp(6) })
-            addView(TextView(context).apply {
-                text = "按住滑动 · 松手输入 · 滑出取消"
-                textSize = 11f
-                gravity = Gravity.CENTER_VERTICAL
-            }, LinearLayout.LayoutParams(0, dp(38), 1f))
-        }, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(38),
-        ).apply { bottomMargin = dp(8) })
-        val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        symbolItems(symbolCategory).chunked(6).forEach { chunk ->
-            val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            chunk.forEach { s ->
-                row.addView(
-                    key(s, false, null, 1f, if (s.length > 2) 12f else 17f) {
-                        listener.onSymbolSelected(s)
-                    },
-                    gridCellParams(38, 6, 6),
-                )
-            }
-            grid.addView(row, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(38),
-            ).apply { bottomMargin = dp(6) })
-        }
-        body.addView(
-            panelVerticalScroll(grid, "symbols-scroll"),
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1f,
-            ),
-        )
         expandedPanel.addView(body, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(252),
         ))
+
+        fun renderContent(notifyRebuilt: Boolean) {
+            body.removeAllViews()
+            val cats = listOf("常用", "中文", "英文", "数学", "序号", "单位", "特殊", "编程", "自定义")
+            val tabs = panelChipScroll(cats, symbolCategory) { cat ->
+                if (cat != symbolCategory) {
+                    symbolCategory = cat
+                    renderContent(true)
+                }
+            }
+            body.addView(tabs, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(44),
+            ).apply { bottomMargin = dp(10) })
+            val railItems = symbolItems(symbolCategory).distinct().take(10)
+            val rail = SymbolRailView(context).apply {
+                setSymbols(railItems)
+                onSymbolCommit = { symbol ->
+                    feedback()
+                    listener.onSymbolSelected(symbol)
+                }
+                onGroupSwipe = { direction ->
+                    val current = cats.indexOf(symbolCategory).coerceAtLeast(0)
+                    symbolCategory = cats[(current + direction).mod(cats.size)]
+                    renderContent(true)
+                }
+            }
+            body.addView(rail, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(48),
+            ).apply { bottomMargin = dp(8) })
+            body.addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(button("管理自定义", 12f, true).apply {
+                    contentDescription = "管理自定义符号"
+                    setOnClickListener {
+                        context.startActivity(Intent(context, SymbolManagerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    }
+                }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(6) })
+                addView(TextView(context).apply {
+                    text = "按住滑动 · 松手输入 · 滑出取消"
+                    textSize = 11f
+                    gravity = Gravity.CENTER_VERTICAL
+                }, LinearLayout.LayoutParams(0, dp(44), 1f))
+            }, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(44),
+            ).apply { bottomMargin = dp(8) })
+            val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+            symbolItems(symbolCategory).chunked(6).forEach { chunk ->
+                val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+                chunk.forEach { s ->
+                    row.addView(
+                        key(s, false, null, 1f, if (s.length > 2) 12f else 17f) {
+                            listener.onSymbolSelected(s)
+                        },
+                        gridCellParams(44, 6, 6),
+                    )
+                }
+                grid.addView(row, LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    dp(44),
+                ).apply { bottomMargin = dp(6) })
+            }
+            body.addView(
+                panelVerticalScroll(grid, "symbols-scroll"),
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    0,
+                    1f,
+                ),
+            )
+            applyTheme()
+            if (notifyRebuilt) onViewHierarchyRebuilt()
+        }
+
+        renderContent(false)
     }
 
     private fun renderEmoji() {
-        expandedPanel.removeAllViews()
-        addPanelHead("黄豆脸")
+        addPanelHead("表情")
         val body = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), dp(12), dp(12), dp(12))
             tag = "emoji-panel"
         }
-        val cats = listOf("最近") + ImeData.fluentSmileysByCategory.keys.toList()
-        val tabs = panelChipScroll(cats, emojiCategory) { cat ->
-            emojiCategory = cat
-            renderEmoji()
-        }
-        body.addView(tabs, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(32),
-        ).apply { bottomMargin = dp(10) })
-        val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        val emojiItems = if (emojiCategory == "最近") {
-            EmojiRecentRepository.load(context)
-        } else {
-            ImeData.fluentSmileysByCategory[emojiCategory].orEmpty()
-        }
-        if (emojiItems.isEmpty() && emojiCategory == "最近") {
-            grid.addView(TextView(context).apply {
-                text = "最近使用的表情会显示在这里"
-                textSize = 12f
-                gravity = Gravity.CENTER
-                tag = "panel-note"
-            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)))
-        }
-        emojiItems.chunked(8).forEach { chunk ->
-            val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            chunk.forEach { e ->
-                row.addView(
-                    emojiCell(e),
-                    gridCellParams(34, 8, 4),
-                )
-            }
-            grid.addView(row, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(34),
-            ).apply { bottomMargin = dp(4) })
-        }
-        body.addView(
-            panelVerticalScroll(grid, "emoji-scroll"),
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1f,
-            ),
-        )
         expandedPanel.addView(body, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(252),
         ))
-        applyTheme()
+
+        fun renderContent(notifyRebuilt: Boolean) {
+            body.removeAllViews()
+            val cats = listOf("最近") + ImeData.fluentSmileysByCategory.keys.toList()
+            val tabs = panelChipScroll(cats, emojiCategory) { cat ->
+                if (cat != emojiCategory) {
+                    emojiCategory = cat
+                    renderContent(true)
+                }
+            }
+            body.addView(tabs, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(44),
+            ).apply { bottomMargin = dp(10) })
+            val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+            val emojiItems = if (emojiCategory == "最近") {
+                EmojiRecentRepository.load(context)
+            } else {
+                ImeData.fluentSmileysByCategory[emojiCategory].orEmpty()
+            }
+            if (emojiItems.isEmpty() && emojiCategory == "最近") {
+                grid.addView(TextView(context).apply {
+                    text = "最近使用的表情会显示在这里"
+                    textSize = 12f
+                    gravity = Gravity.CENTER
+                    tag = "panel-note"
+                }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)))
+            }
+            emojiItems.chunked(8).forEach { chunk ->
+                val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+                chunk.forEach { e ->
+                    row.addView(
+                        emojiCell(e),
+                        gridCellParams(44, 8, 4),
+                    )
+                }
+                grid.addView(row, LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    dp(44),
+                ).apply { bottomMargin = dp(4) })
+            }
+            body.addView(
+                panelVerticalScroll(grid, "emoji-scroll"),
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    0,
+                    1f,
+                ),
+            )
+            applyTheme()
+            if (notifyRebuilt) onViewHierarchyRebuilt()
+        }
+
+        renderContent(false)
     }
 
     private fun renderHandwriting() {
@@ -2186,15 +2207,15 @@ open class ImeKeyboardView(
         pad.tag = "handwriting-canvas"
         body.addView(pad, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(145),
+            dp(140),
         ).apply { bottomMargin = dp(7) })
         val actions = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        actions.addView(key("撤销", true, null, 1f, 13f) { pad.undo() }, LinearLayout.LayoutParams(0, dp(38), 1f).apply { marginEnd = dp(6) })
-        actions.addView(key("清空", true, null, 1f, 13f) { pad.clear() }, LinearLayout.LayoutParams(0, dp(38), 1f).apply { marginEnd = dp(6) })
-        actions.addView(key("空格", true, null, 1f, 13f) { listener.onSpace() }, LinearLayout.LayoutParams(0, dp(38), 1f))
+        actions.addView(key("撤销", true, null, 1f, 13f) { pad.undo() }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(6) })
+        actions.addView(key("清空", true, null, 1f, 13f) { pad.clear() }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(6) })
+        actions.addView(key("空格", true, null, 1f, 13f) { listener.onSpace() }, LinearLayout.LayoutParams(0, dp(44), 1f))
         body.addView(actions, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(38),
+            dp(44),
         ))
         expandedPanel.addView(body, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -2471,10 +2492,16 @@ open class ImeKeyboardView(
         voiceCancelPreviewAction = null
     }
 
-    private fun renderClipboard() {
-        expandedPanel.removeAllViews()
+    private fun renderClipboard(reusePanel: Boolean = false) {
         inlineEditTarget = null
-        addPanelHead("剪贴板")
+        if (!reusePanel || expandedPanel.childCount == 0) {
+            expandedPanel.removeAllViews()
+            addPanelHead("剪贴板")
+        } else {
+            while (expandedPanel.childCount > 1) {
+                expandedPanel.removeViewAt(expandedPanel.childCount - 1)
+            }
+        }
         val body = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(10), dp(10), dp(10), dp(10))
@@ -2482,11 +2509,11 @@ open class ImeKeyboardView(
         }
         val tabs = panelChipScroll(listOf("剪贴板", "常用语"), if (clipboardTab == 0) "剪贴板" else "常用语") { label ->
             clipboardTab = if (label == "剪贴板") 0 else 1
-            renderClipboard()
+            renderClipboard(reusePanel = true)
         }
         body.addView(tabs, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(32),
+            dp(44),
         ).apply { bottomMargin = dp(8) })
         val col = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         if (clipboardTab == 0) {
@@ -2525,7 +2552,7 @@ open class ImeKeyboardView(
                     meta.addView(button(if (entry.pinned) "取消置顶" else "置顶", 10f, true).apply {
                         setOnClickListener {
                             ClipboardHistoryRepository.togglePin(context, entry.text)
-                            renderClipboard()
+                            renderClipboard(reusePanel = true)
                         }
                     }, wrapParams())
                     meta.addView(button("使用", 10f, true).apply {
@@ -2573,7 +2600,7 @@ open class ImeKeyboardView(
                             tag = "phrase-delete:${phrase.id}"
                             setOnClickListener {
                                 QuickPhraseRepository.remove(context, phrase.id)
-                                renderClipboard()
+                                renderClipboard(reusePanel = true)
                             }
                         }, LinearLayout.LayoutParams(dp(48), dp(48)))
                         col.addView(row, LinearLayout.LayoutParams(
@@ -2698,12 +2725,12 @@ open class ImeKeyboardView(
             .forEach { (label, action) ->
                 quick.addView(
                     key(label, true, null, 1f, 10f) { listener.onTextEdit(action) },
-                    LinearLayout.LayoutParams(0, dp(32), 1f).apply { marginEnd = dp(5) },
+                    LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(5) },
                 )
             }
         body.addView(quick, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(32),
+            dp(44),
         ).apply { bottomMargin = dp(10) })
         val cross = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -2735,8 +2762,14 @@ open class ImeKeyboardView(
         ))
     }
 
-    private fun renderSettings() {
-        addPanelHead("偏好设置")
+    private fun renderSettings(reusePanel: Boolean = false) {
+        if (!reusePanel || expandedPanel.childCount == 0) {
+            addPanelHead("偏好设置")
+        } else {
+            while (expandedPanel.childCount > 1) {
+                expandedPanel.removeViewAt(expandedPanel.childCount - 1)
+            }
+        }
         val scroll = ScrollView(context).apply {
             isFillViewport = true
             isVerticalScrollBarEnabled = false
@@ -2752,10 +2785,10 @@ open class ImeKeyboardView(
             appearance = ImeAppearance.entries.first { it.label == label }
             setAppearance(appearance)
             listener.onAppearanceChanged(appearance)
-            renderPanel(Panel.SETTINGS)
+            renderSettings(reusePanel = true)
         }, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(32),
+            dp(44),
         ).apply { bottomMargin = dp(12) })
         content.addView(sectionTitle("按键与输入"), wrapParams())
         content.addView(
@@ -2797,6 +2830,10 @@ open class ImeKeyboardView(
             0,
             1f,
         ))
+        if (reusePanel) {
+            applyTheme()
+            onViewHierarchyRebuilt()
+        }
     }
 
     private fun sectionTitle(textValue: String): TextView = TextView(context).apply {
@@ -3672,8 +3709,8 @@ open class ImeKeyboardView(
         tag = "panel-button"
         gravity = Gravity.CENTER
         includeFontPadding = false
-        minHeight = dp(28)
-        minimumHeight = dp(28)
+        minHeight = dp(44)
+        minimumHeight = dp(44)
     }
 
     private fun performBackspaceOnce() {
