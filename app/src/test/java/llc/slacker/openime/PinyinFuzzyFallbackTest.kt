@@ -34,4 +34,11 @@ class PinyinFuzzyFallbackTest {
             variants.contains("shenhuo"),
         )
     }
+
+    @Test
+    fun fuzzyVariantExpansionStaysBounded() {
+        val variants = pinyinFuzzyVariants("zhengzhenglinlin")
+
+        assertTrue("fuzzy expansion must remain bounded on the IME path", variants.size <= 16)
+    }
 }
