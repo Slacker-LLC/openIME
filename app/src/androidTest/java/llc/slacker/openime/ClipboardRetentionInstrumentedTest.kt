@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.os.PersistableBundle
+import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.BaseInputConnection
@@ -11,9 +12,11 @@ import android.widget.TextView
 import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import java.util.concurrent.atomic.AtomicBoolean
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -26,6 +29,7 @@ class ClipboardRetentionInstrumentedTest {
 
     @Test
     fun sensitiveSystemClipIsNeverCapturedIntoHistory() {
+        awaitWindowFocus()
         rule.scenario.onActivity { activity ->
             ClipboardHistoryRepository.clearAll(activity)
             val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -87,6 +91,17 @@ class ClipboardRetentionInstrumentedTest {
             clearAll!!.performClick()
             assertEquals(emptyList<ClipboardEntry>(), ClipboardHistoryRepository.load(activity))
         }
+    }
+
+    private fun awaitWindowFocus(timeoutMs: Long = 5_000L) {
+        val deadline = SystemClock.uptimeMillis() + timeoutMs
+        val focused = AtomicBoolean(false)
+        while (SystemClock.uptimeMillis() < deadline) {
+            rule.scenario.onActivity { activity -> focused.set(activity.hasWindowFocus()) }
+            if (focused.get()) return
+            SystemClock.sleep(25L)
+        }
+        assertTrue("DebugKeyboardActivity never gained window focus", focused.get())
     }
 
     private fun findTextView(root: View, label: String): TextView? {
