@@ -69,6 +69,7 @@ class CandidatePipeline(
             .filter { it in '2'..'9' }
             .take(NineKeyLocalDecoder.MAX_DIGITS)
         if (boundedDigits.isEmpty()) {
+            NineKeyUiState.clear()
             return NineKeyResolution(
                 preview = segmentPrefix,
                 pinyinPaths = emptyList(),
@@ -77,9 +78,12 @@ class CandidatePipeline(
             )
         }
 
+        val nativeInput = NineKeyLocalDecoder.nativeCode(segmentPrefix, boundedDigits)
+        val effectivePreferred = preferredSuffix
+            ?: NineKeyUiState.preferredSuffixFor(nativeInput, segmentPrefix)
         val local = nineKeyDecoder.resolve(
             digits = boundedDigits,
-            preferredSuffix = preferredSuffix,
+            preferredSuffix = effectivePreferred,
             fuzzy = fuzzy,
         )
         val preview = segmentPrefix + local.previewSuffix
@@ -106,7 +110,7 @@ class CandidatePipeline(
             .distinct()
             .take(MAX_CANDIDATES)
 
-        val nativeInput = NineKeyLocalDecoder.nativeCode(segmentPrefix, boundedDigits)
+        NineKeyUiState.remember(nativeInput, displayPaths, segmentPrefix)
         NineKeyFallbackRegistry.remember(nativeInput, candidates)
         return NineKeyResolution(
             preview = preview,
