@@ -97,8 +97,16 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
         val text: String,
     )
 
-    private val segmentationTokens: List<SegmentationToken> by lazy {
-        buildList {
+    /**
+     * Continuous-Pinyin segmentation is needed from the second typed letter.
+     * Build and share the index during engine construction so the first real
+     * composition never pays a lazy dictionary walk on the IME input thread.
+     */
+    private val segmentationTokensByFirst: Map<Char, List<SegmentationToken>> =
+        segmentationIndexFor(externalPinyin) { buildSegmentationIndex() }
+
+    private fun buildSegmentationIndex(): Map<Char, List<SegmentationToken>> =
+        buildList<SegmentationToken> {
             ImeData.phraseDict.forEach { (pinyin, candidates) ->
                 candidates.firstOrNull()?.let { candidate ->
                     add(SegmentationToken(pinyin, candidate, phrase = true))
@@ -111,14 +119,12 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
                     }
                 }
             }
-        }.sortedWith(
-            compareByDescending<SegmentationToken> { it.pinyin.length }
-                .thenByDescending { it.phrase },
-        )
-    }
-    private val segmentationTokensByFirst: Map<Char, List<SegmentationToken>> by lazy {
-        segmentationTokens.groupBy { it.pinyin.first() }
-    }
+        }
+            .sortedWith(
+                compareByDescending<SegmentationToken> { it.pinyin.length }
+                    .thenByDescending { it.phrase },
+            )
+            .groupBy { it.pinyin.first() }
 
     /**
      * A compact Chinese 9-key Pinyin index. It must never enumerate every
@@ -497,6 +503,21 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
         const val MAX_NINE_KEY_DIGITS = 64
         private const val MAX_NINE_MATCHES = 12
         private const val MAX_LOCAL_RESOLVE_LENGTH = 32
+
+        private var segmentationSource: Map<String, List<String>>? = null
+        private var segmentationIndex: Map<Char, List<SegmentationToken>> = emptyMap()
+
+        @Synchronized
+        private fun segmentationIndexFor(
+            sourceMap: Map<String, List<String>>,
+            builder: () -> Map<Char, List<SegmentationToken>>,
+        ): Map<Char, List<SegmentationToken>> {
+            if (segmentationSource === sourceMap) return segmentationIndex
+            val built = builder()
+            segmentationSource = sourceMap
+            segmentationIndex = built
+            return built
+        }
     }
 }
 
