@@ -65,9 +65,12 @@ internal class NineKeyLocalDecoder(
         val node = nodeFor(bounded)
         val exactEntries = node?.exact.orEmpty().take(MAX_PATHS)
         val decoded = decodePaths(bounded)
-        val stable = preferredSuffix
+        val preferred = preferredSuffix
             ?.lowercase()
-            ?.takeIf { digitsForPinyin(it) == bounded }
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+        val preferredDigits = preferred?.let(::digitsForPinyin)
+        val stable = preferred?.takeIf { preferredDigits == bounded }
 
         val validPreset = NineKeyPresets.combinations[bounded]
             .orEmpty()
@@ -81,18 +84,21 @@ internal class NineKeyLocalDecoder(
             .filter { it.isNotBlank() }
             .distinct()
 
-        val continuous = if (
-            stable == null &&
+        val continuationBase = when {
+            preferred != null &&
+                preferredDigits != null &&
+                bounded.length > preferredDigits.length &&
+                bounded.startsWith(preferredDigits) -> preferred
             previousDigits.isNotEmpty() &&
-            bounded.length > previousDigits.length &&
-            bounded.startsWith(previousDigits) &&
-            previousPreview.isNotEmpty()
-        ) {
+                bounded.length > previousDigits.length &&
+                bounded.startsWith(previousDigits) &&
+                previousPreview.isNotEmpty() -> previousPreview
+            else -> null
+        }
+        val continuous = continuationBase?.let { base ->
             rankedPool.firstOrNull { candidate ->
-                candidate.startsWith(previousPreview) && digitsForPinyin(candidate) == bounded
+                candidate.startsWith(base) && digitsForPinyin(candidate) == bounded
             }
-        } else {
-            null
         }
 
         val paths = buildList {
