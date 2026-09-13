@@ -11,8 +11,10 @@ import org.junit.runner.RunWith
 class RimeNineKeyInstrumentedTest {
 
     @Test
-    fun nativeRimeDecodesNineKeyDigitsAndSegmentBoundary() {
+    fun nativeRimeDecodesNineKeyDigitsInNormalAndFuzzySchemas() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val originalFuzzy = ImeSettingsRepository.loadFuzzy(context)
+        ImeSettingsRepository.saveFuzzy(context, false)
         val rime = RimeEngine(context)
         try {
             rime.start()
@@ -27,7 +29,17 @@ class RimeNineKeyInstrumentedTest {
 
             val segmented = rime.candidates("64'426")
             assertTrue("64'426 should resolve 你好, got ${segmented.take(12)}", "你好" in segmented)
+
+            ImeSettingsRepository.saveFuzzy(context, true)
+            rime.invalidateSettingsCache()
+            val fuzzy = rime.candidates("64426")
+            assertTrue(
+                "fuzzy schema must keep native T9 decoding for 64426, got ${fuzzy.take(12)}",
+                "你好" in fuzzy,
+            )
         } finally {
+            ImeSettingsRepository.saveFuzzy(context, originalFuzzy)
+            rime.invalidateSettingsCache()
             rime.shutdown()
         }
     }
