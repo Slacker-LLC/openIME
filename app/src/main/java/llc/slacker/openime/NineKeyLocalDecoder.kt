@@ -131,10 +131,14 @@ internal class NineKeyLocalDecoder(
         }
 
         // A prefix that is not yet a complete dictionary spelling must still
-        // look like the path the user is building. The trie caches the best
-        // descendant entry, so this is O(digits) and never exposes that future
-        // word as a committable candidate before all of its digits are typed.
-        val prefixPreview = node?.bestDescendant
+        // look like the path the user is building. For an explicit user choice,
+        // prefer a descendant that keeps that spelling prefix; otherwise use the
+        // trie node's cached best descendant. Future words are preview-only and
+        // are never exposed as committable candidates before all digits arrive.
+        val preferredDescendant = continuationBase?.let { base ->
+            bestDescendantStartingWith(node, base)
+        }
+        val prefixPreview = (preferredDescendant ?: node?.bestDescendant)
             ?.pinyin
             ?.take(bounded.length)
             ?.takeIf { digitsForPinyin(it) == bounded }
@@ -205,6 +209,24 @@ internal class NineKeyLocalDecoder(
                     .thenByDescending { it.pinyin },
             )
         return node.bestDescendant
+    }
+
+    private fun bestDescendantStartingWith(node: TrieNode?, pinyinPrefix: String): Entry? {
+        if (node == null) return null
+        var best = node.exact
+            .asSequence()
+            .filter { it.pinyin.startsWith(pinyinPrefix) }
+            .maxWithOrNull(compareBy<Entry>(::entryScore).thenByDescending { it.pinyin })
+        node.children.values.forEach { child ->
+            val candidate = bestDescendantStartingWith(child, pinyinPrefix) ?: return@forEach
+            val current = best
+            if (current == null || entryScore(candidate) > entryScore(current) ||
+                (entryScore(candidate) == entryScore(current) && candidate.pinyin < current.pinyin)
+            ) {
+                best = candidate
+            }
+        }
+        return best
     }
 
     private fun nodeFor(digits: String): TrieNode? {
