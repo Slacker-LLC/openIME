@@ -102,15 +102,16 @@ class CandidatePipeline(
                 MAX_CANDIDATES,
             )
         }
+            .filter(::isChineseDisplayCandidate)
+            .distinct()
+            .take(MAX_CANDIDATES)
 
         val nativeInput = NineKeyLocalDecoder.nativeCode(segmentPrefix, boundedDigits)
+        NineKeyFallbackRegistry.remember(nativeInput, candidates)
         return NineKeyResolution(
             preview = preview,
             pinyinPaths = listOfNotNull(nativeInput),
-            candidates = candidates
-                .filter(::isChineseDisplayCandidate)
-                .distinct()
-                .take(MAX_CANDIDATES),
+            candidates = candidates,
             displayPinyinPaths = displayPaths,
         )
     }
