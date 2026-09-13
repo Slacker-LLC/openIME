@@ -1,9 +1,8 @@
 package llc.slacker.openime
 
-import android.content.Context
 import android.os.SystemClock
-import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -13,7 +12,7 @@ class RimeNineKeyInstrumentedTest {
 
     @Test
     fun nativeRimeDecodesNineKeyDigitsAndSegmentBoundary() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
         val rime = RimeEngine(context)
         try {
             rime.start()
