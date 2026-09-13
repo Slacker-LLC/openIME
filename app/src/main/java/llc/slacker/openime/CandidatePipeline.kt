@@ -28,13 +28,15 @@ class CandidatePipeline(
 ) : CandidateResolver {
     /**
      * [pinyinPaths] keeps its historical name for Listener compatibility. For
-     * PINYIN_9 it now contains exactly one native Rime T9 code (digits plus
-     * apostrophe boundaries), not a list of guessed full-Pinyin paths.
+     * PINYIN_9 it contains exactly one native Rime T9 code (digits plus
+     * apostrophe boundaries). [displayPinyinPaths] contains the human-readable
+     * ambiguity choices used only by the side filter UI.
      */
     data class NineKeyResolution(
         val preview: String,
         val pinyinPaths: List<String>,
         val candidates: List<String>,
+        val displayPinyinPaths: List<String> = emptyList(),
     )
 
     private val nineKeyDecoder = NineKeyLocalDecoder(engine)
@@ -71,6 +73,7 @@ class CandidatePipeline(
                 preview = segmentPrefix,
                 pinyinPaths = emptyList(),
                 candidates = emptyList(),
+                displayPinyinPaths = emptyList(),
             )
         }
 
@@ -108,6 +111,7 @@ class CandidatePipeline(
                 .filter(::isChineseDisplayCandidate)
                 .distinct()
                 .take(MAX_CANDIDATES),
+            displayPinyinPaths = displayPaths,
         )
     }
 
