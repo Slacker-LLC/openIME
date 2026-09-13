@@ -1,6 +1,7 @@
 package llc.slacker.openime
 
 import android.content.Context
+import android.inputmethodservice.InputMethodService
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.TypedValue
@@ -16,6 +17,9 @@ import android.widget.TextView
  * Upgrades the legacy 9-key punctuation stack into a real vertical symbol rail.
  * When one digit code has several valid Pinyin paths, the first cell becomes a
  * real path filter; the remaining cells stay the normal scrollable symbols.
+ *
+ * The same production hierarchy hook also applies editor-specific numeric
+ * decoration, notably the dedicated phone-keypad literals.
  */
 internal object NineKeySymbolRailDecorator {
     private const val LEGACY_TAG = "nine-punct-stack"
@@ -25,6 +29,8 @@ internal object NineKeySymbolRailDecorator {
     private const val WATCHER_TAG = 0x1F000081
 
     fun decorate(root: View, onCommit: (String) -> Unit) {
+        decoratePhoneKeypad(root, onCommit)
+
         val tagged = root.findViewWithTag<View>(LEGACY_TAG) ?: return
         val scroll = when (tagged) {
             is ScrollView -> tagged
@@ -64,6 +70,35 @@ internal object NineKeySymbolRailDecorator {
 
         installFilterWatcher(root)
         refreshPinyinFilters(root)
+    }
+
+    /**
+     * TYPE_CLASS_PHONE needs literal 0-9, *, # and +, not the finance rail,
+     * space/voice key, decimal point and @ key inherited from DIGITS. Reuse the
+     * stable numeric renderer but replace those three bottom/side actions and
+     * remove the finance column. The 0-9 grid, backspace and Enter stay intact.
+     */
+    private fun decoratePhoneKeypad(root: View, onCommit: (String) -> Unit) {
+        val service = root.context as? InputMethodService ?: return
+        val kind = EditorInfoAdapter.kind(service.currentInputEditorInfo)
+        if (kind != EditorInfoAdapter.EditorKind.PHONE) return
+        if (root.findViewWithTag<View>("digits-layout") == null) return
+
+        (root.findViewWithTag<View>("digits-symbol-stack")?.parent as? View)?.visibility = View.GONE
+
+        PhoneKeypadPolicy.literalByTag.forEach { (tag, literal) ->
+            val key = root.findViewWithTag<ImeKeyView>(tag) ?: return@forEach
+            key.setMainText(literal)
+            key.contentDescription = literal
+            key.isLongClickable = false
+            key.setOnLongClickListener(null)
+            if (tag == "key-space") {
+                // Remove the inherited 150 ms voice gesture from a phone-only key.
+                key.setIcon(0)
+                key.setOnTouchListener(null)
+            }
+            key.setOnClickListener { onCommit(literal) }
+        }
     }
 
     /**
