@@ -99,6 +99,7 @@ class ImeKeyboardViewV2 private constructor(
                 Panel.CLIPBOARD -> decorateClipboardRetentionControls()
                 else -> Unit
             }
+            NineKeySymbolRailDecorator.decorate(this) { symbol -> adapter.onCharacter(symbol) }
             syncProductionKeyPresentation()
         }
     }
