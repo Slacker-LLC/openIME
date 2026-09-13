@@ -23,9 +23,9 @@ internal data class CandidateSnapshot(
         get() = entries.map { it.text }
 
     /**
-     * Space/enter commit the rendered first candidate. When there is no
-     * candidate chip, the visible pre-edit string itself remains the commit
-     * target, matching the existing raw-composition fallback.
+     * Space/enter commit the rendered first candidate. PINYIN_9 deliberately
+     * does not fall back to committing the guessed/local preview as raw Latin
+     * text when no real candidate exists yet.
      */
     fun firstForCommit(
         currentGeneration: Long,
@@ -33,8 +33,9 @@ internal data class CandidateSnapshot(
         currentMode: KeyboardMode,
     ): CandidateSnapshotEntry? {
         if (!matches(currentGeneration, currentComposition, currentMode)) return null
-        return entries.firstOrNull()
-            ?: composition.takeIf { it.isNotEmpty() }?.let(::CandidateSnapshotEntry)
+        entries.firstOrNull()?.let { return it }
+        if (mode == KeyboardMode.PINYIN_9) return null
+        return composition.takeIf { it.isNotEmpty() }?.let(::CandidateSnapshotEntry)
     }
 
     fun candidateForCommit(
@@ -65,16 +66,48 @@ internal data class CandidateSnapshot(
             mode: KeyboardMode,
             candidates: List<String>,
             nativeReferences: Map<String, NativeCandidateReference> = emptyMap(),
-        ): CandidateSnapshot = CandidateSnapshot(
-            generation = generation,
-            composition = composition,
-            mode = mode,
-            entries = candidates.map { text ->
-                CandidateSnapshotEntry(
-                    text = text,
-                    nativeReference = nativeReferences[text],
-                )
-            },
-        )
+        ): CandidateSnapshot {
+            val deferredInput = deferredInputFor(composition, mode)
+            return CandidateSnapshot(
+                generation = generation,
+                composition = composition,
+                mode = mode,
+                entries = candidates.map { text ->
+                    CandidateSnapshotEntry(
+                        text = text,
+                        nativeReference = nativeReferences[text]
+                            ?: deferredInput?.let { input ->
+                                NativeCandidateReference.deferred(input, text)
+                            },
+                    )
+                },
+            )
+        }
+
+        private fun deferredInputFor(composition: String, mode: KeyboardMode): String? = when (mode) {
+            KeyboardMode.PINYIN_26 -> RimeInputNormalizer.normalize(composition).ifBlank { null }
+            KeyboardMode.PINYIN_9 -> nineKeyCodeFromPreview(composition)
+            else -> null
+        }
+
+        /** Convert the visible local Pinyin preview back to the exact T9 code. */
+        private fun nineKeyCodeFromPreview(composition: String): String? {
+            if (composition.isBlank()) return null
+            val out = StringBuilder(composition.length)
+            composition.lowercase().forEach { ch ->
+                when {
+                    ch in 'a'..'z' || ch == 'ü' -> {
+                        val digit = NineKeyLocalDecoder.digitsForPinyin(ch.toString()) ?: return null
+                        out.append(digit)
+                    }
+                    ch in '2'..'9' -> out.append(ch)
+                    ch == '|' || ch == '\'' || ch.isWhitespace() -> {
+                        if (out.isNotEmpty() && out.last() != '\'') out.append('\'')
+                    }
+                    else -> return null
+                }
+            }
+            return out.toString().trim('\'').ifBlank { null }
+        }
     }
 }
