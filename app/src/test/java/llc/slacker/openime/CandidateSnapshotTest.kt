@@ -1,13 +1,14 @@
 package llc.slacker.openime
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 
 class CandidateSnapshotTest {
 
     @Test
-    fun fallbackFirstCommitUsesExactlyRenderedText() {
+    fun fallbackFirstCommitUsesExactlyRenderedTextAndKeepsItLearnable() {
         val snapshot = CandidateSnapshot.rendered(
             generation = 7,
             composition = "ni",
@@ -18,11 +19,13 @@ class CandidateSnapshotTest {
         val entry = snapshot.firstForCommit(7, "ni", KeyboardMode.PINYIN_26)
 
         assertEquals("你", entry?.text)
-        assertNull(entry?.nativeReference)
+        assertNotNull(entry?.nativeReference)
+        assertEquals(-1, entry?.nativeReference?.nativeIndex)
+        assertEquals("ni" to "你", NativeCandidateReference.decodeDeferred(entry!!.nativeReference!!.input))
     }
 
     @Test
-    fun noCandidateChipCommitsVisibleRawComposition() {
+    fun noCandidateChipCommitsVisibleRawCompositionFor26Key() {
         val snapshot = CandidateSnapshot.rendered(
             generation = 8,
             composition = "vve",
@@ -82,31 +85,27 @@ class CandidateSnapshotTest {
     fun candidateClickMustExistInRenderedNineKeySnapshot() {
         val snapshot = CandidateSnapshot.rendered(
             generation = 13,
-            composition = "7464",
+            composition = "nihao",
             mode = KeyboardMode.PINYIN_9,
-            candidates = listOf("是", "时"),
+            candidates = listOf("你好", "你号"),
         )
 
-        assertEquals(
-            "时",
-            snapshot.candidateForCommit("时", 13, "7464", KeyboardMode.PINYIN_9)?.text,
-        )
-        assertNull(snapshot.candidateForCommit("市", 13, "7464", KeyboardMode.PINYIN_9))
+        val entry = snapshot.candidateForCommit("你好", 13, "nihao", KeyboardMode.PINYIN_9)
+        assertEquals("你好", entry?.text)
+        assertEquals(-1, entry?.nativeReference?.nativeIndex)
+        assertEquals("64426" to "你好", NativeCandidateReference.decodeDeferred(entry!!.nativeReference!!.input))
+        assertNull(snapshot.candidateForCommit("您好", 13, "nihao", KeyboardMode.PINYIN_9))
     }
 
     @Test
-    fun noCandidateChipCommitsVisibleRawCompositionForNineKey() {
-        val rawDigits = "9".repeat(64)
+    fun nineKeyWithoutCandidateNeverCommitsGuessedPreviewAsRawLatin() {
         val snapshot = CandidateSnapshot.rendered(
             generation = 14,
-            composition = rawDigits,
+            composition = "wwww",
             mode = KeyboardMode.PINYIN_9,
             candidates = emptyList(),
         )
 
-        val entry = snapshot.firstForCommit(14, rawDigits, KeyboardMode.PINYIN_9)
-
-        assertEquals(rawDigits, entry?.text)
-        assertNull(entry?.nativeReference)
+        assertNull(snapshot.firstForCommit(14, "wwww", KeyboardMode.PINYIN_9))
     }
 }
