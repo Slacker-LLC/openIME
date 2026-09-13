@@ -1020,8 +1020,9 @@ open class ImeKeyboardView(
         if (inlineVoicePaletteColor == backgroundColor) return
         inlineVoicePaletteColor = backgroundColor
         voiceInlineZone.background = rounded(backgroundColor, dp(13))
-        voiceInlineStatus.setTextColor(Color.WHITE)
-        voiceInlineWaves.forEach { it.background = rounded(Color.WHITE, dp(99)) }
+        val foregroundColor = contrastText(backgroundColor)
+        voiceInlineStatus.setTextColor(foregroundColor)
+        voiceInlineWaves.forEach { it.background = rounded(foregroundColor, dp(99)) }
     }
 
     private fun hideInlineVoiceState() {
@@ -3654,6 +3655,7 @@ open class ImeKeyboardView(
             contentDescription = if (text.isNotEmpty()) text else if (iconRes != 0) "功能键" else " "
             minimumHeight = dp(48)
             setOnClickListener {
+                if (!consumeTouchFeedback()) feedback()
                 onTap()
             }
             run {

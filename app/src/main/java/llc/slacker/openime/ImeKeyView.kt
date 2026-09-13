@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Color
 import android.text.TextUtils
 import android.view.View
+import android.view.MotionEvent
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -28,6 +29,35 @@ class ImeKeyView(
 ) : FrameLayout(context) {
 
     private val density = resources.displayMetrics.density
+    private var touchFeedbackPending = false
+    private var touchGeneration = 0L
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            touchGeneration++
+            touchFeedbackPending = isEnabled
+        } else if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            touchFeedbackPending = false
+        }
+        val handled = super.dispatchTouchEvent(event)
+        if (event.actionMasked == MotionEvent.ACTION_UP) {
+            val generation = touchGeneration
+            post { if (generation == touchGeneration) touchFeedbackPending = false }
+        }
+        return handled
+    }
+
+    internal fun consumeTouchFeedback(): Boolean {
+        val pending = touchFeedbackPending
+        touchFeedbackPending = false
+        return pending
+    }
+
+    override fun onDetachedFromWindow() {
+        touchGeneration++
+        touchFeedbackPending = false
+        super.onDetachedFromWindow()
+    }
     private val mainTextView: TextView?
     private val secondaryTextView: TextView?
     private val iconView: ImageView?
