@@ -1,5 +1,7 @@
 package llc.slacker.openime
 
+import android.content.Context
+import android.content.ContextWrapper
 import android.view.inputmethod.InputConnection
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -37,6 +39,10 @@ class ManualVoiceOwnershipInstrumentedTest {
                     }
                 } as InputConnection
                 val service = LocalVoiceImeService()
+                ContextWrapper::class.java.getDeclaredMethod("attachBaseContext", Context::class.java).apply {
+                    isAccessible = true
+                    invoke(service, InstrumentationRegistry.getInstrumentation().targetContext)
+                }
                 fun setField(name: String, value: Any) {
                     LocalVoiceImeService::class.java.getDeclaredField(name).apply {
                         isAccessible = true
