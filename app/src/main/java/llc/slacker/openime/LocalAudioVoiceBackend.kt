@@ -406,6 +406,7 @@ class LocalAudioVoiceBackend(
     }
 
     private fun startCaptureThread(session: Session) {
+        session.captureFinished.set(false)
         session.captureThread = Thread({ captureLoop(session) }, "local-voice-capture")
         session.captureThread?.start()
     }
@@ -442,13 +443,18 @@ class LocalAudioVoiceBackend(
                         }
                         session.events.onRms(sqrt(sum / read).toFloat())
                     }
-                    read < 0 -> fail(session, "麦克风读取失败($read)")
+                    read < 0 -> if (session.running.get()) fail(session, "麦克风读取失败($read)")
                 }
             }
         } catch (error: Throwable) {
             if (session.running.get()) fail(session, "麦克风读取异常：${error.message.orEmpty()}")
         } finally {
             session.running.set(false)
+            session.captureFinished.set(true)
+            // Wake inference after the producer has definitively stopped.
+            // requestCaptureStop() alone is not sufficient: AudioRecord.read()
+            // may already have returned a final positive block that still has
+            // to be offered to the ring before ASR finalization.
             session.ring.wake()
             runCatching { session.record.release() }
         }
@@ -459,7 +465,7 @@ class LocalAudioVoiceBackend(
         val pending = ShortArray(LocalVoiceAudioSpec.CHUNK_SAMPLES)
         var pendingCount = 0
         try {
-            while (session.running.get() || session.ring.size > 0) {
+            while (!session.captureFinished.get() || session.ring.size > 0) {
                 val part = session.ring.awaitAndDrain(
                     LocalVoiceAudioSpec.CHUNK_SAMPLES - pendingCount,
                     50,
@@ -469,7 +475,7 @@ class LocalAudioVoiceBackend(
                     pendingCount += part.size
                 }
                 if (pendingCount == 0) continue
-                if (pendingCount < pending.size && session.running.get()) continue
+                if (pendingCount < pending.size && !session.captureFinished.get()) continue
                 val chunk = pending.copyOf(pendingCount)
                 pendingCount = 0
                 VoicePerformanceTrace.markFirstDecode(session.traceToken)
@@ -530,6 +536,7 @@ class LocalAudioVoiceBackend(
         @Volatile
         var voiceSession: StreamingVoiceModelSession? = null
         val running = AtomicBoolean(false)
+        val captureFinished = AtomicBoolean(false)
         val stopRequested = AtomicBoolean(false)
         val cancelled = AtomicBoolean(false)
         val modelReady = AtomicBoolean(false)
