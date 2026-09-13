@@ -47,7 +47,7 @@ class CandidatePipeline(
         fuzzy: Boolean,
     ): List<String> = when (mode) {
         KeyboardMode.PINYIN_26 -> engine.getCandidates(composition, fuzzy)
-        KeyboardMode.ENGLISH_26 -> engine.getEnglishCompletions(composition)
+        KeyboardMode.ENGLISH_26 -> englishCandidates(composition)
         KeyboardMode.PINYIN_9 -> if (composition.length <= 32) {
             engine.getCandidates(composition, fuzzy)
         } else {
@@ -55,6 +55,33 @@ class CandidatePipeline(
         }
         KeyboardMode.ENGLISH_T9 -> engine.getT9EnglishCandidates(composition)
         KeyboardMode.DIGITS -> emptyList()
+    }
+
+    /**
+     * English completion is advisory. The exact text the user typed must stay
+     * candidate #1 because punctuation, space and mode changes commit that
+     * entry automatically. Suggestions inherit ordinary lower/title/all-caps
+     * casing so Shift/Caps Lock are not silently discarded.
+     */
+    private fun englishCandidates(composition: String): List<String> {
+        if (composition.isEmpty()) return emptyList()
+        val suggestions = engine.getEnglishCompletions(composition)
+            .map { applyEnglishCase(composition, it) }
+        return (listOf(composition) + suggestions)
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .take(MAX_CANDIDATES)
+    }
+
+    private fun applyEnglishCase(typed: String, suggestion: String): String {
+        val letters = typed.filter(Char::isLetter)
+        return when {
+            letters.isNotEmpty() && letters.all(Char::isUpperCase) -> suggestion.uppercase()
+            typed.firstOrNull()?.isUpperCase() == true &&
+                typed.drop(1).filter(Char::isLetter).all(Char::isLowerCase) ->
+                suggestion.replaceFirstChar { it.uppercase() }
+            else -> suggestion
+        }
     }
 
     fun associationsFor(context: String): List<String> = engine.getAssociations(context)
