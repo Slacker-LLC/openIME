@@ -187,12 +187,7 @@ class RimeEngine(private val context: Context) {
         return candidateEntries(input).map { it.text }
     }
 
-    /**
-     * Return display text together with its absolute librime candidate index.
-     * The index must travel with a nine-key path; the same label can occur for
-     * several ambiguous Pinyin inputs and cannot safely be selected by the
-     * preview string alone.
-     */
+    /** Return display text together with its absolute librime candidate index. */
     internal fun candidateEntries(input: String): List<RimeCandidateEntry> {
         val normalized = RimeInputNormalizer.normalize(input)
         if (!isReady || normalized.isBlank()) return emptyList()
@@ -223,27 +218,45 @@ class RimeEngine(private val context: Context) {
     }
 
     /**
-     * Queue learning for an already-rendered native entry and return
-     * immediately. The editor commit is owned by CandidateSnapshot, so the IME
-     * thread never needs native committed text here.
+     * Queue learning for a rendered native entry. A deferred reference uses
+     * nativeIndex=-1 and carries both input code and visible text; it is resolved
+     * on this background lane so a fast tap never blocks the IME thread.
      */
     fun selectCandidate(input: String, nativeIndex: Int, allowLearning: Boolean = true): String {
         // Capture the editor's policy at submission time. Private selections
         // must never enter the mutation queue, even if the editor later changes.
         if (!allowLearning) return ""
-        val normalized = RimeInputNormalizer.normalize(input)
-        if (!isReady || normalized.isBlank() || nativeIndex < 0) return ""
+
+        val deferred = NativeCandidateReference.decodeDeferred(input)
+        val sourceInput = deferred?.first ?: input
+        val deferredText = deferred?.second
+        val normalized = RimeInputNormalizer.normalize(sourceInput)
+        if (!isReady || normalized.isBlank()) return ""
+        if (nativeIndex < 0 && deferred == null) return ""
+
         mutationQueue.submit {
             if (isReady) {
                 synchronized(lock) {
                     if (isReady) {
                         runCatching {
-                            // nativeIndex belongs to the schema that produced the
-                            // rendered snapshot. Do not switch schemas between
-                            // rendering and consuming that index; the next native
-                            // candidate query will synchronize a changed setting.
-                            RimeNative.nativeSetInput(normalized)
-                            RimeNative.nativeSelectCandidate(nativeIndex)
+                            val resolvedIndex = if (deferred != null) {
+                                // Deferred snapshots were rendered before a native
+                                // query completed. Synchronize the current schema,
+                                // replay the exact code, and locate the visible word.
+                                if (!syncSchemaFromSettingsLocked()) return@runCatching
+                                val snapshot = RimeNative.nativeSetInput(normalized)
+                                snapshotCandidateEntries(snapshot)
+                                    .firstOrNull { it.text == deferredText }
+                                    ?.nativeIndex
+                                    ?: return@runCatching
+                            } else {
+                                // A concrete native index belongs to the schema that
+                                // produced the rendered snapshot. Do not switch schemas
+                                // before consuming it.
+                                RimeNative.nativeSetInput(normalized)
+                                nativeIndex
+                            }
+                            RimeNative.nativeSelectCandidate(resolvedIndex)
                         }
                     }
                 }
@@ -294,12 +307,7 @@ class RimeEngine(private val context: Context) {
         cleanupNative()
     }
 
-    /**
-     * Mirrors the persisted fuzzy setting. [syncSchemaFromSettingsLocked] runs
-     * inside every candidate query, and reading SharedPreferences is a disk
-     * read plus an XML parse — it used to happen once per keystroke even when
-     * the value had not changed in months.
-     */
+    /** Cached persisted fuzzy setting; invalidated explicitly from settings UI. */
     @Volatile
     private var cachedFuzzyPinyin: Boolean? = null
 
@@ -336,11 +344,6 @@ class RimeEngine(private val context: Context) {
         snapshot.orEmpty()
             .drop(2)
             .mapIndexedNotNull { index, text ->
-                // make_strings() can return null outright, or an array whose
-                // tail slots are still null after an allocation failure. The
-                // old code dereferenced the element unconditionally, threw
-                // NPE, and the surrounding runCatching turned that into a
-                // silent empty candidate list with no diagnostic at all.
                 if (text.isNullOrBlank()) {
                     null
                 } else {
