@@ -10,6 +10,9 @@ internal fun pinyinFuzzyVariants(rawPinyin: String): List<String> {
     val pinyin = rawPinyin.lowercase()
     if (pinyin.isEmpty()) return emptyList()
 
+    val cached = fuzzyVariantCache
+    if (cached.input == pinyin) return cached.variants
+
     val variants = linkedSetOf<String>()
     singleSyllableFuzzyVariants(pinyin).forEach { variant ->
         if (variant != pinyin && variants.size < MAX_FUZZY_VARIANTS) variants += variant
@@ -21,8 +24,18 @@ internal fun pinyinFuzzyVariants(rawPinyin: String): List<String> {
         }
     }
 
-    return variants.toList()
+    return variants.toList().also { result ->
+        fuzzyVariantCache = FuzzyVariantCache(pinyin, result)
+    }
 }
+
+private data class FuzzyVariantCache(
+    val input: String,
+    val variants: List<String>,
+)
+
+@Volatile
+private var fuzzyVariantCache = FuzzyVariantCache("", emptyList())
 
 private data class FuzzySyllableMatch(
     val spelling: String,
@@ -39,8 +52,8 @@ private val fuzzySyllableMatchesByFirst: Map<Char, List<FuzzySyllableMatch>> by 
         .forEach { canonical ->
             val spellings = linkedSetOf(canonical)
             spellings.addAll(singleSyllableFuzzyVariants(canonical))
-            spellings.forEach { spelling ->
-                val first = spelling.firstOrNull() ?: return@forEach
+            spellings.forEach spellingLoop@{ spelling ->
+                val first = spelling.firstOrNull() ?: return@spellingLoop
                 matches.getOrPut(first) { mutableListOf() }
                     .add(
                         FuzzySyllableMatch(
