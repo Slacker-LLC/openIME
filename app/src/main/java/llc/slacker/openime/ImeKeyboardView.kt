@@ -32,6 +32,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
+import java.util.concurrent.Executors
 
 /**
  * Native IME top-level view. Visual baseline: the supplied preview.html prototype.
@@ -125,14 +126,26 @@ open class ImeKeyboardView(
          * path so the cost is paid once per process, not once per render.
          */
         private const val EMOJI_CACHE_BYTES = 4 * 1024 * 1024
+        private const val CANDIDATE_STRIP_LIMIT = 24
         private val emojiBitmaps = object : LruCache<String, Bitmap>(EMOJI_CACHE_BYTES) {
             override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
         }
+        private val emojiDecodeExecutor = Executors.newFixedThreadPool(2) { runnable ->
+            Thread(runnable, "openime-emoji-decode").apply { isDaemon = true }
+        }
+        private val emojiMainHandler = Handler(Looper.getMainLooper())
 
-        private fun emojiBitmap(context: Context, assetPath: String): Bitmap? =
-            emojiBitmaps.get(assetPath) ?: runCatching {
-                context.assets.open(assetPath).use { BitmapFactory.decodeStream(it) }
-            }.getOrNull()?.also { emojiBitmaps.put(assetPath, it) }
+        private fun requestEmojiBitmap(context: Context, assetPath: String, onReady: (Bitmap) -> Unit) {
+            emojiBitmaps.get(assetPath)?.let(onReady)?.also { return }
+            val appContext = context.applicationContext
+            emojiDecodeExecutor.execute {
+                val bitmap = runCatching {
+                    appContext.assets.open(assetPath).use { BitmapFactory.decodeStream(it) }
+                }.getOrNull() ?: return@execute
+                emojiBitmaps.put(assetPath, bitmap)
+                emojiMainHandler.post { onReady(bitmap) }
+            }
+        }
     }
 
     private val repeatHandler = Handler(Looper.getMainLooper())
@@ -793,6 +806,7 @@ open class ImeKeyboardView(
         if (shiftState == next) return
         shiftState = next
         listener.onShiftStateChanged(next)
+        refreshEnglishShiftPresentation()
     }
 
     open fun shutdown() {
@@ -981,12 +995,14 @@ open class ImeKeyboardView(
     }
 
     private fun renderCandidateRow() {
-        val visibleCandidates = currentCandidates.take(6)
+        val visibleCandidates = currentCandidates.take(CANDIDATE_STRIP_LIMIT)
         val preview = composition.text.toString()
         if (renderedStripCandidates == visibleCandidates && renderedStripComposition == preview) return
+        val scroll = candidateRow.parent as? HorizontalScrollView
+        val keepScroll = renderedStripComposition == preview
+        val previousScrollX = if (keepScroll) scroll?.scrollX ?: 0 else 0
         renderedStripCandidates = visibleCandidates.toList()
         renderedStripComposition = preview
-        (candidateRow.parent as? HorizontalScrollView)?.scrollTo(0, 0)
         candidateRow.removeAllViews()
         if (currentCandidates.isEmpty()) {
             candidateRow.addView(
@@ -1007,6 +1023,11 @@ open class ImeKeyboardView(
                     dp(42),
                 ).apply { marginEnd = dp(6) },
             )
+        }
+        if (keepScroll && previousScrollX > 0) {
+            scroll?.post { scroll.scrollTo(previousScrollX.coerceAtMost(candidateRow.width), 0) }
+        } else {
+            scroll?.scrollTo(0, 0)
         }
     }
 
@@ -1793,9 +1814,12 @@ open class ImeKeyboardView(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
+        var selectedView: View? = null
         labels.forEach { label ->
+            val chip = filterChip(label, label == selected) { onSelected(label) }
+            if (label == selected) selectedView = chip
             row.addView(
-                filterChip(label, label == selected) { onSelected(label) },
+                chip,
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     dp(32),
@@ -1803,6 +1827,12 @@ open class ImeKeyboardView(
             )
         }
         addView(row, ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)))
+        post {
+            selectedView?.let { active ->
+                val target = (active.left - (width - active.width) / 2).coerceAtLeast(0)
+                scrollTo(target, 0)
+            }
+        }
     }
 
     private fun panelVerticalScroll(content: View, tagValue: String): ScrollView =
@@ -2041,9 +2071,17 @@ open class ImeKeyboardView(
         ).apply { bottomMargin = dp(10) })
         val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         val emojiItems = if (emojiCategory == "最近") {
-            ImeData.fluentSmileys.take(40)
+            EmojiRecentRepository.load(context)
         } else {
             ImeData.fluentSmileysByCategory[emojiCategory].orEmpty()
+        }
+        if (emojiItems.isEmpty() && emojiCategory == "最近") {
+            grid.addView(TextView(context).apply {
+                text = "最近使用的表情会显示在这里"
+                textSize = 12f
+                gravity = Gravity.CENTER
+                tag = "panel-note"
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)))
         }
         emojiItems.chunked(8).forEach { chunk ->
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
@@ -2513,29 +2551,47 @@ open class ImeKeyboardView(
     }
 
     private fun emojiCell(emoji: String): View {
-        val assetPath = FluentEmojiAssetRepository.pathFor(context, emoji)
-        val view = if (assetPath != null) {
-            ImageView(context).apply {
-                val bitmap = emojiBitmap(context, assetPath)
-                if (bitmap != null) setImageBitmap(bitmap)
+        val cell = FrameLayout(context).apply {
+            contentDescription = emoji
+            isClickable = true
+            isFocusable = true
+            background = null
+        }
+        val fallback = TextView(context).apply {
+            text = emoji
+            textSize = 21f
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        cell.addView(fallback, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT,
+        ))
+        FluentEmojiAssetRepository.pathFor(context, emoji)?.let { assetPath ->
+            val image = ImageView(context).apply {
                 scaleType = ImageView.ScaleType.FIT_CENTER
+                visibility = View.INVISIBLE
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                tag = assetPath
             }
-        } else {
-            TextView(context).apply {
-                text = emoji
-                textSize = 21f
-                gravity = Gravity.CENTER
-                includeFontPadding = false
+            cell.addView(image, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            ))
+            requestEmojiBitmap(context, assetPath) { bitmap ->
+                if (image.tag == assetPath) {
+                    image.setImageBitmap(bitmap)
+                    image.visibility = View.VISIBLE
+                    fallback.visibility = View.INVISIBLE
+                }
             }
         }
-        view.contentDescription = emoji
-        view.isClickable = true
-        view.background = null
-        view.setOnClickListener {
+        cell.setOnClickListener {
             feedback()
             listener.onEmojiSelected(emoji)
         }
-        return view
+        return cell
     }
 
     private fun symbolItems(category: String): List<String> = when (category) {
@@ -3107,7 +3163,7 @@ open class ImeKeyboardView(
             if (shiftState == ShiftState.SHIFT_ONCE) {
                 shiftState = ShiftState.LOWERCASE
                 listener.onShiftStateChanged(shiftState)
-                renderModeBody()
+                refreshEnglishShiftPresentation()
             }
         } else {
             listener.onCharacter(base)
@@ -3407,7 +3463,35 @@ open class ImeKeyboardView(
             ShiftState.CAPS_LOCK -> ShiftState.LOWERCASE
         }
         listener.onShiftStateChanged(shiftState)
-        renderModeBody()
+        refreshEnglishShiftPresentation()
+    }
+
+    /** Update only letter labels and the Shift key; do not rebuild the keyboard tree. */
+    private fun refreshEnglishShiftPresentation() {
+        if (mode != KeyboardMode.ENGLISH_26) return
+        val uppercase = shiftState != ShiftState.LOWERCASE
+        "qwertyuiopasdfghjklzxcvbnm".forEach { ch ->
+            findViewWithTag<ImeKeyView>("key:$ch")?.setMainText(
+                if (uppercase) ch.uppercaseChar().toString() else ch.toString(),
+            )
+        }
+        val shift = findViewWithTag<ImeKeyView>("key-shift")
+            ?: findViewWithTag<ImeKeyView>("key-shift-active")
+            ?: findViewWithTag<ImeKeyView>("key-shift-caps")
+        shift?.apply {
+            tag = when (shiftState) {
+                ShiftState.LOWERCASE -> "key-shift"
+                ShiftState.SHIFT_ONCE -> "key-shift-active"
+                ShiftState.CAPS_LOCK -> "key-shift-caps"
+            }
+            setIcon(if (shiftState == ShiftState.CAPS_LOCK) R.drawable.ic_caps_lock else R.drawable.ic_shift)
+            contentDescription = when (shiftState) {
+                ShiftState.LOWERCASE -> "大写"
+                ShiftState.SHIFT_ONCE -> "大写一次"
+                ShiftState.CAPS_LOCK -> "大写锁定"
+            }
+        }
+        applyTheme()
     }
 
     private fun firstCandidateOrComposition(): String =

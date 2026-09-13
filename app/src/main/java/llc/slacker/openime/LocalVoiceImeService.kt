@@ -4,6 +4,8 @@ import android.inputmethodservice.InputMethodService
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.text.InputType
+import android.text.TextUtils
 import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
@@ -215,6 +217,11 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
         } else {
             InputMethodSubtypePolicy.defaultKeyboardMode(kind, currentSystemSubtypeLocale())
         }
+        val initialShiftState = if (nextMode == KeyboardMode.ENGLISH_26) {
+            desiredEnglishShiftState(attribute)
+        } else {
+            ShiftState.LOWERCASE
+        }
         state = state.copy(
             editorInfo = attribute,
             editorAction = attribute?.imeOptions?.and(EditorInfo.IME_MASK_ACTION)
@@ -227,7 +234,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
             // Everything below is per-editor contract state. None of it was
             // reset here before, so a Caps Lock or a nine-key filter picked in
             // one app leaked into the next editor.
-            shiftState = ShiftState.LOWERCASE,
+            shiftState = initialShiftState,
             pinyin9Filters = emptyList(),
             selectedPinyin9Filter = "",
             expandedCandidates = emptyList(),
@@ -237,7 +244,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
         attribute?.let { gateway.updateSelection(it.initialSelStart, it.initialSelEnd) }
         rime.clear()
         keyboardView?.clearAssociationCandidates()
-        keyboardView?.setShiftState(ShiftState.LOWERCASE)
+        keyboardView?.setShiftState(initialShiftState)
         keyboardView?.setMode(state.keyboardMode, notifyListener = false)
         keyboardView?.renderState(state)
         if (preserve) {
@@ -329,6 +336,9 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
             candidatesStart,
             candidatesEnd,
         )
+        if (state.keyboardMode == KeyboardMode.ENGLISH_26 && lastComposition.isEmpty()) {
+            mainHandler.post { refreshEnglishShiftFromEditor() }
+        }
         if (!shouldClearCompositionForSelectionUpdate(
                 hasComposition = lastComposition.isNotEmpty(),
                 oldSelStart = oldSelStart,
@@ -524,6 +534,9 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
         state = state.withMode(mode)
         lastComposition = ""
         keyboardView?.renderState(state)
+        if (mode == KeyboardMode.ENGLISH_26) {
+            mainHandler.post { refreshEnglishShiftFromEditor() }
+        }
     }
 
     override fun onPanelChanged(panel: Panel) {
@@ -910,6 +923,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
         prepareForManualInput()
         commitPendingComposition()
         keyboardView?.clearAssociationCandidates()
+        EmojiRecentRepository.record(this, emoji)
         gateway.commitText(emoji)
     }
 
@@ -1225,6 +1239,34 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
         keyboardView?.cancelVoiceForManualInput()
         // Also handles service/test sessions without a view-owned recording.
         if (voiceComposing) onVoiceCancel()
+    }
+
+    private fun desiredEnglishShiftState(info: EditorInfo?): ShiftState {
+        if (info == null || EditorInfoAdapter.isPassword(EditorInfoAdapter.kind(info))) {
+            return ShiftState.LOWERCASE
+        }
+        val inputType = info.inputType
+        if (inputType and InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS != 0) {
+            return ShiftState.CAPS_LOCK
+        }
+        var requestedModes = 0
+        if (inputType and InputType.TYPE_TEXT_FLAG_CAP_WORDS != 0) {
+            requestedModes = requestedModes or TextUtils.CAP_MODE_WORDS
+        }
+        if (inputType and InputType.TYPE_TEXT_FLAG_CAP_SENTENCES != 0) {
+            requestedModes = requestedModes or TextUtils.CAP_MODE_SENTENCES
+        }
+        if (requestedModes == 0) return ShiftState.LOWERCASE
+        val capsMode = currentInputConnection?.getCursorCapsMode(requestedModes) ?: 0
+        return if (capsMode != 0) ShiftState.SHIFT_ONCE else ShiftState.LOWERCASE
+    }
+
+    private fun refreshEnglishShiftFromEditor() {
+        if (state.keyboardMode != KeyboardMode.ENGLISH_26 || state.passwordField || lastComposition.isNotEmpty()) return
+        val next = desiredEnglishShiftState(state.editorInfo)
+        if (next == state.shiftState) return
+        state = state.copy(shiftState = next)
+        keyboardView?.setShiftState(next)
     }
 
     private fun dropLastCodePoint(text: String): String = dropLastCodePointSafe(text)

@@ -3,6 +3,7 @@ package llc.slacker.openime
 import android.content.Context
 import android.inputmethodservice.InputMethodService
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.TypedValue
@@ -12,6 +13,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.WindowInsets
+import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -102,6 +104,7 @@ class ImeKeyboardViewV2 private constructor(
                 else -> Unit
             }
             NineKeySymbolRailDecorator.decorate(this) { symbol -> adapter.onCharacter(symbol) }
+            installNineKeyAccessibilityRepair()
             syncProductionKeyPresentation()
         }
     }
@@ -201,6 +204,22 @@ class ImeKeyboardViewV2 private constructor(
             )
         } finally {
             repairingEarlierNineKeySegment = false
+        }
+    }
+
+    /** Accessibility clicks do not emit root ACTION_UP; run the same earlier-segment repair explicitly. */
+    private fun installNineKeyAccessibilityRepair() {
+        for (digit in '2'..'9') {
+            val key = findViewWithTag<View>("key-9:$digit") ?: continue
+            key.accessibilityDelegate = object : View.AccessibilityDelegate() {
+                override fun performAccessibilityAction(host: View, action: Int, args: Bundle?): Boolean {
+                    val handled = super.performAccessibilityAction(host, action, args)
+                    if (handled && action == AccessibilityNodeInfo.ACTION_CLICK) {
+                        host.post { repairEarlierNineKeySegmentIfNeeded() }
+                    }
+                    return handled
+                }
+            }
         }
     }
 
