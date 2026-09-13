@@ -6,11 +6,12 @@ __include: luna_pinyin.schema:/
 schema:
   schema_id: luna_pinyin_simp
   name: 朙月拼音·简化字
-  version: "0.22"
+  version: "0.23"
   author:
     - 佛振 <chen.sst@gmail.com>
+    - openIME
   description: |
-    朙月拼音，簡化字輸出模式。
+    朙月拼音，简化字输出模式。openIME 同一方案同时接受全拼字母和中文九键 2-9 数字码。
 
 switches:
   - name: ascii_mode
@@ -23,6 +24,27 @@ switches:
     states: [ 漢字, 汉字 ]
   - name: ascii_punct
     states: [ 。，, ．， ]
+
+# Keep normal full-Pinyin spellings and derive a second spelling graph for
+# mobile 9-key input. Digits therefore enter librime directly instead of being
+# guessed into several Pinyin strings by Kotlin first.
+speller:
+  alphabet: 987654321zyxwvutsrqponmlkjihgfedcba
+  initials: 987654321zyxwvutsrqponmlkjihgfedcba
+  delimiter: " '"
+  algebra:
+    __patch:
+      - pinyin:/abbreviation
+      - pinyin:/spelling_correction
+      - pinyin:/key_correction
+      - derive/[abc]/2/
+      - derive/[def]/3/
+      - derive/[ghi]/4/
+      - derive/[jkl]/5/
+      - derive/[mno]/6/
+      - derive/[pqrs]/7/
+      - derive/[tuv]/8/
+      - derive/[wxyz]/9/
 
 translator:
   prism: luna_pinyin_simp
