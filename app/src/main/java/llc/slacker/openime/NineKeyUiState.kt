@@ -23,7 +23,11 @@ internal object NineKeyUiState {
 
     fun remember(code: String?, paths: List<String>, segmentPrefix: String) {
         val key = code?.takeIf(::isNineKeyCode) ?: return
-        val clean = paths.map(String::trim).filter(String::isNotEmpty).distinct().take(8)
+        val clean = paths
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .take(8)
         synchronized(lock) {
             if (clean.isEmpty()) byCode.remove(key) else byCode[key] = Options(clean, segmentPrefix)
             val oldCode = selectedCode
