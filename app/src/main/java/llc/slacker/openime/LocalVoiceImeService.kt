@@ -300,10 +300,12 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
             newSubtype.locale,
         )
 
-        // A subtype switch changes the input language contract. Discard the old
-        // pre-edit rather than committing it under the newly selected language.
+        // A subtype switch changes the input language contract. Discard only
+        // text actually owned by this IME; setComposingText("") without an
+        // active composing span can otherwise delete a user's normal selection.
+        val hadComposingText = lastComposition.isNotEmpty() || voiceComposing
         clearImeCompositionState(render = false)
-        gateway.cancelComposing()
+        if (hadComposingText) gateway.cancelComposing()
         voiceComposing = false
         pendingVoiceCorrection = null
         state = state.copy(
@@ -334,13 +336,16 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
     override fun onFinishInput() {
         invalidateCandidateQueries()
         finalizeVoiceCorrectionIfNeeded()
+        // shutdown() cancels an active voice session and its callback clears
+        // voiceComposing. Check ownership afterwards so we never cancel twice.
         keyboardView?.shutdown()
-        gateway.cancelComposing()
+        if (lastComposition.isNotEmpty() || voiceComposing) gateway.cancelComposing()
         rime.clear()
         voiceComposing = false
         lastComposition = ""
         state = state.copy(composition = "", candidates = emptyList())
         pendingVoiceCorrection = null
+        UserPhraseRepository.flush()
         super.onFinishInput()
     }
 
@@ -398,6 +403,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
         // view tree (and its Context reference) from outliving the service.
         keyboardView?.shutdown()
         keyboardView = null
+        UserPhraseRepository.flush()
         if (::rime.isInitialized) rime.shutdown()
         if (::voiceLifecycle.isInitialized) voiceLifecycle.destroy()
         activeInstance = null

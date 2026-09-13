@@ -27,7 +27,11 @@ internal object ProductionKeyPolicy {
         )
     }
 
-    /** Delay still required after the legacy renderer fires at 150 ms. */
-    fun remainingVoiceDelayMs(systemLongPressTimeoutMs: Long): Long =
-        (systemLongPressTimeoutMs - LEGACY_SPACE_VOICE_TRIGGER_MS).coerceAtLeast(0L)
+    /**
+     * The legacy renderer already waits the full product threshold (150 ms)
+     * before forwarding a voice press. V2 must not add Android's system
+     * long-press timeout on top of that delay, otherwise a 150 ms gesture turns
+     * into roughly a 500 ms gesture on a typical device.
+     */
+    fun remainingVoiceDelayMs(@Suppress("UNUSED_PARAMETER") systemLongPressTimeoutMs: Long): Long = 0L
 }

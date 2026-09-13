@@ -126,8 +126,10 @@ internal object VoiceAutoPreloadPolicy {
         editorKind: EditorInfoAdapter.EditorKind,
         imeOptions: Int,
     ): Boolean =
-        !EditorInfoAdapter.isPassword(editorKind) &&
-            (imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING) == 0
+        editorKind in setOf(
+            EditorInfoAdapter.EditorKind.TEXT,
+            EditorInfoAdapter.EditorKind.MULTILINE,
+        ) && (imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING) == 0
 }
 
 private class PermanentVoiceModelException(message: String) : IllegalStateException(message)
@@ -186,7 +188,7 @@ class VoiceModelLifecycleManager(
         if (shouldAutoPreloadForCurrentEditor()) {
             preload(automaticPreload = true)
         } else {
-            Log.i(TAG, "preloadSkipped reason=privateEditor")
+            Log.i(TAG, "preloadSkipped reason=nonProseOrPrivateEditor")
         }
     }
 
@@ -331,6 +333,12 @@ class VoiceModelLifecycleManager(
     }
 
     fun start(languageTag: String, events: VoiceRecognitionEvents) {
+        val editorKind = inputMethodService?.currentInputEditorInfo?.let(EditorInfoAdapter::kind)
+        if (editorKind != null && EditorInfoAdapter.isPassword(editorKind)) {
+            events.onError("密码输入框不支持语音输入")
+            return
+        }
+
         mainHandler.removeCallbacks(unloadRunnable)
         preload(automaticPreload = false)
         val token = sessionGeneration.incrementAndGet()
@@ -449,7 +457,7 @@ class VoiceModelLifecycleManager(
     }
 
     private fun shouldAutoPreloadForCurrentEditor(): Boolean {
-        val info = inputMethodService?.currentInputEditorInfo ?: return true
+        val info = inputMethodService?.currentInputEditorInfo ?: return false
         return VoiceAutoPreloadPolicy.shouldPreload(
             editorKind = EditorInfoAdapter.kind(info),
             imeOptions = info.imeOptions,

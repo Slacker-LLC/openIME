@@ -178,7 +178,6 @@ class ImeKeyView(
         get() = mainTextView?.text?.toString().orEmpty()
 
     fun setMainText(value: String) {
-        if (iconView != null) return
         mainTextView?.text = value
         contentDescription = value
     }

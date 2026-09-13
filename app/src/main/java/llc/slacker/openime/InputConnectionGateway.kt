@@ -193,13 +193,17 @@ class InputConnectionGateway(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             val deleted = runCatching { ic.deleteSurroundingTextInCodePoints(0, 1) }.getOrDefault(false)
             if (!deleted) {
-                val fallbackDeleted = runCatching { ic.deleteSurroundingText(0, 1) }.getOrDefault(false)
+                val after = runCatching { ic.getTextAfterCursor(2, 0) }.getOrNull()
+                val utf16Units = nextCodePointUtf16Length(after).coerceAtLeast(1)
+                val fallbackDeleted = runCatching { ic.deleteSurroundingText(0, utf16Units) }.getOrDefault(false)
                 if (!fallbackDeleted) {
                     sendKeyDownUp(ic, KeyEvent.KEYCODE_FORWARD_DEL)
                 }
             }
         } else {
-            val deleted = runCatching { ic.deleteSurroundingText(0, 1) }.getOrDefault(false)
+            val after = runCatching { ic.getTextAfterCursor(2, 0) }.getOrNull()
+            val utf16Units = nextCodePointUtf16Length(after).coerceAtLeast(1)
+            val deleted = runCatching { ic.deleteSurroundingText(0, utf16Units) }.getOrDefault(false)
             if (!deleted) {
                 sendKeyDownUp(ic, KeyEvent.KEYCODE_FORWARD_DEL)
             }
@@ -215,22 +219,29 @@ class InputConnectionGateway(
      * complete document. A bounded/local window is never partially deleted while
      * returning success: callers receive false instead and can present an
      * unsupported-capability state.
+     *
+     * Nothing in this method mutates composing text before a full-document
+     * selection has been established. That matters because setComposingText("")
+     * can replace an ordinary user selection in editors that expose no active
+     * composing span. A failed clear therefore leaves document content intact.
      */
     fun clearAllText(): Boolean {
         if (isPassword()) return false
         val ic = connection() ?: return false
         ic.beginBatchEdit()
         return try {
-            // Remove active pre-edit rather than committing it before selecting.
-            ic.setComposingText("", 1)
-            ic.finishComposingText()
+            val originalSelection = selectionBeforeDestructiveSelectAll(ic)
 
             if (runCatching { ic.performContextMenuAction(android.R.id.selectAll) }.getOrDefault(false)) {
                 val selected = runCatching { ic.getSelectedText(0)?.toString().orEmpty() }
                     .getOrDefault("")
                 if (selected.isNotEmpty()) {
                     val cleared = runCatching { ic.commitText("", 1) }.getOrDefault(false)
-                    ic.finishComposingText()
+                    if (!cleared) {
+                        restoreSelectionAfterFailedClear(ic, originalSelection)
+                    } else {
+                        ic.finishComposingText()
+                    }
                     return cleared
                 }
 
@@ -239,32 +250,35 @@ class InputConnectionGateway(
                 // Only the complete extracted state can distinguish those safely.
                 val selectedWindow = extractedWindow(ic)
                 if (selectedWindow?.isCompleteDocument == true) {
-                    if (selectedWindow.text.isEmpty()) {
-                        ic.finishComposingText()
-                        return true
-                    }
+                    if (selectedWindow.text.isEmpty()) return true
                     val fullSelection = selectedWindow.selectionStartAbsolute == 0 &&
                         selectedWindow.selectionEndAbsolute == selectedWindow.text.length
                     if (fullSelection) {
                         val cleared = runCatching { ic.commitText("", 1) }.getOrDefault(false)
-                        ic.finishComposingText()
+                        if (!cleared) {
+                            restoreSelectionAfterFailedClear(ic, originalSelection)
+                        } else {
+                            ic.finishComposingText()
+                        }
                         return cleared
                     }
                 }
+                restoreSelectionAfterFailedClear(ic, originalSelection)
                 return false
             }
 
             val window = extractedWindow(ic) ?: return false
             if (!window.isCompleteDocument) return false
-            if (window.text.isEmpty()) {
-                ic.finishComposingText()
-                return true
-            }
+            if (window.text.isEmpty()) return true
             if (!runCatching { ic.setSelection(0, window.text.length) }.getOrDefault(false)) {
                 return false
             }
             val cleared = runCatching { ic.commitText("", 1) }.getOrDefault(false)
-            ic.finishComposingText()
+            if (!cleared) {
+                restoreSelectionAfterFailedClear(ic, originalSelection)
+            } else {
+                ic.finishComposingText()
+            }
             cleared
         } finally {
             ic.endBatchEdit()
@@ -457,6 +471,41 @@ class InputConnectionGateway(
         val before = runCatching { ic.getTextBeforeCursor(FALLBACK_WINDOW_CHARS, 0)?.toString() }
             .getOrNull() ?: return null
         return SelectionSnapshot.Relative(cursor = before.length)
+    }
+
+    /** Capture the best absolute selection available before a select-all mutates editor state. */
+    private fun selectionBeforeDestructiveSelectAll(ic: InputConnection): SelectionSnapshot? {
+        val snapshot = selectionSnapshot(ic)
+        if (snapshot is SelectionSnapshot.Absolute) return snapshot
+        if (knownSelectionStart >= 0 && knownSelectionEnd >= 0) {
+            return SelectionSnapshot.Absolute(knownSelectionStart, knownSelectionEnd)
+        }
+        return snapshot
+    }
+
+    /**
+     * A failed clear must never leave the target document selected. Restore the
+     * original absolute range when possible. Editors that expose only a local
+     * relative window cannot be restored exactly, so collapse any accidental
+     * select-all at its right edge as the safe fallback.
+     */
+    private fun restoreSelectionAfterFailedClear(
+        ic: InputConnection,
+        snapshot: SelectionSnapshot?,
+    ) {
+        when (snapshot) {
+            is SelectionSnapshot.Absolute -> {
+                if (runCatching { ic.setSelection(snapshot.start, snapshot.end) }.getOrDefault(false)) {
+                    knownSelectionStart = snapshot.start
+                    knownSelectionEnd = snapshot.end
+                    return
+                }
+                sendKeyDownUp(ic, KeyEvent.KEYCODE_DPAD_RIGHT)
+            }
+            is SelectionSnapshot.Relative,
+            null,
+            -> sendKeyDownUp(ic, KeyEvent.KEYCODE_DPAD_RIGHT)
+        }
     }
 
     private fun extractedWindow(ic: InputConnection): ExtractedWindow? {

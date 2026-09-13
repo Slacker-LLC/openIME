@@ -33,8 +33,8 @@ class ProductionKeyPolicyTest {
     }
 
     @Test
-    fun legacyEarlyVoiceTriggerIsDelayedToSystemLongPressThreshold() {
-        assertEquals(350L, ProductionKeyPolicy.remainingVoiceDelayMs(500L))
+    fun v2DoesNotAddASecondLongPressDelayAfterLegacy150msTrigger() {
+        assertEquals(0L, ProductionKeyPolicy.remainingVoiceDelayMs(500L))
         assertEquals(0L, ProductionKeyPolicy.remainingVoiceDelayMs(100L))
     }
 }
