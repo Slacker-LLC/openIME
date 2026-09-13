@@ -330,6 +330,14 @@ class InputConnectionGateway(
         }
     }
 
+    /** Let the editor handle character boundaries, reversed selections and document edges. */
+    fun moveCursorHorizontally(direction: Int) {
+        if (isPassword()) return
+        val keyCode = relativeCursorKeyCode(direction) ?: return
+        val ic = connection() ?: return
+        sendKeyDownUp(ic, keyCode)
+    }
+
     fun currentSelectionStart(): Int = when (val selection = selectionSnapshot()) {
         is SelectionSnapshot.Absolute -> selection.start
         is SelectionSnapshot.Relative -> selection.cursor
@@ -386,8 +394,8 @@ class InputConnectionGateway(
         if (!selected.isNullOrEmpty()) return selected
 
         val window = extractedWindow(ic) ?: return ""
-        val localStart = window.selectionStartAbsolute - window.windowStart
-        val localEnd = window.selectionEndAbsolute - window.windowStart
+        val localStart = minOf(window.selectionStartAbsolute, window.selectionEndAbsolute) - window.windowStart
+        val localEnd = maxOf(window.selectionStartAbsolute, window.selectionEndAbsolute) - window.windowStart
         if (localStart < 0 || localEnd <= localStart || localEnd > window.text.length) return ""
         return window.text.substring(localStart, localEnd)
     }
@@ -412,9 +420,18 @@ class InputConnectionGateway(
         }.getOrDefault("")
     }
 
-    fun pasteClipboard(): String {
-        val text = readClipboard()
-        if (text.isNotEmpty()) commitText(text)
+    fun pasteClipboard(onPasted: (ClipData) -> Unit = {}): String {
+        if (isPassword()) return ""
+        val safeContext = context ?: return ""
+        val cm = safeContext.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return ""
+        val clip = runCatching { cm.primaryClip }.getOrNull() ?: return ""
+        val text = runCatching {
+            clip.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(safeContext)?.toString().orEmpty()
+        }.getOrDefault("")
+        if (text.isEmpty()) return ""
+        val committed = connection()?.commitText(text, 1) == true
+        if (!committed) return ""
+        onPasted(clip)
         return text
     }
 

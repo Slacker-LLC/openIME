@@ -115,6 +115,22 @@ class InputConnectionGatewayTest {
     }
 
     @Test
+    fun horizontalArrowsDelegateUnicodeAndSelectionSemanticsToEditor() {
+        val fake = FakeInputConnection(extractedText = extracted("A😀B", 0, 3, 3))
+        val gateway = InputConnectionGateway(null, { fake })
+        gateway.moveCursorHorizontally(-1)
+        gateway.moveCursorHorizontally(1)
+        assertEquals(listOf("key", "key", "key", "key"), fake.events)
+    }
+
+    @Test
+    fun unsupportedArrowDeltaHasNoEditorSideEffects() {
+        val fake = FakeInputConnection()
+        InputConnectionGateway(null, { fake }).moveCursorHorizontally(2)
+        assertTrue(fake.events.isEmpty())
+    }
+
+    @Test
     fun candidateCommitUsesCommitText() {
         val fake = FakeInputConnection()
         val gateway = InputConnectionGateway(null, { fake })
@@ -187,6 +203,28 @@ class InputConnectionGatewayTest {
         val gateway = InputConnectionGateway(null, { fake })
 
         assertEquals("234", gateway.copySelection())
+    }
+
+    @Test
+    fun copyReverseSelectionNormalizesEndpointsInOffsetWindow() {
+        val fake = FakeInputConnection(
+            selectedText = "",
+            extractedText = extracted("0123456789", 100, 5, 2),
+        )
+
+        assertEquals("234", InputConnectionGateway(null, { fake }).copySelection())
+    }
+
+    @Test
+    fun copyReverseSelectionOutsideWindowReturnsEmpty() {
+        for ((start, end) in listOf(11 to 2, 5 to -1, 5 to 5)) {
+            val fake = FakeInputConnection(
+                selectedText = "",
+                extractedText = extracted("0123456789", 100, start, end),
+            )
+
+            assertEquals("", InputConnectionGateway(null, { fake }).copySelection())
+        }
     }
 
     @Test

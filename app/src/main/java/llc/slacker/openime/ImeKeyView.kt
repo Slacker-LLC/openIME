@@ -3,6 +3,8 @@ package llc.slacker.openime
 import android.content.res.ColorStateList
 import android.content.Context
 import android.graphics.Color
+import android.text.TextUtils
+import android.view.View
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -33,7 +35,8 @@ class ImeKeyView(
     init {
         isClickable = true
         isLongClickable = true
-        isFocusable = false
+        isFocusable = true
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
         contentDescription = if (iconRes != 0) text.ifEmpty { "功能键" } else text
 
         iconView = if (iconRes != 0) {
@@ -66,6 +69,9 @@ class ImeKeyView(
                 gravity = Gravity.CENTER
                 isAllCaps = false
                 includeFontPadding = false
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }
         } else {
             null
@@ -78,6 +84,7 @@ class ImeKeyView(
                 gravity = Gravity.CENTER
                 isAllCaps = false
                 includeFontPadding = false
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }
         }
 
@@ -104,10 +111,12 @@ class ImeKeyView(
             addView(
                 view,
                 FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
                 ).apply {
                     gravity = Gravity.CENTER
+                    leftMargin = dp(4)
+                    rightMargin = dp(4)
                 },
             )
         }
@@ -139,6 +148,10 @@ class ImeKeyView(
         if (iconView != null) return
         mainTextView?.text = value
         contentDescription = value
+    }
+
+    fun allowTwoLineLabel() {
+        mainTextView?.maxLines = 2
     }
 
     fun setIcon(value: Int) {

@@ -28,12 +28,14 @@ class QuickPhraseEditActivity : Activity() {
         val phrase = intent.getStringExtra(EXTRA_TEXT).orEmpty()
 
         val categoryEdit = EditText(this).apply {
+            this.id = R.id.quick_phrase_category_editor
             hint = "分类，例如：工作"
             setText(category)
             setSingleLine(true)
             textSize = 16f
         }
         val phraseEdit = EditText(this).apply {
+            this.id = R.id.quick_phrase_text_editor
             hint = "输入常用语"
             setText(phrase)
             minLines = 4
@@ -49,6 +51,11 @@ class QuickPhraseEditActivity : Activity() {
         val save = Button(this).apply {
             text = "保存"
             setOnClickListener {
+                if (phraseEdit.text.isNullOrBlank()) {
+                    phraseEdit.error = "请输入常用语内容"
+                    phraseEdit.requestFocus()
+                    return@setOnClickListener
+                }
                 if (QuickPhraseRepository.upsert(
                         this@QuickPhraseEditActivity,
                         id,

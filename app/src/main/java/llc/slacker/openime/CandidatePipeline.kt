@@ -96,7 +96,9 @@ class CandidatePipeline(
             if (segmentPrefix.isEmpty()) {
                 result.candidates + localCandidates
             } else {
-                localCandidates + result.candidates
+                // Suffix-only choices would replace the entire composition,
+                // silently discarding every syllable before the boundary.
+                localCandidates
             }
             )
             .filter { it.isNotEmpty() && it.none(Char::isDigit) }

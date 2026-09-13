@@ -1,6 +1,7 @@
 package llc.slacker.openime
 
 import android.content.ClipboardManager
+import android.content.ClipData
 import android.content.Context
 import android.inputmethodservice.InputMethodService
 import android.view.inputmethod.EditorInfo
@@ -47,6 +48,21 @@ internal object ClipboardRetentionPolicy {
 
     fun prune(entries: List<ClipboardEntry>, nowMs: Long): List<ClipboardEntry> =
         entries.filter { retain(it, nowMs) }
+
+    fun trimToCount(entries: List<ClipboardEntry>, maxItems: Int): List<ClipboardEntry> {
+        // Pins consume the normal budget but are never evicted, even above it.
+        var remaining = (maxItems - entries.count { it.pinned }).coerceAtLeast(0)
+        return entries.filter { entry ->
+            when {
+                entry.pinned -> true
+                remaining > 0 -> {
+                    remaining--
+                    true
+                }
+                else -> false
+            }
+        }
+    }
 }
 
 /**
@@ -71,7 +87,7 @@ object ClipboardHistoryRepository {
         val old = stored.firstOrNull { it.text == text }
         val items = stored.filterNot { it.text == text }.toMutableList()
         items.add(0, ClipboardEntry(text, System.currentTimeMillis(), old?.pinned ?: false))
-        save(context, items.take(MAX_ITEMS))
+        save(context, ClipboardRetentionPolicy.trimToCount(items, MAX_ITEMS))
     }
 
     /** Capture the current system clip when the user opens the clipboard UI. */
@@ -79,15 +95,20 @@ object ClipboardHistoryRepository {
         if (!canUsePersistentHistory(context)) return false
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
             ?: return false
-        val description = runCatching { clipboard.primaryClipDescription }.getOrNull()
-        val sensitive = description?.extras?.let { extras ->
+        val clip = runCatching { clipboard.primaryClip }.getOrNull() ?: return false
+        return captureClip(context, clip)
+    }
+
+    /** Use the same immutable clipboard snapshot for its sensitivity flag and text. */
+    fun captureClip(context: Context, clip: ClipData): Boolean {
+        if (!canUsePersistentHistory(context)) return false
+        val sensitive = clip.description.extras?.let { extras ->
             ClipboardSensitivityPolicy.isSensitive { key -> extras.getBoolean(key, false) }
         } ?: false
         if (sensitive) return false
 
         val text = runCatching {
-            clipboard.primaryClip
-                ?.takeIf { it.itemCount > 0 }
+            clip.takeIf { it.itemCount > 0 }
                 ?.getItemAt(0)
                 ?.coerceToText(context)
                 ?.toString()

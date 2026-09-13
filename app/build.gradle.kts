@@ -68,7 +68,9 @@ dependencies {
 // Keep the JVM unit-test task discoverable and executable on every Windows
 // checkout, including paths containing non-ASCII characters.
 tasks.withType<Test>().configureEach {
-    val kotlinTestClasses = layout.buildDirectory.dir("tmp/kotlin-classes/debugUnitTest")
+    if (!name.startsWith("test") || !name.endsWith("UnitTest")) return@configureEach
+    val testCompilation = name.removePrefix("test").replaceFirstChar { it.lowercaseChar() }
+    val kotlinTestClasses = layout.buildDirectory.dir("tmp/kotlin-classes/$testCompilation")
     testClassesDirs = files(kotlinTestClasses)
     // `+=` is not reliably materialized by the AGP/Kotlin 2.1 task wiring on
     // Windows paths containing non-ASCII characters. Put the Kotlin output

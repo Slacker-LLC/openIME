@@ -60,6 +60,8 @@ class CandidatePipelineTest {
         assertEquals("ni hao", resolution.preview)
         assertTrue(resolution.pinyinPaths.all { it.startsWith("ni ") })
         assertTrue(resolution.candidates.none { it.any(Char::isDigit) })
+        assertFalse("Suffix-only choices would drop ni when selected", resolution.candidates.contains("好"))
+        assertTrue(resolution.candidates.contains("你好"))
     }
 
     @Test

@@ -3,7 +3,15 @@
     <string name="app_name">openIME</string>
     <string name="subtitle_zh">中文</string>
     <string name="subtitle_en">English</string>
-    <string name="main_description">这是一个独立的本地语音输入法。\n\n在系统设置中启用并切换到它，然后在下方输入框或任意第三方 App 中使用。</string>
+    <string name="main_description">中文拼音 · 英文 · 本地语音\n词库和语音识别均在设备内运行。</string>
     <string name="test_hint">在这里测试本地输入法</string>
     <string name="open_ime_settings">打开输入法设置</string>
+    <string name="choose_ime">切换到 openIME</string>
+    <string name="setup_enable">第一步：在系统设置中启用 openIME</string>
+    <string name="setup_choose">已启用，请切换到 openIME 开始输入</string>
+    <string name="setup_ready">已就绪，可以在下方试打</string>
+    <string name="typing_tips">试试输入 nihao → 你好\n轻点候选词上屏，轻点空格选择首选词。\n候选栏右侧可展开更多字词；删除键上滑后松手清空。</string>
+    <string name="voice_permission_description">语音输入（可选）\n授权麦克风后，长按空格说话，松手结束，上滑取消。不授权也能正常打字。</string>
+    <string name="voice_permission_enable">开启本地语音输入</string>
+    <string name="voice_permission_ready">麦克风已授权</string>
 </resources>

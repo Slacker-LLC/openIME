@@ -208,7 +208,8 @@ class RimeEngine(private val context: Context) {
     }
 
     /** Let Rime learn the selected candidate, then return its committed text. */
-    fun selectCandidate(input: String, candidate: String): String {
+    fun selectCandidate(input: String, candidate: String, allowLearning: Boolean = true): String {
+        if (!allowLearning) return candidate
         val normalized = RimeInputNormalizer.normalize(input)
         if (!isReady || normalized.isBlank()) return ""
         return synchronized(lock) {
@@ -226,7 +227,10 @@ class RimeEngine(private val context: Context) {
      * immediately. The editor commit is owned by CandidateSnapshot, so the IME
      * thread never needs native committed text here.
      */
-    fun selectCandidate(input: String, nativeIndex: Int): String {
+    fun selectCandidate(input: String, nativeIndex: Int, allowLearning: Boolean = true): String {
+        // Capture the editor's policy at submission time. Private selections
+        // must never enter the mutation queue, even if the editor later changes.
+        if (!allowLearning) return ""
         val normalized = RimeInputNormalizer.normalize(input)
         if (!isReady || normalized.isBlank() || nativeIndex < 0) return ""
         mutationQueue.submit {
@@ -248,7 +252,8 @@ class RimeEngine(private val context: Context) {
         return ""
     }
 
-    fun commitFirst(input: String): String {
+    fun commitFirst(input: String, allowLearning: Boolean = true): String {
+        if (!allowLearning) return candidates(input).firstOrNull().orEmpty()
         val normalized = RimeInputNormalizer.normalize(input)
         if (!isReady || normalized.isBlank()) return ""
         return synchronized(lock) {

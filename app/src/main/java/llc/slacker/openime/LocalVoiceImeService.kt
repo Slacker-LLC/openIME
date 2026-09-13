@@ -185,7 +185,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
 
     override fun onCreateInputView(): View {
         keyboardView = ImeKeyboardViewV2(this, this)
-        keyboardView?.setMode(state.keyboardMode)
+        keyboardView?.setMode(state.keyboardMode, notifyListener = false)
         keyboardView?.setTheme(state.theme)
         keyboardView?.setAppearance(state.appearance)
         keyboardView?.setSettings(
@@ -200,14 +200,17 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
 
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
+        pendingVoiceCorrection = null
+        val previousRimeInputs = activeRimeInputs
         invalidateCandidateQueries()
         val kind = EditorInfoAdapter.kind(attribute)
         // Android restarts the same field after a rotation, a window resize or
         // a multi-window transition. Dropping the pre-edit there throws away
         // what the user was mid-way through typing; only a genuinely new
         // editor resets the composition.
-        val preserve = restarting && state.composition.isNotEmpty()
-        val nextMode = if (restarting) {
+        val sameEditorKind = kind == EditorInfoAdapter.kind(state.editorInfo)
+        val preserve = restarting && sameEditorKind && !EditorInfoAdapter.isPassword(kind) && state.composition.isNotEmpty()
+        val nextMode = if (restarting && sameEditorKind) {
             state.keyboardMode
         } else {
             InputMethodSubtypePolicy.defaultKeyboardMode(kind, currentSystemSubtypeLocale())
@@ -235,8 +238,18 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
         rime.clear()
         keyboardView?.clearAssociationCandidates()
         keyboardView?.setShiftState(ShiftState.LOWERCASE)
-        keyboardView?.setMode(state.keyboardMode)
+        keyboardView?.setMode(state.keyboardMode, notifyListener = false)
         keyboardView?.renderState(state)
+        if (preserve) {
+            // Restored candidates must be selectable before the new native query finishes.
+            val generation = requestNativeCandidates(
+                state.composition, state.keyboardMode, state.candidates,
+                previousRimeInputs.ifEmpty { listOf(state.composition) },
+            )
+            renderedCandidateSnapshot = CandidateSnapshot.rendered(
+                generation, state.composition, state.keyboardMode, state.candidates,
+            )
+        }
     }
 
     override fun onCurrentInputMethodSubtypeChanged(newSubtype: InputMethodSubtype) {
@@ -519,6 +532,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
     }
 
     override fun onCharacter(char: String) {
+        prepareForManualInput()
         noteVoiceReplacementInput()
         commitPendingComposition()
         keyboardView?.clearAssociationCandidates()
@@ -526,6 +540,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
     }
 
     override fun onBackspace() {
+        prepareForManualInput()
         noteVoiceBackspace()
         if (keyboardView?.deleteInlineEditorChar() == true) return
         keyboardView?.clearAssociationCandidates()
@@ -553,11 +568,14 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
     }
 
     override fun onClearAll() {
+        prepareForManualInput()
         // Invalidate every pending candidate/Rime path before touching the
         // editor. Otherwise a late native result can restore the just-cleared
         // pre-edit on the very next key press.
         clearImeCompositionState(render = false)
-        gateway.clearAllText()
+        if (!gateway.clearAllText()) {
+            android.widget.Toast.makeText(this, "当前应用未能清空全部文本", android.widget.Toast.LENGTH_SHORT).show()
+        }
         pendingVoiceCorrection = null
         voiceComposing = false
         state = state.copy(voiceState = VoiceUiState())
@@ -581,6 +599,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
     }
 
     override fun onSpace() {
+        prepareForManualInput()
         if (keyboardView?.insertIntoInlineEditor(" ") == true) return
         if (state.passwordField) {
             keyboardView?.clearAssociationCandidates()
@@ -713,6 +732,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
     }
 
     override fun onEnter() {
+        prepareForManualInput()
         if (lastComposition.isNotEmpty()) {
             commitFirstCandidate()
             return
@@ -727,6 +747,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
     }
 
     override fun onCompositionChanged(composition: String, candidates: List<String>) {
+        prepareForManualInput()
         if (composition.isNotEmpty()) noteVoiceReplacementInput()
         handleCompositionChanged(
             composition = composition,
@@ -741,6 +762,8 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
         pinyinPaths: List<String>,
         candidates: List<String>,
     ) {
+        prepareForManualInput()
+        if (composition.isNotEmpty()) noteVoiceReplacementInput()
         if (state.keyboardMode != KeyboardMode.PINYIN_9 || digitBuffer.isEmpty()) {
             onCompositionChanged(composition, candidates)
             return
@@ -799,6 +822,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
     }
 
     override fun onCandidateSelected(candidate: String) {
+        prepareForManualInput()
         if (state.passwordField) return
         selectCandidate(candidate)
     }
@@ -810,6 +834,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
      * tapping: 你好 -> 呀 -> ！
      */
     override fun onAssociationSelected(text: String) {
+        prepareForManualInput()
         if (state.passwordField || text.isEmpty()) return
         commitPendingComposition()
         gateway.commitText(text)
@@ -875,18 +900,21 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
     }
 
     override fun onSymbolSelected(symbol: String) {
+        prepareForManualInput()
         commitPendingComposition()
         keyboardView?.clearAssociationCandidates()
         gateway.commitText(symbol)
     }
 
     override fun onEmojiSelected(emoji: String) {
+        prepareForManualInput()
         commitPendingComposition()
         keyboardView?.clearAssociationCandidates()
         gateway.commitText(emoji)
     }
 
     override fun onTextEdit(action: String) {
+        if (action in setOf("select-all", "cut", "paste", "left", "right")) prepareForManualInput()
         when (action) {
             "select-all" -> gateway.selectAll()
             "copy" -> {
@@ -907,16 +935,13 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
             "paste" -> {
                 commitPendingComposition()
                 keyboardView?.clearAssociationCandidates()
-                val text = gateway.pasteClipboard()
-                if (text.isNotEmpty()) ClipboardHistoryRepository.add(this, text)
+                gateway.pasteClipboard { clip -> ClipboardHistoryRepository.captureClip(this, clip) }
             }
             "left" -> {
-                val start = gateway.currentSelectionStart()
-                gateway.selectStartEnd(start.coerceAtLeast(1) - 1, start.coerceAtLeast(1) - 1)
+                gateway.moveCursorHorizontally(-1)
             }
             "right" -> {
-                val end = gateway.currentSelectionEnd()
-                gateway.selectStartEnd(end + 1, end + 1)
+                gateway.moveCursorHorizontally(1)
             }
             "up", "down", "undo" -> {
                 // These depend on the target editor; no fake implementation here.
@@ -1099,7 +1124,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
             rime.isReady &&
             (mode == KeyboardMode.PINYIN_26 || mode == KeyboardMode.PINYIN_9)
         ) {
-            rime.selectCandidate(reference.input, reference.nativeIndex)
+            rime.selectCandidate(reference.input, reference.nativeIndex, allowsPersonalizedLearning())
         } else {
             ""
         }
@@ -1123,7 +1148,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
             rime.isReady &&
             (mode == KeyboardMode.PINYIN_26 || mode == KeyboardMode.PINYIN_9)
         ) {
-            rime.selectCandidate(reference.input, reference.nativeIndex)
+            rime.selectCandidate(reference.input, reference.nativeIndex, allowsPersonalizedLearning())
         } else {
             ""
         }
@@ -1135,7 +1160,9 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
         // librime owns normal learning through its userdb. Keep the old local
         // repository only as an offline fallback; never run two unconditional
         // ranking systems over the same successful native selection.
-        if (!rime.isReady) UserPhraseRepository.record(composition, committed)
+        if (!rime.isReady && allowsPersonalizedLearning()) {
+            UserPhraseRepository.record(composition, committed)
+        }
         gateway.commitText(committed)
         gateway.finishComposing()
         if (pendingVoiceCorrection != null) {
@@ -1149,7 +1176,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
     }
 
     private fun beginVoiceCorrection(original: String) {
-        if (state.passwordField || original.isBlank()) {
+        if (!allowsPersonalizedLearning() || original.isBlank()) {
             pendingVoiceCorrection = null
             return
         }
@@ -1184,10 +1211,20 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
     private fun finalizeVoiceCorrectionIfNeeded() {
         val pending = pendingVoiceCorrection ?: return
         pendingVoiceCorrection = null
-        if (!pending.edited || state.passwordField) return
+        if (!pending.edited || !allowsPersonalizedLearning()) return
         val snapshot = gateway.absoluteCursorSnapshot() ?: return
         val corrected = correctedVoiceText(pending.range, snapshot) ?: return
         VoiceCorrectionRepository.record(pending.range.original, corrected)
+    }
+
+    private fun allowsPersonalizedLearning(): Boolean =
+        personalizedLearningAllowed(state.passwordField, state.editorInfo?.imeOptions)
+
+    /** Remove only voice-owned composing text before a manual edit takes ownership. */
+    private fun prepareForManualInput() {
+        keyboardView?.cancelVoiceForManualInput()
+        // Also handles service/test sessions without a view-owned recording.
+        if (voiceComposing) onVoiceCancel()
     }
 
     private fun dropLastCodePoint(text: String): String = dropLastCodePointSafe(text)

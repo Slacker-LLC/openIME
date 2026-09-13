@@ -68,6 +68,12 @@ git lfs install
 git lfs pull
 ```
 
+首次克隆还需恢复锁定版本的 Rime 原生依赖与头文件（Linux / Git Bash）：
+
+```bash
+bash scripts/fetch_rime_deps.sh
+```
+
 ## 构建
 
 标准构建：
@@ -104,6 +110,18 @@ adb shell ime set --user 0 llc.slacker.openime/.LocalVoiceImeService
 Receiver 只存在于 debug 变体，不会成为正式输入法的公共控制入口。
 
 ## 验证
+
+Linux 下可一次执行 JVM 测试、Lint、Debug APK 和仪器测试 APK 构建：
+
+```bash
+bash scripts/verify_linux.sh
+# 仅在明确指定测试设备时运行设备测试：
+bash scripts/verify_linux.sh emulator-5554
+```
+
+首次启动首页会显示启用状态，提供系统输入法设置与切换入口；麦克风在用户选择
+开启本地语音时申请，不影响普通打字。候选展开区按词长分配宽度，相同候选快照
+不会重建列表；常用语与自定义符号编辑保留旋转前的草稿。
 
 本地 JVM 测试与构建：
 

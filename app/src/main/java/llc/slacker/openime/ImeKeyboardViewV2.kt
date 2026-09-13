@@ -122,7 +122,7 @@ class ImeKeyboardViewV2 private constructor(
     }
 
     override fun onDetachedFromWindow() {
-        adapter.shutdown()
+        shutdown()
         super.onDetachedFromWindow()
     }
 
