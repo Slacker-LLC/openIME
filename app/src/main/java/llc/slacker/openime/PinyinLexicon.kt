@@ -43,8 +43,11 @@ object PinyinLexicon {
                     lines.forEach { line ->
                         val parts = line.split('\t', limit = 2)
                         if (parts.size == 2 && parts[0].isNotBlank() && parts[1].isNotBlank()) {
-                            parts[1].codePoints().forEach { codePoint ->
+                            var index = 0
+                            while (index < parts[1].length) {
+                                val codePoint = parts[1].codePointAt(index)
                                 add(parts[0], String(Character.toChars(codePoint)), weight = 0)
+                                index += Character.charCount(codePoint)
                             }
                         }
                     }
@@ -83,6 +86,9 @@ object PinyinLexicon {
             }.also { cached = it }
         }
     }
+
+    /** Already-loaded generated lexicon; empty only in isolated JVM tests before [load]. */
+    fun current(): Map<String, List<String>> = cached.orEmpty()
 
     /** Corpus weight retained for the local fallback/nine-key scorer. */
     fun weightFor(pinyin: String, text: String): Int =
