@@ -19,6 +19,29 @@ class RimeFuzzySchemaTest {
     }
 
     @Test
+    fun normalAndFuzzySchemasBothAcceptNineKeyDigits() {
+        listOf(
+            "rime-data/luna_pinyin_simp.schema.yaml",
+            "rime-data/luna_pinyin_simp_fuzzy.schema.yaml",
+        ).forEach { path ->
+            val schema = asset(path).readText()
+            assertTrue("$path must include numeric speller alphabet", schema.contains("alphabet: 987654321"))
+            listOf(
+                "derive/[abc]/2/",
+                "derive/[def]/3/",
+                "derive/[ghi]/4/",
+                "derive/[jkl]/5/",
+                "derive/[mno]/6/",
+                "derive/[pqrs]/7/",
+                "derive/[tuv]/8/",
+                "derive/[wxyz]/9/",
+            ).forEach { rule ->
+                assertTrue("missing nine-key rule in $path: $rule", schema.contains(rule))
+            }
+        }
+    }
+
+    @Test
     fun fuzzySchemaIsDeployedWithIndependentPrismAndRequiredRules() {
         val defaults = asset("rime-data/default.yaml").readText()
         val schema = asset("rime-data/luna_pinyin_simp_fuzzy.schema.yaml").readText()
@@ -40,7 +63,7 @@ class RimeFuzzySchemaTest {
 
     @Test
     fun normalSchemaDoesNotEnableFuzzyRules() {
-        val schema = asset("rime-data/luna_pinyin.schema.yaml").readText()
+        val schema = asset("rime-data/luna_pinyin_simp.schema.yaml").readText()
         listOf("zh_z_bufen", "n_l_bufen", "en_eng_bufen").forEach { rule ->
             assertTrue("normal schema unexpectedly enables $rule", !schema.contains("pinyin:/$rule"))
         }
