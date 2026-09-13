@@ -93,7 +93,9 @@ class CandidatePipelineTest {
         assertEquals("64426", CandidatePipeline.nineKeyDigitsFor("NiHao"))
         assertEquals("426", CandidatePipeline.nineKeyDigitsFor("hao"))
         assertEquals("6446", CandidatePipeline.nineKeyDigitsFor("niho"))
-        assertNull(CandidatePipeline.nineKeyDigitsFor("ni hao"))
+        assertEquals("64426", CandidatePipeline.nineKeyDigitsFor("ni hao"))
+        assertEquals("64426", CandidatePipeline.nineKeyDigitsFor("ni'hao"))
+        assertEquals("64426", CandidatePipeline.nineKeyDigitsFor("ni|hao"))
         assertNull(CandidatePipeline.nineKeyDigitsFor("ni2hao"))
         assertNull(CandidatePipeline.nineKeyDigitsFor("你好"))
     }
