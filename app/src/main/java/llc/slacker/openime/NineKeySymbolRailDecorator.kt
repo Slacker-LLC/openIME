@@ -67,10 +67,9 @@ internal object NineKeySymbolRailDecorator {
     }
 
     /**
-     * Keep the filter tied to the actual editable preedit. This avoids a second
-     * nine-key state machine: choosing a path edits the same preedit field, so
-     * the existing TextWatcher republishes candidates through the service and
-     * the decoder records that path as the preferred continuation.
+     * The candidate pipeline already decoded this key event before it changed
+     * the visible preedit. Read its tiny path cache here instead of decoding the
+     * same digits a second time on the UI thread.
      */
     private fun installFilterWatcher(root: View) {
         val editor = root.findViewWithTag<EditText>("pinyin-composition-editor") ?: return
@@ -105,24 +104,20 @@ internal object NineKeySymbolRailDecorator {
         val prefix = if (lastSpace >= 0) text.substring(0, lastSpace + 1) else ""
         val suffix = if (lastSpace >= 0) text.substring(lastSpace + 1) else text
         val digits = CandidatePipeline.nineKeyDigitsFor(suffix)
-        if (digits.isNullOrEmpty()) {
+        val code = digits?.let { NineKeyLocalDecoder.nativeCode(prefix, it) }
+        if (code.isNullOrEmpty()) {
             setPinyinFilters(root, emptyList(), null) { }
             return
         }
 
-        val resolver = root.context as? CandidateResolver ?: return
-        val fuzzy = ImeSettingsRepository.loadFuzzy(root.context)
-        val resolution = resolver.resolveNineKey(
-            digits = digits,
-            segmentPrefix = prefix,
-            preferredSuffix = suffix,
-            fuzzy = fuzzy,
-        )
+        val choices = NineKeyUiState.pathsFor(code)
+        val selected = NineKeyUiState.selectedPathFor(code) ?: text
         setPinyinFilters(
             root = root,
-            filters = resolution.displayPinyinPaths,
-            selected = text,
+            filters = choices,
+            selected = selected,
         ) { chosen ->
+            NineKeyUiState.select(code, chosen)
             if (chosen == editor.text?.toString()) return@setPinyinFilters
             editor.setText(chosen)
             editor.setSelection(chosen.length)
