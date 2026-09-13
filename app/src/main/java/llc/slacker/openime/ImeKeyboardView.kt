@@ -134,16 +134,42 @@ open class ImeKeyboardView(
             Thread(runnable, "openime-emoji-decode").apply { isDaemon = true }
         }
         private val emojiMainHandler = Handler(Looper.getMainLooper())
+        private val emojiDecodeLock = Any()
+        private val emojiDecodeWaiters = mutableMapOf<String, MutableList<(Bitmap) -> Unit>>()
 
         private fun requestEmojiBitmap(context: Context, assetPath: String, onReady: (Bitmap) -> Unit) {
-            emojiBitmaps.get(assetPath)?.let(onReady)?.also { return }
+            emojiBitmaps.get(assetPath)?.let { cached ->
+                onReady(cached)
+                return
+            }
+            val shouldDecode = synchronized(emojiDecodeLock) {
+                emojiBitmaps.get(assetPath)?.let { cached ->
+                    emojiMainHandler.post { onReady(cached) }
+                    return@synchronized false
+                }
+                val waiters = emojiDecodeWaiters[assetPath]
+                if (waiters != null) {
+                    waiters += onReady
+                    false
+                } else {
+                    emojiDecodeWaiters[assetPath] = mutableListOf(onReady)
+                    true
+                }
+            }
+            if (!shouldDecode) return
+
             val appContext = context.applicationContext
             emojiDecodeExecutor.execute {
                 val bitmap = runCatching {
                     appContext.assets.open(assetPath).use { BitmapFactory.decodeStream(it) }
-                }.getOrNull() ?: return@execute
-                emojiBitmaps.put(assetPath, bitmap)
-                emojiMainHandler.post { onReady(bitmap) }
+                }.getOrNull()
+                val waiters = synchronized(emojiDecodeLock) {
+                    if (bitmap != null) emojiBitmaps.put(assetPath, bitmap)
+                    emojiDecodeWaiters.remove(assetPath).orEmpty()
+                }
+                if (bitmap != null && waiters.isNotEmpty()) {
+                    emojiMainHandler.post { waiters.forEach { it(bitmap) } }
+                }
             }
         }
     }
@@ -247,6 +273,7 @@ open class ImeKeyboardView(
     private var t9Filter = "T9"
     private var passwordField = false
     private var inlineEditTarget: EditText? = null
+    private val panelChipScrollPositions = mutableMapOf<String, Int>()
 
     private lateinit var mainDock: LinearLayout
     private lateinit var keyboardHost: FrameLayout
@@ -653,7 +680,7 @@ open class ImeKeyboardView(
                 preferredChineseMode = effectiveMode
             }
         }
-        if (panel != Panel.NONE) closePanelToKeyboard()
+        if (panel != Panel.NONE) dismissPanelForModeSwitch()
         repeatHandler.removeCallbacks(nineTapReset)
         nineTapReset.run()
         mode = effectiveMode
@@ -691,6 +718,18 @@ open class ImeKeyboardView(
         renderPanel(newPanel)
         expandedPanel.alpha = 0.96f
         expandedPanel.animate().alpha(1f).setDuration(120L).start()
+    }
+
+    private fun dismissPanelForModeSwitch() {
+        if (panel == Panel.NONE) return
+        stopVoiceIfActive()
+        panel = Panel.NONE
+        expandedPanel.animate().cancel()
+        expandedPanel.visibility = View.GONE
+        mainDock.visibility = View.VISIBLE
+        keyboardBody.visibility = View.VISIBLE
+        candidateOverlay.visibility = View.GONE
+        listener.onPanelChanged(Panel.NONE)
     }
 
     fun closePanelToKeyboard(): Boolean {
@@ -1794,7 +1833,7 @@ open class ImeKeyboardView(
             gravity = Gravity.CENTER
             includeFontPadding = false
             minWidth = dp(42)
-            minHeight = dp(34)
+            minHeight = dp(44)
             setPadding(dp(10), 0, dp(10), 0)
             tag = if (active) "tab-active" else "panel-tab"
             contentDescription = label
@@ -1810,6 +1849,7 @@ open class ImeKeyboardView(
         isHorizontalScrollBarEnabled = false
         isFillViewport = false
         overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+        val scrollKey = labels.joinToString("\u001f")
         val row = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -1822,15 +1862,24 @@ open class ImeKeyboardView(
                 chip,
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
-                    dp(32),
+                    dp(44),
                 ).apply { marginEnd = dp(6) },
             )
         }
-        addView(row, ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)))
+        addView(row, ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)))
+        setOnScrollChangeListener { _, scrollX, _, _, _ ->
+            panelChipScrollPositions[scrollKey] = scrollX
+        }
         post {
-            selectedView?.let { active ->
-                val target = (active.left - (width - active.width) / 2).coerceAtLeast(0)
-                scrollTo(target, 0)
+            val remembered = panelChipScrollPositions[scrollKey]
+            if (remembered != null) {
+                scrollTo(remembered, 0)
+            } else {
+                selectedView?.let { active ->
+                    val target = (active.left - (width - active.width) / 2).coerceAtLeast(0)
+                    scrollTo(target, 0)
+                    panelChipScrollPositions[scrollKey] = scrollX
+                }
             }
         }
     }
@@ -3032,17 +3081,20 @@ open class ImeKeyboardView(
             }
         }
         header.addView(dragHandle, weightParams(1f))
-        header.addView(button(if (floatingKeyboard) "贴底固定" else "恢复浮动", 11f, true).apply {
+        val floatingToggle = button(if (floatingKeyboard) "贴底固定" else "恢复浮动", 11f, true).apply {
             contentDescription = if (floatingKeyboard) "贴底固定" else "恢复浮动"
-            setOnClickListener {
+            setOnClickListener { view ->
                 floatingKeyboard = !floatingKeyboard
                 listener.onFloatingKeyboardChanged(floatingKeyboard)
-                renderPanel(Panel.GAMING)
+                val label = if (floatingKeyboard) "贴底固定" else "恢复浮动"
+                (view as TextView).text = label
+                view.contentDescription = label
             }
-        }, LinearLayout.LayoutParams(dp(82), dp(30)))
+        }
+        header.addView(floatingToggle, LinearLayout.LayoutParams(dp(88), dp(44)))
         hud.addView(header, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(30),
+            dp(44),
         ).apply { bottomMargin = dp(4) })
         val macroRow = HorizontalScrollView(context)
         val macroContent = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
@@ -3057,7 +3109,7 @@ open class ImeKeyboardView(
         macroRow.addView(macroContent, ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         hud.addView(macroRow, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(34),
+            dp(44),
         ))
         listOf("qwertyuiop", "asdfghjkl", "zxcvbnm").forEach { rowText ->
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
@@ -3066,7 +3118,7 @@ open class ImeKeyboardView(
                     key(ch.toString(), false, null, 1f, 13f) { listener.onCharacter(ch.toString()) }.apply {
                         tag = "game-mini"
                     },
-                    LinearLayout.LayoutParams(0, dp(34), 1f).apply { marginEnd = dp(4) },
+                    LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(4) },
                 )
             }
             if (rowText.startsWith("z")) {
@@ -3074,21 +3126,21 @@ open class ImeKeyboardView(
                     key("空格", true, null, 1.2f, 11f) { listener.onSpace() }.apply {
                         tag = "game-mini"
                     },
-                    LinearLayout.LayoutParams(0, dp(34), 1.2f).apply { marginEnd = dp(4) },
+                    LinearLayout.LayoutParams(0, dp(44), 1.2f).apply { marginEnd = dp(4) },
                 )
                 val gameBackspace = backspaceKey().apply { tag = "game-mini" }
-                row.addView(gameBackspace, LinearLayout.LayoutParams(0, dp(34), 1.2f).apply { marginEnd = dp(4) })
+                row.addView(gameBackspace, LinearLayout.LayoutParams(0, dp(44), 1.2f).apply { marginEnd = dp(4) })
                 row.addView(
                     key("发送", true, null, 1.6f, 12f) { listener.onEnter() }.apply {
                         tag = "game-mini"
                     },
-                    LinearLayout.LayoutParams(0, dp(34), 1.6f),
+                    LinearLayout.LayoutParams(0, dp(44), 1.6f),
                 )
             }
             hud.addView(row, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(34),
-            ).apply { bottomMargin = dp(5) })
+                dp(44),
+            ).apply { bottomMargin = dp(2) })
         }
         val stage = FrameLayout(context).apply {
             tag = "floating-stage"
