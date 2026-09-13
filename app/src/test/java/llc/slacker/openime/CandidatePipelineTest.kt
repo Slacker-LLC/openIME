@@ -45,10 +45,15 @@ class CandidatePipelineTest {
 
         assertEquals("nihao", resolution.preview)
         assertEquals(listOf("64426"), resolution.pinyinPaths)
+        assertTrue("selected display path must remain filterable", "nihao" in resolution.displayPinyinPaths)
+        resolution.displayPinyinPaths.forEach { path ->
+            assertEquals("display path must match the current digits: $path", "64426", CandidatePipeline.nineKeyDigitsFor(path))
+        }
         assertTrue(resolution.candidates.isNotEmpty())
         assertTrue(resolution.candidates.contains("你好"))
         assertFalse(resolution.candidates.any { candidate -> candidate.any(Char::isDigit) })
         assertEquals(resolution.candidates.distinct(), resolution.candidates)
+        assertEquals(resolution.candidates, NineKeyFallbackRegistry.candidatesFor("64426"))
     }
 
     @Test
@@ -62,8 +67,10 @@ class CandidatePipelineTest {
 
         assertEquals("ni hao", resolution.preview)
         assertEquals(listOf("64'426"), resolution.pinyinPaths)
+        assertTrue("ni hao" in resolution.displayPinyinPaths)
         assertFalse("Suffix-only choices would drop ni when selected", resolution.candidates.contains("好"))
         assertTrue(resolution.candidates.contains("你好"))
+        assertEquals(resolution.candidates, NineKeyFallbackRegistry.candidatesFor("64'426"))
     }
 
     @Test
