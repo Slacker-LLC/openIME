@@ -23,10 +23,14 @@ class CandidatePipelineTest {
             engine.getCandidates("nihao", false),
             pipeline.candidatesFor(KeyboardMode.PINYIN_26, "nihao", false),
         )
+
+        val english = pipeline.candidatesFor(KeyboardMode.ENGLISH_26, "hel", false)
+        assertEquals("hel", english.first())
         assertEquals(
-            engine.getEnglishCompletions("hel"),
-            pipeline.candidatesFor(KeyboardMode.ENGLISH_26, "hel", false),
+            (listOf("hel") + engine.getEnglishCompletions("hel")).distinct(),
+            english,
         )
+
         assertEquals(
             engine.getT9EnglishCandidates("435"),
             pipeline.candidatesFor(KeyboardMode.ENGLISH_T9, "435", false),
