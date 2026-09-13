@@ -6,7 +6,7 @@ __include: luna_pinyin.schema:/
 schema:
   schema_id: luna_pinyin_simp
   name: 朙月拼音·简化字
-  version: "0.23"
+  version: "0.24"
   author:
     - 佛振 <chen.sst@gmail.com>
     - openIME
@@ -25,26 +25,20 @@ switches:
   - name: ascii_punct
     states: [ 。，, ．， ]
 
-# Keep normal full-Pinyin spellings and derive a second spelling graph for
-# mobile 9-key input. Digits therefore enter librime directly instead of being
-# guessed into several Pinyin strings by Kotlin first.
+# Keep the original lowercase full-Pinyin spelling. Clone each completed
+# spelling to uppercase, then transliterate only that clone to its T9 digits.
+# This avoids the large derived-spelling fan-out of eight independent T9 rules.
 speller:
-  alphabet: 987654321zyxwvutsrqponmlkjihgfedcba
-  initials: 987654321zyxwvutsrqponmlkjihgfedcba
+  alphabet: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA987654321
+  initials: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA987654321
   delimiter: " '"
   algebra:
     __patch:
       - pinyin:/abbreviation
       - pinyin:/spelling_correction
       - pinyin:/key_correction
-      - derive/[abc]/2/
-      - derive/[def]/3/
-      - derive/[ghi]/4/
-      - derive/[jkl]/5/
-      - derive/[mno]/6/
-      - derive/[pqrs]/7/
-      - derive/[tuv]/8/
-      - derive/[wxyz]/9/
+      - derive/^(.*)$/\U$1/
+      - xlit/ABCDEFGHIJKLMNOPQRSTUVWXYZ/22233344455566677778889999/
 
 translator:
   prism: luna_pinyin_simp
