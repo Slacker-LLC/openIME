@@ -19,25 +19,19 @@ class RimeFuzzySchemaTest {
     }
 
     @Test
-    fun normalAndFuzzySchemasBothAcceptNineKeyDigits() {
+    fun normalAndFuzzySchemasBothAcceptNineKeyDigitsWithSingleTransliteration() {
         listOf(
             "rime-data/luna_pinyin_simp.schema.yaml",
             "rime-data/luna_pinyin_simp_fuzzy.schema.yaml",
         ).forEach { path ->
             val schema = asset(path).readText()
-            assertTrue("$path must include numeric speller alphabet", schema.contains("alphabet: 987654321"))
-            listOf(
-                "derive/[abc]/2/",
-                "derive/[def]/3/",
-                "derive/[ghi]/4/",
-                "derive/[jkl]/5/",
-                "derive/[mno]/6/",
-                "derive/[pqrs]/7/",
-                "derive/[tuv]/8/",
-                "derive/[wxyz]/9/",
-            ).forEach { rule ->
-                assertTrue("missing nine-key rule in $path: $rule", schema.contains(rule))
-            }
+            assertTrue("$path must include numeric speller alphabet", schema.contains("987654321"))
+            assertTrue("$path must preserve a letter spelling branch", schema.contains("derive/^(.*)$/\\U$1/"))
+            assertTrue(
+                "$path must map the complete cloned spelling to T9 in one pass",
+                schema.contains("xlit/ABCDEFGHIJKLMNOPQRSTUVWXYZ/22233344455566677778889999/"),
+            )
+            assertTrue("$path must not regress to eight high-fanout T9 derives", !schema.contains("derive/[abc]/2/"))
         }
     }
 
