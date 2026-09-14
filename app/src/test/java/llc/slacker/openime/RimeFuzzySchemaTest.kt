@@ -20,16 +20,39 @@ class RimeFuzzySchemaTest {
 
     @Test
     fun normalAndFuzzySchemasBothAcceptNineKeyDigitsWithSingleTransliteration() {
+        // The T9 rules live in one shared node so librime can resolve them;
+        // a literal rule inside a __patch list is read as a patch path and
+        // makes the whole schema fail to build with a circular dependency.
+        val shared = asset("rime-data/pinyin.yaml").readText()
+        assertTrue(
+            "pinyin.yaml must define the shared t9_transliteration node",
+            shared.contains("t9_transliteration:"),
+        )
+        assertTrue(
+            "t9_transliteration must preserve a letter spelling branch",
+            shared.contains("derive/^(.*)$/\\U$1/"),
+        )
+        assertTrue(
+            "t9_transliteration must map the complete cloned spelling to T9 in one pass",
+            shared.contains("xlit/ABCDEFGHIJKLMNOPQRSTUVWXYZ/22233344455566677778889999/"),
+        )
+        assertTrue(
+            "t9_transliteration must not regress to eight high-fanout T9 derives",
+            !shared.contains("derive/[abc]/2/"),
+        )
         listOf(
             "rime-data/luna_pinyin_simp.schema.yaml",
             "rime-data/luna_pinyin_simp_fuzzy.schema.yaml",
         ).forEach { path ->
             val schema = asset(path).readText()
             assertTrue("$path must include numeric speller alphabet", schema.contains("987654321"))
-            assertTrue("$path must preserve a letter spelling branch", schema.contains("derive/^(.*)$/\\U$1/"))
             assertTrue(
-                "$path must map the complete cloned spelling to T9 in one pass",
-                schema.contains("xlit/ABCDEFGHIJKLMNOPQRSTUVWXYZ/22233344455566677778889999/"),
+                "$path must reference the shared T9 transliteration node",
+                schema.contains("pinyin:/t9_transliteration"),
+            )
+            assertTrue(
+                "$path must not inline algebra rules into the __patch list",
+                !schema.contains("- derive/") && !schema.contains("- xlit/"),
             )
             assertTrue("$path must not regress to eight high-fanout T9 derives", !schema.contains("derive/[abc]/2/"))
         }
