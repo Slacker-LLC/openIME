@@ -20,8 +20,8 @@ android {
         minSdk = 26
         targetSdk = 36
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = 3
-        versionName = "1.0.2"
+        versionCode = 4
+        versionName = "1.0.3"
 
         ndk {
             // Physical phones in scope are arm64; x86_64 keeps the existing
@@ -77,4 +77,11 @@ tasks.withType<Test>().configureEach {
     // explicitly at the front of the test runtime classpath so JUnit can
     // discover the classes it just compiled.
     classpath = files(kotlinTestClasses) + classpath
+    // Several unit tests read Rime schemas straight off disk (for example
+    // RimeFuzzySchemaTest). Without a declared input Gradle reports
+    // UP-TO-DATE after an asset edit and the tests never re-run, which hides
+    // a broken schema behind a green local build.
+    inputs.dir(layout.projectDirectory.dir("src/main/assets"))
+        .withPropertyName("mainAssets")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
 }
