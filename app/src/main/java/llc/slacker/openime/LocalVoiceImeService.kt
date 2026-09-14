@@ -213,10 +213,19 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
         // editor resets the composition.
         val sameEditorKind = kind == EditorInfoAdapter.kind(state.editorInfo)
         val preserve = restarting && sameEditorKind && !EditorInfoAdapter.isPassword(kind) && state.composition.isNotEmpty()
-        val nextMode = if (restarting && sameEditorKind) {
+        val policyMode = if (restarting && sameEditorKind) {
             state.keyboardMode
         } else {
             InputMethodSubtypePolicy.defaultKeyboardMode(kind, currentSystemSubtypeLocale())
+        }
+        // defaultKeyboardMode returns PINYIN_26 only for the Chinese/unknown
+        // branch (number fields give DIGITS, Latin/credential fields give
+        // ENGLISH_26), so it is safe to swap in the persisted 26/9 preference.
+        val nextMode = when {
+            restarting && sameEditorKind -> policyMode
+            policyMode == KeyboardMode.PINYIN_26 ->
+                ImeSettingsRepository.loadPreferredChineseMode(this)
+            else -> policyMode
         }
         val initialShiftState = if (nextMode == KeyboardMode.ENGLISH_26) {
             desiredEnglishShiftState(attribute)
@@ -295,10 +304,16 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
         if (!::gateway.isInitialized || !::rime.isInitialized) return
 
         @Suppress("DEPRECATION")
-        val nextMode = InputMethodSubtypePolicy.defaultKeyboardMode(
+        val policyMode = InputMethodSubtypePolicy.defaultKeyboardMode(
             EditorInfoAdapter.kind(state.editorInfo),
             newSubtype.locale,
         )
+        // Honor the persisted 26/9-key preference in the Chinese/unknown branch.
+        val nextMode = if (policyMode == KeyboardMode.PINYIN_26) {
+            ImeSettingsRepository.loadPreferredChineseMode(this)
+        } else {
+            policyMode
+        }
 
         // A subtype switch changes the input language contract. Discard only
         // text actually owned by this IME; setComposingText("") without an
@@ -1339,7 +1354,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
             attrs.x = floatingWindowX.coerceIn(0, (screenWidth - desiredWidth).coerceAtLeast(0))
             attrs.y = floatingWindowY.coerceIn(0, (screenHeight - currentHeight).coerceAtLeast(0))
             imeWindow.attributes = attrs
-            Log.d(TAG, "floating-window x=${attrs.x} y=${attrs.y} w=${attrs.width} h=${attrs.height}")
+            if (verboseLogging) Log.d(TAG, "floating-window x=${attrs.x} y=${attrs.y} w=${attrs.width} h=${attrs.height}")
         }
     }
 
@@ -1356,7 +1371,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
         attrs.x = floatingWindowX
         attrs.y = floatingWindowY
         imeWindow.attributes = attrs
-        Log.d(TAG, "floating-window-drag x=$floatingWindowX y=$floatingWindowY")
+        if (verboseLogging) Log.d(TAG, "floating-window-drag x=$floatingWindowX y=$floatingWindowY")
     }
 
     private fun restoreImeWindow() {
@@ -1372,7 +1387,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
             floatingWindowEnabled = false
             floatingWindowX = 0
             floatingWindowY = 0
-            Log.d(TAG, "floating-window-restored")
+            if (verboseLogging) Log.d(TAG, "floating-window-restored")
         }
     }
 
