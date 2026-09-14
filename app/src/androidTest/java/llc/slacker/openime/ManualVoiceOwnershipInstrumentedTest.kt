@@ -4,12 +4,23 @@ import android.view.inputmethod.InputConnection
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.lang.reflect.Proxy
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class ManualVoiceOwnershipInstrumentedTest {
+    private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
+
+    // onEmojiSelected writes the emoji recents through the attached context.
+    // Clear them so this fixture cannot leak state into other suites that
+    // assert the stored order.
+    @After
+    fun cleanup() {
+        EmojiRecentRepository.clear(context)
+    }
+
     @Test fun manualTextRemovesVoiceCompositionBeforeCommitting() {
         verifyManualEdits(voiceComposing = true)
     }
@@ -44,7 +55,7 @@ class ManualVoiceOwnershipInstrumentedTest {
                 android.content.ContextWrapper::class.java
                     .getDeclaredMethod("attachBaseContext", android.content.Context::class.java)
                     .apply { isAccessible = true }
-                    .invoke(service, InstrumentationRegistry.getInstrumentation().targetContext)
+                    .invoke(service, context)
                 fun setField(name: String, value: Any) {
                     LocalVoiceImeService::class.java.getDeclaredField(name).apply {
                         isAccessible = true
