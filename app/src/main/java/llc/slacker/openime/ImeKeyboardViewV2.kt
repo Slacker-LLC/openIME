@@ -112,8 +112,8 @@ class ImeKeyboardViewV2 private constructor(
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         // The legacy space implementation reports only pressed=true/false to
         // the listener. Preserve whether the release was a cancellation so the
-        // adapter can recover a 150..system-timeout hold as a normal space only
-        // on a real ACTION_UP, never on ACTION_CANCEL.
+        // adapter can recover a sub-long-press hold as a normal space only on a
+        // real ACTION_UP, never on ACTION_CANCEL.
         if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
             adapter.releaseWasCancel = true
         }
@@ -576,7 +576,7 @@ class ImeKeyboardViewV2 private constructor(
                 voiceHandler.removeCallbacks(pending)
                 pendingVoiceStart = null
                 // The legacy renderer has already consumed this release because
-                // it crossed its old 150 ms threshold. Recover it as the normal
+                // it crossed the long-press threshold. Recover it as the normal
                 // space action unless Android cancelled the gesture.
                 if (!releaseWasCancel) delegate.onSpace()
                 releaseWasCancel = false
