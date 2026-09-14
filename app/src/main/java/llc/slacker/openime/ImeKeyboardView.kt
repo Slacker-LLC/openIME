@@ -324,6 +324,7 @@ open class ImeKeyboardView(
     private lateinit var candidateRow: LinearLayout
     private lateinit var associationRow: LinearLayout
     private lateinit var candidateExpandBtn: TextView
+    private lateinit var candidateEmojiBtn: TextView
     private lateinit var voiceInlineZone: LinearLayout
     private lateinit var voiceInlineStatus: TextView
     private val voiceInlineWaves = mutableListOf<View>()
@@ -647,6 +648,25 @@ open class ImeKeyboardView(
         }
         candField.setPadding(dp(8), 0, dp(8), 0)
         candField.addView(candScroll, LinearLayout.LayoutParams(0, dp(42), 1f))
+        // Persistent emoji shortcut kept visible while composing, so the user can
+        // jump straight to the emoji panel without first committing/clearing.
+        candidateEmojiBtn = TextView(context).apply {
+            tag = "candidate-emoji"
+            text = "☺"
+            textSize = 17f
+            gravity = Gravity.CENTER
+            contentDescription = "表情"
+            setPadding(dp(7), 0, dp(7), 0)
+            isClickable = true
+            setOnClickListener {
+                feedback()
+                showPanel(Panel.EMOJI)
+            }
+        }
+        candField.addView(
+            candidateEmojiBtn,
+            LinearLayout.LayoutParams(dp(40), dp(42)),
+        )
         candidateExpandBtn = TextView(context).apply {
             tag = "candidate-expand"
             text = "⌄"
@@ -4113,6 +4133,8 @@ open class ImeKeyboardView(
             hapticFeedback()
         } else {
             hidePopup()
+            // Matching light tick when sliding back out of the armed clear tier.
+            hapticFeedback()
         }
     }
 
@@ -4328,6 +4350,7 @@ open class ImeKeyboardView(
         applyThemeRecursive(this, t)
         composition.setTextColor(t.keySecondaryText)
         candidateExpandBtn.setTextColor(t.keySecondaryText)
+        candidateEmojiBtn.setTextColor(t.keySecondaryText)
         if (voiceInlineActive) applyInlineVoicePalette()
     }
 
