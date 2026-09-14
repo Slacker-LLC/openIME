@@ -182,6 +182,19 @@ class ImeKeyView(
         contentDescription = value
     }
 
+    /**
+     * Hide the small corner long-press hint without removing the long-press
+     * action itself. Used to keep the 26-key letter surface visually clean.
+     */
+    fun setSecondaryVisible(visible: Boolean) {
+        val view = secondaryTextView ?: return
+        val target = if (visible) View.VISIBLE else View.GONE
+        if (view.visibility != target) {
+            view.visibility = target
+            invalidate()
+        }
+    }
+
     fun allowTwoLineLabel() {
         mainTextView?.maxLines = 2
     }
