@@ -37,8 +37,7 @@ speller:
       - pinyin:/abbreviation
       - pinyin:/spelling_correction
       - pinyin:/key_correction
-      - derive/^(.*)$/\U$1/
-      - xlit/ABCDEFGHIJKLMNOPQRSTUVWXYZ/22233344455566677778889999/
+      - pinyin:/t9_transliteration
 
 translator:
   prism: luna_pinyin_simp

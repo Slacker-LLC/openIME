@@ -37,6 +37,14 @@ class ManualVoiceOwnershipInstrumentedTest {
                     }
                 } as InputConnection
                 val service = LocalVoiceImeService()
+                // The service is constructed directly instead of being started
+                // by the platform, so it has no base context yet. Attach the
+                // instrumentation target context so repository-backed side
+                // effects (emoji recents) work exactly as they do in the IME.
+                android.content.ContextWrapper::class.java
+                    .getDeclaredMethod("attachBaseContext", android.content.Context::class.java)
+                    .apply { isAccessible = true }
+                    .invoke(service, InstrumentationRegistry.getInstrumentation().targetContext)
                 fun setField(name: String, value: Any) {
                     LocalVoiceImeService::class.java.getDeclaredField(name).apply {
                         isAccessible = true
