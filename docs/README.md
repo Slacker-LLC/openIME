@@ -16,14 +16,11 @@
 
 - [TEST_SOP.md](TEST_SOP.md)：L0～L3 正式测试流程、失败门禁和发布条件。
 - [TEST_SOP_CHECKLIST.md](TEST_SOP_CHECKLIST.md)：L2/L3 多设备与人工交互验收清单。
-- [TEST_REPORT.md](TEST_REPORT.md)：最近一次构建和回归结果。
-- [TEST_MATRIX.md](TEST_MATRIX.md)：测试场景矩阵。
 - [TEST_ARCHITECTURE.md](TEST_ARCHITECTURE.md)：测试层级和调试入口。
-- [REAL_DEVICE_E2E.md](REAL_DEVICE_E2E.md)：真实设备回归记录。
-- [VISUAL_ACCEPTANCE.md](VISUAL_ACCEPTANCE.md)：视觉验收项。
-- [FINAL_REPORT.md](FINAL_REPORT.md)：阶段性风险与已知边界。
-- [STATUS.md](STATUS.md)：当前实现状态摘要。
-- [VERIFY.md](VERIFY.md)：从干净工作区复现验证的简要步骤。
+- [DEVELOPMENT_AUDIT_PLAN.md](DEVELOPMENT_AUDIT_PLAN.md)：板块划分、当前进度和接续入口。
+
+历史测试结果不再以固定文档保留在此。每次测试的原始证据由
+`scripts/test_sop.ps1` 写入统一的证据目录，需要长期保存时再单独整理。
 
 `docs/visual/`、`docs/reference_ime/` 以及根目录的截图和 UI dump 属于本地测试
 证据，默认不提交；需要共享时请只提交经过筛选、脱敏且有说明的证据。
