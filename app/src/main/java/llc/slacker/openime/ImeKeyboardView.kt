@@ -126,6 +126,8 @@ open class ImeKeyboardView(
          */
         private const val EMOJI_CACHE_BYTES = 4 * 1024 * 1024
         private const val CANDIDATE_STRIP_LIMIT = 24
+        /** How often a deferred row rebuild re-checks whether the press ended. */
+        private const val ROW_REBUILD_POLL_MS = 40L
         private val emojiBitmaps = object : LruCache<String, Bitmap>(EMOJI_CACHE_BYTES) {
             override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
         }
@@ -211,6 +213,26 @@ open class ImeKeyboardView(
     // removeAllViews()+rebuild when focus moves between fields without a layout
     // change.
     private var renderedMode: KeyboardMode? = null
+    // Android drops a gesture the moment its view leaves the hierarchy, so a row
+    // rebuild that lands while a key is held swallows that press (the space tap,
+    // a letter, the backspace repeat). Remember the request and replay it once
+    // the finger lifts instead of tearing the key out from under the gesture.
+    private var pendingRowRebuild = false
+    private val pendingRowRebuildPoll = object : Runnable {
+        override fun run() {
+            if (!pendingRowRebuild) return
+            if (hasPressedKey()) {
+                postDelayed(this, ROW_REBUILD_POLL_MS)
+                return
+            }
+            pendingRowRebuild = false
+            renderModeBody()
+        }
+    }
+    // Only these configuration values change the derived row and IME heights.
+    private var appliedOrientation = resources.configuration.orientation
+    private var appliedFontScale = resources.configuration.fontScale
+    private var appliedDensityDpi = resources.displayMetrics.densityDpi
     private var lastTextMode = KeyboardMode.PINYIN_26
     private var preferredChineseMode = ImeSettingsRepository.loadPreferredChineseMode(context)
     protected var panel = Panel.NONE
@@ -437,9 +459,33 @@ open class ImeKeyboardView(
         super.onConfigurationChanged(newConfig)
         if (appearance == ImeAppearance.SYSTEM) applyTheme()
         // Resize containers and rebuild rows so compact landscape heights / larger
-        // font rows take effect. Do not yank the user out of an open panel.
+        // font rows take effect. Unrelated configuration changes (locale, UI mode,
+        // keyboard presence) do not alter the derived geometry, so they must not
+        // tear down the key surface.
+        val geometryChanged = newConfig.orientation != appliedOrientation ||
+            newConfig.fontScale != appliedFontScale ||
+            newConfig.densityDpi != appliedDensityDpi
+        appliedOrientation = newConfig.orientation
+        appliedFontScale = newConfig.fontScale
+        appliedDensityDpi = newConfig.densityDpi
+        if (!geometryChanged) return
+        // Do not yank the user out of an open panel.
         applyDynamicHeights()
         if (!standalonePanel && currentPanel() == Panel.NONE) renderModeBody()
+    }
+
+    /** True while any key in this keyboard still owns a press. */
+    private fun hasPressedKey(): Boolean {
+        fun walk(view: View): Boolean {
+            if (view.isPressed) return true
+            if (view is ViewGroup) {
+                for (index in 0 until view.childCount) {
+                    if (walk(view.getChildAt(index))) return true
+                }
+            }
+            return false
+        }
+        return walk(this)
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -1014,6 +1060,7 @@ open class ImeKeyboardView(
         backspaceClearUiAction = null
         spaceVoiceGestureActive = false
         spaceVoiceGestureCancel = false
+        pendingRowRebuild = false
         voiceInlineActive = false
         voiceInlineCancel = false
         hidePopup()
@@ -1283,6 +1330,14 @@ open class ImeKeyboardView(
     }
 
     private fun renderModeBody() {
+        // Never rebuild out from under a finger: the press would be lost silently.
+        if (hasPressedKey()) {
+            pendingRowRebuild = true
+            removeCallbacks(pendingRowRebuildPoll)
+            postDelayed(pendingRowRebuildPoll, ROW_REBUILD_POLL_MS)
+            return
+        }
+        pendingRowRebuild = false
         // Corner hints default on (9-key needs them); renderPinyin26 opts out.
         showSecondaryHints = true
         mainDock.visibility = View.VISIBLE
