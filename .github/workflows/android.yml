@@ -35,6 +35,12 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          # The retired legacy 'tools' package is still the action's default and
+          # now fails with "Failed to find package 'tools'", which killed every
+          # job before it reached the build. platform-tools is what the build
+          # actually needs from here.
+          packages: 'platform-tools'
 
       - name: Install Android build components
         shell: bash
@@ -95,6 +101,8 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
 
       - name: Install Android build components
         shell: bash
