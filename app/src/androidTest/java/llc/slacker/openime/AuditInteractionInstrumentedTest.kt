@@ -192,9 +192,16 @@ class AuditInteractionInstrumentedTest {
             }, hold)
             true
         }
+        harness.awaitMain { if (released) true else null }
+        // View delivers a tap through a posted Runnable, so the space can reach
+        // the listener on a later main-loop turn than the release callback. The
+        // assertion below used to run first and read zero on a loaded device.
+        val typed = runCatching {
+            harness.awaitMain(timeoutMs = 2_000L) { if (recorder.spaces > 0) true else null }
+        }.isSuccess
         harness.awaitMain {
-            if (!released) return@awaitMain null
             assumeTrue("Main-thread scheduling missed the pre-timeout release window", elapsed in 151L until timeout)
+            assertTrue("A sub-long-press release must still type a space", typed)
             assertEquals(1, recorder.spaces)
             assertEquals(0, recorder.starts)
             true
@@ -205,6 +212,32 @@ class AuditInteractionInstrumentedTest {
             assertEquals(1, recorder.spaces)
             true
         }
+    }
+
+    @Test
+    fun rebuildWhileSpaceIsHeldDoesNotSwallowTheSpace() = withKeyboard { harness, recorder, keyboard ->
+        var downTime = 0L
+        harness.awaitMain {
+            val point = keyPoint(keyboard, "key-space")
+            downTime = SystemClock.uptimeMillis()
+            pointers(keyboard, downTime, MotionEvent.ACTION_DOWN, listOf(point))
+            true
+        }
+        // A layout change (mode switch, configuration change, nine-key filter)
+        // rebuilds the key rows. Android drops a gesture as soon as its view
+        // leaves the hierarchy, so rebuilding while the key is held used to
+        // detach it and swallow the release without a trace.
+        harness.awaitMain {
+            keyboard.setMode(KeyboardMode.ENGLISH_26, notifyListener = false)
+            true
+        }
+        harness.awaitMain {
+            val point = keyPoint(keyboard, "key-space")
+            pointers(keyboard, downTime, MotionEvent.ACTION_UP, listOf(point))
+            true
+        }
+        harness.awaitMain(timeoutMs = 3_000L) { if (recorder.spaces > 0) true else null }
+        assertEquals("A rebuild during the press must not swallow the space", 1, recorder.spaces)
     }
 
     @Test
