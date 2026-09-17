@@ -19,7 +19,7 @@ jobs:
           ref: fix/ux-followups
           fetch-depth: 0
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -37,6 +37,9 @@ jobs:
 
       - name: Compile Kotlin
         run: ./gradlew :app:compileDebugKotlin --no-daemon
+
+      - name: Run unit tests
+        run: ./gradlew :app:testDebugUnitTest --no-daemon
 
       - name: Commit cleanup
         shell: bash
