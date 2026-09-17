@@ -1845,7 +1845,7 @@ open class ImeKeyboardView(
         prepareVoiceController()
         voiceGestureSession = true
         voiceInlineGeneration++
-        showInlineVoiceState("正在准备麦克风…")
+        showInlineVoiceState(context.getString(R.string.voice_preparing_microphone))
         startInlineVoicePulse()
         // Let the in-place state row draw before model/session startup begins.
         post {
@@ -1858,7 +1858,7 @@ open class ImeKeyboardView(
         if (!voiceGestureSession) return
         voiceGestureSession = false
         stopInlineVoicePulse()
-        showInlineVoiceState("正在识别…")
+        showInlineVoiceState(context.getString(R.string.voice_recognizing))
         voiceStopAction?.invoke()
         // Keep progress visible until a terminal callback or explicit cancel.
     }
@@ -1871,7 +1871,7 @@ open class ImeKeyboardView(
         spaceVoiceGestureCancel = false
         voiceInlineGeneration++
         stopInlineVoicePulse()
-        showInlineVoiceState("已取消")
+        showInlineVoiceState(context.getString(R.string.voice_cancelled_short))
         hideInlineVoiceStateLater(260L)
         listener.cancelVoiceRecognition()
         listener.onVoiceCancel()
@@ -2075,7 +2075,7 @@ open class ImeKeyboardView(
         }
 
     private fun renderTools() {
-        addPanelHead("工具")
+        addPanelHead(context.getString(R.string.panel_tools))
         val body = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(10), dp(10), dp(10), dp(10))
@@ -2098,9 +2098,9 @@ open class ImeKeyboardView(
             ToolEntry("手写输入", Panel.HANDWRITING, R.drawable.ic_handwriting, enabled = handwritingAvailable),
             ToolEntry("符号", Panel.SYMBOLS, R.drawable.ic_symbols),
             ToolEntry("切换键盘", Panel.KEYBOARD_SELECT, R.drawable.ic_grid),
-            ToolEntry("文本编辑", Panel.TEXT_EDITOR, R.drawable.ic_keyboard),
-            ToolEntry("游戏键盘", Panel.GAMING, R.drawable.ic_game),
-            ToolEntry("设置", Panel.SETTINGS, R.drawable.ic_settings),
+            ToolEntry(context.getString(R.string.tool_text_edit), Panel.TEXT_EDITOR, R.drawable.ic_keyboard),
+            ToolEntry(context.getString(R.string.tool_gaming_keyboard), Panel.GAMING, R.drawable.ic_game),
+            ToolEntry(context.getString(R.string.tool_settings), Panel.SETTINGS, R.drawable.ic_settings),
         ).filter { it.enabled }
         cards.chunked(4).forEach { chunk ->
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
@@ -2184,7 +2184,7 @@ open class ImeKeyboardView(
     }
 
     private fun renderSymbols() {
-        addPanelHead("符号")
+        addPanelHead(context.getString(R.string.panel_symbols))
         val body = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(10), dp(10), dp(10), dp(10))
@@ -2197,10 +2197,24 @@ open class ImeKeyboardView(
 
         fun renderContent(notifyRebuilt: Boolean) {
             body.removeAllViews()
-            val cats = listOf("常用", "中文", "英文", "数学", "序号", "单位", "特殊", "编程", "自定义")
-            val tabs = panelChipScroll(cats, symbolCategory) { cat ->
-                if (cat != symbolCategory) {
-                    symbolCategory = cat
+            val categoryLabels = linkedMapOf(
+                "常用" to context.getString(R.string.symbol_category_common),
+                "中文" to context.getString(R.string.symbol_category_chinese),
+                "英文" to context.getString(R.string.symbol_category_english),
+                "数学" to context.getString(R.string.symbol_category_math),
+                "序号" to context.getString(R.string.symbol_category_numbering),
+                "单位" to context.getString(R.string.symbol_category_units),
+                "特殊" to context.getString(R.string.symbol_category_special),
+                "编程" to context.getString(R.string.symbol_category_programming),
+                "自定义" to context.getString(R.string.symbol_category_custom),
+            )
+            val tabs = panelChipScroll(
+                categoryLabels.values.toList(),
+                categoryLabels.getValue(symbolCategory),
+            ) { label ->
+                val category = categoryLabels.entries.first { it.value == label }.key
+                if (category != symbolCategory) {
+                    symbolCategory = category
                     renderContent(true)
                 }
             }
@@ -2209,8 +2223,8 @@ open class ImeKeyboardView(
                 dp(44),
             ).apply { bottomMargin = dp(8) })
             if (symbolCategory == "自定义") {
-                body.addView(button("管理自定义符号", 12f, true).apply {
-                    contentDescription = "管理自定义符号"
+                body.addView(button(context.getString(R.string.symbol_manage_custom), 12f, true).apply {
+                    contentDescription = context.getString(R.string.symbol_manage_custom)
                     isClickable = true
                     setOnClickListener {
                         feedback()
@@ -2259,7 +2273,7 @@ open class ImeKeyboardView(
     }
 
     private fun renderEmoji() {
-        addPanelHead("表情")
+        addPanelHead(context.getString(R.string.panel_emoji))
         val body = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), dp(12), dp(12), dp(12))
@@ -2272,10 +2286,25 @@ open class ImeKeyboardView(
 
         fun renderContent(notifyRebuilt: Boolean) {
             body.removeAllViews()
-            val cats = listOf("最近") + ImeData.fluentSmileysByCategory.keys.toList()
-            val tabs = panelChipScroll(cats, emojiCategory) { cat ->
-                if (cat != emojiCategory) {
-                    emojiCategory = cat
+            val categoryLabels = linkedMapOf(
+                "最近" to context.getString(R.string.emoji_recent),
+                "笑脸" to context.getString(R.string.emoji_category_smileys),
+                "亲昵" to context.getString(R.string.emoji_category_affection),
+                "中性" to context.getString(R.string.emoji_category_neutral),
+                "困倦/不适" to context.getString(R.string.emoji_category_sleepy_unwell),
+                "担忧" to context.getString(R.string.emoji_category_worried),
+                "怪诞" to context.getString(R.string.emoji_category_weird),
+                "爱心" to context.getString(R.string.emoji_category_hearts),
+                "情绪符号" to context.getString(R.string.emoji_category_emotion_symbols),
+            )
+            val canonicalCategories = listOf("最近") + ImeData.fluentSmileysByCategory.keys.toList()
+            val tabs = panelChipScroll(
+                canonicalCategories.map { categoryLabels[it] ?: it },
+                categoryLabels[emojiCategory] ?: emojiCategory,
+            ) { label ->
+                val category = categoryLabels.entries.firstOrNull { it.value == label }?.key ?: label
+                if (category != emojiCategory) {
+                    emojiCategory = category
                     renderContent(true)
                 }
             }
@@ -2291,7 +2320,7 @@ open class ImeKeyboardView(
             }
             if (emojiItems.isEmpty() && emojiCategory == "最近") {
                 grid.addView(TextView(context).apply {
-                    text = "最近使用的表情会显示在这里"
+                    text = context.getString(R.string.emoji_recent_empty)
                     textSize = 12f
                     gravity = Gravity.CENTER
                     tag = "panel-note"
@@ -2326,13 +2355,13 @@ open class ImeKeyboardView(
     }
 
     private fun renderHandwriting() {
-        addPanelHead("手写输入")
+        addPanelHead(context.getString(R.string.panel_handwriting))
         val body = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(10), dp(10), dp(10), dp(10))
         }
         val candRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        candRow.addView(title("在下方区域落笔手写...", small = true), wrapParams())
+        candRow.addView(title(context.getString(R.string.handwriting_start_hint), small = true), wrapParams())
         body.addView(candRow, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(34),
@@ -2341,7 +2370,7 @@ open class ImeKeyboardView(
             candRow.removeAllViews()
             val result = UnavailableHandwritingProvider.recognize(strokes)
             if (result is HandwritingResult.NotConfigured) {
-                candRow.addView(title("当前未配置手写识别引擎", small = true), wrapParams())
+                candRow.addView(title(context.getString(R.string.handwriting_engine_unavailable), small = true), wrapParams())
             } else {
                 (result as? HandwritingResult.Success)?.candidates?.forEach { c ->
                     candRow.addView(key(c, false, null, 1f, 15f) { listener.onCharacter(c) }, wrapParams())
@@ -2354,9 +2383,9 @@ open class ImeKeyboardView(
             dp(140),
         ).apply { bottomMargin = dp(7) })
         val actions = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        actions.addView(key("撤销", true, null, 1f, 13f) { pad.undo() }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(6) })
-        actions.addView(key("清空", true, null, 1f, 13f) { pad.clear() }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(6) })
-        actions.addView(key("空格", true, null, 1f, 13f) { listener.onSpace() }, LinearLayout.LayoutParams(0, dp(44), 1f))
+        actions.addView(key(context.getString(R.string.action_undo), true, null, 1f, 13f) { pad.undo() }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(6) })
+        actions.addView(key(context.getString(R.string.action_clear), true, null, 1f, 13f) { pad.clear() }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(6) })
+        actions.addView(key(context.getString(R.string.key_space_label), true, null, 1f, 13f) { listener.onSpace() }, LinearLayout.LayoutParams(0, dp(44), 1f))
         body.addView(actions, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(44),
@@ -2368,7 +2397,7 @@ open class ImeKeyboardView(
     }
 
     private fun renderVoice() {
-        addPanelHead("语音输入")
+        addPanelHead(context.getString(R.string.panel_voice))
         val body = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), dp(10), dp(12), dp(10))
@@ -2381,9 +2410,9 @@ open class ImeKeyboardView(
         )
         val modelStatus = TextView(context).apply {
             text = if (modelReady) {
-                "离线模型已就绪 · 音频不出设备"
+                context.getString(R.string.voice_model_ready_private)
             } else {
-                "离线模型后台准备中 · 未启用联网识别"
+                context.getString(R.string.voice_model_preparing_private)
             }
             textSize = 11f
             includeFontPadding = false
@@ -2395,7 +2424,7 @@ open class ImeKeyboardView(
             dp(22),
         ))
         val transcript = TextView(context).apply {
-            text = "只需长按空格；松开自动上屏，上滑取消"
+            text = context.getString(R.string.voice_hold_space_instruction)
             textSize = 16f
             gravity = Gravity.CENTER_VERTICAL
             maxLines = 2
@@ -2428,7 +2457,7 @@ open class ImeKeyboardView(
         val controls = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         // The bundled model is bilingual Mandarin + English. Do not expose
         // dialect buttons that the packaged model cannot actually recognize.
-        val languages = listOf("普通话" to "zh-CN", "English" to "en-US")
+        val languages = listOf(context.getString(R.string.voice_language_mandarin) to "zh-CN", "English" to "en-US")
         var recognizedText = ""
         var voiceCancelled = false
         var cancelPreview = false
@@ -2443,12 +2472,12 @@ open class ImeKeyboardView(
         val micButton = button("🎤", 18f, false).apply {
             tag = "voice-mic"
             isEnabled = false
-            contentDescription = "语音状态，仅支持长按空格启动"
+            contentDescription = context.getString(R.string.voice_status_hold_space_only)
         }
         controls.addView(micButton, LinearLayout.LayoutParams(dp(58), dp(58)))
-        val gestureHint = button("长按空格开始", 13f, true).apply {
+        val gestureHint = button(context.getString(R.string.voice_start_hold_space), 13f, true).apply {
             isEnabled = false
-            contentDescription = "长按空格开始语音，松开自动上屏，上滑取消"
+            contentDescription = context.getString(R.string.voice_start_hold_space_description)
         }
         controls.addView(gestureHint, LinearLayout.LayoutParams(0, dp(58), 1f))
         body.addView(controls, LinearLayout.LayoutParams(
@@ -2468,11 +2497,11 @@ open class ImeKeyboardView(
             modelPrepared = false
             voiceActive = true
             voicePending = true
-            showInlineVoiceState("正在准备麦克风…")
+            showInlineVoiceState(context.getString(R.string.voice_preparing_microphone))
             micButton.text = "⏹"
-            gestureHint.text = "松开空格上屏 · 上滑取消"
-            modelStatus.text = "正在使用离线模型 · 音频不出设备"
-            transcript.text = "正在聆听… 松开空格结束"
+            gestureHint.text = context.getString(R.string.voice_release_or_cancel)
+            modelStatus.text = context.getString(R.string.voice_model_active_private)
+            transcript.text = context.getString(R.string.voice_listening_release)
             listener.onVoiceSessionStarted(true)
             listener.startVoiceRecognition(languages[voiceLanguageIndex].second, object : VoiceRecognitionEvents {
                 private val rmsQueued = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -2488,8 +2517,8 @@ open class ImeKeyboardView(
                         modelPrepared = true
                         if (text.isNotBlank()) recognizedText = text
                         transcript.text = text
-                        modelStatus.text = "正在聆听 · 松开空格结束"
-                        showInlineVoiceState(text.ifBlank { "正在聆听…" })
+                        modelStatus.text = context.getString(R.string.voice_listening_release_compact)
+                        showInlineVoiceState(text.ifBlank { context.getString(R.string.voice_listening) })
                         listener.onVoicePartial(text)
                     }
                 }
@@ -2500,12 +2529,12 @@ open class ImeKeyboardView(
                         if (text.isNotBlank()) recognizedText = text
                         transcript.text = text
                         micButton.text = "🎤"
-                        gestureHint.text = "长按空格开始"
+                        gestureHint.text = context.getString(R.string.voice_start_hold_space)
                         voiceActive = false
                         voicePending = false
-                        modelStatus.text = "离线识别完成 · 已自动上屏"
+                        modelStatus.text = context.getString(R.string.voice_recognition_complete)
                         listener.onVoiceFinal(text)
-                        showInlineVoiceState(if (text.isBlank()) "没有识别到语音" else "已上屏")
+                        showInlineVoiceState(if (text.isBlank()) context.getString(R.string.voice_no_speech) else context.getString(R.string.voice_committed))
                         hideInlineVoiceStateLater(if (text.isBlank()) 900L else 280L)
                     }
                 }
@@ -2524,7 +2553,7 @@ open class ImeKeyboardView(
                             }
                         }
                         showInlineVoiceState(
-                            if (modelPrepared) "正在聆听…" else "正在录音 · 模型准备中…",
+                            if (modelPrepared) context.getString(R.string.voice_listening) else context.getString(R.string.voice_recording_model_preparing),
                             rms = level,
                         )
                     }, 32L)
@@ -2536,12 +2565,12 @@ open class ImeKeyboardView(
                         recognizedText = ""
                         transcript.text = message
                         micButton.text = "🎤"
-                        gestureHint.text = "长按空格开始"
+                        gestureHint.text = context.getString(R.string.voice_start_hold_space)
                         voiceActive = false
                         voicePending = false
-                        modelStatus.text = "语音未完成 · 请检查本地模型和麦克风权限"
+                        modelStatus.text = context.getString(R.string.voice_failed_check_model_permission)
                         listener.onVoiceError(message)
-                        showInlineVoiceState(message.ifBlank { "语音输入失败" })
+                        showInlineVoiceState(message.ifBlank { context.getString(R.string.voice_failed) })
                         hideInlineVoiceStateLater(1_500L)
                     }
                 }
@@ -2551,13 +2580,13 @@ open class ImeKeyboardView(
                         if (voiceCancelled) return@post
                         micButton.text = "⏹"
                         if (voiceActive) {
-                            gestureHint.text = "松开空格上屏 · 上滑取消"
-                            modelStatus.text = "正在录音 · 本地模型准备中"
-                            showInlineVoiceState("正在录音 · 模型准备中…")
+                            gestureHint.text = context.getString(R.string.voice_release_or_cancel)
+                            modelStatus.text = context.getString(R.string.voice_recording_model_preparing_compact)
+                            showInlineVoiceState(context.getString(R.string.voice_recording_model_preparing))
                         } else {
-                            gestureHint.text = "整理识别结果…"
-                            modelStatus.text = "正在整理识别结果…"
-                            showInlineVoiceState("正在识别…")
+                            gestureHint.text = context.getString(R.string.voice_organizing_result)
+                            modelStatus.text = context.getString(R.string.voice_organizing_result)
+                            showInlineVoiceState(context.getString(R.string.voice_recognizing))
                         }
                     }
                 }
@@ -2566,7 +2595,7 @@ open class ImeKeyboardView(
                         if (eventGeneration != voiceEventGeneration) return@post
                         if (!voiceActive || voiceCancelled || cancelPreview) return@post
                         modelPrepared = true
-                        modelStatus.text = "正在识别 · 松开空格结束"
+                        modelStatus.text = context.getString(R.string.voice_recognizing_release)
                         showInlineVoiceState("正在聆听…")
                     }
                 }
@@ -2576,10 +2605,10 @@ open class ImeKeyboardView(
             if (!voiceActive) return
             listener.stopVoiceRecognition()
             micButton.text = "🎤"
-            gestureHint.text = "整理识别结果…"
+            gestureHint.text = context.getString(R.string.voice_organizing_result)
             voiceActive = false
-            modelStatus.text = "正在整理识别结果…"
-            showInlineVoiceState("正在识别…")
+            modelStatus.text = context.getString(R.string.voice_organizing_result)
+            showInlineVoiceState(context.getString(R.string.voice_recognizing))
         }
         fun cancelVoice() {
             if (voiceCancelled) return
@@ -2591,11 +2620,11 @@ open class ImeKeyboardView(
             listener.cancelVoiceRecognition()
             recognizedText = ""
             micButton.text = "🎤"
-            gestureHint.text = "长按空格开始"
+            gestureHint.text = context.getString(R.string.voice_start_hold_space)
             listener.onVoiceCancel()
-            transcript.text = "已取消语音输入"
-            modelStatus.text = "语音已取消 · 音频未保存"
-            showInlineVoiceState("已取消")
+            transcript.text = context.getString(R.string.voice_cancelled)
+            modelStatus.text = context.getString(R.string.voice_cancelled_private)
+            showInlineVoiceState(context.getString(R.string.voice_cancelled_short))
             hideInlineVoiceStateLater(260L)
         }
         voiceStartAction = { startVoice() }
@@ -2607,13 +2636,13 @@ open class ImeKeyboardView(
         voiceCancelPreviewAction = { cancelling ->
             cancelPreview = cancelling
             if (cancelling) {
-                transcript.text = "上滑取消 · 松开丢弃本次语音"
-                modelStatus.text = "取消状态 · 松开将丢弃"
-                showInlineVoiceState("松开取消", cancelling = true)
+                transcript.text = context.getString(R.string.voice_swipe_cancel_release_discard)
+                modelStatus.text = context.getString(R.string.voice_cancel_state_release_discard)
+                showInlineVoiceState(context.getString(R.string.voice_release_to_cancel), cancelling = true)
             } else {
-                transcript.text = recognizedText.ifBlank { "正在聆听… 松开空格结束" }
-                modelStatus.text = "正在聆听 · 松开空格结束"
-                showInlineVoiceState(recognizedText.ifBlank { "正在聆听…" })
+                transcript.text = recognizedText.ifBlank { context.getString(R.string.voice_listening_release) }
+                modelStatus.text = context.getString(R.string.voice_listening_release_compact)
+                showInlineVoiceState(recognizedText.ifBlank { context.getString(R.string.voice_listening) })
             }
         }
     }
@@ -2651,18 +2680,18 @@ open class ImeKeyboardView(
         }, wrapParams())
         val meta = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         meta.addView(TextView(context).apply {
-            text = if (entry.pinned) "已置顶" else android.text.format.DateUtils.getRelativeTimeSpanString(
+            text = if (entry.pinned) context.getString(R.string.clipboard_pinned) else android.text.format.DateUtils.getRelativeTimeSpanString(
                 entry.timestamp, System.currentTimeMillis(), android.text.format.DateUtils.MINUTE_IN_MILLIS,
             )
             textSize = 11f
         }, weightParams(1f))
-        meta.addView(button(if (entry.pinned) "取消置顶" else "置顶", 10f, true).apply {
+        meta.addView(button(if (entry.pinned) context.getString(R.string.clipboard_unpin) else context.getString(R.string.clipboard_pin), 10f, true).apply {
             setOnClickListener {
                 ClipboardHistoryRepository.togglePin(context, entry.text)
                 renderClipboard(reusePanel = true)
             }
         }, wrapParams())
-        meta.addView(button("使用", 10f, true).apply {
+        meta.addView(button(context.getString(R.string.action_use), 10f, true).apply {
             setOnClickListener { listener.onCharacter(entry.text) }
         }, wrapParams())
         card.addView(meta, wrapParams())
@@ -2673,7 +2702,7 @@ open class ImeKeyboardView(
         inlineEditTarget = null
         if (!reusePanel || expandedPanel.childCount == 0) {
             expandedPanel.removeAllViews()
-            addPanelHead("剪贴板")
+            addPanelHead(context.getString(R.string.panel_clipboard))
         } else {
             while (expandedPanel.childCount > 1) {
                 expandedPanel.removeViewAt(expandedPanel.childCount - 1)
@@ -2684,8 +2713,13 @@ open class ImeKeyboardView(
             setPadding(dp(10), dp(10), dp(10), dp(10))
             tag = "clipboard-panel"
         }
-        val tabs = panelChipScroll(listOf("剪贴板", "常用语"), if (clipboardTab == 0) "剪贴板" else "常用语") { label ->
-            clipboardTab = if (label == "剪贴板") 0 else 1
+        val clipboardLabel = context.getString(R.string.panel_clipboard)
+        val quickPhraseLabel = context.getString(R.string.clipboard_quick_phrases)
+        val tabs = panelChipScroll(
+            listOf(clipboardLabel, quickPhraseLabel),
+            if (clipboardTab == 0) clipboardLabel else quickPhraseLabel,
+        ) { label ->
+            clipboardTab = if (label == clipboardLabel) 0 else 1
             renderClipboard(reusePanel = true)
         }
         body.addView(tabs, LinearLayout.LayoutParams(
@@ -2696,9 +2730,9 @@ open class ImeKeyboardView(
         if (clipboardTab == 0) {
             // Reading the system clipboard + parsing the history JSON is disk/I/O
             // work; do it off the UI thread and render once it returns.
-            col.addView(sectionTitle("最近复制"), wrapParams())
+            col.addView(sectionTitle(context.getString(R.string.clipboard_recent_copied)), wrapParams())
             val loadingHint = TextView(context).apply {
-                text = "正在读取剪贴板…"
+                text = context.getString(R.string.clipboard_loading)
                 textSize = 13f
                 setPadding(dp(4), dp(6), dp(4), 0)
                 tag = "panel-note"
@@ -2713,7 +2747,7 @@ open class ImeKeyboardView(
                     (loadingHint.parent as? ViewGroup)?.removeView(loadingHint)
                     if (history.isEmpty()) {
                         col.addView(TextView(context).apply {
-                            text = "暂无剪贴历史；复制文本后重新打开这里即可看到。"
+                            text = context.getString(R.string.clipboard_empty)
                             textSize = 13f
                             setPadding(dp(4), dp(6), dp(4), 0)
                             tag = "panel-note"
@@ -2727,7 +2761,7 @@ open class ImeKeyboardView(
                 }
             }.apply { isDaemon = true }.start()
         } else {
-            col.addView(button("新增常用语", 13f, true).apply {
+            col.addView(button(context.getString(R.string.quick_phrase_add), 13f, true).apply {
                 tag = "quick-phrase-add"
                 setOnClickListener { openQuickPhraseEditor(null) }
             }, LinearLayout.LayoutParams(
@@ -2753,11 +2787,11 @@ open class ImeKeyboardView(
                             },
                             LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(5) },
                         )
-                        row.addView(button("编辑", 11f, true).apply {
+                        row.addView(button(context.getString(R.string.quick_phrase_edit), 11f, true).apply {
                             tag = "phrase-edit:${phrase.id}"
                             setOnClickListener { openQuickPhraseEditor(phrase) }
                         }, LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginEnd = dp(5) })
-                        row.addView(button("删除", 11f, true).apply {
+                        row.addView(button(context.getString(R.string.quick_phrase_delete), 11f, true).apply {
                             tag = "phrase-delete:${phrase.id}"
                             setOnClickListener {
                                 QuickPhraseRepository.remove(context, phrase.id)
@@ -2876,14 +2910,20 @@ open class ImeKeyboardView(
     }
 
     private fun renderTextEditor() {
-        addPanelHead("文本编辑")
+        addPanelHead(context.getString(R.string.panel_text_editor))
         val body = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(10), dp(10), dp(10), dp(10))
             tag = "text_editor_panel"
         }
         val quick = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        listOf("全选" to "select-all", "复制" to "copy", "剪切" to "cut", "粘贴" to "paste", "撤销" to "undo")
+        listOf(
+            context.getString(R.string.action_select_all) to "select-all",
+            context.getString(R.string.action_copy) to "copy",
+            context.getString(R.string.action_cut) to "cut",
+            context.getString(R.string.action_paste) to "paste",
+            context.getString(R.string.action_undo) to "undo",
+        )
             .forEach { (label, action) ->
                 quick.addView(
                     key(label, true, null, 1f, 10f) { listener.onTextEdit(action) },
@@ -2901,7 +2941,7 @@ open class ImeKeyboardView(
         fun cell(label: String? = null, action: String? = null, center: Boolean = false): TextView =
             button(label ?: "", if (center) 9f else 14f, !center).apply {
                 if (action != null) setOnClickListener { listener.onTextEdit(action) }
-                if (center) text = "光标"
+                if (center) text = context.getString(R.string.text_cursor)
             }
         listOf(
             listOf(cell(), cell("▲", "up"), cell()),
@@ -2924,6 +2964,12 @@ open class ImeKeyboardView(
         ))
     }
 
+    private fun appearanceLabel(value: ImeAppearance): String = when (value) {
+        ImeAppearance.SYSTEM -> context.getString(R.string.appearance_system)
+        ImeAppearance.LIGHT -> context.getString(R.string.appearance_light)
+        ImeAppearance.DARK -> context.getString(R.string.appearance_dark)
+    }
+
     private fun renderSettings(reusePanel: Boolean = false) {
         val previousScrollY = if (reusePanel && expandedPanel.childCount > 1) {
             (expandedPanel.getChildAt(1) as? ScrollView)?.scrollY ?: settingsScrollY
@@ -2931,7 +2977,7 @@ open class ImeKeyboardView(
             settingsScrollY
         }
         if (!reusePanel || expandedPanel.childCount == 0) {
-            addPanelHead("偏好设置")
+            addPanelHead(context.getString(R.string.settings_title))
         } else {
             while (expandedPanel.childCount > 1) {
                 expandedPanel.removeViewAt(expandedPanel.childCount - 1)
@@ -2948,9 +2994,10 @@ open class ImeKeyboardView(
             setPadding(dp(12), dp(12), dp(12), dp(18))
             tag = "settings-panel"
         }
-        content.addView(sectionTitle("外观"), wrapParams())
-        content.addView(panelChipScroll(ImeAppearance.entries.map { it.label }, appearance.label) { label ->
-            appearance = ImeAppearance.entries.first { it.label == label }
+        content.addView(sectionTitle(context.getString(R.string.settings_section_appearance)), wrapParams())
+        val appearanceLabels = ImeAppearance.entries.associateWith(::appearanceLabel)
+        content.addView(panelChipScroll(appearanceLabels.values.toList(), appearanceLabels.getValue(appearance)) { label ->
+            appearance = appearanceLabels.entries.first { it.value == label }.key
             setAppearance(appearance)
             listener.onAppearanceChanged(appearance)
             renderSettings(reusePanel = true)
@@ -2958,7 +3005,7 @@ open class ImeKeyboardView(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(44),
         ).apply { bottomMargin = dp(12) })
-        content.addView(sectionTitle("强调色"), wrapParams())
+        content.addView(sectionTitle(context.getString(R.string.settings_accent_title)), wrapParams())
         content.addView(
             accentColorRow(),
             LinearLayout.LayoutParams(
@@ -2966,18 +3013,18 @@ open class ImeKeyboardView(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
             ).apply { bottomMargin = dp(12) },
         )
-        content.addView(sectionTitle("按键皮肤"), wrapParams())
+        content.addView(sectionTitle(context.getString(R.string.settings_section_key_skin)), wrapParams())
         content.addView(
             settingGroup(
-                settingsSlider("圆角", 0, 24, skinRadius) { v ->
+                settingsSlider(context.getString(R.string.settings_corner_radius), 0, 24, skinRadius) { v ->
                     skinRadius = v; listener.onSkinChanged(skinOpacity, skinRadius, skinFontSize, skinPrimaryColor)
                     applyTheme()
                 },
-                settingsSlider("不透明度", 70, 100, skinOpacity) { v ->
+                settingsSlider(context.getString(R.string.settings_opacity), 70, 100, skinOpacity) { v ->
                     skinOpacity = v; listener.onSkinChanged(skinOpacity, skinRadius, skinFontSize, skinPrimaryColor)
                     applyTheme()
                 },
-                settingsSlider("按键字号", 14, 22, skinFontSize) { v ->
+                settingsSlider(context.getString(R.string.settings_key_font_size), 14, 22, skinFontSize) { v ->
                     skinFontSize = v; listener.onSkinChanged(skinOpacity, skinRadius, skinFontSize, skinPrimaryColor)
                     renderSettings(reusePanel = true)
                 },
@@ -2987,24 +3034,24 @@ open class ImeKeyboardView(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
             ).apply { bottomMargin = dp(12) },
         )
-        content.addView(sectionTitle("按键与输入"), wrapParams())
+        content.addView(sectionTitle(context.getString(R.string.settings_section_keys_input)), wrapParams())
         content.addView(
             settingGroup(
-                settingToggleRow("按键音效", "机械轴敲击反馈"),
-                settingToggleRow("触感震动", "轻微触感反馈"),
-                settingToggleRow("按键气泡", "可选字母预览，默认仅按键变色"),
+                settingToggleRow(context.getString(R.string.settings_key_sound), context.getString(R.string.settings_key_sound_desc)),
+                settingToggleRow(context.getString(R.string.settings_haptic), context.getString(R.string.settings_haptic_desc)),
+                settingToggleRow(context.getString(R.string.settings_key_popup), context.getString(R.string.settings_key_popup_desc)),
             ),
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
             ).apply { bottomMargin = dp(12) },
         )
-        content.addView(sectionTitle("智能输入"), wrapParams())
+        content.addView(sectionTitle(context.getString(R.string.settings_section_smart_input)), wrapParams())
         content.addView(
             settingGroup(
                 settingNavigationRow(
-                    "模糊音与智能纠错",
-                    "进入后配置 z/zh、c/ch、s/sh 等规则",
+                    context.getString(R.string.settings_fuzzy_navigation),
+                    context.getString(R.string.settings_fuzzy_navigation_desc),
                 ) { showPanel(Panel.FUZZY_SETTINGS) },
             ),
             LinearLayout.LayoutParams(
@@ -3058,11 +3105,10 @@ open class ImeKeyboardView(
 
     private fun settingIcon(label: String): TextView = TextView(context).apply {
         text = when (label) {
-            "按键音效" -> "◖"
-            "触感震动" -> "✦"
-            "按键气泡" -> "A"
-            "模糊音与智能纠错", "启用模糊音" -> "✧"
-            "外观与键盘高度" -> "◐"
+            context.getString(R.string.settings_key_sound) -> "◖"
+            context.getString(R.string.settings_haptic) -> "✦"
+            context.getString(R.string.settings_key_popup) -> "A"
+            context.getString(R.string.settings_fuzzy_navigation), context.getString(R.string.fuzzy_enable) -> "✧"
             else -> "•"
         }
         textSize = 15f
@@ -3142,7 +3188,7 @@ open class ImeKeyboardView(
         }
 
     private fun renderFuzzySettings() {
-        addPanelHead("模糊音纠错")
+        addPanelHead(context.getString(R.string.panel_fuzzy_settings))
         val scroll = ScrollView(context).apply {
             isFillViewport = true
             isVerticalScrollBarEnabled = false
@@ -3154,7 +3200,7 @@ open class ImeKeyboardView(
             tag = "fuzzy-settings-panel"
         }
         content.addView(TextView(context).apply {
-            text = "用于处理常见的近音输入。开启后，候选会同时尝试相近声母，不会改变用户已经输入的拼音。"
+            text = context.getString(R.string.fuzzy_note)
             textSize = 13f
             setLineSpacing(0f, 1.15f)
             tag = "panel-note"
@@ -3163,15 +3209,15 @@ open class ImeKeyboardView(
             dp(54),
         ).apply { bottomMargin = dp(10) })
         content.addView(
-            settingGroup(settingToggleRow("启用模糊音", "z/zh · c/ch · s/sh · l/n")),
+            settingGroup(settingToggleRow(context.getString(R.string.fuzzy_enable), context.getString(R.string.fuzzy_enable_desc))),
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
             ).apply { bottomMargin = dp(14) },
         )
-        content.addView(sectionTitle("当前规则"), wrapParams())
+        content.addView(sectionTitle(context.getString(R.string.fuzzy_current_rules)), wrapParams())
         content.addView(TextView(context).apply {
-            text = "z / zh · c / ch · s / sh · l / n · en / eng · in / ing"
+            text = context.getString(R.string.fuzzy_rule_list)
             textSize = 13f
             setPadding(0, dp(6), 0, dp(6))
         }, LinearLayout.LayoutParams(
@@ -3179,7 +3225,7 @@ open class ImeKeyboardView(
             LinearLayout.LayoutParams.WRAP_CONTENT,
         ).apply { bottomMargin = dp(14) })
         content.addView(TextView(context).apply {
-            text = "规则由输入法自动参与候选计算，暂不单独修改每一组映射。"
+            text = context.getString(R.string.fuzzy_rule_info)
             textSize = 12f
             tag = "panel-note"
         }, wrapParams())
@@ -3195,13 +3241,6 @@ open class ImeKeyboardView(
     }
 
     private fun toggle(seed: String): View {
-        val on = when (seed) {
-            "按键音效" -> soundEnabled
-            "触感震动" -> hapticEnabled
-            "模糊音纠错" -> fuzzyEnabled
-            "按键气泡" -> popupEnabled
-            else -> true
-        }
         val isOn = onState(seed)
         val knob = View(context).apply {
             layoutParams = FrameLayout.LayoutParams(dp(20), dp(20)).apply {
@@ -3229,18 +3268,18 @@ open class ImeKeyboardView(
     }
 
     private fun onState(seed: String): Boolean = when (seed) {
-        "按键音效" -> soundEnabled
-        "触感震动" -> hapticEnabled
-        "模糊音纠错", "启用模糊音" -> fuzzyEnabled
-        "按键气泡" -> popupEnabled
+        context.getString(R.string.settings_key_sound) -> soundEnabled
+        context.getString(R.string.settings_haptic) -> hapticEnabled
+        context.getString(R.string.settings_fuzzy_navigation), context.getString(R.string.fuzzy_enable) -> fuzzyEnabled
+        context.getString(R.string.settings_key_popup) -> popupEnabled
         else -> true
     }
 
     private fun toggleCallback(seed: String): ((Boolean) -> Unit)? = when (seed) {
-        "按键音效" -> { { soundEnabled = it; listener.onSoundChanged(it) } }
-        "触感震动" -> { { hapticEnabled = it; listener.onHapticChanged(it) } }
-        "模糊音纠错", "启用模糊音" -> { { fuzzyEnabled = it; listener.onFuzzyChanged(it) } }
-        "按键气泡" -> { { popupEnabled = it; listener.onPopupChanged(it) } }
+        context.getString(R.string.settings_key_sound) -> { { soundEnabled = it; listener.onSoundChanged(it) } }
+        context.getString(R.string.settings_haptic) -> { { hapticEnabled = it; listener.onHapticChanged(it) } }
+        context.getString(R.string.settings_fuzzy_navigation), context.getString(R.string.fuzzy_enable) -> { { fuzzyEnabled = it; listener.onFuzzyChanged(it) } }
+        context.getString(R.string.settings_key_popup) -> { { popupEnabled = it; listener.onPopupChanged(it) } }
         else -> null
     }
 
@@ -3274,14 +3313,14 @@ open class ImeKeyboardView(
         }
         swatches.addView(
             TextView(context).apply {
-                text = "自定义"
+                text = context.getString(R.string.settings_accent_custom)
                 textSize = 12f
                 gravity = Gravity.CENTER
                 includeFontPadding = false
                 setPadding(dp(10), 0, dp(10), 0)
                 background = rounded(theme.tokens(appearance, isNight(), AccentPalette.parse(skinPrimaryColor)).panelHeadBackground, dp(14))
                 isClickable = true
-                contentDescription = "自定义强调色"
+                contentDescription = context.getString(R.string.settings_custom_accent_description)
                 setOnClickListener { showCustomAccentDialog() }
             },
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(28)),
@@ -3315,11 +3354,11 @@ open class ImeKeyboardView(
             filters = arrayOf(android.text.InputFilter.LengthFilter(6))
         }
         android.app.AlertDialog.Builder(context)
-            .setTitle("自定义强调色")
-            .setMessage("输入 6 位十六进制颜色，例如 5B6B7A")
+            .setTitle(context.getString(R.string.settings_custom_accent_description))
+            .setMessage(context.getString(R.string.settings_accent_hint))
             .setView(field)
-            .setPositiveButton("应用") { _, _ -> applyAccentColor(field.text.toString()) }
-            .setNegativeButton("取消", null)
+            .setPositiveButton(context.getString(R.string.action_apply)) { _, _ -> applyAccentColor(field.text.toString()) }
+            .setNegativeButton(context.getString(R.string.action_cancel), null)
             .show()
     }
 
