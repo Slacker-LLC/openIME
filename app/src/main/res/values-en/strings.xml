@@ -29,6 +29,7 @@
     <string name="segment_gesture_description">Segment Pinyin; long-press for @, #, or /</string>
     <string name="gesture_hint_first_use">Tip: long-press top-row letters for digits; swipe Delete left to delete a word or up to clear all; hold Space for voice and swipe up to cancel; long-press Segment for @ # /</string>
 
+    <string name="panel_back_to_keyboard">Back to keyboard</string>
     <string name="panel_tools">Tools</string>
     <string name="tool_emoji">Emoji</string>
     <string name="tool_clipboard">Clipboard</string>
@@ -38,6 +39,12 @@
     <string name="tool_text_edit">Text editing</string>
     <string name="tool_gaming_keyboard">Gaming keyboard</string>
     <string name="tool_settings">Settings</string>
+    <string name="panel_keyboard_select">Switch keyboard</string>
+    <string name="keyboard_select_title">Choose input layout</string>
+    <string name="keyboard_mode_pinyin_26">Pinyin 26-key</string>
+    <string name="keyboard_mode_pinyin_9">Pinyin 9-key</string>
+    <string name="keyboard_mode_english_26">English 26-key</string>
+    <string name="keyboard_mode_digits">Number keypad</string>
     <string name="panel_symbols">Symbols</string>
     <string name="symbol_manage_custom">Manage custom symbols</string>
     <string name="panel_emoji">Emoji</string>
@@ -69,4 +76,15 @@
     <string name="voice_no_speech">No speech recognized</string>
     <string name="voice_service_not_initialized">Local voice service is not initialized yet</string>
     <string name="clear_all_failed">The current app could not clear all text</string>
+
+    <string name="panel_gaming">Gaming keyboard</string>
+    <string name="gaming_drag_keyboard">Drag keyboard</string>
+    <string name="gaming_drag_keyboard_label">⠿  Drag keyboard</string>
+    <string name="gaming_dock_bottom">Dock to bottom</string>
+    <string name="gaming_restore_float">Float keyboard</string>
+    <string name="gaming_macro_received">Got it!</string>
+    <string name="gaming_macro_attack">Group and attack!</string>
+    <string name="gaming_macro_hold">Hold steady!</string>
+    <string name="gaming_macro_regroup">Group up!</string>
+    <string name="gaming_macro_protect">Protect carry!</string>
 </resources>
