@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="toolbar_more">More</string>
+    <string name="composition_edit_description">Editable Pinyin composition</string>
+    <string name="candidate_expand_more">Show more candidates</string>
+    <string name="candidate_collapse">Collapse candidates</string>
+    <string name="candidate_list_title">Candidates</string>
+    <string name="candidate_empty">No candidates</string>
+    <string name="candidate_description">Candidate: %1$s</string>
+    <string name="association_description">Suggestion: %1$s</string>
+    <string name="shift_uppercase">Shift</string>
+    <string name="shift_once">Shift once</string>
+    <string name="shift_caps_lock">Caps Lock</string>
+    <string name="function_key_description">Function key</string>
+    <string name="backspace_clear">Clear all</string>
+    <string name="backspace_delete_word">Delete word</string>
+    <string name="backspace_clear_hint">↑ Clear</string>
+    <string name="long_press_symbol_selection">Long-press symbol choices</string>
+    <string name="input_symbol_description">Input %1$s</string>
+    <string name="accent_color_description">Accent color %1$s</string>
+    <string name="action_send">Send</string>
+</resources>
