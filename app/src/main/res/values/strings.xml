@@ -29,6 +29,7 @@
     <string name="segment_gesture_description">分词；长按选择 @、# 或 /</string>
     <string name="gesture_hint_first_use">小技巧：首行字母长按可输入数字；删除键左滑删词、上滑清空；空格长按语音、上滑取消；分词键长按可输入 @ # /</string>
 
+    <string name="panel_back_to_keyboard">返回键盘</string>
     <string name="panel_tools">工具</string>
     <string name="tool_emoji">表情</string>
     <string name="tool_clipboard">剪贴板</string>
@@ -38,6 +39,12 @@
     <string name="tool_text_edit">文本编辑</string>
     <string name="tool_gaming_keyboard">游戏键盘</string>
     <string name="tool_settings">设置</string>
+    <string name="panel_keyboard_select">切换键盘</string>
+    <string name="keyboard_select_title">选择输入布局</string>
+    <string name="keyboard_mode_pinyin_26">拼音 26 键</string>
+    <string name="keyboard_mode_pinyin_9">拼音 9 键</string>
+    <string name="keyboard_mode_english_26">英文 26 键</string>
+    <string name="keyboard_mode_digits">数字键盘</string>
     <string name="panel_symbols">符号</string>
     <string name="symbol_manage_custom">管理自定义符号</string>
     <string name="panel_emoji">表情</string>
@@ -69,4 +76,15 @@
     <string name="voice_no_speech">没有识别到语音</string>
     <string name="voice_service_not_initialized">本地语音服务尚未初始化</string>
     <string name="clear_all_failed">当前应用未能清空全部文本</string>
+
+    <string name="panel_gaming">游戏键盘</string>
+    <string name="gaming_drag_keyboard">拖动键盘</string>
+    <string name="gaming_drag_keyboard_label">⠿  拖动键盘</string>
+    <string name="gaming_dock_bottom">贴底固定</string>
+    <string name="gaming_restore_float">恢复浮动</string>
+    <string name="gaming_macro_received">收到！</string>
+    <string name="gaming_macro_attack">集合进攻！</string>
+    <string name="gaming_macro_hold">稳住能赢！</string>
+    <string name="gaming_macro_regroup">请求集合！</string>
+    <string name="gaming_macro_protect">保护输出！</string>
 </resources>
