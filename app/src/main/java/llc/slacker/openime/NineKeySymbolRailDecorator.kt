@@ -1,17 +1,28 @@
 package llc.slacker.openime
 
+import android.annotation.SuppressLint
 import android.content.Context
+import android.content.res.Configuration
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.inputmethodservice.InputMethodService
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
+import android.view.MotionEvent
+import android.view.SoundEffectConstants
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
+import kotlin.math.abs
 
 /**
  * Upgrades the legacy 9-key punctuation stack into a real vertical symbol rail.
@@ -19,16 +30,35 @@ import android.widget.TextView
  * real path filter; the remaining cells stay the normal scrollable symbols.
  *
  * The same production hierarchy hook also applies editor-specific numeric
- * decoration, notably the dedicated phone-keypad literals.
+ * decoration and lightweight discoverability fixes shared by production keys.
  */
 internal object NineKeySymbolRailDecorator {
     private const val LEGACY_TAG = "nine-punct-stack"
     private const val CONTENT_TAG = "nine-symbol-scroll-content"
     private const val FILTER_TAG = "nine-pinyin-path-filter"
+    private const val ALT_PREVIEW_TAG = "pinyin-long-press-preview"
     private const val CELL_HEIGHT_DP = 48
     private const val WATCHER_TAG = 0x1F000081
+    private const val GESTURE_HINT_PREFS = "openime_ui_hints"
+    private const val GESTURE_HINT_SHOWN = "gesture_hint_v1_shown"
+
+    private val pinyin26LongPressDigits = linkedMapOf(
+        "q" to "1",
+        "w" to "2",
+        "e" to "3",
+        "r" to "4",
+        "t" to "5",
+        "y" to "6",
+        "u" to "7",
+        "i" to "8",
+        "o" to "9",
+        "p" to "0",
+    )
 
     fun decorate(root: View, onCommit: (String) -> Unit) {
+        installPinyin26LongPressDigits(root, onCommit)
+        decorateGestureDescriptions(root)
+        maybeShowGestureHint(root)
         decoratePhoneKeypad(root, onCommit)
 
         val tagged = root.findViewWithTag<View>(LEGACY_TAG) ?: return
@@ -73,6 +103,220 @@ internal object NineKeySymbolRailDecorator {
     }
 
     /**
+     * Pinyin 26 previously committed the first-row digit as soon as Android's
+     * long-click callback fired. That made accidental holds irreversible and
+     * gave no preview when the ordinary key-popup setting was disabled.
+     *
+     * Own the touch sequence for q-p instead: normal taps edit the Pinyin
+     * preedit, a hold swaps the popup to a 76dp digit preview, and the digit is
+     * committed only on ACTION_UP. ACTION_CANCEL never commits anything.
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    private fun installPinyin26LongPressDigits(root: View, onCommit: (String) -> Unit) {
+        if (root.findViewWithTag<View>("key-segment") == null) {
+            hideAlternatePreview(root)
+            return
+        }
+        val touchSlop = ViewConfiguration.get(root.context).scaledTouchSlop.toFloat()
+        val longPressTimeout = ViewConfiguration.getLongPressTimeout().toLong()
+
+        pinyin26LongPressDigits.forEach { (letter, digit) ->
+            val key = root.findViewWithTag<ImeKeyView>("key:$letter") ?: return@forEach
+            var downX = 0f
+            var downY = 0f
+            var moved = false
+            var longPressed = false
+            val armLongPress = Runnable {
+                if (!moved && key.isPressed) {
+                    longPressed = true
+                    if (ImeSettingsRepository.loadHaptic(root.context)) {
+                        key.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                    }
+                    showAlternatePreview(root, key, digit, tall = true)
+                }
+            }
+
+            // Accessibility click/long-click actions do not supply the touch
+            // sequence below, so keep explicit semantic fallbacks.
+            key.setOnClickListener { insertPinyinLetter(root, letter, onCommit) }
+            key.isLongClickable = true
+            key.setOnLongClickListener {
+                showAlternatePreview(root, key, digit, tall = true)
+                onCommit(digit)
+                root.postDelayed({ hideAlternatePreview(root) }, 320L)
+                true
+            }
+            key.contentDescription = root.context.getString(
+                R.string.key_long_press_digit_description,
+                letter,
+                digit,
+            )
+
+            key.setOnTouchListener { _, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        key.removeCallbacks(armLongPress)
+                        downX = event.x
+                        downY = event.y
+                        moved = false
+                        longPressed = false
+                        key.isPressed = true
+                        playKeyFeedback(key)
+                        if (ImeSettingsRepository.loadPopup(root.context)) {
+                            showAlternatePreview(root, key, letter, tall = false)
+                        } else {
+                            hideAlternatePreview(root)
+                        }
+                        key.postDelayed(armLongPress, longPressTimeout)
+                        true
+                    }
+
+                    MotionEvent.ACTION_MOVE -> {
+                        if (!longPressed &&
+                            (abs(event.x - downX) > touchSlop || abs(event.y - downY) > touchSlop)
+                        ) {
+                            moved = true
+                            key.removeCallbacks(armLongPress)
+                            hideAlternatePreview(root)
+                        }
+                        true
+                    }
+
+                    MotionEvent.ACTION_UP -> {
+                        key.removeCallbacks(armLongPress)
+                        key.isPressed = false
+                        hideAlternatePreview(root)
+                        when {
+                            longPressed -> onCommit(digit)
+                            !moved -> insertPinyinLetter(root, letter, onCommit)
+                        }
+                        longPressed = false
+                        moved = false
+                        true
+                    }
+
+                    MotionEvent.ACTION_CANCEL -> {
+                        key.removeCallbacks(armLongPress)
+                        key.isPressed = false
+                        longPressed = false
+                        moved = false
+                        hideAlternatePreview(root)
+                        true
+                    }
+
+                    else -> true
+                }
+            }
+        }
+    }
+
+    private fun insertPinyinLetter(root: View, letter: String, onCommit: (String) -> Unit) {
+        val editor = root.findViewWithTag<EditText>("pinyin-composition-editor")
+        if (editor == null) {
+            onCommit(letter)
+            return
+        }
+        (root.findViewWithTag<View>("association-row") as? LinearLayout)?.removeAllViews()
+        val startRaw = editor.selectionStart.takeIf { it >= 0 } ?: editor.length()
+        val endRaw = editor.selectionEnd.takeIf { it >= 0 } ?: startRaw
+        val start = minOf(startRaw, endRaw).coerceIn(0, editor.length())
+        val end = maxOf(startRaw, endRaw).coerceIn(start, editor.length())
+        editor.text.replace(start, end, letter)
+        editor.setSelection((start + letter.length).coerceAtMost(editor.length()))
+    }
+
+    private fun playKeyFeedback(key: View) {
+        if (ImeSettingsRepository.loadSound(key.context)) {
+            key.playSoundEffect(SoundEffectConstants.CLICK)
+        }
+        if (ImeSettingsRepository.loadHaptic(key.context)) {
+            key.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        }
+    }
+
+    private fun showAlternatePreview(root: View, anchor: View, text: String, tall: Boolean) {
+        val host = root as? FrameLayout ?: return
+        hideAlternatePreview(root)
+        val context = root.context
+        val popupWidth = (anchor.width * 1.1f).toInt().coerceAtLeast(dp(context, 44))
+        val popupHeight = dp(context, if (tall) 76 else 48)
+        val backgroundColor = resolveThemeColor(
+            context,
+            android.R.attr.colorBackground,
+            if (isNight(context)) Color.rgb(48, 50, 56) else Color.WHITE,
+        )
+        val textColor = resolveThemeColor(
+            context,
+            android.R.attr.textColorPrimary,
+            if (isNight(context)) Color.WHITE else Color.rgb(32, 33, 36),
+        )
+        val preview = TextView(context).apply {
+            tag = ALT_PREVIEW_TAG
+            this.text = text
+            textSize = if (tall) 24f else 20f
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            setTextColor(textColor)
+            isClickable = false
+            isFocusable = false
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            elevation = dp(context, 10).toFloat()
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(context, 11).toFloat()
+                setColor(backgroundColor)
+                setStroke(dp(context, 1), Color.argb(36, 127, 127, 127))
+            }
+        }
+
+        val anchorLocation = IntArray(2)
+        val rootLocation = IntArray(2)
+        anchor.getLocationOnScreen(anchorLocation)
+        root.getLocationOnScreen(rootLocation)
+        val anchorLeft = anchorLocation[0] - rootLocation[0]
+        val anchorTop = anchorLocation[1] - rootLocation[1]
+        val maxLeft = (root.width - popupWidth - dp(context, 4)).coerceAtLeast(dp(context, 4))
+        val left = (anchorLeft + (anchor.width - popupWidth) / 2).coerceIn(dp(context, 4), maxLeft)
+        val top = (anchorTop - popupHeight - dp(context, 8)).coerceAtLeast(dp(context, 4))
+        host.addView(
+            preview,
+            FrameLayout.LayoutParams(popupWidth, popupHeight).apply {
+                gravity = Gravity.TOP or Gravity.START
+                leftMargin = left
+                topMargin = top
+            },
+        )
+    }
+
+    private fun hideAlternatePreview(root: View) {
+        val host = root as? ViewGroup ?: return
+        host.findViewWithTag<View>(ALT_PREVIEW_TAG)?.let(host::removeView)
+    }
+
+    private fun decorateGestureDescriptions(root: View) {
+        root.findViewWithTag<View>("key-backspace")?.contentDescription =
+            root.context.getString(R.string.backspace_gesture_description)
+        root.findViewWithTag<View>("key-space")?.contentDescription =
+            root.context.getString(R.string.space_voice_gesture_description)
+        root.findViewWithTag<View>("key-segment")?.contentDescription =
+            root.context.getString(R.string.segment_gesture_description)
+    }
+
+    private fun maybeShowGestureHint(root: View) {
+        if (root.findViewWithTag<View>("key-segment") == null) return
+        val prefs = root.context.getSharedPreferences(GESTURE_HINT_PREFS, Context.MODE_PRIVATE)
+        if (prefs.getBoolean(GESTURE_HINT_SHOWN, false)) return
+        prefs.edit().putBoolean(GESTURE_HINT_SHOWN, true).apply()
+        root.post {
+            Toast.makeText(
+                root.context,
+                root.context.getString(R.string.gesture_hint_first_use),
+                Toast.LENGTH_LONG,
+            ).show()
+        }
+    }
+
+    /**
      * TYPE_CLASS_PHONE needs literal 0-9, *, # and +, not the finance rail,
      * space/voice key, decimal point and @ key inherited from DIGITS. Reuse the
      * stable numeric renderer but replace those three bottom/side actions and
@@ -93,7 +337,7 @@ internal object NineKeySymbolRailDecorator {
             key.isLongClickable = false
             key.setOnLongClickListener(null)
             if (tag == "key-space") {
-                // Remove the inherited 150 ms voice gesture from a phone-only key.
+                // Remove the inherited voice gesture from a phone-only key.
                 key.setIcon(0)
                 key.setOnTouchListener(null)
             }
@@ -286,6 +530,22 @@ internal object NineKeySymbolRailDecorator {
             view.setBackgroundResource(selectable.resourceId)
         }
     }
+
+    private fun resolveThemeColor(context: Context, attr: Int, fallback: Int): Int {
+        val value = TypedValue()
+        if (!context.theme.resolveAttribute(attr, value, true)) return fallback
+        if (value.type in TypedValue.TYPE_FIRST_COLOR_INT..TypedValue.TYPE_LAST_COLOR_INT) {
+            return value.data
+        }
+        if (value.resourceId != 0) {
+            return runCatching { context.getColor(value.resourceId) }.getOrDefault(fallback)
+        }
+        return fallback
+    }
+
+    private fun isNight(context: Context): Boolean =
+        (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
 
     private fun cellParams(context: Context, withGap: Boolean) = LinearLayout.LayoutParams(
         LinearLayout.LayoutParams.MATCH_PARENT,
