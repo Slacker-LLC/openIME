@@ -8,113 +8,114 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
+def replace_count(text: str, old: str, new: str, expected: int, label: str) -> str:
+    count = text.count(old)
+    if count != expected:
+        raise SystemExit(f"{label}: expected {expected} matches, got {count}")
+    return text.replace(old, new)
+
+
 path = Path("app/src/main/java/llc/slacker/openime/ImeKeyboardView.kt")
 text = path.read_text()
 
 text = replace_once(
     text,
-    '                contentDescription = "返回键盘"\n',
-    '                contentDescription = context.getString(R.string.panel_back_to_keyboard)\n',
-    'panel back accessibility',
+    '        row.contentDescription = "候选:$cand"\n',
+    '        row.contentDescription = context.getString(R.string.candidate_content_description, cand)\n',
+    'candidate accessibility description',
 )
 text = replace_once(
     text,
-    '        addPanelHead("切换键盘")\n',
-    '        addPanelHead(context.getString(R.string.panel_keyboard_select))\n',
-    'keyboard selector head',
+    '                    key("分词", true, "@#/", 1f, 12f) { onPinyinSegment() }.apply {\n',
+    '                    key(context.getString(R.string.key_segment_label), true, "@#/", 1f, 12f) { onPinyinSegment() }.apply {\n',
+    'pinyin26 segment label',
 )
 text = replace_once(
     text,
-    '            text = "选择输入布局"\n',
-    '            text = context.getString(R.string.keyboard_select_title)\n',
-    'keyboard selector title',
-)
-old_modes = '''        val modes = listOf(
-            KeyboardMode.PINYIN_26 to "拼音 26 键",
-            KeyboardMode.PINYIN_9 to "拼音 9 键",
-            KeyboardMode.ENGLISH_26 to "英文 26 键",
-            KeyboardMode.DIGITS to "数字键盘",
-        )
-'''
-new_modes = '''        val modes = listOf(
-            KeyboardMode.PINYIN_26 to context.getString(R.string.keyboard_mode_pinyin_26),
-            KeyboardMode.PINYIN_9 to context.getString(R.string.keyboard_mode_pinyin_9),
-            KeyboardMode.ENGLISH_26 to context.getString(R.string.keyboard_mode_english_26),
-            KeyboardMode.DIGITS to context.getString(R.string.keyboard_mode_digits),
-        )
-'''
-text = replace_once(text, old_modes, new_modes, 'keyboard selector modes')
-text = replace_once(
-    text,
-    '                        contentDescription = modeValue.name\n',
-    '                        contentDescription = label\n',
-    'keyboard selector accessibility',
-)
-
-text = replace_once(
-    text,
-    '        addPanelHead("游戏键盘")\n',
-    '        addPanelHead(context.getString(R.string.panel_gaming))\n',
-    'gaming head',
+    '                        contentDescription = "分词，长按输入@井号或斜杠"\n',
+    '                        contentDescription = context.getString(R.string.segment_gesture_description)\n',
+    'pinyin26 segment description',
 )
 text = replace_once(
     text,
-    '        val macros = listOf("收到！", "集合进攻！", "稳住能赢！", "请求集合！", "保护输出！")\n',
-    '''        val macros = listOf(
-            context.getString(R.string.gaming_macro_received),
-            context.getString(R.string.gaming_macro_attack),
-            context.getString(R.string.gaming_macro_hold),
-            context.getString(R.string.gaming_macro_regroup),
-            context.getString(R.string.gaming_macro_protect),
-        )
-''',
-    'gaming macros',
+    '            spaceVoiceKey(if (mode == KeyboardMode.ENGLISH_26) "space" else "空格", white = true) {\n',
+    '            spaceVoiceKey(context.getString(R.string.key_space_label), white = true) {\n',
+    'pinyin26 space label',
+)
+text = replace_count(
+    text,
+    '            key("中/英", true, null, 1f, 13f) { cycleMode() }.apply {\n',
+    '            key(context.getString(R.string.key_language_toggle), true, null, 1f, 13f) { cycleMode() }.apply {\n',
+    1,
+    'nine-key language toggle',
 )
 text = replace_once(
     text,
-    '            text = "⠿  拖动键盘"\n',
-    '            text = context.getString(R.string.gaming_drag_keyboard_label)\n',
-    'gaming drag label',
+    '            key("中/英", true, null, 1f, 14f) { cycleMode() }.apply { tag = "key:mode" },\n',
+    '            key(context.getString(R.string.key_language_toggle), true, null, 1f, 14f) { cycleMode() }.apply { tag = "key:mode" },\n',
+    'pinyin26 language toggle',
 )
 text = replace_once(
     text,
-    '            contentDescription = "拖动键盘"\n',
-    '            contentDescription = context.getString(R.string.gaming_drag_keyboard)\n',
-    'gaming drag accessibility',
+    '        return fallback ?: if (english) "Go" else "确定"\n',
+    '        return fallback ?: if (english) "Go" else context.getString(R.string.enter_confirm)\n',
+    'enter fallback confirm',
 )
-old_toggle = '''        val floatingToggle = button(if (floatingKeyboard) "贴底固定" else "恢复浮动", 11f, true).apply {
-            contentDescription = if (floatingKeyboard) "贴底固定" else "恢复浮动"
-            setOnClickListener { view ->
-                floatingKeyboard = !floatingKeyboard
-                listener.onFloatingKeyboardChanged(floatingKeyboard)
-                val label = if (floatingKeyboard) "贴底固定" else "恢复浮动"
-                (view as TextView).text = label
-                view.contentDescription = label
-            }
-        }
-'''
-new_toggle = '''        fun floatingLabel(): String = if (floatingKeyboard) {
-            context.getString(R.string.gaming_dock_bottom)
-        } else {
-            context.getString(R.string.gaming_restore_float)
-        }
-        val floatingToggle = button(floatingLabel(), 11f, true).apply {
-            contentDescription = floatingLabel()
-            setOnClickListener { view ->
-                floatingKeyboard = !floatingKeyboard
-                listener.onFloatingKeyboardChanged(floatingKeyboard)
-                val label = floatingLabel()
-                (view as TextView).text = label
-                view.contentDescription = label
-            }
-        }
-'''
-text = replace_once(text, old_toggle, new_toggle, 'gaming floating toggle')
+text = replace_count(
+    text,
+    '            key("符号", true, null, 1f, 13f) { showPanel(Panel.SYMBOLS) }\n',
+    '            key(context.getString(R.string.key_symbols_label), true, null, 1f, 13f) { showPanel(Panel.SYMBOLS) }\n',
+    2,
+    'symbol side keys',
+)
+text = replace_count(
+    text,
+    '            spaceVoiceKey("空格", white = true)',
+    '            spaceVoiceKey(context.getString(R.string.key_space_label), white = true)',
+    2,
+    'nine and digit space labels',
+)
 text = replace_once(
     text,
-    '                    key("空格", true, null, 1.2f, 11f) { listener.onSpace() }.apply {\n',
-    '                    key(context.getString(R.string.key_space_label), true, null, 1.2f, 11f) { listener.onSpace() }.apply {\n',
-    'gaming space label',
+    '            key("重输", true, null, 1f, 13f) {\n',
+    '            key(context.getString(R.string.key_retry), true, null, 1f, 13f) {\n',
+    'nine-key retry label',
+)
+text = replace_once(
+    text,
+    '                val display = if (num == "1") "分词" else sub\n',
+    '                val display = if (num == "1") context.getString(R.string.key_segment_label) else sub\n',
+    'nine-key segment display',
+)
+text = replace_once(
+    text,
+    '                        contentDescription = if (num == "1") "1，分词" else num\n',
+    '                        contentDescription = if (num == "1") context.getString(R.string.pinyin9_segment_description) else num\n',
+    'nine-key segment accessibility',
+)
+text = replace_once(
+    text,
+    '            key("返回", true, null, 1f, 14f) { setMode(lastTextMode) }.apply {\n',
+    '            key(context.getString(R.string.key_back_label), true, null, 1f, 14f) { setMode(lastTextMode) }.apply {\n',
+    'digits back label',
+)
+text = replace_once(
+    text,
+    '            key(enterKeyLabel(false, "换行"), true, null, 1f, 13f) { listener.onEnter() }\n',
+    '            key(enterKeyLabel(false, context.getString(R.string.enter_newline)), true, null, 1f, 13f) { listener.onEnter() }\n',
+    'digits newline fallback',
+)
+text = replace_once(
+    text,
+    '        label: String = "空格",\n',
+    '        label: String = context.getString(R.string.key_space_label),\n',
+    'space voice default label',
+)
+text = replace_once(
+    text,
+    '        contentDescription = "$label，点击空格，长按语音输入"\n',
+    '        contentDescription = context.getString(R.string.space_voice_key_description, label)\n',
+    'space voice accessibility description',
 )
 
 path.write_text(text)
