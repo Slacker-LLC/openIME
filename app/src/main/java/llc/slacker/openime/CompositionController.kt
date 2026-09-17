@@ -49,11 +49,6 @@ class CompositionController(
         return snapshot
     }
 
-    fun setT9(digits: String): Snapshot {
-        snapshot = Snapshot(digits, engine.getT9EnglishCandidates(digits))
-        return snapshot
-    }
-
     /** Replace the current composition wholesale (used by the render sync). */
     fun replace(next: String, fuzzy: Boolean = false): Snapshot {
         snapshot = Snapshot(next, engine.getCandidates(next, fuzzy))
