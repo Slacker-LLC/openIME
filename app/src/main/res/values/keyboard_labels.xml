@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="candidate_content_description">候选：%1$s</string>
+    <string name="key_segment_label">分词</string>
+    <string name="pinyin9_segment_description">1，分词</string>
+    <string name="key_language_toggle">中/英</string>
+    <string name="key_retry">重输</string>
+    <string name="key_symbols_label">符号</string>
+    <string name="key_back_label">返回</string>
+    <string name="enter_confirm">确定</string>
+    <string name="enter_newline">换行</string>
+    <string name="space_voice_key_description">%1$s；点击输入空格，长按语音输入</string>
+</resources>
