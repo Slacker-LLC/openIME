@@ -20,6 +20,24 @@
     <string name="action_paste">Paste</string>
     <string name="text_cursor">Cursor</string>
 
+    <string name="symbol_category_common">Common</string>
+    <string name="symbol_category_chinese">Chinese</string>
+    <string name="symbol_category_english">English</string>
+    <string name="symbol_category_math">Math</string>
+    <string name="symbol_category_numbering">Numbering</string>
+    <string name="symbol_category_units">Units</string>
+    <string name="symbol_category_special">Special</string>
+    <string name="symbol_category_programming">Programming</string>
+    <string name="symbol_category_custom">Custom</string>
+    <string name="emoji_category_smileys">Smileys</string>
+    <string name="emoji_category_affection">Affection</string>
+    <string name="emoji_category_neutral">Neutral</string>
+    <string name="emoji_category_sleepy_unwell">Sleepy / unwell</string>
+    <string name="emoji_category_worried">Worried</string>
+    <string name="emoji_category_weird">Silly</string>
+    <string name="emoji_category_hearts">Hearts</string>
+    <string name="emoji_category_emotion_symbols">Emotion symbols</string>
+
     <string name="settings_section_appearance">Appearance</string>
     <string name="appearance_system">Follow system</string>
     <string name="appearance_light">Light</string>
@@ -38,6 +56,9 @@
     <string name="settings_section_smart_input">Smart input</string>
     <string name="settings_fuzzy_navigation">Fuzzy Pinyin and correction</string>
     <string name="settings_fuzzy_navigation_desc">Configure z/zh, c/ch, s/sh, and related rules</string>
+    <string name="settings_custom_accent_description">Custom accent color</string>
+    <string name="action_apply">Apply</string>
+    <string name="action_cancel">Cancel</string>
 
     <string name="panel_fuzzy_settings">Fuzzy Pinyin</string>
     <string name="fuzzy_note">Handles common near-sound input. When enabled, candidates also try similar initials without changing what you typed.</string>
