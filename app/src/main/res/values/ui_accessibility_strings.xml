@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="toolbar_more">更多</string>
+    <string name="composition_edit_description">可编辑拼音预编辑</string>
+    <string name="candidate_expand_more">展开更多候选</string>
+    <string name="candidate_collapse">收起候选</string>
+    <string name="candidate_list_title">候选字词</string>
+    <string name="candidate_empty">暂无候选</string>
+    <string name="candidate_description">候选：%1$s</string>
+    <string name="association_description">联想：%1$s</string>
+    <string name="shift_uppercase">大写</string>
+    <string name="shift_once">大写一次</string>
+    <string name="shift_caps_lock">大写锁定</string>
+    <string name="function_key_description">功能键</string>
+    <string name="backspace_clear">清空</string>
+    <string name="backspace_delete_word">删词</string>
+    <string name="backspace_clear_hint">↑ 清空</string>
+    <string name="long_press_symbol_selection">长按符号选择</string>
+    <string name="input_symbol_description">输入 %1$s</string>
+    <string name="accent_color_description">强调色 %1$s</string>
+    <string name="action_send">发送</string>
+</resources>
