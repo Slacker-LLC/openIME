@@ -8,6 +8,8 @@
     <string name="clipboard_pinned">Pinned</string>
     <string name="clipboard_pin">Pin</string>
     <string name="clipboard_unpin">Unpin</string>
+    <string name="clipboard_clear_unpinned">Clear unpinned</string>
+    <string name="clipboard_clear_all">Clear all</string>
     <string name="action_use">Use</string>
     <string name="quick_phrase_add">Add quick phrase</string>
     <string name="quick_phrase_edit">Edit</string>
@@ -19,6 +21,7 @@
     <string name="action_cut">Cut</string>
     <string name="action_paste">Paste</string>
     <string name="text_cursor">Cursor</string>
+    <string name="text_edit_unavailable_description">%1$s (not supported by the current editor)</string>
 
     <string name="symbol_category_common">Common</string>
     <string name="symbol_category_chinese">Chinese</string>
