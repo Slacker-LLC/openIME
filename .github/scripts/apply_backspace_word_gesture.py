@@ -42,135 +42,133 @@ service = replace_once(
 service_path.write_text(service)
 
 
-decorator_path = Path("app/src/main/java/llc/slacker/openime/NineKeySymbolRailDecorator.kt")
-decorator = decorator_path.read_text()
-decorator = replace_once(
-    decorator,
-    '''        installPinyin26LongPressDigits(root, onCommit)
-        decorateGestureDescriptions(root)
-''',
-    '''        installPinyin26LongPressDigits(root, onCommit)
-        installBackspaceGestures(root)
-        decorateGestureDescriptions(root)
-''',
-    "decorate backspace hook",
+view_path = Path("app/src/main/java/llc/slacker/openime/ImeKeyboardView.kt")
+view = view_path.read_text()
+view = replace_once(
+    view,
+    "    private var backspaceClearArmed = false\n",
+    "    private var backspaceClearArmed = false\n    private var backspaceDeleteWordArmed = false\n",
+    "backspace delete-word state",
 )
-marker = '    private fun decorateGestureDescriptions(root: View) {\n'
-if marker not in decorator:
-    raise SystemExit("decorateGestureDescriptions marker missing")
-function = r'''    /**
-     * Production backspace gesture: tap deletes one code point, hold repeats,
-     * swipe up clears all, and swipe left deletes the previous word/token.
-     */
-    @SuppressLint("ClickableViewAccessibility")
-    private fun installBackspaceGestures(root: View) {
-        val key = root.findViewWithTag<ImeKeyView>("key-backspace") ?: return
-        val listener = root.context as? ImeKeyboardViewV2.Listener ?: return
-        val context = root.context
-        val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
-        val armDistance = dp(context, 36).toFloat()
-        val earlyMove = dp(context, 8).toFloat()
-        val verticalTolerance = dp(context, 64).toFloat()
-        val horizontalTolerance = dp(context, 96).toFloat()
-        val ACTION_NONE = 0
-        val ACTION_DELETE_WORD = 1
-        val ACTION_CLEAR_ALL = 2
+view = replace_once(
+    view,
+    "        backspaceClearArmed = false\n        backspaceRepeatStarted = false\n",
+    "        backspaceClearArmed = false\n        backspaceDeleteWordArmed = false\n        backspaceRepeatStarted = false\n",
+    "backspace begin reset",
+)
+view = replace_once(
+    view,
+    "            if (backspaceGestureActive && !backspaceClearArmed) repeatAction.run()\n",
+    "            if (backspaceGestureActive && !backspaceClearArmed && !backspaceDeleteWordArmed) repeatAction.run()\n",
+    "backspace repeat guard",
+)
 
-        var downX = 0f
-        var downY = 0f
-        var armedAction = ACTION_NONE
-        var moved = false
-        var repeating = false
+update_start = view.index("    private fun updateBackspaceGesture(rawX: Float, rawY: Float) {\n")
+finish_start = view.index("    private fun finishBackspaceGesture(commit: Boolean) {\n", update_start)
+new_update = '''    private fun updateBackspaceGesture(rawX: Float, rawY: Float) {
+        if (!backspaceGestureActive) return
+        val upward = backspaceStartY - rawY
+        val leftward = backspaceStartX - rawX
+        val horizontal = kotlin.math.abs(rawX - backspaceStartX)
+        val vertical = kotlin.math.abs(rawY - backspaceStartY)
 
-        val repeatDelete = object : Runnable {
-            override fun run() {
-                if (!key.isPressed || armedAction != ACTION_NONE || moved) return
-                repeating = true
-                listener.onBackspace()
-                key.postDelayed(this, 60L)
+        // Once the motion clearly becomes directional, pause repeat-delete while
+        // the gesture is deciding between swipe-up clear and swipe-left delete-word.
+        val directionalIntent =
+            (upward >= dp(8) && horizontal <= dp(96)) ||
+                (leftward >= dp(8) && vertical <= dp(64))
+        if (directionalIntent) {
+            backspaceRepeatSuspended = true
+            backspaceRepeatStartAction?.let(repeatHandler::removeCallbacks)
+            repeatHandler.removeCallbacks(repeatAction)
+        } else if (backspaceRepeatSuspended) {
+            backspaceRepeatSuspended = false
+            backspaceRepeatStartAction?.let {
+                repeatHandler.postDelayed(
+                    it,
+                    if (backspaceRepeatStarted) 60L else ViewConfiguration.getLongPressTimeout().toLong(),
+                )
             }
         }
 
-        fun setArmed(next: Int) {
-            if (armedAction == next) return
-            armedAction = next
-            key.removeCallbacks(repeatDelete)
-            hideAlternatePreview(root)
-            when (next) {
-                ACTION_DELETE_WORD -> showAlternatePreview(root, key, "删词", tall = false)
-                ACTION_CLEAR_ALL -> showAlternatePreview(root, key, "清空", tall = false)
-            }
-            if (ImeSettingsRepository.loadHaptic(context)) {
-                key.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-            }
+        val clearDominates = upward >= leftward.coerceAtLeast(0f)
+        val shouldArmClear = if (backspaceClearArmed) {
+            upward > dp(16) && horizontal <= dp(120) && clearDominates
+        } else {
+            upward >= dp(36) && horizontal <= dp(96) && clearDominates
+        }
+        val shouldArmDeleteWord = if (shouldArmClear) {
+            false
+        } else if (backspaceDeleteWordArmed) {
+            leftward > dp(16) && vertical <= dp(80)
+        } else {
+            leftward >= dp(36) && vertical <= dp(64) && leftward > upward.coerceAtLeast(0f)
         }
 
-        key.setOnLongClickListener(null)
-        key.setOnTouchListener { _, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    key.removeCallbacks(repeatDelete)
-                    downX = event.x
-                    downY = event.y
-                    armedAction = ACTION_NONE
-                    moved = false
-                    repeating = false
-                    key.isPressed = true
-                    key.parent?.requestDisallowInterceptTouchEvent(true)
-                    playKeyFeedback(key)
-                    key.postDelayed(repeatDelete, ViewConfiguration.getLongPressTimeout().toLong())
-                    true
-                }
+        if (shouldArmClear == backspaceClearArmed && shouldArmDeleteWord == backspaceDeleteWordArmed) return
+        backspaceClearArmed = shouldArmClear
+        backspaceDeleteWordArmed = shouldArmDeleteWord
+        backspaceClearUiAction?.invoke(shouldArmClear)
+        backspaceRepeatStartAction?.let(repeatHandler::removeCallbacks)
+        repeatHandler.removeCallbacks(repeatAction)
+        when {
+            shouldArmClear -> backspaceAnchor?.let { showPopup(it, "清空") }
+            shouldArmDeleteWord -> backspaceAnchor?.let { showPopup(it, "删词") }
+            else -> hidePopup()
+        }
+        repeatHandler.removeCallbacks(popupHideRunnable)
+        // Confirm both arming and disarming so the directional tier is tangible.
+        hapticFeedback()
+    }
 
-                MotionEvent.ACTION_MOVE -> {
-                    val left = downX - event.x
-                    val up = downY - event.y
-                    val absX = abs(event.x - downX)
-                    val absY = abs(event.y - downY)
-                    if (absX > touchSlop || absY > touchSlop) moved = true
-                    if (absX >= earlyMove || absY >= earlyMove) key.removeCallbacks(repeatDelete)
+'''
+view = view[:update_start] + new_update + view[finish_start:]
 
-                    val next = when {
-                        up >= armDistance && absX <= horizontalTolerance && up >= left.coerceAtLeast(0f) -> ACTION_CLEAR_ALL
-                        left >= armDistance && absY <= verticalTolerance -> ACTION_DELETE_WORD
-                        else -> ACTION_NONE
-                    }
-                    setArmed(next)
-                    true
-                }
-
-                MotionEvent.ACTION_UP -> {
-                    key.removeCallbacks(repeatDelete)
-                    key.isPressed = false
-                    key.parent?.requestDisallowInterceptTouchEvent(false)
-                    hideAlternatePreview(root)
-                    when (armedAction) {
-                        ACTION_DELETE_WORD -> listener.onTextEdit("delete-word")
-                        ACTION_CLEAR_ALL -> listener.onClearAll()
-                        else -> if (!moved && !repeating) listener.onBackspace()
-                    }
-                    armedAction = ACTION_NONE
-                    moved = false
-                    repeating = false
-                    true
-                }
-
-                MotionEvent.ACTION_CANCEL -> {
-                    key.removeCallbacks(repeatDelete)
-                    key.isPressed = false
-                    key.parent?.requestDisallowInterceptTouchEvent(false)
-                    hideAlternatePreview(root)
-                    armedAction = ACTION_NONE
-                    moved = false
-                    repeating = false
-                    true
-                }
-
-                else -> true
+finish_start = view.index("    private fun finishBackspaceGesture(commit: Boolean) {\n")
+backspace_key_start = view.index("    private fun backspaceKey(): ImeKeyView", finish_start)
+new_finish = '''    private fun finishBackspaceGesture(commit: Boolean) {
+        if (!backspaceGestureActive) return
+        val clearAll = commit && backspaceClearArmed
+        val deleteWord = commit && !backspaceClearArmed && backspaceDeleteWordArmed
+        val deleteOnce = commit && !backspaceClearArmed && !backspaceDeleteWordArmed && !backspaceRepeatStarted
+        repeatHandler.removeCallbacks(repeatAction)
+        backspaceRepeatStartAction?.let(repeatHandler::removeCallbacks)
+        backspaceRepeatStartAction = null
+        backspaceAnchor?.apply {
+            isPressed = false
+            parent?.requestDisallowInterceptTouchEvent(false)
+        }
+        backspaceGestureActive = false
+        backspaceClearUiAction?.invoke(false)
+        backspaceClearArmed = false
+        backspaceDeleteWordArmed = false
+        backspaceRepeatStarted = false
+        backspaceAnchor = null
+        backspaceClearUiAction = null
+        hidePopup()
+        when {
+            clearAll -> {
+                hapticFeedback()
+                listener.onClearAll()
             }
+            deleteWord -> {
+                hapticFeedback()
+                listener.onTextEdit("delete-word")
+            }
+            deleteOnce -> {
+                hidePopup()
+                performBackspaceOnce()
+            }
+            else -> hidePopup()
         }
     }
 
 '''
-decorator = decorator.replace(marker, function + marker, 1)
-decorator_path.write_text(decorator)
+view = view[:finish_start] + new_finish + view[backspace_key_start:]
+view = replace_once(
+    view,
+    '        contentDescription = "删除，向上滑清空"\n',
+    '        contentDescription = "删除，向左滑删词，向上滑清空"\n',
+    "backspace accessibility description",
+)
+view_path.write_text(view)
