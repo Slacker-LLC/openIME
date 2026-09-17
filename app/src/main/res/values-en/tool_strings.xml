@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tool_emoji">Emoji</string>
+    <string name="tool_clipboard">Clipboard</string>
+    <string name="tool_handwriting">Handwriting</string>
+    <string name="tool_symbols">Symbols</string>
+    <string name="tool_switch_keyboard">Switch keyboard</string>
+    <string name="handwriting_unconfigured_label">Handwriting · not configured</string>
+    <string name="handwriting_unconfigured_description">Handwriting (not configured)</string>
+    <string name="textedit_unavailable_description">%1$s (not supported by this editor)</string>
+    <string name="clipboard_clear_unpinned">Clear unpinned</string>
+    <string name="clipboard_clear_all">Clear all</string>
+</resources>
