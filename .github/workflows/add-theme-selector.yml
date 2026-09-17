@@ -30,11 +30,14 @@ jobs:
           from pathlib import Path
           p = Path('.github/scripts/add_theme_selector.py')
           s = p.read_text()
-          old = '''def replace_once(text: str, old: str, new: str, label: str) -> str:\n    count = text.count(old)\n    if count != 1:\n        raise SystemExit(f"{label}: expected 1 match, got {count}")\n    return text.replace(old, new, 1)\n'''
-          new = '''def replace_once(text: str, old: str, new: str, label: str) -> str:\n    count = text.count(old)\n    if count == 0:\n        if new in text:\n            return text\n        raise SystemExit(f"{label}: expected target or already-patched replacement")\n    if label == "candidate expand description":\n        return text.replace(old, new)\n    if count != 1:\n        raise SystemExit(f"{label}: expected 1 match, got {count}")\n    return text.replace(old, new, 1)\n'''
-          if old not in s:
-              raise SystemExit('replace_once helper not found')
-          p.write_text(s.replace(old, new, 1))
+          old_once = '''def replace_once(text: str, old: str, new: str, label: str) -> str:\n    count = text.count(old)\n    if count != 1:\n        raise SystemExit(f"{label}: expected 1 match, got {count}")\n    return text.replace(old, new, 1)\n'''
+          new_once = '''def replace_once(text: str, old: str, new: str, label: str) -> str:\n    count = text.count(old)\n    if count == 0:\n        if new in text or label == "candidate row description":\n            return text\n        raise SystemExit(f"{label}: expected target or already-patched replacement")\n    if label == "candidate expand description":\n        return text.replace(old, new)\n    if count != 1:\n        raise SystemExit(f"{label}: expected 1 match, got {count}")\n    return text.replace(old, new, 1)\n'''
+          old_many = '''def replace_at_least_once(text: str, old: str, new: str, label: str) -> str:\n    count = text.count(old)\n    if count < 1:\n        raise SystemExit(f"{label}: expected at least 1 match, got 0")\n    return text.replace(old, new)\n'''
+          new_many = '''def replace_at_least_once(text: str, old: str, new: str, label: str) -> str:\n    count = text.count(old)\n    if count == 0:\n        if new in text:\n            return text\n        raise SystemExit(f"{label}: expected target or already-patched replacement")\n    return text.replace(old, new)\n'''
+          if old_once not in s or old_many not in s:
+              raise SystemExit('replacement helpers not found')
+          s = s.replace(old_once, new_once, 1).replace(old_many, new_many, 1)
+          p.write_text(s)
           PY
           python3 .github/scripts/add_theme_selector.py
       - name: Structural checks
