@@ -58,16 +58,17 @@ class CandidatePipeline(
     }
 
     /**
-     * English completion is advisory. The exact text the user typed must stay
-     * candidate #1 because punctuation, space and mode changes commit that
-     * entry automatically. Suggestions inherit ordinary lower/title/all-caps
+     * English completion is advisory, but unlike Pinyin the space key is also
+     * the normal acceptance gesture. Keep the engine's best completion first
+     * so space accepts it, while retaining the exact typed text as a selectable
+     * fallback candidate. Suggestions inherit ordinary lower/title/all-caps
      * casing so Shift/Caps Lock are not silently discarded.
      */
     private fun englishCandidates(composition: String): List<String> {
         if (composition.isEmpty()) return emptyList()
         val suggestions = engine.getEnglishCompletions(composition)
             .map { applyEnglishCase(composition, it) }
-        return (listOf(composition) + suggestions)
+        return (suggestions + composition)
             .filter { it.isNotEmpty() }
             .distinct()
             .take(MAX_CANDIDATES)
