@@ -8,6 +8,16 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
+def replace_between(text: str, start: str, end: str, replacement: str, label: str) -> str:
+    start_index = text.find(start)
+    if start_index < 0:
+        raise SystemExit(f"{label}: start marker missing")
+    end_index = text.find(end, start_index + len(start))
+    if end_index < 0:
+        raise SystemExit(f"{label}: end marker missing")
+    return text[:start_index] + replacement + text[end_index:]
+
+
 service_path = Path("app/src/main/java/llc/slacker/openime/LocalVoiceImeService.kt")
 service = service_path.read_text()
 service = replace_once(
@@ -50,22 +60,47 @@ view = replace_once(
     "    private var backspaceClearArmed = false\n    private var backspaceDeleteWordArmed = false\n",
     "backspace delete-word state",
 )
-view = replace_once(
+
+begin_replacement = '''    private fun beginBackspaceGesture(
+        anchor: View,
+        rawX: Float,
+        rawY: Float,
+        clearUiAction: (Boolean) -> Unit,
+    ) {
+        if (backspaceGestureActive) finishBackspaceGesture(commit = false)
+        repeatHandler.removeCallbacks(repeatAction)
+        backspaceRepeatStartAction?.let(repeatHandler::removeCallbacks)
+        backspaceGestureActive = true
+        backspaceClearArmed = false
+        backspaceDeleteWordArmed = false
+        backspaceRepeatStarted = false
+        backspaceRepeatSuspended = false
+        backspaceStartX = rawX
+        backspaceStartY = rawY
+        backspaceAnchor = anchor
+        backspaceClearUiAction = clearUiAction
+        anchor.isPressed = true
+        anchor.parent?.requestDisallowInterceptTouchEvent(true)
+        clearUiAction(false)
+        hidePopup()
+        feedback()
+        val startRepeat = Runnable {
+            if (backspaceGestureActive && !backspaceClearArmed && !backspaceDeleteWordArmed) repeatAction.run()
+        }
+        backspaceRepeatStartAction = startRepeat
+        repeatHandler.postDelayed(startRepeat, ViewConfiguration.getLongPressTimeout().toLong())
+    }
+
+'''
+view = replace_between(
     view,
-    "        backspaceClearArmed = false\n        backspaceRepeatStarted = false\n",
-    "        backspaceClearArmed = false\n        backspaceDeleteWordArmed = false\n        backspaceRepeatStarted = false\n",
-    "backspace begin reset",
-)
-view = replace_once(
-    view,
-    "            if (backspaceGestureActive && !backspaceClearArmed) repeatAction.run()\n",
-    "            if (backspaceGestureActive && !backspaceClearArmed && !backspaceDeleteWordArmed) repeatAction.run()\n",
-    "backspace repeat guard",
+    "    private fun beginBackspaceGesture(\n",
+    "    private fun updateBackspaceGesture(rawX: Float, rawY: Float) {\n",
+    begin_replacement,
+    "beginBackspaceGesture",
 )
 
-update_start = view.index("    private fun updateBackspaceGesture(rawX: Float, rawY: Float) {\n")
-finish_start = view.index("    private fun finishBackspaceGesture(commit: Boolean) {\n", update_start)
-new_update = '''    private fun updateBackspaceGesture(rawX: Float, rawY: Float) {
+update_replacement = '''    private fun updateBackspaceGesture(rawX: Float, rawY: Float) {
         if (!backspaceGestureActive) return
         val upward = backspaceStartY - rawY
         val leftward = backspaceStartX - rawX
@@ -117,16 +152,19 @@ new_update = '''    private fun updateBackspaceGesture(rawX: Float, rawY: Float)
             else -> hidePopup()
         }
         repeatHandler.removeCallbacks(popupHideRunnable)
-        // Confirm both arming and disarming so the directional tier is tangible.
         hapticFeedback()
     }
 
 '''
-view = view[:update_start] + new_update + view[finish_start:]
+view = replace_between(
+    view,
+    "    private fun updateBackspaceGesture(rawX: Float, rawY: Float) {\n",
+    "    private fun finishBackspaceGesture(commit: Boolean) {\n",
+    update_replacement,
+    "updateBackspaceGesture",
+)
 
-finish_start = view.index("    private fun finishBackspaceGesture(commit: Boolean) {\n")
-backspace_key_start = view.index("    private fun backspaceKey(): ImeKeyView", finish_start)
-new_finish = '''    private fun finishBackspaceGesture(commit: Boolean) {
+finish_replacement = '''    private fun finishBackspaceGesture(commit: Boolean) {
         if (!backspaceGestureActive) return
         val clearAll = commit && backspaceClearArmed
         val deleteWord = commit && !backspaceClearArmed && backspaceDeleteWordArmed
@@ -164,7 +202,13 @@ new_finish = '''    private fun finishBackspaceGesture(commit: Boolean) {
     }
 
 '''
-view = view[:finish_start] + new_finish + view[backspace_key_start:]
+view = replace_between(
+    view,
+    "    private fun finishBackspaceGesture(commit: Boolean) {\n",
+    "    private fun backspaceKey(): ImeKeyView",
+    finish_replacement,
+    "finishBackspaceGesture",
+)
 view = replace_once(
     view,
     '        contentDescription = "删除，向上滑清空"\n',
