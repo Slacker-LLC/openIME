@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tool_emoji">表情</string>
+    <string name="tool_clipboard">剪贴板</string>
+    <string name="tool_handwriting">手写输入</string>
+    <string name="tool_symbols">符号</string>
+    <string name="tool_switch_keyboard">切换键盘</string>
+    <string name="handwriting_unconfigured_label">手写输入·未配置</string>
+    <string name="handwriting_unconfigured_description">手写输入（未配置）</string>
+    <string name="textedit_unavailable_description">%1$s（当前编辑器暂不支持）</string>
+    <string name="clipboard_clear_unpinned">清除未固定</string>
+    <string name="clipboard_clear_all">清空全部</string>
+</resources>
