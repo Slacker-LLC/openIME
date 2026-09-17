@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="quick_phrase_category_hint">Category, for example: Work</string>
+    <string name="quick_phrase_text_hint">Enter a quick phrase</string>
+    <string name="quick_phrase_edit_title">Edit quick phrase</string>
+    <string name="quick_phrase_add_title">Add quick phrase</string>
+    <string name="action_save">Save</string>
+    <string name="quick_phrase_required">Enter quick phrase text</string>
+
+    <string name="custom_symbols_title">Custom symbols</string>
+    <string name="custom_symbols_description">Add, group, pin, delete, and reorder symbols. Use the arrows or long-press a symbol row to drag it.</string>
+    <string name="custom_symbol_group_hint">Group, for example: Common arrows</string>
+    <string name="custom_symbol_value_hint">Symbol, for example: ⇢ or custom text</string>
+    <string name="custom_symbol_save">Save symbol</string>
+    <string name="custom_symbol_required">Enter a symbol or custom text</string>
+    <string name="custom_symbol_saved">Saved symbols</string>
+    <string name="action_done">Done</string>
+    <string name="custom_symbol_pinned">Pinned</string>
+    <string name="custom_symbol_unpinned">Not pinned</string>
+    <string name="custom_symbol_unpin">Unpin</string>
+    <string name="custom_symbol_pin">Pin</string>
+    <string name="action_move_up">Move up</string>
+    <string name="action_move_down">Move down</string>
+</resources>
