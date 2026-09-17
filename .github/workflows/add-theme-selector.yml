@@ -31,7 +31,7 @@ jobs:
           p = Path('.github/scripts/add_theme_selector.py')
           s = p.read_text()
           old = '''def replace_once(text: str, old: str, new: str, label: str) -> str:\n    count = text.count(old)\n    if count != 1:\n        raise SystemExit(f"{label}: expected 1 match, got {count}")\n    return text.replace(old, new, 1)\n'''
-          new = '''def replace_once(text: str, old: str, new: str, label: str) -> str:\n    count = text.count(old)\n    if label == "candidate expand description":\n        if count < 1:\n            raise SystemExit(f"{label}: expected at least 1 match, got 0")\n        return text.replace(old, new)\n    if count != 1:\n        raise SystemExit(f"{label}: expected 1 match, got {count}")\n    return text.replace(old, new, 1)\n'''
+          new = '''def replace_once(text: str, old: str, new: str, label: str) -> str:\n    count = text.count(old)\n    if count == 0:\n        if new in text:\n            return text\n        raise SystemExit(f"{label}: expected target or already-patched replacement")\n    if label == "candidate expand description":\n        return text.replace(old, new)\n    if count != 1:\n        raise SystemExit(f"{label}: expected 1 match, got {count}")\n    return text.replace(old, new, 1)\n'''
           if old not in s:
               raise SystemExit('replace_once helper not found')
           p.write_text(s.replace(old, new, 1))
