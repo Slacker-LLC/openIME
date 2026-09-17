@@ -8,6 +8,8 @@
     <string name="clipboard_pinned">已置顶</string>
     <string name="clipboard_pin">置顶</string>
     <string name="clipboard_unpin">取消置顶</string>
+    <string name="clipboard_clear_unpinned">清除未固定</string>
+    <string name="clipboard_clear_all">清空全部</string>
     <string name="action_use">使用</string>
     <string name="quick_phrase_add">新增常用语</string>
     <string name="quick_phrase_edit">编辑</string>
@@ -19,6 +21,7 @@
     <string name="action_cut">剪切</string>
     <string name="action_paste">粘贴</string>
     <string name="text_cursor">光标</string>
+    <string name="text_edit_unavailable_description">%1$s（当前编辑器暂不支持）</string>
 
     <string name="symbol_category_common">常用</string>
     <string name="symbol_category_chinese">中文</string>
