@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="quick_phrase_category_hint">分类，例如：工作</string>
+    <string name="quick_phrase_text_hint">输入常用语</string>
+    <string name="quick_phrase_edit_title">编辑常用语</string>
+    <string name="quick_phrase_add_title">新增常用语</string>
+    <string name="action_save">保存</string>
+    <string name="quick_phrase_required">请输入常用语内容</string>
+
+    <string name="custom_symbols_title">自定义符号</string>
+    <string name="custom_symbols_description">可添加、分类、固定和删除。点击箭头调整顺序，也可长按符号行拖动排序。</string>
+    <string name="custom_symbol_group_hint">分组，例如：常用箭头</string>
+    <string name="custom_symbol_value_hint">符号，例如：⇢ 或 自定义文本</string>
+    <string name="custom_symbol_save">保存符号</string>
+    <string name="custom_symbol_required">请输入符号或自定义文本</string>
+    <string name="custom_symbol_saved">已保存符号</string>
+    <string name="action_done">完成</string>
+    <string name="custom_symbol_pinned">已固定</string>
+    <string name="custom_symbol_unpinned">未固定</string>
+    <string name="custom_symbol_unpin">取消固定</string>
+    <string name="custom_symbol_pin">固定</string>
+    <string name="action_move_up">上移</string>
+    <string name="action_move_down">下移</string>
+</resources>
