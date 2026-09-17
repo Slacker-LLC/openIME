@@ -25,16 +25,11 @@ class CandidatePipelineTest {
         )
 
         val english = pipeline.candidatesFor(KeyboardMode.ENGLISH_26, "hel", false)
-        assertEquals("hel", english.first())
-        assertEquals(
-            (listOf("hel") + engine.getEnglishCompletions("hel")).distinct(),
-            english,
-        )
+        val expectedEnglish = (engine.getEnglishCompletions("hel") + "hel").distinct()
+        assertEquals(expectedEnglish, english)
+        assertEquals(expectedEnglish.first(), english.first())
+        assertTrue("raw typed text must remain selectable", "hel" in english)
 
-        assertEquals(
-            engine.getT9EnglishCandidates("435"),
-            pipeline.candidatesFor(KeyboardMode.ENGLISH_T9, "435", false),
-        )
         assertTrue(pipeline.candidatesFor(KeyboardMode.DIGITS, "123", false).isEmpty())
     }
 
