@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">openIME</string>
+    <string name="subtitle_zh">Chinese</string>
+    <string name="subtitle_en">English</string>
+    <string name="main_description">Local Pinyin keyboard\nDictionary and voice recognition run on-device</string>
+    <string name="test_hint">Try typing here</string>
+    <string name="open_ime_settings">Step 1  Enable openIME</string>
+    <string name="open_ime_settings_done">Enabled</string>
+    <string name="choose_ime">Step 2  Switch to openIME</string>
+    <string name="choose_ime_done">Currently in use</string>
+    <string name="setup_enable">Enable openIME to start typing</string>
+    <string name="setup_choose">Enabled. Switch to openIME to type</string>
+    <string name="setup_ready">Ready. Try typing below</string>
+    <string name="typing_tips">Type nihao for 你好. Tap a candidate to commit it, or press Space for the first candidate.</string>
+    <string name="voice_permission_description">Voice input is optional. Grant microphone access to speak by holding Space; typing works without it.</string>
+    <string name="voice_permission_enable">Enable local voice input</string>
+    <string name="voice_permission_ready">Microphone access granted</string>
+    <string name="open_app_settings">Open preferences</string>
+    <string name="setup_need_switch">Enable and switch to openIME before opening preferences</string>
+    <string name="settings_accent_title">Accent color</string>
+    <string name="settings_accent_custom">Custom</string>
+    <string name="settings_accent_hint">Enter a 6-digit hex color, for example 5B6B7A</string>
+    <string name="settings_title">Preferences</string>
+</resources>
