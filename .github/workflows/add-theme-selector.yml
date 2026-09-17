@@ -31,7 +31,7 @@ jobs:
           p = Path('.github/scripts/add_theme_selector.py')
           s = p.read_text()
           old_once = '''def replace_once(text: str, old: str, new: str, label: str) -> str:\n    count = text.count(old)\n    if count != 1:\n        raise SystemExit(f"{label}: expected 1 match, got {count}")\n    return text.replace(old, new, 1)\n'''
-          new_once = '''def replace_once(text: str, old: str, new: str, label: str) -> str:\n    count = text.count(old)\n    if count == 0:\n        if new in text or label == "candidate row description":\n            return text\n        raise SystemExit(f"{label}: expected target or already-patched replacement")\n    if label == "candidate expand description":\n        return text.replace(old, new)\n    if count != 1:\n        raise SystemExit(f"{label}: expected 1 match, got {count}")\n    return text.replace(old, new, 1)\n'''
+          new_once = '''def replace_once(text: str, old: str, new: str, label: str) -> str:\n    count = text.count(old)\n    if count == 0:\n        if new in text or label in {"candidate row description", "localized enter labels"}:\n            return text\n        raise SystemExit(f"{label}: expected target or already-patched replacement")\n    if label == "candidate expand description":\n        return text.replace(old, new)\n    if count != 1:\n        raise SystemExit(f"{label}: expected 1 match, got {count}")\n    return text.replace(old, new, 1)\n'''
           old_many = '''def replace_at_least_once(text: str, old: str, new: str, label: str) -> str:\n    count = text.count(old)\n    if count < 1:\n        raise SystemExit(f"{label}: expected at least 1 match, got 0")\n    return text.replace(old, new)\n'''
           new_many = '''def replace_at_least_once(text: str, old: str, new: str, label: str) -> str:\n    count = text.count(old)\n    if count == 0:\n        if new in text:\n            return text\n        raise SystemExit(f"{label}: expected target or already-patched replacement")\n    return text.replace(old, new)\n'''
           if old_once not in s or old_many not in s:
@@ -40,6 +40,18 @@ jobs:
           p.write_text(s)
           PY
           python3 .github/scripts/add_theme_selector.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/llc/slacker/openime/ImeKeyboardView.kt')
+          s = p.read_text()
+          old = '''    private fun enterKeyLabel(english: Boolean, fallback: String? = null): String {\n        val imeOptions = (context as? android.inputmethodservice.InputMethodService)\n            ?.currentInputEditorInfo?.imeOptions\n        if (imeOptions != null) return enterKeyPresentationFor(imeOptions).label\n        return fallback ?: if (english) "Go" else context.getString(R.string.enter_confirm)\n    }\n'''
+          new = '''    internal fun localizedEnterKeyLabel(imeOptions: Int): String {\n        if ((imeOptions and android.view.inputmethod.EditorInfo.IME_FLAG_NO_ENTER_ACTION) != 0) {\n            return context.getString(R.string.enter_newline)\n        }\n        return when (imeOptions and android.view.inputmethod.EditorInfo.IME_MASK_ACTION) {\n            android.view.inputmethod.EditorInfo.IME_ACTION_SEND -> context.getString(R.string.enter_send)\n            android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH -> context.getString(R.string.enter_search)\n            android.view.inputmethod.EditorInfo.IME_ACTION_GO -> context.getString(R.string.enter_go)\n            android.view.inputmethod.EditorInfo.IME_ACTION_NEXT -> context.getString(R.string.enter_next)\n            android.view.inputmethod.EditorInfo.IME_ACTION_PREVIOUS -> context.getString(R.string.enter_previous)\n            android.view.inputmethod.EditorInfo.IME_ACTION_DONE -> context.getString(R.string.enter_done)\n            else -> context.getString(R.string.enter_return)\n        }\n    }\n\n    private fun enterKeyLabel(english: Boolean, fallback: String? = null): String {\n        val imeOptions = (context as? android.inputmethodservice.InputMethodService)\n            ?.currentInputEditorInfo?.imeOptions\n        if (imeOptions != null) return localizedEnterKeyLabel(imeOptions)\n        return fallback ?: if (english) context.getString(R.string.enter_go) else context.getString(R.string.enter_confirm)\n    }\n'''
+          if old in s:
+              s = s.replace(old, new, 1)
+          elif 'internal fun localizedEnterKeyLabel' not in s:
+              raise SystemExit('current enterKeyLabel implementation not found')
+          p.write_text(s)
+          PY
       - name: Structural checks
         shell: bash
         run: |
