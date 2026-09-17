@@ -30,6 +30,11 @@
     <string name="gesture_hint_first_use">Tip: long-press top-row letters for digits; swipe Delete left to delete a word or up to clear all; hold Space for voice and swipe up to cancel; long-press Segment for @ # /</string>
 
     <string name="panel_tools">Tools</string>
+    <string name="tool_emoji">Emoji</string>
+    <string name="tool_clipboard">Clipboard</string>
+    <string name="tool_handwriting">Handwriting</string>
+    <string name="tool_symbols">Symbols</string>
+    <string name="tool_switch_keyboard">Switch keyboard</string>
     <string name="tool_text_edit">Text editing</string>
     <string name="tool_gaming_keyboard">Gaming keyboard</string>
     <string name="tool_settings">Settings</string>
@@ -39,6 +44,8 @@
     <string name="emoji_recent">Recent</string>
     <string name="emoji_recent_empty">Recently used emoji will appear here</string>
     <string name="panel_handwriting">Handwriting</string>
+    <string name="handwriting_unconfigured_label">Handwriting · unavailable</string>
+    <string name="handwriting_unconfigured_description">Handwriting (not configured)</string>
     <string name="handwriting_start_hint">Write in the area below…</string>
     <string name="handwriting_engine_unavailable">No handwriting recognition engine is configured</string>
     <string name="action_undo">Undo</string>
@@ -60,4 +67,6 @@
     <string name="voice_listening">Listening…</string>
     <string name="voice_recognition_complete">Offline recognition complete · committed automatically</string>
     <string name="voice_no_speech">No speech recognized</string>
+    <string name="voice_service_not_initialized">Local voice service is not initialized yet</string>
+    <string name="clear_all_failed">The current app could not clear all text</string>
 </resources>
