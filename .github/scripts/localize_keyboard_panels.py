@@ -8,108 +8,113 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
-# Remaining tool-card labels in the legacy/native renderer.
-view_path = Path("app/src/main/java/llc/slacker/openime/ImeKeyboardView.kt")
-view = view_path.read_text()
-for old, new, label in [
-    ('            ToolEntry("表情", Panel.EMOJI, R.drawable.ic_emoji),\n', '            ToolEntry(context.getString(R.string.tool_emoji), Panel.EMOJI, R.drawable.ic_emoji),\n', 'emoji tool'),
-    ('            ToolEntry("剪贴板", Panel.CLIPBOARD, R.drawable.ic_clipboard),\n', '            ToolEntry(context.getString(R.string.tool_clipboard), Panel.CLIPBOARD, R.drawable.ic_clipboard),\n', 'clipboard tool'),
-    ('            ToolEntry("手写输入", Panel.HANDWRITING, R.drawable.ic_handwriting, enabled = handwritingAvailable),\n', '            ToolEntry(context.getString(R.string.tool_handwriting), Panel.HANDWRITING, R.drawable.ic_handwriting, enabled = handwritingAvailable),\n', 'handwriting tool'),
-    ('            ToolEntry("符号", Panel.SYMBOLS, R.drawable.ic_symbols),\n', '            ToolEntry(context.getString(R.string.tool_symbols), Panel.SYMBOLS, R.drawable.ic_symbols),\n', 'symbols tool'),
-    ('            ToolEntry("切换键盘", Panel.KEYBOARD_SELECT, R.drawable.ic_grid),\n', '            ToolEntry(context.getString(R.string.tool_switch_keyboard), Panel.KEYBOARD_SELECT, R.drawable.ic_grid),\n', 'keyboard switch tool'),
-]:
-    view = replace_once(view, old, new, label)
-view_path.write_text(view)
+path = Path("app/src/main/java/llc/slacker/openime/ImeKeyboardView.kt")
+text = path.read_text()
 
+text = replace_once(
+    text,
+    '                contentDescription = "返回键盘"\n',
+    '                contentDescription = context.getString(R.string.panel_back_to_keyboard)\n',
+    'panel back accessibility',
+)
+text = replace_once(
+    text,
+    '        addPanelHead("切换键盘")\n',
+    '        addPanelHead(context.getString(R.string.panel_keyboard_select))\n',
+    'keyboard selector head',
+)
+text = replace_once(
+    text,
+    '            text = "选择输入布局"\n',
+    '            text = context.getString(R.string.keyboard_select_title)\n',
+    'keyboard selector title',
+)
+old_modes = '''        val modes = listOf(
+            KeyboardMode.PINYIN_26 to "拼音 26 键",
+            KeyboardMode.PINYIN_9 to "拼音 9 键",
+            KeyboardMode.ENGLISH_26 to "英文 26 键",
+            KeyboardMode.DIGITS to "数字键盘",
+        )
+'''
+new_modes = '''        val modes = listOf(
+            KeyboardMode.PINYIN_26 to context.getString(R.string.keyboard_mode_pinyin_26),
+            KeyboardMode.PINYIN_9 to context.getString(R.string.keyboard_mode_pinyin_9),
+            KeyboardMode.ENGLISH_26 to context.getString(R.string.keyboard_mode_english_26),
+            KeyboardMode.DIGITS to context.getString(R.string.keyboard_mode_digits),
+        )
+'''
+text = replace_once(text, old_modes, new_modes, 'keyboard selector modes')
+text = replace_once(
+    text,
+    '                        contentDescription = modeValue.name\n',
+    '                        contentDescription = label\n',
+    'keyboard selector accessibility',
+)
 
-# Production wrapper capability and retention messages.
-v2_path = Path("app/src/main/java/llc/slacker/openime/ImeKeyboardViewV2.kt")
-v2 = v2_path.read_text()
-v2 = replace_once(
-    v2,
-    '''    private fun syncHandwritingCapability() {
-        if (HandwritingFeaturePolicy.entryEnabled(UnavailableHandwritingProvider)) return
-
-        fun markUnavailableLabel(view: View) {
-            if (view is TextView && view.text.toString() == "手写输入") {
-                view.text = "手写输入·未配置"
+text = replace_once(
+    text,
+    '        addPanelHead("游戏键盘")\n',
+    '        addPanelHead(context.getString(R.string.panel_gaming))\n',
+    'gaming head',
+)
+text = replace_once(
+    text,
+    '        val macros = listOf("收到！", "集合进攻！", "稳住能赢！", "请求集合！", "保护输出！")\n',
+    '''        val macros = listOf(
+            context.getString(R.string.gaming_macro_received),
+            context.getString(R.string.gaming_macro_attack),
+            context.getString(R.string.gaming_macro_hold),
+            context.getString(R.string.gaming_macro_regroup),
+            context.getString(R.string.gaming_macro_protect),
+        )
+''',
+    'gaming macros',
+)
+text = replace_once(
+    text,
+    '            text = "⠿  拖动键盘"\n',
+    '            text = context.getString(R.string.gaming_drag_keyboard_label)\n',
+    'gaming drag label',
+)
+text = replace_once(
+    text,
+    '            contentDescription = "拖动键盘"\n',
+    '            contentDescription = context.getString(R.string.gaming_drag_keyboard)\n',
+    'gaming drag accessibility',
+)
+old_toggle = '''        val floatingToggle = button(if (floatingKeyboard) "贴底固定" else "恢复浮动", 11f, true).apply {
+            contentDescription = if (floatingKeyboard) "贴底固定" else "恢复浮动"
+            setOnClickListener { view ->
+                floatingKeyboard = !floatingKeyboard
+                listener.onFloatingKeyboardChanged(floatingKeyboard)
+                val label = if (floatingKeyboard) "贴底固定" else "恢复浮动"
+                (view as TextView).text = label
+                view.contentDescription = label
             }
-''',
-    '''    private fun syncHandwritingCapability() {
-        if (HandwritingFeaturePolicy.entryEnabled(UnavailableHandwritingProvider)) return
-        val handwritingLabel = context.getString(R.string.tool_handwriting)
-
-        fun markUnavailableLabel(view: View) {
-            if (view is TextView && view.text.toString() == handwritingLabel) {
-                view.text = context.getString(R.string.handwriting_unconfigured_label)
+        }
+'''
+new_toggle = '''        fun floatingLabel(): String = if (floatingKeyboard) {
+            context.getString(R.string.gaming_dock_bottom)
+        } else {
+            context.getString(R.string.gaming_restore_float)
+        }
+        val floatingToggle = button(floatingLabel(), 11f, true).apply {
+            contentDescription = floatingLabel()
+            setOnClickListener { view ->
+                floatingKeyboard = !floatingKeyboard
+                listener.onFloatingKeyboardChanged(floatingKeyboard)
+                val label = floatingLabel()
+                (view as TextView).text = label
+                view.contentDescription = label
             }
-''',
-    'handwriting label localization',
+        }
+'''
+text = replace_once(text, old_toggle, new_toggle, 'gaming floating toggle')
+text = replace_once(
+    text,
+    '                    key("空格", true, null, 1.2f, 11f) { listener.onSpace() }.apply {\n',
+    '                    key(context.getString(R.string.key_space_label), true, null, 1.2f, 11f) { listener.onSpace() }.apply {\n',
+    'gaming space label',
 )
-v2 = replace_once(
-    v2,
-    '''            if (view.contentDescription?.toString() == "手写输入") {
-                view.isEnabled = false
-                view.isClickable = false
-                view.isLongClickable = false
-                view.alpha = 0.38f
-                view.contentDescription = "手写输入（未配置）"
-''',
-    '''            if (view.contentDescription?.toString() == handwritingLabel) {
-                view.isEnabled = false
-                view.isClickable = false
-                view.isLongClickable = false
-                view.alpha = 0.38f
-                view.contentDescription = context.getString(R.string.handwriting_unconfigured_description)
-''',
-    'handwriting description localization',
-)
-v2 = replace_once(
-    v2,
-    '                view.contentDescription = "${view.text}（当前编辑器暂不支持）"\n',
-    '                view.contentDescription = context.getString(R.string.text_edit_unavailable_description, view.text)\n',
-    'unsupported text edit accessibility',
-)
-v2 = replace_once(
-    v2,
-    '            clipboardRetentionAction("清除未固定") {\n',
-    '            clipboardRetentionAction(context.getString(R.string.clipboard_clear_unpinned)) {\n',
-    'clear unpinned label',
-)
-v2 = replace_once(
-    v2,
-    '            clipboardRetentionAction("清空全部") {\n',
-    '            clipboardRetentionAction(context.getString(R.string.clipboard_clear_all)) {\n',
-    'clear all clipboard label',
-)
-v2 = replace_once(
-    v2,
-    '            if (view is TextView && view.text.toString() == "已置顶") return true\n',
-    '            if (view is TextView && view.text.toString() == context.getString(R.string.clipboard_pinned)) return true\n',
-    'pinned clipboard marker',
-)
-v2_path.write_text(v2)
 
-
-# Service-layer user-visible messages.
-service_path = Path("app/src/main/java/llc/slacker/openime/LocalVoiceImeService.kt")
-service = service_path.read_text()
-service = replace_once(
-    service,
-    '            events.onError("本地语音服务尚未初始化")\n',
-    '            events.onError(getString(R.string.voice_service_not_initialized))\n',
-    'voice service not initialized',
-)
-service = replace_once(
-    service,
-    '            android.widget.Toast.makeText(this, "当前应用未能清空全部文本", android.widget.Toast.LENGTH_SHORT).show()\n',
-    '            android.widget.Toast.makeText(this, getString(R.string.clear_all_failed), android.widget.Toast.LENGTH_SHORT).show()\n',
-    'clear all toast',
-)
-service = replace_once(
-    service,
-    '                message = "语音输入已取消",\n',
-    '                message = getString(R.string.voice_cancelled),\n',
-    'voice cancelled state',
-)
-service_path.write_text(service)
+path.write_text(text)
