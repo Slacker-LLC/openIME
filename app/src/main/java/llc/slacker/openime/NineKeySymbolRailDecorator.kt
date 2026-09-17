@@ -57,6 +57,7 @@ internal object NineKeySymbolRailDecorator {
 
     fun decorate(root: View, onCommit: (String) -> Unit) {
         installPinyin26LongPressDigits(root, onCommit)
+        installEnglish26Space(root, onCommit)
         decorateGestureDescriptions(root)
         maybeShowGestureHint(root)
         decoratePhoneKeypad(root, onCommit)
@@ -100,6 +101,21 @@ internal object NineKeySymbolRailDecorator {
 
         installFilterWatcher(root)
         refreshPinyinFilters(root)
+    }
+
+    /**
+     * English uses Space both as the acceptance gesture and as a literal word
+     * separator. Route the short tap through the generic character funnel: the
+     * service first commits the currently rendered first completion, then writes
+     * the literal space. The inherited touch listener still owns long-press
+     * voice, so this does not change the voice gesture.
+     */
+    private fun installEnglish26Space(root: View, onCommit: (String) -> Unit) {
+        val hasShift = root.findViewWithTag<View>("key-shift") != null ||
+            root.findViewWithTag<View>("key-shift-active") != null ||
+            root.findViewWithTag<View>("key-shift-caps") != null
+        if (!hasShift || root.findViewWithTag<View>("key-segment") != null) return
+        root.findViewWithTag<View>("key-space")?.setOnClickListener { onCommit(" ") }
     }
 
     /**
