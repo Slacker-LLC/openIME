@@ -1,0 +1,56 @@
+name: Localize keyboard panels
+
+on:
+  push:
+    branches:
+      - fix/ux-followups
+    paths:
+      - .github/workflows/localize-keyboard-panels.yml
+      - .github/scripts/localize_keyboard_panels.py
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/ux-followups
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Apply localization patch
+        run: python3 .github/scripts/localize_keyboard_panels.py
+
+      - name: Structural checks
+        shell: bash
+        run: |
+          grep -n 'R.string.symbol_category_common' app/src/main/java/llc/slacker/openime/ImeKeyboardView.kt
+          grep -n 'R.string.emoji_category_smileys' app/src/main/java/llc/slacker/openime/ImeKeyboardView.kt
+          grep -n 'R.string.settings_key_sound' app/src/main/java/llc/slacker/openime/ImeKeyboardView.kt
+          grep -n 'R.string.voice_model_ready_private' app/src/main/java/llc/slacker/openime/ImeKeyboardView.kt
+          grep -n 'R.string.panel_clipboard' app/src/main/java/llc/slacker/openime/ImeKeyboardView.kt
+          git diff --check
+
+      - name: Compile Kotlin
+        run: ./gradlew :app:compileDebugKotlin --no-daemon
+
+      - name: Run unit tests
+        run: ./gradlew :app:testDebugUnitTest --no-daemon
+
+      - name: Commit localization
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/llc/slacker/openime/ImeKeyboardView.kt
+          git commit -m 'feat(i18n): localize keyboard panels'
+          git fetch origin fix/ux-followups
+          git rebase origin/fix/ux-followups
+          git push origin HEAD:fix/ux-followups
