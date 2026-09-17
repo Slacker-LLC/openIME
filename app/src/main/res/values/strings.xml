@@ -22,4 +22,5 @@
     <string name="settings_accent_custom">自定义</string>
     <string name="settings_accent_hint">输入 6 位十六进制颜色，例如 5B6B7A</string>
     <string name="settings_title">偏好设置</string>
+    <string name="voice_mic_toggle">开始或停止语音输入</string>
 </resources>
