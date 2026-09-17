@@ -23,4 +23,9 @@
     <string name="settings_accent_hint">Enter a 6-digit hex color, for example 5B6B7A</string>
     <string name="settings_title">Preferences</string>
     <string name="voice_mic_toggle">Start or stop voice input</string>
+    <string name="key_long_press_digit_description">%1$s, long-press for %2$s</string>
+    <string name="backspace_gesture_description">Delete; hold to repeat, swipe up to clear all</string>
+    <string name="space_voice_gesture_description">Space; hold for voice input, swipe up while speaking to cancel</string>
+    <string name="segment_gesture_description">Segment Pinyin; long-press for @, #, or /</string>
+    <string name="gesture_hint_first_use">Tip: long-press top-row letters for digits; swipe Delete up to clear all; hold Space for voice and swipe up to cancel; long-press Segment for @ # /</string>
 </resources>
