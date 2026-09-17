@@ -321,9 +321,17 @@ class ImeKeyboardViewV2 private constructor(
     private fun syncEnterKeyPresentation() {
         val service = context as? InputMethodService ?: return
         val imeOptions = service.currentInputEditorInfo?.imeOptions ?: return
-        val label = enterKeyPresentationFor(imeOptions).label
+        val label = localizedEnterKeyLabel(imeOptions)
         val enterLabels = setOf(
-            "发送", "搜索", "前往", "下一项", "上一项", "完成", "换行", "回车", "确定", "Go",
+            context.getString(R.string.enter_send),
+            context.getString(R.string.enter_search),
+            context.getString(R.string.enter_go),
+            context.getString(R.string.enter_next),
+            context.getString(R.string.enter_previous),
+            context.getString(R.string.enter_done),
+            context.getString(R.string.enter_newline),
+            context.getString(R.string.enter_return),
+            context.getString(R.string.enter_confirm),
         )
 
         fun visit(view: View) {

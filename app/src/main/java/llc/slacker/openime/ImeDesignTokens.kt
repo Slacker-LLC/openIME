@@ -7,8 +7,8 @@ import android.graphics.Color
  *
  * The supplied dual-theme prototype is the visual source of truth for the
  * default iOS skin: "跟随系统" selects the exact dark or light palette at
- * runtime. The legacy theme enum values stay available for state/API
- * compatibility, but the product intentionally exposes only this skin.
+ * runtime. The bundled theme enum values remain state/API compatible and are
+ * also exposed through the keyboard settings theme selector.
  */
 enum class ImeTheme(val key: String, val label: String) {
     IOS("theme-ios", "iOS Minimal Glass"),
