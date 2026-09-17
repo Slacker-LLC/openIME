@@ -23,4 +23,9 @@
     <string name="settings_accent_hint">输入 6 位十六进制颜色，例如 5B6B7A</string>
     <string name="settings_title">偏好设置</string>
     <string name="voice_mic_toggle">开始或停止语音输入</string>
+    <string name="key_long_press_digit_description">%1$s，长按输入 %2$s</string>
+    <string name="backspace_gesture_description">删除；长按连续删除，上滑清空</string>
+    <string name="space_voice_gesture_description">空格；长按语音输入，语音时上滑取消</string>
+    <string name="segment_gesture_description">分词；长按选择 @、# 或 /</string>
+    <string name="gesture_hint_first_use">小技巧：首行字母长按可输入数字；删除键上滑清空；空格长按语音、上滑取消；分词键长按可输入 @ # /</string>
 </resources>
