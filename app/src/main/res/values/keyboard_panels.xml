@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="panel_clipboard">剪贴板</string>
+    <string name="clipboard_quick_phrases">常用语</string>
+    <string name="clipboard_recent_copied">最近复制</string>
+    <string name="clipboard_loading">正在读取剪贴板…</string>
+    <string name="clipboard_empty">暂无剪贴历史；复制文本后重新打开这里即可看到。</string>
+    <string name="clipboard_pinned">已置顶</string>
+    <string name="clipboard_pin">置顶</string>
+    <string name="clipboard_unpin">取消置顶</string>
+    <string name="action_use">使用</string>
+    <string name="quick_phrase_add">新增常用语</string>
+    <string name="quick_phrase_edit">编辑</string>
+    <string name="quick_phrase_delete">删除</string>
+
+    <string name="panel_text_editor">文本编辑</string>
+    <string name="action_select_all">全选</string>
+    <string name="action_copy">复制</string>
+    <string name="action_cut">剪切</string>
+    <string name="action_paste">粘贴</string>
+    <string name="text_cursor">光标</string>
+
+    <string name="settings_section_appearance">外观</string>
+    <string name="appearance_system">跟随系统</string>
+    <string name="appearance_light">浅色</string>
+    <string name="appearance_dark">深色</string>
+    <string name="settings_section_key_skin">按键皮肤</string>
+    <string name="settings_corner_radius">圆角</string>
+    <string name="settings_opacity">不透明度</string>
+    <string name="settings_key_font_size">按键字号</string>
+    <string name="settings_section_keys_input">按键与输入</string>
+    <string name="settings_key_sound">按键音效</string>
+    <string name="settings_key_sound_desc">机械轴敲击反馈</string>
+    <string name="settings_haptic">触感震动</string>
+    <string name="settings_haptic_desc">轻微触感反馈</string>
+    <string name="settings_key_popup">按键气泡</string>
+    <string name="settings_key_popup_desc">可选字母预览，默认仅按键变色</string>
+    <string name="settings_section_smart_input">智能输入</string>
+    <string name="settings_fuzzy_navigation">模糊音与智能纠错</string>
+    <string name="settings_fuzzy_navigation_desc">进入后配置 z/zh、c/ch、s/sh 等规则</string>
+
+    <string name="panel_fuzzy_settings">模糊音纠错</string>
+    <string name="fuzzy_note">用于处理常见的近音输入。开启后，候选会同时尝试相近声母，不会改变用户已经输入的拼音。</string>
+    <string name="fuzzy_enable">启用模糊音</string>
+    <string name="fuzzy_enable_desc">z/zh · c/ch · s/sh · l/n</string>
+    <string name="fuzzy_current_rules">当前规则</string>
+    <string name="fuzzy_rule_list">z / zh · c / ch · s / sh · l / n · en / eng · in / ing</string>
+    <string name="fuzzy_rule_info">规则由输入法自动参与候选计算，暂不单独修改每一组映射。</string>
+
+    <string name="voice_committed">已上屏</string>
+    <string name="voice_recording_model_preparing">正在录音 · 模型准备中…</string>
+    <string name="voice_failed_check_model_permission">语音未完成 · 请检查本地模型和麦克风权限</string>
+    <string name="voice_failed">语音输入失败</string>
+    <string name="voice_recording_model_preparing_compact">正在录音 · 本地模型准备中</string>
+    <string name="voice_organizing_result">整理识别结果…</string>
+    <string name="voice_recognizing">正在识别…</string>
+    <string name="voice_recognizing_release">正在识别 · 松开空格结束</string>
+    <string name="voice_cancelled">已取消语音输入</string>
+    <string name="voice_cancelled_private">语音已取消 · 音频未保存</string>
+    <string name="voice_cancelled_short">已取消</string>
+    <string name="voice_swipe_cancel_release_discard">上滑取消 · 松开丢弃本次语音</string>
+    <string name="voice_cancel_state_release_discard">取消状态 · 松开将丢弃</string>
+    <string name="voice_release_to_cancel">松开取消</string>
+</resources>
