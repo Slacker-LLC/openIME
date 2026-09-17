@@ -2,8 +2,8 @@ package llc.slacker.openime
 
 import android.app.Activity
 import android.content.ClipData
-import android.text.TextUtils
 import android.os.Bundle
+import android.text.TextUtils
 import android.view.DragEvent
 import android.view.Gravity
 import android.view.View
@@ -48,23 +48,23 @@ class SymbolManagerActivity : Activity() {
             setPadding(dp(18), dp(22), dp(18), dp(22))
         }
         content.addView(TextView(this).apply {
-            text = "自定义符号"
+            text = getString(R.string.custom_symbols_title)
             textSize = 22f
             setPadding(0, 0, 0, dp(8))
         }, fullWrap())
         content.addView(TextView(this).apply {
-            text = "可添加、分类、固定和删除。点击箭头调整顺序，也可长按符号行拖动排序。"
+            text = getString(R.string.custom_symbols_description)
             textSize = 13f
             setPadding(0, 0, 0, dp(12))
         }, fullWrap())
         groupEdit = EditText(this).apply {
-            hint = "分组，例如：常用箭头"
+            hint = getString(R.string.custom_symbol_group_hint)
             setSingleLine(true)
             textSize = 16f
             setText(draftGroup)
         }
         symbolEdit = EditText(this).apply {
-            hint = "符号，例如：⇢ 或 自定义文本"
+            hint = getString(R.string.custom_symbol_value_hint)
             setSingleLine(true)
             textSize = 20f
             setText(draftSymbol)
@@ -72,11 +72,11 @@ class SymbolManagerActivity : Activity() {
         content.addView(groupEdit, fullHeight(56).apply { bottomMargin = dp(8) })
         content.addView(symbolEdit, fullHeight(56).apply { bottomMargin = dp(8) })
         content.addView(Button(this).apply {
-            text = "保存符号"
+            text = getString(R.string.custom_symbol_save)
             minHeight = dp(52)
             setOnClickListener {
                 if (symbolEdit.text.isNullOrBlank()) {
-                    symbolEdit.error = "请输入符号或自定义文本"
+                    symbolEdit.error = getString(R.string.custom_symbol_required)
                     symbolEdit.requestFocus()
                     return@setOnClickListener
                 }
@@ -95,7 +95,7 @@ class SymbolManagerActivity : Activity() {
             }
         }, fullHeight(52).apply { bottomMargin = dp(16) })
         content.addView(TextView(this).apply {
-            text = "已保存符号"
+            text = getString(R.string.custom_symbol_saved)
             textSize = 16f
             setPadding(0, 0, 0, dp(8))
         }, fullWrap())
@@ -111,7 +111,7 @@ class SymbolManagerActivity : Activity() {
                 symbols.forEach { item -> content.addView(symbolRow(item), fullWrap().apply { bottomMargin = dp(12) }) }
             }
         content.addView(Button(this).apply {
-            text = "完成"
+            text = getString(R.string.action_done)
             minHeight = dp(52)
             setOnClickListener { finish() }
         }, fullHeight(52).apply { topMargin = dp(12) })
@@ -129,7 +129,7 @@ class SymbolManagerActivity : Activity() {
             contentDescription = item.symbol
         }, fullWrap())
         addView(TextView(this@SymbolManagerActivity).apply {
-            text = if (item.pinned) "已固定" else "未固定"
+            text = getString(if (item.pinned) R.string.custom_symbol_pinned else R.string.custom_symbol_unpinned)
             textSize = 12f
         }, fullWrap())
         val actions = LinearLayout(this@SymbolManagerActivity).apply {
@@ -138,25 +138,25 @@ class SymbolManagerActivity : Activity() {
         fun action(label: String, onClick: () -> Unit) {
             actions.addView(smallButton(label, onClick), LinearLayout.LayoutParams(0, dp(48), 1f))
         }
-        action("编辑") {
+        action(getString(R.string.action_edit)) {
             editingId = item.id
             groupEdit.setText(item.group)
             symbolEdit.setText(item.symbol)
             symbolEdit.requestFocus()
         }
-        action(if (item.pinned) "取消固定" else "固定") {
+        action(getString(if (item.pinned) R.string.custom_symbol_unpin else R.string.custom_symbol_pin)) {
             CustomSymbolRepository.togglePinned(this@SymbolManagerActivity, item.id)
             render()
         }
-        action("上移") {
+        action(getString(R.string.action_move_up)) {
             CustomSymbolRepository.move(this@SymbolManagerActivity, item.id, -1)
             render()
         }
-        action("下移") {
+        action(getString(R.string.action_move_down)) {
             CustomSymbolRepository.move(this@SymbolManagerActivity, item.id, 1)
             render()
         }
-        action("删除") {
+        action(getString(R.string.action_delete)) {
             CustomSymbolRepository.remove(this@SymbolManagerActivity, item.id)
             if (editingId == item.id) editingId = 0L
             render()
