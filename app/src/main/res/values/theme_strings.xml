@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_section_theme">主题</string>
+    <string name="theme_ios">iOS 极简</string>
+    <string name="theme_dark">深色</string>
+    <string name="theme_cyberpunk">赛博朋克</string>
+    <string name="theme_classic">经典</string>
+    <string name="theme_macos">macOS</string>
+</resources>
