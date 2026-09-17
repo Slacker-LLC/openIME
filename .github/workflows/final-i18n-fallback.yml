@@ -1,0 +1,67 @@
+name: Final voice fallback i18n
+
+on:
+  push:
+    branches:
+      - fix/ux-followups
+    paths:
+      - .github/workflows/final-i18n-fallback.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/ux-followups
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Apply localized fallback
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          files = [
+              Path('app/src/main/java/llc/slacker/openime/ImeKeyboardView.kt'),
+              Path('app/src/main/java/llc/slacker/openime/ImeKeyboardViewV2.kt'),
+          ]
+          old = 'events.onError("本地语音服务未连接")'
+          for path in files:
+              text = path.read_text()
+              if text.count(old) != 1:
+                  raise SystemExit(f'{path}: expected one fallback error literal')
+              path.write_text(text.replace(old, 'events.onError("")', 1))
+
+          path = files[0]
+          text = path.read_text()
+          old_block = '''                        recognizedText = ""\n                        transcript.text = message\n                        micButton.text = "🎤"\n                        gestureHint.text = context.getString(R.string.voice_start_hold_space)\n                        voiceActive = false\n                        voicePending = false\n                        modelStatus.text = context.getString(R.string.voice_failed_check_model_permission)\n                        listener.onVoiceError(message)\n                        showInlineVoiceState(message.ifBlank { context.getString(R.string.voice_failed) })\n'''
+          new_block = '''                        recognizedText = ""\n                        val displayMessage = message.ifBlank { context.getString(R.string.voice_service_not_initialized) }\n                        transcript.text = displayMessage\n                        micButton.text = "🎤"\n                        gestureHint.text = context.getString(R.string.voice_start_hold_space)\n                        voiceActive = false\n                        voicePending = false\n                        modelStatus.text = context.getString(R.string.voice_failed_check_model_permission)\n                        listener.onVoiceError(displayMessage)\n                        showInlineVoiceState(displayMessage)\n'''
+          if text.count(old_block) != 1:
+              raise SystemExit('renderVoice error block not found exactly once')
+          path.write_text(text.replace(old_block, new_block, 1))
+          PY
+      - name: Structural checks
+        shell: bash
+        run: |
+          ! grep -R '本地语音服务未连接' app/src/main/java/llc/slacker/openime/ImeKeyboardView.kt app/src/main/java/llc/slacker/openime/ImeKeyboardViewV2.kt
+          grep -n 'voice_service_not_initialized' app/src/main/java/llc/slacker/openime/ImeKeyboardView.kt
+          git diff --check
+      - name: Compile Kotlin
+        run: ./gradlew :app:compileDebugKotlin --no-daemon
+      - name: Run unit tests
+        run: ./gradlew :app:testDebugUnitTest --no-daemon
+      - name: Commit fix
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/llc/slacker/openime/ImeKeyboardView.kt app/src/main/java/llc/slacker/openime/ImeKeyboardViewV2.kt
+          git commit -m 'fix(i18n): localize voice fallback errors'
+          git push origin HEAD:fix/ux-followups
