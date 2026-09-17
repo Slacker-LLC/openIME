@@ -18,7 +18,6 @@ internal fun previousWordDeleteUtf16Length(beforeCursor: String): Int {
     if (end == 0) return beforeCursor.length
 
     val last = beforeCursor.codePointBefore(end)
-    val tokenEnd = end
     if (isCjkCodePoint(last)) {
         end -= Character.charCount(last)
         return beforeCursor.length - end
