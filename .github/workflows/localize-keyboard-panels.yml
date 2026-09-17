@@ -31,11 +31,11 @@ jobs:
       - name: Structural checks
         shell: bash
         run: |
-          grep -n 'R.string.symbol_category_common' app/src/main/java/llc/slacker/openime/ImeKeyboardView.kt
-          grep -n 'R.string.emoji_category_smileys' app/src/main/java/llc/slacker/openime/ImeKeyboardView.kt
-          grep -n 'R.string.settings_key_sound' app/src/main/java/llc/slacker/openime/ImeKeyboardView.kt
-          grep -n 'R.string.voice_model_ready_private' app/src/main/java/llc/slacker/openime/ImeKeyboardView.kt
-          grep -n 'R.string.panel_clipboard' app/src/main/java/llc/slacker/openime/ImeKeyboardView.kt
+          grep -n 'R.string.tool_emoji' app/src/main/java/llc/slacker/openime/ImeKeyboardView.kt
+          grep -n 'R.string.handwriting_unconfigured_label' app/src/main/java/llc/slacker/openime/ImeKeyboardViewV2.kt
+          grep -n 'R.string.clipboard_clear_unpinned' app/src/main/java/llc/slacker/openime/ImeKeyboardViewV2.kt
+          grep -n 'R.string.voice_service_not_initialized' app/src/main/java/llc/slacker/openime/LocalVoiceImeService.kt
+          grep -n 'R.string.clear_all_failed' app/src/main/java/llc/slacker/openime/LocalVoiceImeService.kt
           git diff --check
 
       - name: Compile Kotlin
@@ -62,8 +62,10 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app/src/main/java/llc/slacker/openime/ImeKeyboardView.kt
-          git commit -m 'feat(i18n): localize keyboard panels'
+          git add app/src/main/java/llc/slacker/openime/ImeKeyboardView.kt \
+                  app/src/main/java/llc/slacker/openime/ImeKeyboardViewV2.kt \
+                  app/src/main/java/llc/slacker/openime/LocalVoiceImeService.kt
+          git commit -m 'feat(i18n): finish keyboard surface localization'
           git fetch origin fix/ux-followups
           git rebase origin/fix/ux-followups
           git push origin HEAD:fix/ux-followups
