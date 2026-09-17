@@ -20,6 +20,24 @@
     <string name="action_paste">粘贴</string>
     <string name="text_cursor">光标</string>
 
+    <string name="symbol_category_common">常用</string>
+    <string name="symbol_category_chinese">中文</string>
+    <string name="symbol_category_english">英文</string>
+    <string name="symbol_category_math">数学</string>
+    <string name="symbol_category_numbering">序号</string>
+    <string name="symbol_category_units">单位</string>
+    <string name="symbol_category_special">特殊</string>
+    <string name="symbol_category_programming">编程</string>
+    <string name="symbol_category_custom">自定义</string>
+    <string name="emoji_category_smileys">笑脸</string>
+    <string name="emoji_category_affection">亲昵</string>
+    <string name="emoji_category_neutral">中性</string>
+    <string name="emoji_category_sleepy_unwell">困倦/不适</string>
+    <string name="emoji_category_worried">担忧</string>
+    <string name="emoji_category_weird">怪诞</string>
+    <string name="emoji_category_hearts">爱心</string>
+    <string name="emoji_category_emotion_symbols">情绪符号</string>
+
     <string name="settings_section_appearance">外观</string>
     <string name="appearance_system">跟随系统</string>
     <string name="appearance_light">浅色</string>
@@ -38,6 +56,9 @@
     <string name="settings_section_smart_input">智能输入</string>
     <string name="settings_fuzzy_navigation">模糊音与智能纠错</string>
     <string name="settings_fuzzy_navigation_desc">进入后配置 z/zh、c/ch、s/sh 等规则</string>
+    <string name="settings_custom_accent_description">自定义强调色</string>
+    <string name="action_apply">应用</string>
+    <string name="action_cancel">取消</string>
 
     <string name="panel_fuzzy_settings">模糊音纠错</string>
     <string name="fuzzy_note">用于处理常见的近音输入。开启后，候选会同时尝试相近声母，不会改变用户已经输入的拼音。</string>
