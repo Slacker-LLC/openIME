@@ -28,4 +28,36 @@
     <string name="space_voice_gesture_description">空格；长按语音输入，语音时上滑取消</string>
     <string name="segment_gesture_description">分词；长按选择 @、# 或 /</string>
     <string name="gesture_hint_first_use">小技巧：首行字母长按可输入数字；删除键左滑删词、上滑清空；空格长按语音、上滑取消；分词键长按可输入 @ # /</string>
+
+    <string name="panel_tools">工具</string>
+    <string name="tool_text_edit">文本编辑</string>
+    <string name="tool_gaming_keyboard">游戏键盘</string>
+    <string name="tool_settings">设置</string>
+    <string name="panel_symbols">符号</string>
+    <string name="symbol_manage_custom">管理自定义符号</string>
+    <string name="panel_emoji">表情</string>
+    <string name="emoji_recent">最近</string>
+    <string name="emoji_recent_empty">最近使用的表情会显示在这里</string>
+    <string name="panel_handwriting">手写输入</string>
+    <string name="handwriting_start_hint">在下方区域落笔手写…</string>
+    <string name="handwriting_engine_unavailable">当前未配置手写识别引擎</string>
+    <string name="action_undo">撤销</string>
+    <string name="action_clear">清空</string>
+    <string name="key_space_label">空格</string>
+    <string name="panel_voice">语音输入</string>
+    <string name="voice_model_ready_private">离线模型已就绪 · 音频不出设备</string>
+    <string name="voice_model_preparing_private">离线模型后台准备中 · 未启用联网识别</string>
+    <string name="voice_hold_space_instruction">只需长按空格；松开自动上屏，上滑取消</string>
+    <string name="voice_language_mandarin">普通话</string>
+    <string name="voice_status_hold_space_only">语音状态，仅支持长按空格启动</string>
+    <string name="voice_start_hold_space">长按空格开始</string>
+    <string name="voice_start_hold_space_description">长按空格开始语音，松开自动上屏，上滑取消</string>
+    <string name="voice_preparing_microphone">正在准备麦克风…</string>
+    <string name="voice_release_or_cancel">松开空格上屏 · 上滑取消</string>
+    <string name="voice_model_active_private">正在使用离线模型 · 音频不出设备</string>
+    <string name="voice_listening_release">正在聆听… 松开空格结束</string>
+    <string name="voice_listening_release_compact">正在聆听 · 松开空格结束</string>
+    <string name="voice_listening">正在聆听…</string>
+    <string name="voice_recognition_complete">离线识别完成 · 已自动上屏</string>
+    <string name="voice_no_speech">没有识别到语音</string>
 </resources>
