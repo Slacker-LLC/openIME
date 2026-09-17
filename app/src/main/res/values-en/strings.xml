@@ -22,4 +22,5 @@
     <string name="settings_accent_custom">Custom</string>
     <string name="settings_accent_hint">Enter a 6-digit hex color, for example 5B6B7A</string>
     <string name="settings_title">Preferences</string>
+    <string name="voice_mic_toggle">Start or stop voice input</string>
 </resources>
