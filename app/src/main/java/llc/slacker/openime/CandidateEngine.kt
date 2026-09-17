@@ -475,13 +475,6 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
         )
     }
 
-    /**
-     * English T9 was removed from the product. Keep this empty compatibility
-     * surface only while legacy view/state code still references the old mode;
-     * it deliberately performs no dictionary scan or digit-to-word matching.
-     */
-    @Deprecated("English T9 is no longer supported")
-    fun getT9EnglishCandidates(@Suppress("UNUSED_PARAMETER") digits: String): List<String> = emptyList()
 
     private fun lowerBound(values: List<String>, target: String): Int {
         var low = 0

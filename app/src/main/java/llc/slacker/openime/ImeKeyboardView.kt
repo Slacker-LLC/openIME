@@ -232,7 +232,6 @@ open class ImeKeyboardView(
     private var lastNineCandidates = emptyList<String>()
     private var lastNineSegmentPrefix = ""
     private var lastNinePinyinPaths = emptyList<String>()
-    private var lastT9Digits = ""
     private var currentCandidates = emptyList<String>()
     private var currentItems: List<String>? = null
     private var candidateExpandedOpen = false
@@ -310,7 +309,6 @@ open class ImeKeyboardView(
 
     private fun keyboardBodyHeightDp(): Int = imeHeightDp() - 64
     private var syncingComposition = false
-    private var t9Filter = "T9"
     private var passwordField = false
     private var inlineEditTarget: EditText? = null
     private val panelChipScrollPositions = mutableMapOf<String, Int>()
@@ -776,17 +774,12 @@ open class ImeKeyboardView(
             KeyboardMode.PINYIN_26, KeyboardMode.PINYIN_9 -> KeyboardMode.ENGLISH_26
             KeyboardMode.ENGLISH_26 -> preferredChineseMode
             KeyboardMode.DIGITS -> lastTextMode
-            KeyboardMode.ENGLISH_T9 -> preferredChineseMode
         }
         setMode(next)
     }
 
     fun setMode(newMode: KeyboardMode, notifyListener: Boolean = true) {
-        val effectiveMode = if (newMode == KeyboardMode.ENGLISH_T9) {
-            KeyboardMode.PINYIN_26
-        } else {
-            newMode
-        }
+        val effectiveMode = newMode
         if (effectiveMode != KeyboardMode.DIGITS) {
             lastTextMode = effectiveMode
             if (effectiveMode == KeyboardMode.PINYIN_26 || effectiveMode == KeyboardMode.PINYIN_9) {
@@ -813,7 +806,6 @@ open class ImeKeyboardView(
         lastNineCandidates = emptyList()
         lastNineSegmentPrefix = ""
         lastNinePinyinPaths = emptyList()
-        lastT9Digits = ""
         currentCandidates = emptyList()
         currentItems = emptyList()
         // Rebuild the key rows (and play the switch fade) only when the layout
@@ -893,15 +885,13 @@ open class ImeKeyboardView(
             lastNineCandidates = emptyList()
             lastNineSegmentPrefix = ""
             lastNinePinyinPaths = emptyList()
-            lastT9Digits = ""
-            if (candidateExpandedOpen) {
+                if (candidateExpandedOpen) {
                 renderExpanded(false)
                 listener.onCandidateExpanded(false)
             }
         } else {
             pinyinBuffer.setLength(0)
             pinyinBuffer.append(state.composition)
-            if (mode == KeyboardMode.ENGLISH_T9) lastT9Digits = state.composition
             if (candidateExpandedOpen) {
                 renderExpanded(true)
             }
@@ -1295,7 +1285,6 @@ open class ImeKeyboardView(
             KeyboardMode.PINYIN_26 -> renderPinyin26()
             KeyboardMode.ENGLISH_26 -> renderEnglish26()
             KeyboardMode.PINYIN_9 -> renderPinyin9()
-            KeyboardMode.ENGLISH_T9 -> renderEnglish9()
             KeyboardMode.DIGITS -> renderDigits()
         }
         updateTopZone(composition.text?.isNotEmpty() == true)
@@ -1425,51 +1414,20 @@ open class ImeKeyboardView(
         layoutParams = rowParams()
     }
 
-    private fun renderPinyin9() = renderNine(true)
+    private fun renderPinyin9() = renderNine()
 
-    private fun renderEnglish9() = renderNine(false)
-
-    /** Nine key / T9 layout. Column widths are weights, not prototype pixels. */
-    private fun renderNine(chinese: Boolean) {
+    /** Chinese 9-key layout. Column widths are weights, not prototype pixels. */
+    private fun renderNine() {
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            tag = if (chinese) "pinyin9-layout" else "t9-layout"
+            tag = "pinyin9-layout"
         }
 
         val left = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        if (chinese) {
-            left.addView(punctStack(), LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(156),
-            ))
-        } else {
-            val filters = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                tag = "t9-filter-container"
-            }
-            listOf("T9", "abc", "ABC").forEach { f ->
-                filters.addView(
-                    filterChip(f, f == t9Filter) {
-                        t9Filter = f
-                        renderModeBody()
-                        publishComposition(lastT9Digits, candidatesForComposition(lastT9Digits))
-                    },
-                    LinearLayout.LayoutParams(
-                        0,
-                        dp(38),
-                        1f,
-                    ).apply {
-                        marginStart = dp(2)
-                        marginEnd = dp(2)
-                    },
-                )
-            }
-            left.addView(filters, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(48),
-            ))
-        }
+        left.addView(punctStack(), LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            dp(156),
+        ))
         left.addView(
             key("符号", true, null, 1f, 13f) { showPanel(Panel.SYMBOLS) }
                 .apply { setTag(MARK_SIDE_KEY, true) },
@@ -1482,7 +1440,7 @@ open class ImeKeyboardView(
 
         val center = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         center.addView(
-            nineGrid(chinese).apply { tag = if (chinese) "pinyin9-grid" else "t9-grid" },
+            nineGrid().apply { tag = "pinyin9-grid" },
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 dp(156),
@@ -1513,7 +1471,7 @@ open class ImeKeyboardView(
 
         val side = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            tag = if (chinese) "pinyin9-actions" else "t9-actions"
+            tag = "pinyin9-actions"
         }
         side.addView(backspaceKey().apply { setTag(MARK_SIDE_KEY, true) }, sideKeyParams(48, true))
         side.addView(
@@ -1523,7 +1481,7 @@ open class ImeKeyboardView(
             sideKeyParams(48, true),
         )
         side.addView(
-            key(enterKeyLabel(!chinese), true, null, 1f, 13f) {
+            key(enterKeyLabel(false), true, null, 1f, 13f) {
                 listener.onEnter()
             }.apply {
                 tag = "key-enter"
@@ -1558,7 +1516,7 @@ open class ImeKeyboardView(
     }
 
     /** 3x3 white grid with letter labels; contentDescription/tag key-9:<digit>. */
-    private fun nineGrid(chinese: Boolean): LinearLayout {
+    private fun nineGrid(): LinearLayout {
         val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         listOf(
             listOf("1" to "@#", "2" to "ABC", "3" to "DEF"),
@@ -1567,31 +1525,24 @@ open class ImeKeyboardView(
         ).forEachIndexed { rowIndex, rowDef ->
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             rowDef.forEach { (num, sub) ->
-                val display = if (chinese && num == "1") "分词" else sub
-                val secondary = if (chinese && num == "1") "@#/" else null
+                val display = if (num == "1") "分词" else sub
+                val secondary = if (num == "1") "@#/" else null
                 row.addView(
-                    key(display, false, secondary, 1f, if (num == "1" && chinese) 12f else 17f) {
-                        if (chinese && num == "1") onPinyinSegment() else onNineKey(num)
+                    key(display, false, secondary, 1f, if (num == "1") 12f else 17f) {
+                        if (num == "1") onPinyinSegment() else onNineKey(num)
                     }.apply {
                         tag = "key-9:$num"
-                        contentDescription = if (chinese && num == "1") "1，分词" else num
+                        contentDescription = if (num == "1") "1，分词" else num
                         setTag(MARK_WHITE_KEY, true)
-                        if (chinese && num == "1") {
+                        if (num == "1") {
                             setOnLongClickListener {
-                                // The segmentation key keeps its tap action;
-                                // long press opens the same transient selector
-                                // interaction as the clear gesture, then the
-                                // user can choose @, # or / horizontally.
                                 showChoicePopup(this, listOf("@", "#", "/"))
                                 true
                             }
-                        } else if (chinese && ImeData.keypad9Map[num].orEmpty().any {
+                        } else if (ImeData.keypad9Map[num].orEmpty().any {
                                 it.length == 1 && it[0] in 'a'..'z'
                             }) {
                             setOnLongClickListener {
-                                // A long press keeps the 9-key surface useful for
-                                // literal digits without making digits the default
-                                // Chinese Pinyin composition.
                                 commitKeyboardCharacter(num)
                                 true
                             }
@@ -3601,11 +3552,7 @@ open class ImeKeyboardView(
             listener.onCharacter(num)
             return
         }
-        if (mode == KeyboardMode.ENGLISH_T9) {
-            val (digits, selection) = replaceCompositionSelection(num)
-            lastT9Digits = digits
-            publishComposition(digits, candidatesForComposition(digits), selection)
-        } else if (mode == KeyboardMode.PINYIN_9) {
+        if (mode == KeyboardMode.PINYIN_9) {
             val current = composition.text.toString()
             val rawStart = composition.selectionStart.takeIf { it >= 0 }?.coerceIn(0, current.length) ?: current.length
             val rawEnd = composition.selectionEnd.takeIf { it >= 0 }?.coerceIn(0, current.length) ?: rawStart
@@ -3744,7 +3691,6 @@ open class ImeKeyboardView(
                 }
                 lastNinePinyinPaths = emptyList()
             }
-            KeyboardMode.ENGLISH_T9 -> lastT9Digits = text
             else -> Unit
         }
         val candidates = candidatesForComposition(text)
@@ -4358,7 +4304,7 @@ open class ImeKeyboardView(
         when (view) {
             is ImeKeyView -> {
                 val side = view.getTag(MARK_SIDE_KEY) == true ||
-                    (view.parent as? View)?.tag in setOf("pinyin9-actions", "t9-actions", "digits-actions")
+                    (view.parent as? View)?.tag in setOf("pinyin9-actions", "digits-actions")
                 val label = view.contentDescription?.toString().orEmpty()
                 // Function styling is driven by the explicit semantic tag set in
                 // key(), never by matching localized label substrings.

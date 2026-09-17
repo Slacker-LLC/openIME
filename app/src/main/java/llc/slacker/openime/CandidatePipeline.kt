@@ -53,7 +53,6 @@ class CandidatePipeline(
         } else {
             emptyList()
         }
-        KeyboardMode.ENGLISH_T9 -> engine.getT9EnglishCandidates(composition)
         KeyboardMode.DIGITS -> emptyList()
     }
 
