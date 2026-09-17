@@ -76,9 +76,6 @@ jobs:
         run: |
           echo "compile=${{ steps.compile.outcome }}"
           echo "tests=${{ steps.tests.outcome }}"
-          if [ "${{ steps.compile.outcome }}" != "success" ]; then
-            echo "Current hosted runner is intermittently failing sherpa-onnx AAR resource transformation before Kotlin compilation."
-          fi
       - name: Commit final UX followups
         shell: bash
         run: |
@@ -89,6 +86,7 @@ jobs:
             app/src/main/java/llc/slacker/openime/ImeKeyboardViewV2.kt \
             app/src/main/java/llc/slacker/openime/ImeDesignTokens.kt
           git commit -m 'fix(ux): finish theme voice and i18n followups'
+          git restore .github/scripts/add_theme_selector.py
           git fetch origin fix/ux-followups
           git rebase origin/fix/ux-followups
           git push origin HEAD:fix/ux-followups
