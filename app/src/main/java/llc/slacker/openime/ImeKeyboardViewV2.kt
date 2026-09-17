@@ -346,10 +346,11 @@ class ImeKeyboardViewV2 private constructor(
     /** Do not expose a dead handwriting flow while production has no recognizer. */
     private fun syncHandwritingCapability() {
         if (HandwritingFeaturePolicy.entryEnabled(UnavailableHandwritingProvider)) return
+        val handwritingLabel = context.getString(R.string.tool_handwriting)
 
         fun markUnavailableLabel(view: View) {
-            if (view is TextView && view.text.toString() == "手写输入") {
-                view.text = "手写输入·未配置"
+            if (view is TextView && view.text.toString() == handwritingLabel) {
+                view.text = context.getString(R.string.handwriting_unconfigured_label)
             }
             if (view is ViewGroup) {
                 for (index in 0 until view.childCount) markUnavailableLabel(view.getChildAt(index))
@@ -357,12 +358,12 @@ class ImeKeyboardViewV2 private constructor(
         }
 
         fun visit(view: View) {
-            if (view.contentDescription?.toString() == "手写输入") {
+            if (view.contentDescription?.toString() == handwritingLabel) {
                 view.isEnabled = false
                 view.isClickable = false
                 view.isLongClickable = false
                 view.alpha = 0.38f
-                view.contentDescription = "手写输入（未配置）"
+                view.contentDescription = context.getString(R.string.handwriting_unconfigured_description)
                 markUnavailableLabel(view)
                 return
             }
@@ -390,7 +391,7 @@ class ImeKeyboardViewV2 private constructor(
                 view.isEnabled = false
                 view.isClickable = false
                 view.alpha = 0.38f
-                view.contentDescription = "${view.text}（当前编辑器暂不支持）"
+                view.contentDescription = context.getString(R.string.text_edit_unavailable_description, view.text)
             }
             if (view is ViewGroup) {
                 for (index in 0 until view.childCount) visit(view.getChildAt(index))
@@ -411,7 +412,7 @@ class ImeKeyboardViewV2 private constructor(
             tag = "clipboard-retention-actions"
         }
         row.addView(
-            clipboardRetentionAction("清除未固定") {
+            clipboardRetentionAction(context.getString(R.string.clipboard_clear_unpinned)) {
                 ClipboardHistoryRepository.clearUnpinned(context)
                 hideClipboardCards(includePinned = false)
                 if (ClipboardHistoryRepository.load(context).isEmpty()) row.visibility = View.GONE
@@ -419,7 +420,7 @@ class ImeKeyboardViewV2 private constructor(
             LinearLayout.LayoutParams(0, insetDp(44), 1f).apply { marginEnd = insetDp(6) },
         )
         row.addView(
-            clipboardRetentionAction("清空全部") {
+            clipboardRetentionAction(context.getString(R.string.clipboard_clear_all)) {
                 ClipboardHistoryRepository.clearAll(context)
                 hideClipboardCards(includePinned = true)
                 row.visibility = View.GONE
@@ -458,7 +459,7 @@ class ImeKeyboardViewV2 private constructor(
 
     private fun hideClipboardCards(includePinned: Boolean) {
         fun containsPinnedMarker(view: View): Boolean {
-            if (view is TextView && view.text.toString() == "已置顶") return true
+            if (view is TextView && view.text.toString() == context.getString(R.string.clipboard_pinned)) return true
             if (view is ViewGroup) {
                 for (index in 0 until view.childCount) {
                     if (containsPinnedMarker(view.getChildAt(index))) return true

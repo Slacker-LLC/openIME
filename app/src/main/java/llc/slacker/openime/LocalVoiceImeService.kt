@@ -639,7 +639,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
         // pre-edit on the very next key press.
         clearImeCompositionState(render = false)
         if (!gateway.clearAllText()) {
-            android.widget.Toast.makeText(this, "当前应用未能清空全部文本", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(this, getString(R.string.clear_all_failed), android.widget.Toast.LENGTH_SHORT).show()
         }
         pendingVoiceCorrection = null
         voiceComposing = false
@@ -710,7 +710,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
         if (::voiceLifecycle.isInitialized) {
             voiceLifecycle.start(languageTag, events)
         } else {
-            events.onError("本地语音服务尚未初始化")
+            events.onError(getString(R.string.voice_service_not_initialized))
         }
     }
 
@@ -791,7 +791,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
                 listening = false,
                 partialText = "",
                 finalText = "",
-                message = "语音输入已取消",
+                message = getString(R.string.voice_cancelled),
             ),
         )
     }

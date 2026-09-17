@@ -2093,11 +2093,11 @@ open class ImeKeyboardView(
         // instead of showing a dead grey card (V2 used to patch this in a post pass).
         val handwritingAvailable = HandwritingFeaturePolicy.entryEnabled(UnavailableHandwritingProvider)
         val cards = listOf(
-            ToolEntry("表情", Panel.EMOJI, R.drawable.ic_emoji),
-            ToolEntry("剪贴板", Panel.CLIPBOARD, R.drawable.ic_clipboard),
-            ToolEntry("手写输入", Panel.HANDWRITING, R.drawable.ic_handwriting, enabled = handwritingAvailable),
-            ToolEntry("符号", Panel.SYMBOLS, R.drawable.ic_symbols),
-            ToolEntry("切换键盘", Panel.KEYBOARD_SELECT, R.drawable.ic_grid),
+            ToolEntry(context.getString(R.string.tool_emoji), Panel.EMOJI, R.drawable.ic_emoji),
+            ToolEntry(context.getString(R.string.tool_clipboard), Panel.CLIPBOARD, R.drawable.ic_clipboard),
+            ToolEntry(context.getString(R.string.tool_handwriting), Panel.HANDWRITING, R.drawable.ic_handwriting, enabled = handwritingAvailable),
+            ToolEntry(context.getString(R.string.tool_symbols), Panel.SYMBOLS, R.drawable.ic_symbols),
+            ToolEntry(context.getString(R.string.tool_switch_keyboard), Panel.KEYBOARD_SELECT, R.drawable.ic_grid),
             ToolEntry(context.getString(R.string.tool_text_edit), Panel.TEXT_EDITOR, R.drawable.ic_keyboard),
             ToolEntry(context.getString(R.string.tool_gaming_keyboard), Panel.GAMING, R.drawable.ic_game),
             ToolEntry(context.getString(R.string.tool_settings), Panel.SETTINGS, R.drawable.ic_settings),
