@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="candidate_content_description">Candidate: %1$s</string>
+    <string name="key_segment_label">Segment</string>
+    <string name="pinyin9_segment_description">1, Segment Pinyin</string>
+    <string name="key_language_toggle">ZH/EN</string>
+    <string name="key_retry">Retry</string>
+    <string name="key_symbols_label">Symbols</string>
+    <string name="key_back_label">Back</string>
+    <string name="enter_confirm">Confirm</string>
+    <string name="enter_newline">New line</string>
+    <string name="space_voice_key_description">%1$s; tap for Space, hold for voice input</string>
+</resources>
