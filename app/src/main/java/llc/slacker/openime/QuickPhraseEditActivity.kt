@@ -3,7 +3,6 @@ package llc.slacker.openime
 import android.app.Activity
 import android.os.Bundle
 import android.view.Gravity
-import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -29,14 +28,14 @@ class QuickPhraseEditActivity : Activity() {
 
         val categoryEdit = EditText(this).apply {
             this.id = R.id.quick_phrase_category_editor
-            hint = "分类，例如：工作"
+            hint = getString(R.string.quick_phrase_category_hint)
             setText(category)
             setSingleLine(true)
             textSize = 16f
         }
         val phraseEdit = EditText(this).apply {
             this.id = R.id.quick_phrase_text_editor
-            hint = "输入常用语"
+            hint = getString(R.string.quick_phrase_text_hint)
             setText(phrase)
             minLines = 4
             maxLines = 8
@@ -44,15 +43,15 @@ class QuickPhraseEditActivity : Activity() {
             textSize = 17f
         }
         val title = TextView(this).apply {
-            text = if (id > 0L) "编辑常用语" else "新增常用语"
+            text = getString(if (id > 0L) R.string.quick_phrase_edit_title else R.string.quick_phrase_add_title)
             textSize = 22f
             setPadding(0, 0, 0, dp(14))
         }
         val save = Button(this).apply {
-            text = "保存"
+            text = getString(R.string.action_save)
             setOnClickListener {
                 if (phraseEdit.text.isNullOrBlank()) {
-                    phraseEdit.error = "请输入常用语内容"
+                    phraseEdit.error = getString(R.string.quick_phrase_required)
                     phraseEdit.requestFocus()
                     return@setOnClickListener
                 }
@@ -66,7 +65,7 @@ class QuickPhraseEditActivity : Activity() {
             }
         }
         val cancel = Button(this).apply {
-            text = "取消"
+            text = getString(R.string.action_cancel)
             setOnClickListener { finish() }
         }
         val actions = LinearLayout(this).apply {
