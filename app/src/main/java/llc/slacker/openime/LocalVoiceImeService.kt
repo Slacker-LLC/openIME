@@ -980,7 +980,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
     }
 
     override fun onTextEdit(action: String) {
-        if (action in setOf("select-all", "cut", "paste", "left", "right")) prepareForManualInput()
+        if (action in setOf("select-all", "cut", "paste", "left", "right", "delete-word")) prepareForManualInput()
         when (action) {
             "select-all" -> gateway.selectAll()
             "copy" -> {
@@ -1002,6 +1002,17 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
                 commitPendingComposition()
                 keyboardView?.clearAssociationCandidates()
                 gateway.pasteClipboard { clip -> ClipboardHistoryRepository.captureClip(this, clip) }
+            }
+            "delete-word" -> {
+                noteVoiceBackspace()
+                keyboardView?.clearAssociationCandidates()
+                if (lastComposition.isNotEmpty()) {
+                    gateway.cancelComposing()
+                    clearImeCompositionState(render = true)
+                } else {
+                    gateway.deletePreviousWord()
+                    clearImeCompositionState(render = true)
+                }
             }
             "left" -> {
                 gateway.moveCursorHorizontally(-1)
