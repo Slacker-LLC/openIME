@@ -70,6 +70,10 @@ class ImeKeyboardViewV2 private constructor(
                     decorateClipboardRetentionControls()
                     syncProductionKeyPresentation()
                 }
+                Panel.VOICE -> post {
+                    syncVoicePanelControls()
+                    syncProductionKeyPresentation()
+                }
                 else -> post { syncProductionKeyPresentation() }
             }
         }
@@ -101,6 +105,7 @@ class ImeKeyboardViewV2 private constructor(
             when (panel) {
                 Panel.TEXT_EDITOR -> disableUnsupportedTextEditControls()
                 Panel.CLIPBOARD -> decorateClipboardRetentionControls()
+                Panel.VOICE -> syncVoicePanelControls()
                 else -> Unit
             }
             NineKeySymbolRailDecorator.decorate(this) { symbol -> adapter.onCharacter(symbol) }
@@ -366,6 +371,17 @@ class ImeKeyboardViewV2 private constructor(
             }
         }
         visit(this)
+    }
+
+    /** Reconnect the production voice panel microphone to the existing voice lifecycle. */
+    private fun syncVoicePanelControls() {
+        val mic = findViewWithTag<TextView>("voice-mic") ?: return
+        mic.isEnabled = true
+        mic.isClickable = true
+        mic.isFocusable = true
+        mic.alpha = 1f
+        mic.contentDescription = context.getString(R.string.voice_mic_toggle)
+        mic.setOnClickListener { adapter.onVoiceToggle() }
     }
 
     private fun disableUnsupportedTextEditControls() {
