@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="panel_clipboard">Clipboard</string>
+    <string name="clipboard_quick_phrases">Quick phrases</string>
+    <string name="clipboard_recent_copied">Recently copied</string>
+    <string name="clipboard_loading">Reading clipboard…</string>
+    <string name="clipboard_empty">No clipboard history yet. Copy text and reopen this panel.</string>
+    <string name="clipboard_pinned">Pinned</string>
+    <string name="clipboard_pin">Pin</string>
+    <string name="clipboard_unpin">Unpin</string>
+    <string name="action_use">Use</string>
+    <string name="quick_phrase_add">Add quick phrase</string>
+    <string name="quick_phrase_edit">Edit</string>
+    <string name="quick_phrase_delete">Delete</string>
+
+    <string name="panel_text_editor">Text editing</string>
+    <string name="action_select_all">Select all</string>
+    <string name="action_copy">Copy</string>
+    <string name="action_cut">Cut</string>
+    <string name="action_paste">Paste</string>
+    <string name="text_cursor">Cursor</string>
+
+    <string name="settings_section_appearance">Appearance</string>
+    <string name="appearance_system">Follow system</string>
+    <string name="appearance_light">Light</string>
+    <string name="appearance_dark">Dark</string>
+    <string name="settings_section_key_skin">Key style</string>
+    <string name="settings_corner_radius">Corner radius</string>
+    <string name="settings_opacity">Opacity</string>
+    <string name="settings_key_font_size">Key text size</string>
+    <string name="settings_section_keys_input">Keys and input</string>
+    <string name="settings_key_sound">Key sounds</string>
+    <string name="settings_key_sound_desc">Mechanical key-click feedback</string>
+    <string name="settings_haptic">Haptics</string>
+    <string name="settings_haptic_desc">Light tactile feedback</string>
+    <string name="settings_key_popup">Key preview</string>
+    <string name="settings_key_popup_desc">Optional letter preview; key highlight by default</string>
+    <string name="settings_section_smart_input">Smart input</string>
+    <string name="settings_fuzzy_navigation">Fuzzy Pinyin and correction</string>
+    <string name="settings_fuzzy_navigation_desc">Configure z/zh, c/ch, s/sh, and related rules</string>
+
+    <string name="panel_fuzzy_settings">Fuzzy Pinyin</string>
+    <string name="fuzzy_note">Handles common near-sound input. When enabled, candidates also try similar initials without changing what you typed.</string>
+    <string name="fuzzy_enable">Enable fuzzy Pinyin</string>
+    <string name="fuzzy_enable_desc">z/zh · c/ch · s/sh · l/n</string>
+    <string name="fuzzy_current_rules">Current rules</string>
+    <string name="fuzzy_rule_list">z / zh · c / ch · s / sh · l / n · en / eng · in / ing</string>
+    <string name="fuzzy_rule_info">These rules participate in candidate calculation automatically; individual mappings are not separately configurable yet.</string>
+
+    <string name="voice_committed">Committed</string>
+    <string name="voice_recording_model_preparing">Recording · preparing model…</string>
+    <string name="voice_failed_check_model_permission">Voice input did not complete · check the local model and microphone permission</string>
+    <string name="voice_failed">Voice input failed</string>
+    <string name="voice_recording_model_preparing_compact">Recording · preparing local model</string>
+    <string name="voice_organizing_result">Finalizing recognition…</string>
+    <string name="voice_recognizing">Recognizing…</string>
+    <string name="voice_recognizing_release">Recognizing · release Space to finish</string>
+    <string name="voice_cancelled">Voice input cancelled</string>
+    <string name="voice_cancelled_private">Voice cancelled · audio was not saved</string>
+    <string name="voice_cancelled_short">Cancelled</string>
+    <string name="voice_swipe_cancel_release_discard">Swipe up to cancel · release to discard this recording</string>
+    <string name="voice_cancel_state_release_discard">Cancel armed · release to discard</string>
+    <string name="voice_release_to_cancel">Release to cancel</string>
+</resources>
