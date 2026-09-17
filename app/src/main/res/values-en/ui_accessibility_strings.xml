@@ -19,4 +19,13 @@
     <string name="input_symbol_description">Input %1$s</string>
     <string name="accent_color_description">Accent color %1$s</string>
     <string name="action_send">Send</string>
+    <string name="enter_send">Send</string>
+    <string name="enter_search">Search</string>
+    <string name="enter_go">Go</string>
+    <string name="enter_next">Next</string>
+    <string name="enter_previous">Previous</string>
+    <string name="enter_done">Done</string>
+    <string name="enter_newline">New line</string>
+    <string name="enter_return">Enter</string>
+    <string name="enter_confirm">Confirm</string>
 </resources>
