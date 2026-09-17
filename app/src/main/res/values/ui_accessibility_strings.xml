@@ -19,4 +19,13 @@
     <string name="input_symbol_description">输入 %1$s</string>
     <string name="accent_color_description">强调色 %1$s</string>
     <string name="action_send">发送</string>
+    <string name="enter_send">发送</string>
+    <string name="enter_search">搜索</string>
+    <string name="enter_go">前往</string>
+    <string name="enter_next">下一项</string>
+    <string name="enter_previous">上一项</string>
+    <string name="enter_done">完成</string>
+    <string name="enter_newline">换行</string>
+    <string name="enter_return">回车</string>
+    <string name="enter_confirm">确定</string>
 </resources>
