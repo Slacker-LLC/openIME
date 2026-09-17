@@ -1931,7 +1931,7 @@ open class ImeKeyboardView(
             button("‹", 18f, true).apply {
                 tag = "key-panel-back"
                 minimumHeight = dp(44)
-                contentDescription = "返回键盘"
+                contentDescription = context.getString(R.string.panel_back_to_keyboard)
                 setOnClickListener { feedback(); closePanelToKeyboard() }
             },
             LinearLayout.LayoutParams(dp(44), dp(44)),
@@ -1953,14 +1953,14 @@ open class ImeKeyboardView(
     }
 
     private fun renderKeyboardSelect() {
-        addPanelHead("切换键盘")
+        addPanelHead(context.getString(R.string.panel_keyboard_select))
         val body = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), dp(10), dp(12), dp(10))
             tag = "keyboard-select-panel"
         }
         body.addView(TextView(context).apply {
-            text = "选择输入布局"
+            text = context.getString(R.string.keyboard_select_title)
             textSize = 13f
             setPadding(dp(4), 0, 0, dp(8))
             tag = "panel-section-title"
@@ -1969,10 +1969,10 @@ open class ImeKeyboardView(
             dp(28),
         ))
         val modes = listOf(
-            KeyboardMode.PINYIN_26 to "拼音 26 键",
-            KeyboardMode.PINYIN_9 to "拼音 9 键",
-            KeyboardMode.ENGLISH_26 to "英文 26 键",
-            KeyboardMode.DIGITS to "数字键盘",
+            KeyboardMode.PINYIN_26 to context.getString(R.string.keyboard_mode_pinyin_26),
+            KeyboardMode.PINYIN_9 to context.getString(R.string.keyboard_mode_pinyin_9),
+            KeyboardMode.ENGLISH_26 to context.getString(R.string.keyboard_mode_english_26),
+            KeyboardMode.DIGITS to context.getString(R.string.keyboard_mode_digits),
         )
         modes.chunked(2).forEach { chunk ->
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
@@ -1982,7 +1982,7 @@ open class ImeKeyboardView(
                         setMode(modeValue)
                     }.apply {
                         tag = if (mode == modeValue) "tab-active" else "keyboard-choice"
-                        contentDescription = modeValue.name
+                        contentDescription = label
                     },
                     LinearLayout.LayoutParams(0, dp(50), 1f).apply { marginEnd = dp(7) },
                 )
@@ -3390,9 +3390,15 @@ open class ImeKeyboardView(
     }
 
     private fun renderGaming() {
-        addPanelHead("游戏键盘")
+        addPanelHead(context.getString(R.string.panel_gaming))
         listener.onFloatingKeyboardChanged(floatingKeyboard)
-        val macros = listOf("收到！", "集合进攻！", "稳住能赢！", "请求集合！", "保护输出！")
+        val macros = listOf(
+            context.getString(R.string.gaming_macro_received),
+            context.getString(R.string.gaming_macro_attack),
+            context.getString(R.string.gaming_macro_hold),
+            context.getString(R.string.gaming_macro_regroup),
+            context.getString(R.string.gaming_macro_protect),
+        )
         val hud = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             tag = "gaming-panel"
@@ -3406,12 +3412,12 @@ open class ImeKeyboardView(
             tag = "floating-header"
         }
         val dragHandle = TextView(context).apply {
-            text = "⠿  拖动键盘"
+            text = context.getString(R.string.gaming_drag_keyboard_label)
             textSize = 12f
             gravity = Gravity.CENTER_VERTICAL
             includeFontPadding = false
             tag = "floating-drag-handle"
-            contentDescription = "拖动键盘"
+            contentDescription = context.getString(R.string.gaming_drag_keyboard)
             setPadding(dp(4), 0, dp(8), 0)
             isClickable = true
             setOnTouchListener { _, event ->
@@ -3437,12 +3443,17 @@ open class ImeKeyboardView(
             }
         }
         header.addView(dragHandle, weightParams(1f))
-        val floatingToggle = button(if (floatingKeyboard) "贴底固定" else "恢复浮动", 11f, true).apply {
-            contentDescription = if (floatingKeyboard) "贴底固定" else "恢复浮动"
+        fun floatingLabel(): String = if (floatingKeyboard) {
+            context.getString(R.string.gaming_dock_bottom)
+        } else {
+            context.getString(R.string.gaming_restore_float)
+        }
+        val floatingToggle = button(floatingLabel(), 11f, true).apply {
+            contentDescription = floatingLabel()
             setOnClickListener { view ->
                 floatingKeyboard = !floatingKeyboard
                 listener.onFloatingKeyboardChanged(floatingKeyboard)
-                val label = if (floatingKeyboard) "贴底固定" else "恢复浮动"
+                val label = floatingLabel()
                 (view as TextView).text = label
                 view.contentDescription = label
             }
@@ -3479,7 +3490,7 @@ open class ImeKeyboardView(
             }
             if (rowText.startsWith("z")) {
                 row.addView(
-                    key("空格", true, null, 1.2f, 11f) { listener.onSpace() }.apply {
+                    key(context.getString(R.string.key_space_label), true, null, 1.2f, 11f) { listener.onSpace() }.apply {
                         tag = "game-mini"
                     },
                     LinearLayout.LayoutParams(0, dp(44), 1.2f).apply { marginEnd = dp(4) },
