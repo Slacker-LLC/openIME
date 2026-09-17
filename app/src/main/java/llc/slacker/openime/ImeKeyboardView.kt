@@ -1253,7 +1253,7 @@ open class ImeKeyboardView(
 
     private fun bindCandidateItem(row: LinearLayout, index: Int, cand: String) {
         row.tag = if (index == 0) "candidate-first-row" else "candidate-row"
-        row.contentDescription = "候选:$cand"
+        row.contentDescription = context.getString(R.string.candidate_content_description, cand)
         val word = row.getChildAt(0) as TextView
         if (word.text.toString() != cand) word.text = cand
         word.tag = if (index == 0) "candidate-first" else "candidate-word"
@@ -1310,9 +1310,9 @@ open class ImeKeyboardView(
             }
             if (rowIndex == 2) {
                 val leadingKey = if (mode == KeyboardMode.PINYIN_26) {
-                    key("分词", true, "@#/", 1f, 12f) { onPinyinSegment() }.apply {
+                    key(context.getString(R.string.key_segment_label), true, "@#/", 1f, 12f) { onPinyinSegment() }.apply {
                         tag = "key-segment"
-                        contentDescription = "分词，长按输入@井号或斜杠"
+                        contentDescription = context.getString(R.string.segment_gesture_description)
                         setOnLongClickListener {
                             showChoicePopup(this, listOf("@", "#", "/"))
                             true
@@ -1378,13 +1378,13 @@ open class ImeKeyboardView(
             flexKeyParams(innerLeft),
         )
         bottom.addView(
-            spaceVoiceKey(if (mode == KeyboardMode.ENGLISH_26) "space" else "空格", white = true) {
+            spaceVoiceKey(context.getString(R.string.key_space_label), white = true) {
                 listener.onSpace()
             },
             flexKeyParams(3.4f),
         )
         bottom.addView(
-            key("中/英", true, null, 1f, 14f) { cycleMode() }.apply { tag = "key:mode" },
+            key(context.getString(R.string.key_language_toggle), true, null, 1f, 14f) { cycleMode() }.apply { tag = "key:mode" },
             flexKeyParams(innerRight),
         )
         bottom.addView(
@@ -1406,7 +1406,7 @@ open class ImeKeyboardView(
         val imeOptions = (context as? android.inputmethodservice.InputMethodService)
             ?.currentInputEditorInfo?.imeOptions
         if (imeOptions != null) return enterKeyPresentationFor(imeOptions).label
-        return fallback ?: if (english) "Go" else "确定"
+        return fallback ?: if (english) "Go" else context.getString(R.string.enter_confirm)
     }
 
     private fun rowHost(): LinearLayout = LinearLayout(context).apply {
@@ -1430,7 +1430,7 @@ open class ImeKeyboardView(
             dp(156),
         ))
         left.addView(
-            key("符号", true, null, 1f, 13f) { showPanel(Panel.SYMBOLS) }
+            key(context.getString(R.string.key_symbols_label), true, null, 1f, 13f) { showPanel(Panel.SYMBOLS) }
                 .apply { setTag(MARK_SIDE_KEY, true) },
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -1454,11 +1454,11 @@ open class ImeKeyboardView(
             flexKeyParams(0.9f, gapDp = 2),
         )
         centerBottom.addView(
-            spaceVoiceKey("空格", white = true) { commitFirstCandidateOrSpace() },
+            spaceVoiceKey(context.getString(R.string.key_space_label), white = true) { commitFirstCandidateOrSpace() },
             flexKeyParams(3.4f, gapDp = 2),
         )
         centerBottom.addView(
-            key("中/英", true, null, 1f, 13f) { cycleMode() }.apply {
+            key(context.getString(R.string.key_language_toggle), true, null, 1f, 13f) { cycleMode() }.apply {
                 tag = "key:mode"
                 setTag(MARK_SIDE_KEY, true)
             },
@@ -1476,7 +1476,7 @@ open class ImeKeyboardView(
         }
         side.addView(backspaceKey().apply { setTag(MARK_SIDE_KEY, true) }, sideKeyParams(48, true))
         side.addView(
-            key("重输", true, null, 1f, 13f) {
+            key(context.getString(R.string.key_retry), true, null, 1f, 13f) {
                 publishComposition("", emptyList())
             }.apply { setTag(MARK_SIDE_KEY, true) },
             sideKeyParams(48, true),
@@ -1526,14 +1526,14 @@ open class ImeKeyboardView(
         ).forEachIndexed { rowIndex, rowDef ->
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             rowDef.forEach { (num, sub) ->
-                val display = if (num == "1") "分词" else sub
+                val display = if (num == "1") context.getString(R.string.key_segment_label) else sub
                 val secondary = if (num == "1") "@#/" else null
                 row.addView(
                     key(display, false, secondary, 1f, if (num == "1") 12f else 17f) {
                         if (num == "1") onPinyinSegment() else onNineKey(num)
                     }.apply {
                         tag = "key-9:$num"
-                        contentDescription = if (num == "1") "1，分词" else num
+                        contentDescription = if (num == "1") context.getString(R.string.pinyin9_segment_description) else num
                         setTag(MARK_WHITE_KEY, true)
                         if (num == "1") {
                             setOnLongClickListener {
@@ -1585,7 +1585,7 @@ open class ImeKeyboardView(
             dp(156),
         ))
         left.addView(
-            key("符号", true, null, 1f, 13f) { showPanel(Panel.SYMBOLS) }
+            key(context.getString(R.string.key_symbols_label), true, null, 1f, 13f) { showPanel(Panel.SYMBOLS) }
                 .apply { setTag(MARK_SIDE_KEY, true) },
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -1621,14 +1621,14 @@ open class ImeKeyboardView(
         ))
         val centerBottom = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         centerBottom.addView(
-            key("返回", true, null, 1f, 14f) { setMode(lastTextMode) }.apply {
+            key(context.getString(R.string.key_back_label), true, null, 1f, 14f) { setMode(lastTextMode) }.apply {
                 tag = "key:mode"
                 setTag(MARK_SIDE_KEY, true)
             },
             flexKeyParams(),
         )
         centerBottom.addView(
-            spaceVoiceKey("空格", white = true) { listener.onSpace() }.apply {
+            spaceVoiceKey(context.getString(R.string.key_space_label), white = true) { listener.onSpace() }.apply {
                 setTag(MARK_WHITE_KEY, true)
             },
             flexKeyParams(),
@@ -1664,7 +1664,7 @@ open class ImeKeyboardView(
             sideKeyParams(48, true),
         )
         side.addView(
-            key(enterKeyLabel(false, "换行"), true, null, 1f, 13f) { listener.onEnter() }
+            key(enterKeyLabel(false, context.getString(R.string.enter_newline)), true, null, 1f, 13f) { listener.onEnter() }
                 .apply { tag = "key-enter"; setTag(MARK_SIDE_KEY, true) },
             sideKeyParams(48),
         )
@@ -1747,7 +1747,7 @@ open class ImeKeyboardView(
 
     /** Tap commits the normal space/candidate action; long press starts voice. */
     private fun spaceVoiceKey(
-        label: String = "空格",
+        label: String = context.getString(R.string.key_space_label),
         white: Boolean = false,
         onTap: () -> Unit,
     ): ImeKeyView = key(
@@ -1760,7 +1760,7 @@ open class ImeKeyboardView(
         onTap = { if (!insertIntoInlineEditor(" ")) onTap() },
     ).apply {
         tag = "key-space"
-        contentDescription = "$label，点击空格，长按语音输入"
+        contentDescription = context.getString(R.string.space_voice_key_description, label)
         var voiceLongPressed = false
         setOnLongClickListener {
             if (voiceLongPressed) return@setOnLongClickListener true
