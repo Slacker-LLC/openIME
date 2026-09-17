@@ -6,6 +6,7 @@ on:
       - fix/ux-followups
     paths:
       - .github/workflows/apply-backspace-word-gesture.yml
+      - .github/scripts/apply_backspace_word_gesture.py
 
 permissions:
   contents: write
@@ -31,7 +32,8 @@ jobs:
         shell: bash
         run: |
           grep -n 'delete-word' app/src/main/java/llc/slacker/openime/LocalVoiceImeService.kt
-          grep -n 'installBackspaceGestures' app/src/main/java/llc/slacker/openime/NineKeySymbolRailDecorator.kt
+          grep -n 'backspaceDeleteWordArmed' app/src/main/java/llc/slacker/openime/ImeKeyboardView.kt
+          grep -n 'listener.onTextEdit("delete-word")' app/src/main/java/llc/slacker/openime/ImeKeyboardView.kt
           git diff --check
 
       - name: Compile Kotlin
@@ -46,6 +48,6 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add app/src/main/java/llc/slacker/openime/LocalVoiceImeService.kt \
-                  app/src/main/java/llc/slacker/openime/NineKeySymbolRailDecorator.kt
+                  app/src/main/java/llc/slacker/openime/ImeKeyboardView.kt
           git commit -m 'feat(ime): add backspace swipe-left delete word'
           git push origin HEAD:fix/ux-followups
