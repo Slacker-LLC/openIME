@@ -620,7 +620,7 @@ open class ImeKeyboardView(
             LinearLayout.LayoutParams(dp(48), dp(48)),
         )
         toolbarRow.addView(
-            toolbarIcon(R.drawable.ic_clipboard, "剪贴板", "toolbar") { showPanel(Panel.CLIPBOARD) },
+            toolbarIcon(R.drawable.ic_clipboard, "剪贴板", "clipboard-toolbar") { showPanel(Panel.CLIPBOARD) },
             LinearLayout.LayoutParams(dp(48), dp(48)),
         )
         toolbarRow.addView(
@@ -908,6 +908,7 @@ open class ImeKeyboardView(
 
     fun showPanel(newPanel: Panel) {
         if (newPanel == Panel.NONE || newPanel == Panel.CANDIDATE_EXPANDED) return
+        if (passwordField && newPanel == Panel.CLIPBOARD) return
         hidePopup()
         if (panel == Panel.VOICE && newPanel != Panel.VOICE) stopVoiceIfActive()
         if (panel != Panel.NONE && panel != newPanel) panelBackStack += panel
@@ -980,7 +981,16 @@ open class ImeKeyboardView(
     }
 
     fun renderState(state: ImeState) {
+        val passwordStateChanged = passwordField != state.passwordField
         passwordField = state.passwordField
+        if (passwordStateChanged) {
+            if (passwordField && panel == Panel.CLIPBOARD) {
+                dismissPanelForModeSwitch()
+            } else if (panel == Panel.TOOLS) {
+                renderPanel(Panel.TOOLS)
+            }
+            syncSensitiveToolbar()
+        }
         val sameComposition = composition.text.toString() == state.composition
         setCompositionText(
             state.composition,
@@ -1011,6 +1021,22 @@ open class ImeKeyboardView(
         updateTopZone(state.composition.isNotEmpty())
         renderCandidateRow()
         syncCandidateExpandControl()
+    }
+
+    /** Sensitive editors must not expose clipboard history as an interaction. */
+    private fun syncSensitiveToolbar() {
+        val clipboardButton = toolbarRow.findViewWithTag<View>("clipboard-toolbar") ?: return
+        val blocked = passwordField
+        clipboardButton.isEnabled = !blocked
+        clipboardButton.alpha = if (blocked) 0.38f else 1f
+        clipboardButton.contentDescription = if (blocked) {
+            "剪贴板（密码输入中不可用）"
+        } else {
+            "剪贴板"
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            clipboardButton.stateDescription = if (blocked) "不可用" else "可用"
+        }
     }
 
     /** Keep the overflow affordance honest when the current composition has no candidates. */
@@ -2349,7 +2375,7 @@ open class ImeKeyboardView(
             ToolEntry("文本编辑", Panel.TEXT_EDITOR, R.drawable.ic_keyboard),
             ToolEntry("游戏键盘", Panel.GAMING, R.drawable.ic_game),
             ToolEntry("设置", Panel.SETTINGS, R.drawable.ic_settings),
-        ).filter { it.enabled }
+        ).filter { it.enabled && !(passwordField && it.target == Panel.CLIPBOARD) }
         cards.chunked(4).forEach { chunk ->
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             chunk.forEach { entry ->

@@ -252,6 +252,23 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun passwordFieldsDoNotExposeClipboardHistory() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            keyboard.renderState(ImeState(passwordField = true))
+            val clipboard = keyboard.findViewWithTag<View>("clipboard-toolbar")
+            assertFalse("Password fields must disable clipboard history", clipboard.isEnabled)
+            assertTrue(clipboard.contentDescription.toString().contains("密码输入中不可用"))
+            assertTrue("Sensitive editors must not list clipboard in tools", run {
+                keyboard.showPanel(Panel.TOOLS)
+                keyboard.findViewWithTag<View>("tool:剪贴板") == null
+            })
+            keyboard.renderState(ImeState(passwordField = false))
+            assertTrue("Clipboard must return when the editor is safe", clipboard.isEnabled)
+            true
+        }
+    }
+
+    @Test
     fun toolCardsExposeOneAccessibleActionWithoutDuplicateLabels() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.showPanel(Panel.TOOLS)
