@@ -17,6 +17,7 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.window.OnBackInvokedCallback
 
 /** Touch-friendly manager for user symbols and their order. */
 class SymbolManagerActivity : Activity() {
@@ -26,6 +27,7 @@ class SymbolManagerActivity : Activity() {
     private lateinit var symbolEdit: EditText
     private var editingId = 0L
     private var savedScrollY = 0
+    private var backCallback: OnBackInvokedCallback? = null
 
     private fun dp(value: Int): Int = (value * density).toInt()
 
@@ -38,6 +40,26 @@ class SymbolManagerActivity : Activity() {
             groupEdit.setText(it.getString("draft_group", ""))
             symbolEdit.setText(it.getString("draft_symbol", ""))
         }
+        if (Build.VERSION.SDK_INT >= 33) {
+            backCallback = OnBackInvokedCallback { requestClose() }
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(
+                android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                backCallback!!,
+            )
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        requestClose()
+    }
+
+    override fun onDestroy() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            backCallback?.let(onBackInvokedDispatcher::unregisterOnBackInvokedCallback)
+            backCallback = null
+        }
+        super.onDestroy()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -79,7 +101,7 @@ class SymbolManagerActivity : Activity() {
                 applySelectableBackground(this)
                 setOnClickListener {
                     it.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                    finish()
+                    requestClose()
                 }
             }, LinearLayout.LayoutParams(dp(48), dp(56)))
             addView(title, LinearLayout.LayoutParams(0, dp(56), 1f))
@@ -151,7 +173,7 @@ class SymbolManagerActivity : Activity() {
                 }
             }
         content.addView(SetupUi.primaryButton(this, "完成") {
-            finish()
+            requestClose()
         }, fullHeight(52).apply { topMargin = dp(12) })
         val scroll = ScrollView(this).apply {
             setBackgroundColor(getColor(R.color.setup_page_bg))
@@ -291,6 +313,29 @@ class SymbolManagerActivity : Activity() {
         textSize = 12f
         setTextColor(getColor(R.color.setup_body))
         setPadding(dp(4), 0, dp(4), dp(4))
+    }
+
+    private fun requestClose() {
+        if (!::groupEdit.isInitialized || !::symbolEdit.isInitialized ||
+            (editingId == 0L && groupEdit.text.isNullOrBlank() && symbolEdit.text.isNullOrBlank())
+        ) {
+            finish()
+            return
+        }
+        val dialog = android.app.AlertDialog.Builder(this)
+            .setTitle("放弃未保存内容？")
+            .setMessage("当前符号编辑尚未保存，离开后将丢失。")
+            .setNegativeButton("继续编辑", null)
+            .setPositiveButton("放弃", null)
+            .create()
+        dialog.setOnShowListener {
+            SetupUi.styleDialog(dialog, this@SymbolManagerActivity)
+            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setOnClickListener {
+                dialog.dismiss()
+                finish()
+            }
+        }
+        dialog.show()
     }
 
     private fun applySelectableBackground(view: View) {
