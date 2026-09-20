@@ -25,6 +25,7 @@ import android.view.SoundEffectConstants
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
+import android.view.accessibility.AccessibilityNodeInfo
 import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
@@ -5039,6 +5040,27 @@ open class ImeKeyboardView(
     }.apply {
         tag = "key-backspace"
         contentDescription = "删除，向上滑清空"
+        accessibilityDelegate = object : View.AccessibilityDelegate() {
+            override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfo) {
+                super.onInitializeAccessibilityNodeInfo(host, info)
+                info.addAction(
+                    AccessibilityNodeInfo.AccessibilityAction(
+                        R.id.accessibility_clear_all,
+                        "清空全部",
+                    ),
+                )
+            }
+
+            override fun performAccessibilityAction(host: View, action: Int, args: android.os.Bundle?): Boolean {
+                if (action == R.id.accessibility_clear_all) {
+                    if (!host.isEnabled) return false
+                    feedback()
+                    listener.onClearAll()
+                    return true
+                }
+                return super.performAccessibilityAction(host, action, args)
+            }
+        }
         val clearHint = TextView(context).apply {
             text = "↑ 清空"
             textSize = 7.5f

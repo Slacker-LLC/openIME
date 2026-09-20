@@ -415,6 +415,28 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun backspaceExposesClearAllAsAnAccessibilityAction() = withKeyboard { harness, recorder, keyboard ->
+        harness.awaitMain {
+            val key = keyboard.findViewWithTag<View>("key-backspace")
+            val node = key.createAccessibilityNodeInfo()
+            try {
+                assertTrue(
+                    "Backspace must expose the swipe-only clear action",
+                    node.actionList.any { it.id == R.id.accessibility_clear_all },
+                )
+            } finally {
+                node.recycle()
+            }
+            assertTrue(
+                "Accessibility clear action must execute the same clear callback",
+                key.performAccessibilityAction(R.id.accessibility_clear_all, null),
+            )
+            assertEquals(1, recorder.clears)
+            true
+        }
+    }
+
+    @Test
     fun voiceLanguageButtonUpdatesItsAccessibleState() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.showPanel(Panel.VOICE)

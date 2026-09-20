@@ -4,4 +4,5 @@
     <item name="quick_phrase_text_editor" type="id" />
     <item name="custom_symbol_group_editor" type="id" />
     <item name="custom_symbol_text_editor" type="id" />
+    <item name="accessibility_clear_all" type="id" />
 </resources>
