@@ -2815,6 +2815,26 @@ open class ImeKeyboardView(
                 if (Build.VERSION.SDK_INT >= 30) stateDescription = selectedLanguage
             }
         }
+        fun refreshLanguageControl() {
+            val selectedLanguage = languages[voiceLanguageIndex].first
+            val locked = voiceActive || voicePending
+            langButton.isEnabled = !locked
+            langButton.isClickable = !locked
+            langButton.alpha = if (locked) 0.52f else 1f
+            langButton.contentDescription = if (locked) {
+                "语音语言：$selectedLanguage，识别进行中不可切换"
+            } else {
+                "语音语言：$selectedLanguage，点击切换"
+            }
+            if (Build.VERSION.SDK_INT >= 30) {
+                langButton.stateDescription = if (locked) {
+                    "当前$selectedLanguage，识别进行中不可切换"
+                } else {
+                    "当前$selectedLanguage"
+                }
+            }
+        }
+        refreshLanguageControl()
         controls.addView(langButton, LinearLayout.LayoutParams(0, dp(58), 1f))
         val micButton = button("🎤", 18f, false).apply {
             tag = "voice-mic"
@@ -2853,6 +2873,7 @@ open class ImeKeyboardView(
             modelPrepared = false
             voiceActive = true
             voicePending = true
+            refreshLanguageControl()
             showInlineVoiceState("正在准备麦克风…")
             setMicState("⏹", "语音输入进行中，松开空格结束，上滑取消")
             setGestureHint("松开空格上屏 · 上滑取消", "松开空格结束语音并自动上屏，上滑取消")
@@ -2890,6 +2911,7 @@ open class ImeKeyboardView(
                         setGestureHint("长按空格开始", "长按空格开始语音，松开自动上屏，上滑取消")
                         voiceActive = false
                         voicePending = false
+                        refreshLanguageControl()
                         modelStatus.text = "离线识别完成 · 已自动上屏"
                         listener.onVoiceFinal(text)
                         showInlineVoiceState(if (text.isBlank()) "没有识别到语音" else "已上屏")
@@ -2926,6 +2948,7 @@ open class ImeKeyboardView(
                         setGestureHint("长按空格开始", "长按空格重新开始语音，松开自动上屏，上滑取消")
                         voiceActive = false
                         voicePending = false
+                        refreshLanguageControl()
                         modelStatus.text = "语音未完成 · 请检查本地模型和麦克风权限"
                         listener.onVoiceError(message)
                         showInlineVoiceState(message.ifBlank { "语音输入失败" })
@@ -2968,6 +2991,7 @@ open class ImeKeyboardView(
             setMicState("🎤", "正在整理语音识别结果，请稍候")
             setGestureHint("整理识别结果…", "正在整理语音识别结果，请稍候")
             voiceActive = false
+            refreshLanguageControl()
             modelStatus.text = "正在整理识别结果…"
             showInlineVoiceState("正在识别…")
         }
@@ -2978,6 +3002,7 @@ open class ImeKeyboardView(
             voicePending = false
             cancelPreview = false
             voiceActive = false
+            refreshLanguageControl()
             listener.cancelVoiceRecognition()
             recognizedText = ""
             setMicState("🎤", "语音状态，已取消，仅支持长按空格启动")

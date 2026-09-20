@@ -380,6 +380,11 @@ class AuditInteractionInstrumentedTest {
             assertTrue(language.contentDescription.toString().contains("普通话"))
             assertTrue(language.performClick())
             assertTrue(language.contentDescription.toString().contains("英文"))
+            keyboard.startVoiceFromSpace()
+            assertFalse("Voice language must lock for the active session", language.isEnabled)
+            assertTrue(language.contentDescription.toString().contains("识别进行中不可切换"))
+            keyboard.cancelVoiceForManualInput()
+            assertTrue("Voice language must unlock after cancellation", language.isEnabled)
             true
         }
     }
