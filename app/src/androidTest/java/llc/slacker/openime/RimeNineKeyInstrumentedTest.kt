@@ -15,14 +15,19 @@ class RimeNineKeyInstrumentedTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val originalFuzzy = ImeSettingsRepository.loadFuzzy(context)
         ImeSettingsRepository.saveFuzzy(context, false)
-        val rime = RimeEngine(context)
+        // GitHub's software-only emulator can spend more than fifteen minutes
+        // compiling the production dictionaries. The compact fixture keeps
+        // this test focused on native schema selection and nine-key decoding;
+        // the production data path remains the default used by the IME.
+        val testAssets = InstrumentationRegistry.getInstrumentation().context.assets
+        val rime = RimeEngine(
+            context = context,
+            assetManager = testAssets,
+            assetRoot = "rime-test-data",
+        )
         try {
             rime.start()
-            // The first run deploys the bundled dictionaries on-device. Cold
-            // CI emulators can take over ten minutes for that one-time
-            // compile; keep the wait bounded without mistaking slow deployment
-            // for a schema failure.
-            val startupTimeoutMs = 900_000L
+            val startupTimeoutMs = 120_000L
             val deadline = SystemClock.elapsedRealtime() + startupTimeoutMs
             while (!rime.isReady && rime.errorMessage.isBlank() && SystemClock.elapsedRealtime() < deadline) {
                 SystemClock.sleep(100L)
