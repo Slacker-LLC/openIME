@@ -6,7 +6,8 @@ object VoiceHotwordProvider {
     private const val MAX_CODE_POINTS = 16
 
     fun current(): String = encode(
-        UserPhraseRepository.voiceHotwords(limit = MAX_HOTWORDS) +
+        PersonalizationRepository.hotwords(limit = MAX_HOTWORDS) +
+            UserPhraseRepository.voiceHotwords(limit = MAX_HOTWORDS) +
             VoiceCorrectionRepository.hotwords(limit = 32),
     )
 
