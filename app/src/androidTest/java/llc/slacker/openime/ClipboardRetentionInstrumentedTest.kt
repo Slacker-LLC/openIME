@@ -144,6 +144,40 @@ class ClipboardRetentionInstrumentedTest {
         }
     }
 
+    @Test
+    fun openingClipboardCapturesPrimaryClipBeforeAddingRetentionActions() {
+        lateinit var keyboard: ImeKeyboardViewV2
+        rule.scenario.onActivity { activity ->
+            ClipboardHistoryRepository.clearAll(activity)
+            val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.setPrimaryClip(ClipData.newPlainText("capture on open", "captured on open"))
+            val content = activity.findViewById<ViewGroup>(android.R.id.content)
+            keyboard = ImeKeyboardViewV2(activity, NoopListener())
+            content.addView(
+                keyboard,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+            keyboard.showPanel(Panel.CLIPBOARD)
+        }
+
+        var card: View? = null
+        var clearAll: TextView? = null
+        repeat(30) {
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            rule.scenario.onActivity {
+                card = keyboard.findViewWithTag("clip-card")
+                clearAll = findTextView(keyboard, "清空全部")
+            }
+            if (card != null && clearAll != null) return@repeat
+            Thread.sleep(50)
+        }
+        assertNotNull("opening the clipboard must capture the current clip", card)
+        assertNotNull("retention actions must appear after async capture", clearAll)
+    }
+
     private fun findTextView(root: View, label: String): TextView? {
         if (root is TextView && root.text.toString() == label) return root
         if (root is ViewGroup) {

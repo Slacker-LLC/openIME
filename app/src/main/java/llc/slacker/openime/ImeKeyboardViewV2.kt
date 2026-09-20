@@ -112,6 +112,12 @@ class ImeKeyboardViewV2 private constructor(
         }
     }
 
+    override fun onClipboardContentLoaded() {
+        if (panel != Panel.CLIPBOARD) return
+        decorateClipboardRetentionControls()
+        syncProductionKeyPresentation()
+    }
+
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         // The legacy space implementation reports only pressed=true/false to
         // the listener. Preserve whether the release was a cancellation so the

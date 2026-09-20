@@ -3022,6 +3022,7 @@ open class ImeKeyboardView(
                             LinearLayout.LayoutParams.WRAP_CONTENT,
                         ).apply { bottomMargin = dp(7) }) }
                     }
+                    onClipboardContentLoaded()
                 }
             }.apply { isDaemon = true }.start()
         } else {
@@ -3104,6 +3105,9 @@ open class ImeKeyboardView(
         applyTheme()
         onViewHierarchyRebuilt()
     }
+
+    /** Called on the UI thread after the asynchronous clipboard body is populated. */
+    protected open fun onClipboardContentLoaded() = Unit
 
     private fun emojiCell(emoji: String): View {
         val cell = FrameLayout(context).apply {
