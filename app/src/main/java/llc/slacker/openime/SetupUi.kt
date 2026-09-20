@@ -7,6 +7,7 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
 import android.widget.Button
 import android.widget.EditText
+import android.widget.TextView
 import kotlin.math.pow
 
 /** Shared visual primitives for the non-IME setup and editor screens. */
@@ -136,6 +137,15 @@ object SetupUi {
 
     fun styleDialog(dialog: AlertDialog, context: Context, destructivePositive: Boolean = false) {
         val accent = accent(context)
+        val alertTitleId = context.resources.getIdentifier("alertTitle", "id", "android")
+        if (alertTitleId != 0) {
+            dialog.findViewById<TextView>(alertTitleId)?.setTextColor(
+                context.getColor(R.color.setup_title),
+            )
+        }
+        dialog.findViewById<TextView>(android.R.id.message)?.setTextColor(
+            context.getColor(R.color.setup_body),
+        )
         dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(
             if (destructivePositive) Color.parseColor(DESTRUCTIVE) else accent,
         )
