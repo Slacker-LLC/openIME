@@ -402,6 +402,7 @@ open class ImeKeyboardView(
             )
         }
         keyboardBody.orientation = LinearLayout.VERTICAL
+        keyboardBody.tag = "keyboard-body"
         keyboardBody.setPadding(dp(5), dp(6), dp(5), dp(16))
         expandedPanel.orientation = LinearLayout.VERTICAL
         expandedPanel.tag = "panel-overlay"
@@ -4316,6 +4317,7 @@ open class ImeKeyboardView(
         candidateExpandBtn.text = "⌃"
         candidateExpandBtn.contentDescription = "收起候选"
         if (Build.VERSION.SDK_INT >= 30) candidateExpandBtn.stateDescription = "已展开"
+        keyboardBody.visibility = View.GONE
         candidateOverlay.visibility = View.VISIBLE
         candidateOverlay.removeAllViews()
         candidateOverlay.addView(

@@ -47,6 +47,7 @@ class CandidatePresentationInstrumentedTest {
                 assertTrue(first.isFocusable)
                 keyboard.findViewWithTag<View>("candidate-expand").performClick()
                 val overlay = keyboard.findViewWithTag<ViewGroup>("candidate-overlay")
+                assertEquals(View.GONE, keyboard.findViewWithTag<View>("keyboard-body").visibility)
                 val scroll = overlay.getChildAt(1) as ScrollView
                 keyboard.renderState(state)
                 assertSame(first, keyboard.findViewWithTag<View>("candidate-first-row"))
