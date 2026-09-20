@@ -11,6 +11,7 @@ import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowInsets
+import android.view.accessibility.AccessibilityNodeInfo
 import android.provider.Settings
 import android.net.Uri
 import android.view.inputmethod.InputMethodManager
@@ -159,6 +160,20 @@ class MainActivity : Activity() {
                 view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
             }
             false
+        }
+        // Touch feedback does not run for keyboard and screen-reader clicks.
+        // Keep the same confirmation without replacing the page's click listener.
+        view.accessibilityDelegate = object : View.AccessibilityDelegate() {
+            override fun performAccessibilityAction(
+                host: View,
+                action: Int,
+                args: Bundle?,
+            ): Boolean {
+                if (action == AccessibilityNodeInfo.ACTION_CLICK && host.isEnabled) {
+                    host.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                }
+                return super.performAccessibilityAction(host, action, args)
+            }
         }
     }
 
