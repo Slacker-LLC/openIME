@@ -4,9 +4,9 @@
     <color name="setup_surface">#1C1F24</color>
     <color name="setup_title">#F3F4F6</color>
     <color name="setup_body">#9AA3B2</color>
-    <color name="setup_primary">#6B8CFF</color>
-    <color name="setup_primary_pressed">#5878E8</color>
-    <color name="setup_on_primary">#FFFFFFFF</color>
+    <color name="setup_primary">#1D9BF0</color>
+    <color name="setup_primary_pressed">#1688D0</color>
+    <color name="setup_on_primary">#07131D</color>
     <color name="setup_muted">#262A31</color>
     <color name="setup_muted_pressed">#30353E</color>
     <color name="setup_muted_text">#8B93A3</color>
