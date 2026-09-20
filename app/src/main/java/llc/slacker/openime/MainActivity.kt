@@ -3,7 +3,6 @@ package llc.slacker.openime
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
-import android.content.ComponentName
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Build
@@ -20,6 +19,12 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
 import kotlin.math.pow
+
+/** Match the selected IME by the exact package component, never by substring. */
+internal fun matchesSelectedInputMethod(defaultInputMethodId: String, packageName: String): Boolean {
+    val separator = defaultInputMethodId.indexOf('/')
+    return separator > 0 && defaultInputMethodId.substring(0, separator) == packageName
+}
 
 class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -166,7 +171,7 @@ class MainActivity : Activity() {
     private fun imeStatus(): ImeStatus {
         val manager = getSystemService(InputMethodManager::class.java)
         val defaultId = Settings.Secure.getString(contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD).orEmpty()
-        val selected = defaultId.contains(packageName)
+        val selected = matchesSelectedInputMethod(defaultId, packageName)
         val enabled = selected || manager.enabledInputMethodList.any { it.packageName == packageName }
         return ImeStatus(enabled = enabled, selected = selected)
     }
