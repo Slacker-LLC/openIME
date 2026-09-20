@@ -245,6 +245,21 @@ open class ImeKeyboardView(
     private val panelBackStack = mutableListOf<Panel>()
     fun currentPanel(): Panel = panel
 
+    /** Persist the standalone settings panel's viewport across Activity recreation. */
+    internal fun settingsScrollPosition(): Int {
+        return (expandedPanel.findViewWithTag<ScrollView>("settings-scroll")?.scrollY ?: settingsScrollY)
+            .coerceAtLeast(0)
+    }
+
+    internal fun restoreSettingsScrollPosition(scrollY: Int) {
+        settingsScrollY = scrollY.coerceAtLeast(0)
+        expandedPanel.findViewWithTag<ScrollView>("settings-scroll")?.let { scroll ->
+            scroll.post {
+                scroll.scrollTo(0, settingsScrollY)
+            }
+        }
+    }
+
     /** Refresh data owned by auxiliary editor Activities when they return. */
     internal fun refreshAuxiliaryContent() {
         when (panel) {
@@ -3633,6 +3648,7 @@ open class ImeKeyboardView(
             }
         }
         val scroll = ScrollView(context).apply {
+            tag = "settings-scroll"
             isFillViewport = true
             isVerticalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS

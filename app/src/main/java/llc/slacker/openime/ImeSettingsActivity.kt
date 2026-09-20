@@ -51,6 +51,7 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
                 primaryColor = ImeSettingsRepository.loadSkinColor(this@ImeSettingsActivity),
             )
             showPanel(Panel.SETTINGS)
+            savedInstanceState?.getInt("settings_scroll_y")?.let(::restoreSettingsScrollPosition)
         }
         host.addView(
             keyboardView,
@@ -68,6 +69,11 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
                 backCallback!!,
             )
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putInt("settings_scroll_y", keyboardView.settingsScrollPosition())
+        super.onSaveInstanceState(outState)
     }
 
     @Deprecated("Deprecated in Java")
