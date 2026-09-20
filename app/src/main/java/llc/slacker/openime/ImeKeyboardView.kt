@@ -5394,6 +5394,11 @@ open class ImeKeyboardView(
             }
             is FrameLayout -> when (view.tag) {
                 "emoji-cell" -> view.background = statefulRounded(Color.TRANSPARENT, t.keyPressedBackground, dp(8))
+                "accent-swatch" -> view.background = statefulRounded(
+                    Color.TRANSPARENT,
+                    t.keyPressedBackground,
+                    dp(8),
+                )
                 "toggle" -> {
                     val seed = view.contentDescription?.toString()
                         ?.substringBefore('，')

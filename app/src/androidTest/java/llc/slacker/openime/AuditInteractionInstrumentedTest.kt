@@ -274,6 +274,17 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun presetAccentSwatchesExposeAVisibleKeyboardFocusState() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            keyboard.showPanel(Panel.SETTINGS)
+            val swatch = keyboard.findViewWithTag<View>("accent-swatch")
+            assertTrue("Accent swatches must be keyboard-focusable", swatch.isFocusable)
+            assertTrue("Accent swatches must expose a focusable background", swatch.background is StateListDrawable)
+            true
+        }
+    }
+
+    @Test
     fun emptyCandidateOverflowActionIsDisabledUntilCandidatesExist() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             val expand = keyboard.findViewWithTag<View>("candidate-expand")
