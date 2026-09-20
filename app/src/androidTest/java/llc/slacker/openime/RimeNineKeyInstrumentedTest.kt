@@ -18,11 +18,19 @@ class RimeNineKeyInstrumentedTest {
         val rime = RimeEngine(context)
         try {
             rime.start()
-            val deadline = SystemClock.elapsedRealtime() + 120_000L
+            // The first run deploys the bundled dictionaries on-device. The
+            // API 29 emulator can need several minutes for that one-time
+            // compile; keep the wait bounded without mistaking slow deployment
+            // for a schema failure.
+            val startupTimeoutMs = 300_000L
+            val deadline = SystemClock.elapsedRealtime() + startupTimeoutMs
             while (!rime.isReady && rime.errorMessage.isBlank() && SystemClock.elapsedRealtime() < deadline) {
                 SystemClock.sleep(100L)
             }
-            assertTrue("librime failed to start: ${rime.errorMessage}", rime.isReady)
+            assertTrue(
+                "librime failed to start within ${startupTimeoutMs}ms: ${rime.errorMessage}",
+                rime.isReady,
+            )
 
             val continuous = rime.candidates("64426")
             assertTrue("64426 should resolve 你好, got ${continuous.take(12)}", "你好" in continuous)
