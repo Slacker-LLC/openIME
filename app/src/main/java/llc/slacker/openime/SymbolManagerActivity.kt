@@ -2,6 +2,8 @@ package llc.slacker.openime
 
 import android.app.Activity
 import android.content.ClipData
+import android.content.res.ColorStateList
+import android.os.Build
 import android.os.Bundle
 import android.text.TextUtils
 import android.util.TypedValue
@@ -10,13 +12,13 @@ import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.WindowInsets
-import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 
-/** Small, touch-friendly manager for user symbols and their order. */
+/** Touch-friendly manager for user symbols and their order. */
 class SymbolManagerActivity : Activity() {
     private val density by lazy { resources.displayMetrics.density }
     private lateinit var content: LinearLayout
@@ -46,32 +48,34 @@ class SymbolManagerActivity : Activity() {
     private fun render() {
         val draftGroup = if (::groupEdit.isInitialized) groupEdit.text.toString() else ""
         val draftSymbol = if (::symbolEdit.isInitialized) symbolEdit.text.toString() else ""
+        val accent = SetupUi.accent(this)
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(22), dp(18), dp(22))
+            setPadding(dp(20), dp(24), dp(20), dp(24))
         }
         val title = TextView(this).apply {
             text = "自定义符号"
             textSize = 22f
+            setTextColor(getColor(R.color.setup_title))
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
             gravity = Gravity.CENTER_VERTICAL
             includeFontPadding = false
+            if (Build.VERSION.SDK_INT >= 28) setAccessibilityHeading(true)
         }
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            addView(TextView(this@SymbolManagerActivity).apply {
-                text = "‹"
-                textSize = 32f
-                gravity = Gravity.CENTER
-                includeFontPadding = false
+            addView(ImageButton(this@SymbolManagerActivity).apply {
+                setImageResource(R.drawable.ic_arrow_back)
+                imageTintList = ColorStateList.valueOf(accent)
                 contentDescription = "返回"
-                minWidth = dp(48)
-                minHeight = dp(48)
+                setMinimumWidth(dp(48))
+                setMinimumHeight(dp(48))
                 isClickable = true
                 isFocusable = true
                 applySelectableBackground(this)
                 setOnClickListener {
-                    performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                    it.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                     finish()
                 }
             }, LinearLayout.LayoutParams(dp(48), dp(56)))
@@ -81,50 +85,52 @@ class SymbolManagerActivity : Activity() {
         content.addView(TextView(this).apply {
             text = "可添加、分类、固定和删除。点击箭头调整顺序，也可长按符号行拖动排序。"
             textSize = 13f
+            setTextColor(getColor(R.color.setup_body))
+            setLineSpacing(dp(2).toFloat(), 1f)
             setPadding(0, 0, 0, dp(12))
         }, fullWrap())
+        content.addView(fieldLabel("分组（可选）"), fullWrap())
         groupEdit = EditText(this).apply {
             hint = "分组，例如：常用箭头"
             setSingleLine(true)
             textSize = 16f
             setText(draftGroup)
         }
+        SetupUi.styleInput(this, groupEdit)
+        content.addView(groupEdit, fullHeight(56).apply { bottomMargin = dp(10) })
+        content.addView(fieldLabel("符号或自定义文本"), fullWrap().apply { bottomMargin = dp(2) })
         symbolEdit = EditText(this).apply {
             hint = "符号，例如：⇢ 或 自定义文本"
             setSingleLine(true)
             textSize = 20f
             setText(draftSymbol)
         }
-        content.addView(groupEdit, fullHeight(56).apply { bottomMargin = dp(8) })
-        content.addView(symbolEdit, fullHeight(56).apply { bottomMargin = dp(8) })
-        content.addView(Button(this).apply {
-            text = "保存符号"
-            minHeight = dp(52)
-            setOnClickListener {
-                performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                if (symbolEdit.text.isNullOrBlank()) {
-                    symbolEdit.error = "请输入符号或自定义文本"
-                    symbolEdit.requestFocus()
-                    return@setOnClickListener
-                }
-                if (CustomSymbolRepository.upsert(
-                        this@SymbolManagerActivity,
-                        editingId,
-                        groupEdit.text.toString(),
-                        symbolEdit.text.toString(),
-                    ) != null
-                ) {
-                    groupEdit.text.clear()
-                    symbolEdit.text.clear()
-                    editingId = 0L
-                    render()
-                }
+        SetupUi.styleInput(this, symbolEdit)
+        content.addView(symbolEdit, fullHeight(58).apply { bottomMargin = dp(12) })
+        content.addView(SetupUi.primaryButton(this, "保存符号") {
+            if (symbolEdit.text.isNullOrBlank()) {
+                symbolEdit.error = "请输入符号或自定义文本"
+                symbolEdit.requestFocus()
+            } else if (CustomSymbolRepository.upsert(
+                    this@SymbolManagerActivity,
+                    editingId,
+                    groupEdit.text.toString(),
+                    symbolEdit.text.toString(),
+                ) != null
+            ) {
+                groupEdit.text.clear()
+                symbolEdit.text.clear()
+                editingId = 0L
+                render()
             }
-        }, fullHeight(52).apply { bottomMargin = dp(16) })
+        }, fullHeight(52).apply { bottomMargin = dp(20) })
         content.addView(TextView(this).apply {
             text = "已保存符号"
             textSize = 16f
+            setTextColor(getColor(R.color.setup_title))
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
             setPadding(0, 0, 0, dp(8))
+            if (Build.VERSION.SDK_INT >= 28) setAccessibilityHeading(true)
         }, fullWrap())
 
         CustomSymbolRepository.load(this)
@@ -133,17 +139,16 @@ class SymbolManagerActivity : Activity() {
                 content.addView(TextView(this).apply {
                     text = group
                     textSize = 14f
+                    setTextColor(accent)
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
                     setPadding(0, dp(8), 0, dp(4))
                 }, fullWrap())
-                symbols.forEach { item -> content.addView(symbolRow(item), fullWrap().apply { bottomMargin = dp(12) }) }
+                symbols.forEach { item ->
+                    content.addView(symbolRow(item, accent), fullWrap().apply { bottomMargin = dp(12) })
+                }
             }
-        content.addView(Button(this).apply {
-            text = "完成"
-            minHeight = dp(52)
-            setOnClickListener {
-                performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                finish()
-            }
+        content.addView(SetupUi.primaryButton(this, "完成") {
+            finish()
         }, fullHeight(52).apply { topMargin = dp(12) })
         setContentView(ScrollView(this).apply {
             setBackgroundColor(getColor(R.color.setup_page_bg))
@@ -167,25 +172,35 @@ class SymbolManagerActivity : Activity() {
         })
     }
 
-    private fun symbolRow(item: CustomSymbol): LinearLayout = LinearLayout(this).apply {
+    private fun symbolRow(item: CustomSymbol, accent: Int): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(10), 0, dp(4), 0)
+        setPadding(dp(16), dp(14), dp(12), dp(10))
+        background = SetupUi.rounded(
+            getColor(R.color.setup_surface),
+            dp(18).toFloat(),
+            getColor(R.color.setup_input_line),
+        )
         addView(TextView(this@SymbolManagerActivity).apply {
             text = item.symbol
             textSize = 21f
+            setTextColor(getColor(R.color.setup_title))
             maxLines = 2
             ellipsize = TextUtils.TruncateAt.END
-            contentDescription = item.symbol
+            contentDescription = "符号：${item.symbol}"
         }, fullWrap())
         addView(TextView(this@SymbolManagerActivity).apply {
             text = if (item.pinned) "已固定" else "未固定"
             textSize = 12f
+            setTextColor(if (item.pinned) accent else getColor(R.color.setup_body))
         }, fullWrap())
         val actions = LinearLayout(this@SymbolManagerActivity).apply {
             orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
         }
         fun action(label: String, onClick: () -> Unit) {
-            actions.addView(smallButton(label, onClick), LinearLayout.LayoutParams(0, dp(48), 1f))
+            actions.addView(smallButton(label, onClick), LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+                marginEnd = dp(4)
+            })
         }
         action("编辑") {
             editingId = item.id
@@ -218,6 +233,7 @@ class SymbolManagerActivity : Activity() {
                 .show()
         }
         addView(actions, fullWrap())
+        contentDescription = "自定义符号：${item.symbol}，${if (item.pinned) "已固定" else "未固定"}"
         setOnLongClickListener {
             alpha = 0.55f
             val data = ClipData.newPlainText("custom-symbol-id", item.id.toString())
@@ -250,12 +266,14 @@ class SymbolManagerActivity : Activity() {
         }
     }
 
-    private fun smallButton(label: String, action: () -> Unit) = Button(this).apply {
+    private fun smallButton(label: String, action: () -> Unit) =
+        SetupUi.secondaryButton(this, label, action)
+
+    private fun fieldLabel(label: String) = TextView(this).apply {
         text = label
-        textSize = 10f
-        minHeight = dp(48)
-        setPadding(dp(3), 0, dp(3), 0)
-        setOnClickListener { action() }
+        textSize = 12f
+        setTextColor(getColor(R.color.setup_body))
+        setPadding(dp(4), 0, dp(4), dp(4))
     }
 
     private fun applySelectableBackground(view: View) {
