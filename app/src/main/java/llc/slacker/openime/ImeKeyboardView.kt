@@ -3085,7 +3085,15 @@ open class ImeKeyboardView(
         }
         fun cell(label: String? = null, action: String? = null, center: Boolean = false): TextView =
             button(label ?: "", if (center) 9f else 14f, !center).apply {
-                if (action != null) setOnClickListener { listener.onTextEdit(action) }
+                if (action != null) {
+                    setOnClickListener { listener.onTextEdit(action) }
+                } else {
+                    tag = "textedit-spacer"
+                    isClickable = false
+                    isFocusable = false
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                    contentDescription = null
+                }
                 if (center) text = "光标"
             }
         listOf(

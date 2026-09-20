@@ -177,6 +177,17 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun textEditorSpacerCellsAreNotExposedAsActions() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            keyboard.showPanel(Panel.TEXT_EDITOR)
+            val spacer = keyboard.findViewWithTag<View>("textedit-spacer")
+            assertTrue("Text editor layout spacers must not be clickable", !spacer.isClickable)
+            assertTrue("Text editor layout spacers must not receive focus", !spacer.isFocusable)
+            true
+        }
+    }
+
+    @Test
     fun disablingPopupAffectsExistingKeyWithoutRebuilding() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.setSettings(sound = false, haptic = false, popup = true)
