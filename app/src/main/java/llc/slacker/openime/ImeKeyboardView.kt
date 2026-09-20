@@ -2405,7 +2405,6 @@ open class ImeKeyboardView(
                     contentDescription = "管理自定义符号"
                     isClickable = true
                     setOnClickListener {
-                        feedback()
                         context.startActivity(
                             Intent(context, SymbolManagerActivity::class.java)
                                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
@@ -2994,7 +2993,6 @@ open class ImeKeyboardView(
                         row.addView(button("删除", 11f, true).apply {
                             tag = "phrase-delete:${phrase.id}"
                             setOnClickListener {
-                                feedback()
                                 android.app.AlertDialog.Builder(context)
                                     .setTitle("删除常用语？")
                                     .setMessage(phrase.text)
