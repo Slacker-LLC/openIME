@@ -1,0 +1,8 @@
+config_version: '0.40'
+
+schema_list:
+  - schema: luna_pinyin_simp
+  - schema: luna_pinyin_simp_fuzzy
+
+menu:
+  page_size: 5

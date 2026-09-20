@@ -95,11 +95,18 @@ internal class NineKeyLocalDecoder(
                 previousPreview.isNotEmpty() -> previousPreview
             else -> null
         }
-        val continuous = continuationBase?.let { base ->
-            rankedPool.firstOrNull { candidate ->
-                candidate.startsWith(base) && digitsForPinyin(candidate) == bounded
+        // A one-key prefix can choose a plausible but wrong path (for example
+        // 6 -> mi). Once the complete digit stream matches a high-confidence
+        // preset, let that preset re-rank the preview instead of carrying the
+        // provisional prefix forever. Explicit choices still win through
+        // `stable` above.
+        val continuous = continuationBase
+            ?.takeIf { validPreset.isEmpty() }
+            ?.let { base ->
+                rankedPool.firstOrNull { candidate ->
+                    candidate.startsWith(base) && digitsForPinyin(candidate) == bounded
+                }
             }
-        }
 
         val paths = buildList {
             stable?.let(::add)
@@ -152,8 +159,8 @@ internal class NineKeyLocalDecoder(
         val preview = when {
             stable != null -> stable
             continuous != null -> continuous
-            continuationBase != null && prefixPreview != null -> prefixPreview
-            preferredFallbackPreview != null -> preferredFallbackPreview
+            continuationBase != null && validPreset.isEmpty() && prefixPreview != null -> prefixPreview
+            validPreset.isEmpty() && preferredFallbackPreview != null -> preferredFallbackPreview
             paths.isNotEmpty() -> paths.first()
             prefixPreview != null -> prefixPreview
             else -> fallbackLetters(bounded)

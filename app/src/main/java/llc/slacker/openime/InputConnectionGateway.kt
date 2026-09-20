@@ -439,6 +439,13 @@ class InputConnectionGateway(
         val safeContext = context ?: return ""
         val cm = safeContext.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return ""
         val clip = runCatching { cm.primaryClip }.getOrNull() ?: return ""
+        return pasteClipSnapshot(clip, onPasted)
+    }
+
+    /** Paste an already-read immutable clipboard snapshot without re-reading the system clip. */
+    internal fun pasteClipSnapshot(clip: ClipData, onPasted: (ClipData) -> Unit = {}): String {
+        if (isPassword()) return ""
+        val safeContext = context ?: return ""
         val text = runCatching {
             clip.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(safeContext)?.toString().orEmpty()
         }.getOrDefault("")
