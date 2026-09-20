@@ -12,6 +12,10 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
     private lateinit var keyboardView: ImeKeyboardView
     private var backCallback: OnBackInvokedCallback? = null
 
+    private fun refreshLiveIme() {
+        LocalVoiceImeService.activeInstance?.refreshPersistedSettingsFromActivity()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val host = FrameLayout(this).apply {
@@ -109,9 +113,11 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
     override fun onCompositionBackspace() = Unit
     override fun onThemeChanged(theme: ImeTheme) {
         ImeSettingsRepository.saveTheme(this, theme)
+        refreshLiveIme()
     }
     override fun onAppearanceChanged(appearance: ImeAppearance) {
         ImeSettingsRepository.saveAppearance(this, appearance)
+        refreshLiveIme()
     }
     override fun onShiftStateChanged(state: ShiftState) = Unit
     override fun onCandidateExpanded(open: Boolean) = Unit
@@ -120,17 +126,22 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
     override fun onTextEdit(action: String) = Unit
     override fun onSoundChanged(enabled: Boolean) {
         ImeSettingsRepository.saveSound(this, enabled)
+        refreshLiveIme()
     }
     override fun onHapticChanged(enabled: Boolean) {
         ImeSettingsRepository.saveHaptic(this, enabled)
+        refreshLiveIme()
     }
     override fun onPopupChanged(enabled: Boolean) {
         ImeSettingsRepository.savePopup(this, enabled)
+        refreshLiveIme()
     }
     override fun onFuzzyChanged(enabled: Boolean) {
         ImeSettingsRepository.saveFuzzy(this, enabled)
+        refreshLiveIme()
     }
     override fun onSkinChanged(opacity: Int, radius: Int, fontSize: Int, primaryColor: String) {
         ImeSettingsRepository.saveSkin(this, opacity, radius, fontSize, primaryColor)
+        refreshLiveIme()
     }
 }

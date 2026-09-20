@@ -400,7 +400,7 @@ class ImeKeyboardViewV2 private constructor(
                 hideClipboardCards(includePinned = false)
                 if (ClipboardHistoryRepository.load(context).isEmpty()) row.visibility = View.GONE
             },
-            LinearLayout.LayoutParams(0, insetDp(44), 1f).apply { marginEnd = insetDp(6) },
+            LinearLayout.LayoutParams(0, insetDp(48), 1f).apply { marginEnd = insetDp(6) },
         )
         row.addView(
             clipboardRetentionAction("清空全部") {
@@ -408,13 +408,13 @@ class ImeKeyboardViewV2 private constructor(
                 hideClipboardCards(includePinned = true)
                 row.visibility = View.GONE
             },
-            LinearLayout.LayoutParams(0, insetDp(44), 1f),
+            LinearLayout.LayoutParams(0, insetDp(48), 1f),
         )
         body.addView(
             row,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                insetDp(44),
+                insetDp(48),
             ).apply { topMargin = insetDp(6) },
         )
     }

@@ -315,6 +315,7 @@ open class ImeKeyboardView(
     private val popupHideRunnable = Runnable { hidePopup() }
     private var contentInsetPx = dp(5)
     private var systemBottomInsetPx = 0
+    private var topZoneExpanded = false
     private val maxContentWidthDp = 600
     // Portrait keeps the historical 296dp total. Landscape uses a compact
     // keyboard, and key rows grow with the system font scale so sp labels are
@@ -335,7 +336,8 @@ open class ImeKeyboardView(
         return maxOf(if (isLandscape()) 258 else 296, derived)
     }
 
-    private fun keyboardBodyHeightDp(): Int = imeHeightDp() - 64
+    private fun topZoneHeightDp(): Int = if (topZoneExpanded) 70 else 64
+    private fun keyboardBodyHeightDp(): Int = imeHeightDp() - topZoneHeightDp()
     private fun panelBodyHeightDp(): Int = (imeHeightDp() - 48).coerceAtLeast(0)
     private var syncingComposition = false
     private var t9Filter = "T9"
@@ -563,7 +565,7 @@ open class ImeKeyboardView(
             contentInsetPx,
             dp(6),
             contentInsetPx,
-            dp(16),
+            dp(if (topZoneExpanded) 10 else 16),
         )
         keyboardBody.findViewWithTag<View>("key-row-secondary")?.let { row ->
             val rowWidth = ((measuredWidthPx - contentInsetPx * 2) * 0.9f).toInt()
@@ -581,7 +583,7 @@ open class ImeKeyboardView(
         requestLayout()
     }
 
-    /** Top zone: fixed 64dp. Idle = icon toolbar; composing = 22 pre-edit + 42 candidates. */
+    /** Idle top zone is 64dp; composing expands to 70dp for a 48dp candidate target. */
     private fun buildTopZone() {
         topZone = LinearLayout(context).apply {
             tag = "ime_toolbar"
@@ -626,12 +628,12 @@ open class ImeKeyboardView(
             overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
             addView(
                 associationRow,
-                ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)),
+                ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48)),
             )
         }
         toolbarRow.addView(
             associationScroll,
-            LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginStart = dp(4) },
+            LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginStart = dp(4) },
         )
         // Keep the overflow action at the far right, as in the reference.
         toolbarRow.addView(
@@ -694,12 +696,12 @@ open class ImeKeyboardView(
                 candidateRow,
                 ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
-                    dp(42),
+                    dp(48),
                 ),
             )
         }
         candField.setPadding(dp(8), 0, dp(8), 0)
-        candField.addView(candScroll, LinearLayout.LayoutParams(0, dp(42), 1f))
+        candField.addView(candScroll, LinearLayout.LayoutParams(0, dp(48), 1f))
         // Persistent emoji shortcut kept visible while composing, so the user can
         // jump straight to the emoji panel without first committing/clearing.
         candidateEmojiBtn = TextView(context).apply {
@@ -710,6 +712,7 @@ open class ImeKeyboardView(
             contentDescription = "表情"
             setPadding(dp(7), 0, dp(7), 0)
             isClickable = true
+            isFocusable = true
             setOnClickListener {
                 feedback()
                 showPanel(Panel.EMOJI)
@@ -717,7 +720,7 @@ open class ImeKeyboardView(
         }
         candField.addView(
             candidateEmojiBtn,
-            LinearLayout.LayoutParams(dp(40), dp(42)),
+            LinearLayout.LayoutParams(dp(48), dp(48)),
         )
         candidateExpandBtn = TextView(context).apply {
             tag = "candidate-expand"
@@ -726,6 +729,8 @@ open class ImeKeyboardView(
             gravity = Gravity.CENTER
             contentDescription = "展开更多候选"
             setPadding(dp(7), 0, dp(7), 0)
+            isClickable = true
+            isFocusable = true
             setOnClickListener {
                 val open = candidateOverlay.visibility == View.GONE
                 renderExpanded(open)
@@ -734,15 +739,15 @@ open class ImeKeyboardView(
         }
         candField.addView(
             candidateExpandBtn,
-            LinearLayout.LayoutParams(dp(42), dp(42)),
+            LinearLayout.LayoutParams(dp(48), dp(48)),
         )
         composeZone.addView(candField, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(42),
+            dp(48),
         ))
         topZone.addView(composeZone, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(64),
+            dp(70),
         ))
 
         // Long-press voice stays inside the current keyboard. This fixed-height
@@ -987,12 +992,13 @@ open class ImeKeyboardView(
                     contentDescription = "联想:$candidate"
                     tag = "association-candidate"
                     isClickable = true
+                    isFocusable = true
                     setPadding(dp(8), 0, dp(8), 0)
-                    setOnClickListener { listener.onAssociationSelected(candidate) }
+                    setOnClickListener { feedback(); listener.onAssociationSelected(candidate) }
                 },
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
-                    dp(34),
+                    dp(48),
                 ).apply { marginEnd = dp(5) },
             )
         }
@@ -1167,6 +1173,28 @@ open class ImeKeyboardView(
     }
 
     private fun updateTopZone(composing: Boolean) {
+        topZoneExpanded = composing && !voiceInlineActive
+        val topHeight = dp(topZoneHeightDp())
+        topZone.minimumHeight = topHeight
+        (topZone.layoutParams as? LinearLayout.LayoutParams)?.let {
+            if (it.height != topHeight) {
+                it.height = topHeight
+                topZone.layoutParams = it
+            }
+        }
+        (keyboardHost.layoutParams as? LinearLayout.LayoutParams)?.let {
+            val bodyHeight = dp(keyboardBodyHeightDp())
+            if (it.height != bodyHeight) {
+                it.height = bodyHeight
+                keyboardHost.layoutParams = it
+            }
+        }
+        keyboardBody.setPadding(
+            contentInsetPx,
+            dp(6),
+            contentInsetPx,
+            dp(if (topZoneExpanded) 10 else 16),
+        )
         if (voiceInlineActive) {
             toolbarRow.visibility = View.GONE
             composeZone.visibility = View.GONE
@@ -1287,7 +1315,7 @@ open class ImeKeyboardView(
                     candidateItemView(index, cand),
                     LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.WRAP_CONTENT,
-                        dp(42),
+                        dp(48),
                     ).apply { marginEnd = dp(6) },
                 )
             } else {
@@ -1305,7 +1333,7 @@ open class ImeKeyboardView(
         return LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            minimumHeight = dp(42)
+            minimumHeight = dp(48)
             isFocusable = true
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             isClickable = true
@@ -1529,7 +1557,7 @@ open class ImeKeyboardView(
                     },
                     LinearLayout.LayoutParams(
                         0,
-                        dp(38),
+                        dp(48),
                         1f,
                     ).apply {
                         marginStart = dp(2)
@@ -2351,7 +2379,7 @@ open class ImeKeyboardView(
                     }
                 }, LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
-                    dp(40),
+                    dp(48),
                 ).apply { bottomMargin = dp(8) })
             }
             val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
@@ -2465,7 +2493,7 @@ open class ImeKeyboardView(
         candRow.addView(title("在下方区域落笔手写...", small = true), wrapParams())
         body.addView(candRow, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(34),
+            dp(48),
         ).apply { bottomMargin = dp(7) })
         val pad = HandwritingPadView(context) { strokes ->
             candRow.removeAllViews()
@@ -2491,10 +2519,13 @@ open class ImeKeyboardView(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(48),
         ))
-        expandedPanel.addView(body, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(panelBodyHeightDp()),
-        ))
+        expandedPanel.addView(
+            panelVerticalScroll(body, "handwriting-scroll"),
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(panelBodyHeightDp()),
+            ),
+        )
     }
 
     private fun renderVoice() {
@@ -3244,7 +3275,8 @@ open class ImeKeyboardView(
             contentDescription = label
             minimumHeight = dp(60)
             isClickable = true
-            setOnClickListener { onTap() }
+            isFocusable = true
+            setOnClickListener { feedback(); onTap() }
             addView(settingIcon(label), LinearLayout.LayoutParams(dp(26), dp(26)).apply {
                 marginEnd = dp(8)
             })
@@ -3398,37 +3430,56 @@ open class ImeKeyboardView(
         AccentPalette.presets.forEach { (hex, label) ->
             val selected = AccentPalette.normalize(hex) == current
             swatches.addView(
-                View(context).apply {
-                    contentDescription = "强调色$label"
-                    background = GradientDrawable().apply {
-                        shape = GradientDrawable.OVAL
-                        setColor(AccentPalette.parse(hex))
-                        if (selected) setStroke(dp(2), contrastText(AccentPalette.parse(hex)))
+                FrameLayout(context).apply {
+                    tag = "accent-swatch"
+                    contentDescription = "强调色$label，${if (selected) "已选中" else "未选中"}"
+                    if (Build.VERSION.SDK_INT >= 30) {
+                        stateDescription = if (selected) "已选中" else "未选中"
                     }
                     isClickable = true
-                    setOnClickListener { applyAccentColor(hex) }
+                    isFocusable = true
+                    addView(View(context).apply {
+                        background = GradientDrawable().apply {
+                            shape = GradientDrawable.OVAL
+                            setColor(AccentPalette.parse(hex))
+                            if (selected) setStroke(dp(2), contrastText(AccentPalette.parse(hex)))
+                        }
+                    }, FrameLayout.LayoutParams(dp(28), dp(28)).apply {
+                        gravity = Gravity.CENTER
+                    })
+                    setOnClickListener { feedback(); applyAccentColor(hex) }
                 },
-                LinearLayout.LayoutParams(dp(28), dp(28)).apply { marginEnd = dp(8) },
+                LinearLayout.LayoutParams(dp(48), dp(48)),
             )
         }
-        swatches.addView(
-            TextView(context).apply {
-                text = "自定义"
-                textSize = 12f
-                gravity = Gravity.CENTER
-                includeFontPadding = false
-                setPadding(dp(10), 0, dp(10), 0)
-                background = rounded(theme.tokens(appearance, isNight(), AccentPalette.parse(skinPrimaryColor)).panelHeadBackground, dp(14))
-                isClickable = true
-                contentDescription = "自定义强调色"
-                setOnClickListener { showCustomAccentDialog() }
-            },
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(28)),
-        )
-        row.addView(swatches, LinearLayout.LayoutParams(
+        val swatchScroll = HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            addView(swatches, ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                dp(48),
+            ))
+        }
+        row.addView(swatchScroll, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT,
+            dp(48),
         ))
+        row.addView(TextView(context).apply {
+            text = "自定义"
+            textSize = 12f
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            setPadding(dp(10), 0, dp(10), 0)
+            tag = "panel-button"
+            minHeight = dp(48)
+            minimumHeight = dp(48)
+            isClickable = true
+            isFocusable = true
+            contentDescription = "自定义强调色"
+            setOnClickListener { feedback(); showCustomAccentDialog() }
+        }, LinearLayout.LayoutParams(dp(96), dp(48)).apply {
+            topMargin = dp(6)
+        })
         row.addView(TextView(context).apply {
             text = AccentPalette.presets.firstOrNull { AccentPalette.normalize(it.first) == current }?.second ?: current
             textSize = 12f
@@ -3450,16 +3501,30 @@ open class ImeKeyboardView(
             setText(AccentPalette.normalize(skinPrimaryColor).removePrefix("#"))
             hint = "RRGGBB"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE
             setSingleLine(true)
             filters = arrayOf(android.text.InputFilter.LengthFilter(6))
         }
-        android.app.AlertDialog.Builder(context)
+        val dialog = android.app.AlertDialog.Builder(context)
             .setTitle("自定义强调色")
             .setMessage("输入 6 位十六进制颜色，例如 5B6B7A")
             .setView(field)
-            .setPositiveButton("应用") { _, _ -> applyAccentColor(field.text.toString()) }
+            .setPositiveButton("应用", null)
             .setNegativeButton("取消", null)
-            .show()
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setOnClickListener {
+                val value = field.text.toString().trim().removePrefix("#")
+                if (!value.matches(Regex("[0-9a-fA-F]{6}"))) {
+                    field.error = "请输入 6 位十六进制颜色"
+                    field.requestFocus()
+                    return@setOnClickListener
+                }
+                applyAccentColor("#$value")
+                dialog.dismiss()
+            }
+        }
+        dialog.show()
     }
 
     private fun isNight(): Boolean =
@@ -3496,7 +3561,7 @@ open class ImeKeyboardView(
         val hud = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             tag = "gaming-panel"
-            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setPadding(dp(12), dp(2), dp(12), dp(2))
         }
         var lastTouchX = 0f
         var lastTouchY = 0f
@@ -3540,6 +3605,7 @@ open class ImeKeyboardView(
         val floatingToggle = button(if (floatingKeyboard) "贴底固定" else "恢复浮动", 11f, true).apply {
             contentDescription = if (floatingKeyboard) "贴底固定" else "恢复浮动"
             setOnClickListener { view ->
+                feedback()
                 floatingKeyboard = !floatingKeyboard
                 listener.onFloatingKeyboardChanged(floatingKeyboard)
                 val label = if (floatingKeyboard) "贴底固定" else "恢复浮动"
@@ -3547,11 +3613,11 @@ open class ImeKeyboardView(
                 view.contentDescription = label
             }
         }
-        header.addView(floatingToggle, LinearLayout.LayoutParams(dp(88), dp(44)))
+        header.addView(floatingToggle, LinearLayout.LayoutParams(dp(88), dp(48)))
         hud.addView(header, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(44),
-        ).apply { bottomMargin = dp(4) })
+            dp(48),
+        ).apply { bottomMargin = dp(2) })
         val macroRow = HorizontalScrollView(context)
         val macroContent = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         macros.forEach { m ->
@@ -3565,16 +3631,16 @@ open class ImeKeyboardView(
         macroRow.addView(macroContent, ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         hud.addView(macroRow, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(44),
+            dp(48),
         ))
-        listOf("qwertyuiop", "asdfghjkl", "zxcvbnm").forEach { rowText ->
+        listOf("qwertyuiop", "asdfghjkl", "zxcvbnm").forEachIndexed { rowIndex, rowText ->
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             rowText.forEach { ch ->
                 row.addView(
                     key(ch.toString(), false, null, 1f, 13f) { listener.onCharacter(ch.toString()) }.apply {
                         tag = "game-mini"
                     },
-                    LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(4) },
+                    LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(4) },
                 )
             }
             if (rowText.startsWith("z")) {
@@ -3582,21 +3648,21 @@ open class ImeKeyboardView(
                     key("空格", true, null, 1.2f, 11f) { listener.onSpace() }.apply {
                         tag = "game-mini"
                     },
-                    LinearLayout.LayoutParams(0, dp(44), 1.2f).apply { marginEnd = dp(4) },
+                    LinearLayout.LayoutParams(0, dp(48), 1.2f).apply { marginEnd = dp(4) },
                 )
                 val gameBackspace = backspaceKey().apply { tag = "game-mini" }
-                row.addView(gameBackspace, LinearLayout.LayoutParams(0, dp(44), 1.2f).apply { marginEnd = dp(4) })
+                row.addView(gameBackspace, LinearLayout.LayoutParams(0, dp(48), 1.2f).apply { marginEnd = dp(4) })
                 row.addView(
                     key("发送", true, null, 1.6f, 12f) { listener.onEnter() }.apply {
                         tag = "game-mini"
                     },
-                    LinearLayout.LayoutParams(0, dp(44), 1.6f),
+                    LinearLayout.LayoutParams(0, dp(48), 1.6f),
                 )
             }
             hud.addView(row, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(44),
-            ).apply { bottomMargin = dp(2) })
+                dp(48),
+            ).apply { bottomMargin = if (rowIndex < 2) dp(1) else 0 })
         }
         val stage = FrameLayout(context).apply {
             tag = "floating-stage"
@@ -4059,7 +4125,7 @@ open class ImeKeyboardView(
             panelHead("候选字词"),
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(44),
+                dp(48),
             ),
         )
         val scroll = ScrollView(context)

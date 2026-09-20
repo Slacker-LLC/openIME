@@ -299,6 +299,11 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
         )
     }
 
+    /** Apply settings changed by the standalone preferences Activity immediately. */
+    internal fun refreshPersistedSettingsFromActivity() {
+        reloadPersistedSettings()
+    }
+
     override fun onCurrentInputMethodSubtypeChanged(newSubtype: InputMethodSubtype) {
         super.onCurrentInputMethodSubtypeChanged(newSubtype)
         if (!::gateway.isInitialized || !::rime.isInitialized) return

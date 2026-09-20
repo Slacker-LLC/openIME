@@ -48,7 +48,25 @@ class QuickPhraseEditActivity : Activity() {
         val title = TextView(this).apply {
             text = if (id > 0L) "编辑常用语" else "新增常用语"
             textSize = 22f
-            setPadding(0, 0, 0, dp(14))
+            gravity = Gravity.CENTER_VERTICAL
+            includeFontPadding = false
+        }
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(TextView(this@QuickPhraseEditActivity).apply {
+                text = "‹"
+                textSize = 32f
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                contentDescription = "返回"
+                minWidth = dp(48)
+                minHeight = dp(48)
+                isClickable = true
+                isFocusable = true
+                setOnClickListener { finish() }
+            }, LinearLayout.LayoutParams(dp(48), dp(56)))
+            addView(title, LinearLayout.LayoutParams(0, dp(56), 1f))
         }
         val save = Button(this).apply {
             text = "保存"
@@ -79,10 +97,10 @@ class QuickPhraseEditActivity : Activity() {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(24), dp(20), dp(20))
-            addView(title, LinearLayout.LayoutParams(
+            addView(header, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ))
+                dp(56),
+            ).apply { bottomMargin = dp(8) })
             addView(categoryEdit, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 dp(58),

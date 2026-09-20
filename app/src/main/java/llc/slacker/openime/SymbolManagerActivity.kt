@@ -48,11 +48,30 @@ class SymbolManagerActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(22), dp(18), dp(22))
         }
-        content.addView(TextView(this).apply {
+        val title = TextView(this).apply {
             text = "自定义符号"
             textSize = 22f
-            setPadding(0, 0, 0, dp(8))
-        }, fullWrap())
+            gravity = Gravity.CENTER_VERTICAL
+            includeFontPadding = false
+        }
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(TextView(this@SymbolManagerActivity).apply {
+                text = "‹"
+                textSize = 32f
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                contentDescription = "返回"
+                minWidth = dp(48)
+                minHeight = dp(48)
+                isClickable = true
+                isFocusable = true
+                setOnClickListener { finish() }
+            }, LinearLayout.LayoutParams(dp(48), dp(56)))
+            addView(title, LinearLayout.LayoutParams(0, dp(56), 1f))
+        }
+        content.addView(header, fullHeight(56).apply { bottomMargin = dp(8) })
         content.addView(TextView(this).apply {
             text = "可添加、分类、固定和删除。点击箭头调整顺序，也可长按符号行拖动排序。"
             textSize = 13f
