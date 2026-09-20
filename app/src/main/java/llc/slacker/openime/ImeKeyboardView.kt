@@ -1673,8 +1673,10 @@ open class ImeKeyboardView(
                 text = p
                 textSize = 17f
                 gravity = Gravity.CENTER
+                tag = "punct:$p"
                 contentDescription = p
                 isClickable = true
+                isFocusable = true
                 setOnClickListener { commitKeyboardCharacter(p) }
             }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         }
@@ -1746,8 +1748,10 @@ open class ImeKeyboardView(
                 text = s
                 textSize = 17f
                 gravity = Gravity.CENTER
+                tag = "digit-symbol:$s"
                 contentDescription = s
                 isClickable = true
+                isFocusable = true
                 setOnClickListener { commitKeyboardCharacter(s) }
             }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         }

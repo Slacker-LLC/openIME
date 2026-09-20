@@ -248,6 +248,25 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun punctuationAndDigitSymbolsAreKeyboardFocusable() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            keyboard.setMode(KeyboardMode.PINYIN_9, notifyListener = false)
+            listOf("，", "。", "？", "！").forEach { symbol ->
+                val key = keyboard.findViewWithTag<View>("punct:$symbol")
+                assertTrue("Punctuation $symbol must be focusable", key.isFocusable)
+                assertTrue("Punctuation $symbol must remain clickable", key.isClickable)
+            }
+            keyboard.setMode(KeyboardMode.DIGITS, notifyListener = false)
+            listOf("%", "+", "−", "＊").forEach { symbol ->
+                val key = keyboard.findViewWithTag<View>("digit-symbol:$symbol")
+                assertTrue("Digit symbol $symbol must be focusable", key.isFocusable)
+                assertTrue("Digit symbol $symbol must remain clickable", key.isClickable)
+            }
+            true
+        }
+    }
+
+    @Test
     fun settingToggleUsesOneFocusableStatefulRow() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.showPanel(Panel.FUZZY_SETTINGS)
