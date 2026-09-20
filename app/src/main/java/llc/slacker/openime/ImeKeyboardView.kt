@@ -3548,12 +3548,13 @@ open class ImeKeyboardView(
     /** Keep controls that cannot be implemented for arbitrary editors visibly unavailable. */
     private fun applyTextEditControlAvailability(root: View) {
         fun visit(view: View) {
-            if (view is TextView && TextEditControlPolicy.isUnavailableLabel(view.text.toString())) {
+            if (view is TextView && TextEditControlPolicy.isUnavailableLabel(view.text.toString(), passwordField)) {
+                val reason = TextEditControlPolicy.unavailableReason(view.text.toString(), passwordField)
                 view.isEnabled = false
                 view.isClickable = false
                 view.alpha = 0.38f
                 view.contentDescription = view.text.toString()
-                if (Build.VERSION.SDK_INT >= 30) view.stateDescription = "当前编辑器暂不支持"
+                if (Build.VERSION.SDK_INT >= 30) view.stateDescription = reason
             }
             if (view is ViewGroup) {
                 for (index in 0 until view.childCount) visit(view.getChildAt(index))

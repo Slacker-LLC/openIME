@@ -1,5 +1,6 @@
 package llc.slacker.openime
 
+import android.os.Build
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
@@ -53,6 +54,40 @@ class TextEditControlsInstrumentedTest {
                 assertNotNull("missing supported text-edit control $label", control)
                 assertTrue("$label should remain clickable", control!!.isClickable)
                 assertTrue("$label should remain enabled", control.isEnabled)
+            }
+        }
+    }
+
+    @Test
+    fun passwordFieldsDisablePasteBeforeTheUserCanTriggerADeadAction() {
+        lateinit var keyboard: ImeKeyboardViewV2
+        rule.scenario.onActivity { activity ->
+            val content = activity.findViewById<ViewGroup>(android.R.id.content)
+            keyboard = ImeKeyboardViewV2(activity, NoopListener())
+            content.addView(
+                keyboard,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+            keyboard.renderState(ImeState(passwordField = true))
+            keyboard.showPanel(Panel.TEXT_EDITOR)
+        }
+
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+
+        rule.scenario.onActivity {
+            val paste = findInteractiveControl(keyboard, "粘贴")
+            assertNotNull("password editor must still show the paste affordance", paste)
+            assertFalse("password paste must not remain clickable", paste!!.isClickable)
+            assertFalse("password paste must expose an enabled state", paste.isEnabled)
+            assertTrue("password paste should look unavailable", paste.alpha < 1f)
+            if (Build.VERSION.SDK_INT >= 30) {
+                assertTrue(
+                    "password paste must explain why it is unavailable",
+                    paste.stateDescription?.toString()?.contains("密码输入中不可用") == true,
+                )
             }
         }
     }

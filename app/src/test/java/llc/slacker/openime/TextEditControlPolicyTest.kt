@@ -1,5 +1,6 @@
 package llc.slacker.openime
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -14,5 +15,12 @@ class TextEditControlPolicyTest {
         listOf("全选", "复制", "剪切", "粘贴", "◀", "▶").forEach { label ->
             assertFalse(label, TextEditControlPolicy.isUnavailableLabel(label))
         }
+    }
+
+    @Test
+    fun passwordFieldsDisablePasteBeforeTheUserCanTriggerADeadAction() {
+        assertTrue(TextEditControlPolicy.isUnavailableLabel("粘贴", passwordField = true))
+        assertFalse(TextEditControlPolicy.isUnavailableLabel("复制", passwordField = true))
+        assertEquals("密码输入中不可用", TextEditControlPolicy.unavailableReason("粘贴", passwordField = true))
     }
 }
