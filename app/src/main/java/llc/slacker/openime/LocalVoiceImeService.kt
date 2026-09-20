@@ -1043,6 +1043,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
                 // These depend on the target editor; no fake implementation here.
             }
         }
+        refreshTextEditControls()
     }
 
     private fun showTextEditFeedback(message: String) {
