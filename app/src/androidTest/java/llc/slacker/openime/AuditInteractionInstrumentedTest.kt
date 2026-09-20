@@ -385,6 +385,22 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun voiceStatusChangesAreAvailableToAccessibilityServices() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            keyboard.showPanel(Panel.VOICE)
+            assertEquals(
+                View.ACCESSIBILITY_LIVE_REGION_POLITE,
+                keyboard.findViewWithTag<View>("voice-model-status").accessibilityLiveRegion,
+            )
+            assertEquals(
+                View.ACCESSIBILITY_LIVE_REGION_POLITE,
+                keyboard.findViewWithTag<View>("voice-transcript").accessibilityLiveRegion,
+            )
+            true
+        }
+    }
+
+    @Test
     fun disablingPopupAffectsExistingKeyWithoutRebuilding() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.setSettings(sound = false, haptic = false, popup = true)

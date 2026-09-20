@@ -796,6 +796,7 @@ open class ImeKeyboardView(
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             gravity = Gravity.CENTER_VERTICAL
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         }
         voiceInlineZone.addView(
             voiceInlineStatus,
@@ -2725,6 +2726,7 @@ open class ImeKeyboardView(
             includeFontPadding = false
             gravity = Gravity.CENTER_VERTICAL
             tag = "voice-model-status"
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         }
         body.addView(modelStatus, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -2738,6 +2740,7 @@ open class ImeKeyboardView(
             ellipsize = TextUtils.TruncateAt.END
             setPadding(dp(12), 0, dp(12), 0)
             tag = "voice-transcript"
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         }
         body.addView(transcript, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
