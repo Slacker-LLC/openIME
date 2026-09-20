@@ -344,6 +344,7 @@ open class ImeKeyboardView(
     private var passwordField = false
     private var inlineEditTarget: EditText? = null
     private val panelChipScrollPositions = mutableMapOf<String, Int>()
+    private val panelVerticalScrollPositions = mutableMapOf<String, Int>()
 
     private lateinit var mainDock: LinearLayout
     private lateinit var keyboardHost: FrameLayout
@@ -2230,6 +2231,17 @@ open class ImeKeyboardView(
             )
         }
 
+    private fun rememberPanelVerticalScroll(scroll: ScrollView, scrollKey: String) {
+        scroll.setOnScrollChangeListener { _, _, scrollY, _, _ ->
+            panelVerticalScrollPositions[scrollKey] = scrollY
+        }
+        scroll.post {
+            panelVerticalScrollPositions[scrollKey]?.let { remembered ->
+                scroll.scrollTo(0, remembered)
+            }
+        }
+    }
+
     private fun renderTools() {
         addPanelHead("工具")
         val body = LinearLayout(context).apply {
@@ -2401,8 +2413,10 @@ open class ImeKeyboardView(
                     dp(48),
                 ).apply { bottomMargin = dp(6) })
             }
+            val symbolsScroll = panelVerticalScroll(grid, "symbols-scroll")
+            rememberPanelVerticalScroll(symbolsScroll, "symbols:$symbolCategory")
             body.addView(
-                panelVerticalScroll(grid, "symbols-scroll"),
+                symbolsScroll,
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     0,
@@ -2468,8 +2482,10 @@ open class ImeKeyboardView(
                     dp(48),
                 ).apply { bottomMargin = dp(4) })
             }
+            val emojiScroll = panelVerticalScroll(grid, "emoji-scroll")
+            rememberPanelVerticalScroll(emojiScroll, "emoji:$emojiCategory")
             body.addView(
-                panelVerticalScroll(grid, "emoji-scroll"),
+                emojiScroll,
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     0,
