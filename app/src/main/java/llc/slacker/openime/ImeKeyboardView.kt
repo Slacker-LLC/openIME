@@ -937,7 +937,7 @@ open class ImeKeyboardView(
             panel = panelBackStack.removeAt(panelBackStack.lastIndex)
             listener.onPanelChanged(panel)
             renderPanel(panel)
-            animatePanelEntrance()
+            animatePanelEntrance(reverse = true)
             return true
         }
         stopVoiceIfActive()
@@ -955,10 +955,11 @@ open class ImeKeyboardView(
     }
 
     /** Subtle directional motion keeps panel navigation spatially legible. */
-    private fun animatePanelEntrance() {
+    private fun animatePanelEntrance(reverse: Boolean = false) {
         expandedPanel.animate().cancel()
         val direction = if (layoutDirection == View.LAYOUT_DIRECTION_RTL) -1f else 1f
-        expandedPanel.translationX = dp(12) * direction.toFloat()
+        val travel = if (reverse) -direction else direction
+        expandedPanel.translationX = dp(12) * travel.toFloat()
         expandedPanel.alpha = 0.94f
         expandedPanel.animate()
             .translationX(0f)
