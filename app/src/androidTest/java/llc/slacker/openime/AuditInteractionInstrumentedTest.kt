@@ -2,6 +2,7 @@ package llc.slacker.openime
 
 import android.os.SystemClock
 import android.graphics.Rect
+import android.graphics.drawable.GradientDrawable
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.View
@@ -209,8 +210,11 @@ class AuditInteractionInstrumentedTest {
             assertTrue("Settings row must be keyboard-focusable", row.isFocusable)
             assertTrue("Settings row must expose its current state", row.contentDescription.toString().contains("已关闭"))
             assertTrue("The visual switch must not create a duplicate accessibility node", toggle.importantForAccessibility == View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS)
+            val offColor = (toggle.background as GradientDrawable).color?.defaultColor
             assertTrue(row.performClick())
             assertTrue(row.contentDescription.toString().contains("已开启"))
+            val onColor = (toggle.background as GradientDrawable).color?.defaultColor
+            assertTrue("Toggle background must follow its enabled state", offColor != onColor)
             true
         }
     }

@@ -4826,7 +4826,10 @@ open class ImeKeyboardView(
             is FrameLayout -> when (view.tag) {
                 "emoji-cell" -> view.background = statefulRounded(Color.TRANSPARENT, t.keyPressedBackground, dp(8))
                 "toggle" -> {
-                    val enabled = onState(view.contentDescription?.toString().orEmpty())
+                    val seed = view.contentDescription?.toString()
+                        ?.substringBefore('，')
+                        .orEmpty()
+                    val enabled = onState(seed)
                     view.background = rounded(
                         if (enabled) t.primary else t.panelHeadBackground,
                         dp(99),
