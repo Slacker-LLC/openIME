@@ -3516,46 +3516,48 @@ open class ImeKeyboardView(
             tag = "setting-group"
             setPadding(dp(12), dp(12), dp(12), dp(12))
         }
-        val swatches = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+        val swatchGrid = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
         }
-        AccentPalette.presets.forEach { (hex, label) ->
-            val selected = AccentPalette.normalize(hex) == current
-            swatches.addView(
-                FrameLayout(context).apply {
-                    tag = "accent-swatch"
-                    contentDescription = "强调色$label，${if (selected) "已选中" else "未选中"}"
-                    if (Build.VERSION.SDK_INT >= 30) {
-                        stateDescription = if (selected) "已选中" else "未选中"
-                    }
-                    isClickable = true
-                    isFocusable = true
-                    addView(View(context).apply {
-                        background = GradientDrawable().apply {
-                            shape = GradientDrawable.OVAL
-                            setColor(AccentPalette.parse(hex))
-                            if (selected) setStroke(dp(2), contrastText(AccentPalette.parse(hex)))
+        AccentPalette.presets.chunked(6).forEach { presetRow ->
+            val swatchRow = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            presetRow.forEach { (hex, label) ->
+                val selected = AccentPalette.normalize(hex) == current
+                swatchRow.addView(
+                    FrameLayout(context).apply {
+                        tag = "accent-swatch"
+                        contentDescription = "强调色$label，${if (selected) "已选中" else "未选中"}"
+                        if (Build.VERSION.SDK_INT >= 30) {
+                            stateDescription = if (selected) "已选中" else "未选中"
                         }
-                    }, FrameLayout.LayoutParams(dp(28), dp(28)).apply {
-                        gravity = Gravity.CENTER
-                    })
-                    setOnClickListener { feedback(); applyAccentColor(hex) }
-                },
-                LinearLayout.LayoutParams(dp(48), dp(48)),
-            )
-        }
-        val swatchScroll = HorizontalScrollView(context).apply {
-            isHorizontalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
-            addView(swatches, ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
+                        isClickable = true
+                        isFocusable = true
+                        addView(View(context).apply {
+                            background = GradientDrawable().apply {
+                                shape = GradientDrawable.OVAL
+                                setColor(AccentPalette.parse(hex))
+                                if (selected) setStroke(dp(2), contrastText(AccentPalette.parse(hex)))
+                            }
+                        }, FrameLayout.LayoutParams(dp(28), dp(28)).apply {
+                            gravity = Gravity.CENTER
+                        })
+                        setOnClickListener { feedback(); applyAccentColor(hex) }
+                    },
+                    LinearLayout.LayoutParams(dp(48), dp(48)),
+                )
+            }
+            swatchGrid.addView(swatchRow, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
                 dp(48),
             ))
         }
-        row.addView(swatchScroll, LinearLayout.LayoutParams(
+        row.addView(swatchGrid, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(48),
+            dp(144),
         ))
         row.addView(TextView(context).apply {
             text = "自定义"
@@ -4699,6 +4701,7 @@ open class ImeKeyboardView(
                     "setting-group" -> view.background = rounded(t.toolCardBackground, dp(12))
                     "clip-card" -> view.background = rounded(t.toolCardBackground, dp(10))
                     "gaming-panel" -> view.background = rounded(t.toolCardBackground, dp(12))
+                    "panel-head" -> view.background = rounded(t.panelHeadBackground, dp(14))
                 }
                 if (view.contentDescription != null && view.isClickable && view.tag == null) {
                     view.background = statefulRounded(t.toolCardBackground, t.keyPressedBackground, dp(10))
