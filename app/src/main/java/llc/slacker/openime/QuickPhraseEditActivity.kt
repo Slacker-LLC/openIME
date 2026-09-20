@@ -15,6 +15,7 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.window.OnBackInvokedCallback
 
 /** Full-screen editor so the active IME can be used to edit the phrase itself. */
 class QuickPhraseEditActivity : Activity() {
@@ -28,6 +29,9 @@ class QuickPhraseEditActivity : Activity() {
     private lateinit var categoryEdit: EditText
     private lateinit var phraseEdit: EditText
     private var phraseId = 0L
+    private var initialCategory = ""
+    private var initialPhrase = ""
+    private var backCallback: OnBackInvokedCallback? = null
 
     private fun dp(value: Int): Int = (value * density).toInt()
 
@@ -38,9 +42,31 @@ class QuickPhraseEditActivity : Activity() {
             ?: intent.getStringExtra(EXTRA_CATEGORY).orEmpty()
         val phrase = savedInstanceState?.getString("draft_phrase")
             ?: intent.getStringExtra(EXTRA_TEXT).orEmpty()
+        initialCategory = category
+        initialPhrase = phrase
         render(category, phrase)
         phraseEdit.requestFocus()
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+        if (Build.VERSION.SDK_INT >= 33) {
+            backCallback = OnBackInvokedCallback { requestClose() }
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(
+                android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                backCallback!!,
+            )
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        requestClose()
+    }
+
+    override fun onDestroy() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            backCallback?.let(onBackInvokedDispatcher::unregisterOnBackInvokedCallback)
+            backCallback = null
+        }
+        super.onDestroy()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -74,7 +100,7 @@ class QuickPhraseEditActivity : Activity() {
                 applySelectableBackground(this)
                 setOnClickListener {
                     it.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                    finish()
+                    requestClose()
                 }
             }, LinearLayout.LayoutParams(dp(48), dp(56)))
             addView(title, LinearLayout.LayoutParams(0, dp(56), 1f))
@@ -115,7 +141,7 @@ class QuickPhraseEditActivity : Activity() {
             }
         }
         val cancel = SetupUi.secondaryButton(this, "取消") {
-            finish()
+            requestClose()
         }
         categoryEdit.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_NEXT) {
@@ -215,6 +241,29 @@ class QuickPhraseEditActivity : Activity() {
         textSize = 12f
         setTextColor(getColor(R.color.setup_body))
         setPadding(dp(4), 0, dp(4), dp(4))
+    }
+
+    private fun requestClose() {
+        if (!::categoryEdit.isInitialized || !::phraseEdit.isInitialized ||
+            (categoryEdit.text.toString() == initialCategory && phraseEdit.text.toString() == initialPhrase)
+        ) {
+            finish()
+            return
+        }
+        val dialog = android.app.AlertDialog.Builder(this)
+            .setTitle("放弃未保存内容？")
+            .setMessage("当前编辑内容尚未保存，离开后将丢失。")
+            .setNegativeButton("继续编辑", null)
+            .setPositiveButton("放弃", null)
+            .create()
+        dialog.setOnShowListener {
+            SetupUi.styleDialog(dialog, this@QuickPhraseEditActivity)
+            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setOnClickListener {
+                dialog.dismiss()
+                finish()
+            }
+        }
+        dialog.show()
     }
 
     private fun applySelectableBackground(view: View) {
