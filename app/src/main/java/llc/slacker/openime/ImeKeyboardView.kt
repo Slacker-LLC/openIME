@@ -3330,14 +3330,14 @@ open class ImeKeyboardView(
         textSize = 15f
         gravity = Gravity.CENTER
         includeFontPadding = false
-        contentDescription = label
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         tag = "setting-icon"
     }
 
     private fun settingToggleRow(label: String, sub: String): LinearLayout {
         val row = LinearLayout(context)
         fun updateRowAccessibility(enabled: Boolean) {
-            row.contentDescription = "$label，${if (enabled) "已开启" else "已关闭"}"
+            row.contentDescription = "$label，$sub，${if (enabled) "已开启" else "已关闭"}"
             if (Build.VERSION.SDK_INT >= 30) {
                 row.stateDescription = if (enabled) "已开启" else "已关闭"
             }
@@ -3374,6 +3374,7 @@ open class ImeKeyboardView(
                     includeFontPadding = false
                     setPadding(0, dp(3), 0, 0)
                 }, wrapParams())
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }, weightParams(1f))
             addView(toggleView, wrapParams())
         }
@@ -3387,7 +3388,7 @@ open class ImeKeyboardView(
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(14), 0, dp(14), 0)
             tag = "setting-row"
-            contentDescription = label
+            contentDescription = "$label，$sub，点击进入"
             minimumHeight = dp(60)
             isClickable = true
             isFocusable = true
@@ -3409,11 +3410,13 @@ open class ImeKeyboardView(
                     includeFontPadding = false
                     setPadding(0, dp(3), 0, 0)
                 }, wrapParams())
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }, weightParams(1f))
             addView(TextView(context).apply {
                 text = "›"
                 textSize = 18f
                 gravity = Gravity.CENTER
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                 tag = "setting-chevron"
             }, LinearLayout.LayoutParams(dp(28), dp(44)))
         }
