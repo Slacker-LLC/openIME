@@ -66,7 +66,7 @@ enum class ImeTheme(val key: String, val label: String) {
                 )
             } else {
                 Tokens(
-                    c("#245bc7"), c("#e6e7eb"), c("#f0f1f3"), c("#f0f1f3"), c("#202124"),
+                    c("#1D9BF0"), c("#e6e7eb"), c("#f0f1f3"), c("#f0f1f3"), c("#202124"),
                     c("#fafafb"), c("#202124"), c("#555b66"), c("#d2d4db"), c("#374151"), c("#e3e5e9"),
                     c("#f5f6f8"), c("#c8cbd2"), c("#d2d4db"), c("#e6e7eb"), c("#f0f1f3"),
                     c("#fafafb"), c("#202124"), c("#d2d4db"), c("#374151"), c("#f8f9fa"), c("#f0f1f3"),
