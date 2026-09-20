@@ -8,10 +8,8 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Build
 import android.view.HapticFeedbackConstants
-import android.view.MotionEvent
 import android.view.View
 import android.view.WindowInsets
-import android.view.accessibility.AccessibilityNodeInfo
 import android.provider.Settings
 import android.net.Uri
 import android.view.inputmethod.InputMethodManager
@@ -41,27 +39,21 @@ class MainActivity : Activity() {
             }
             insets
         }
-        listOf(
-            R.id.open_ime_settings,
-            R.id.choose_ime,
-            R.id.open_app_settings,
-            R.id.voice_permission,
-        ).forEach { installSetupFeedback(findViewById(it)) }
-        findViewById<View>(R.id.open_ime_settings).setOnClickListener {
+        setupClick(findViewById(R.id.open_ime_settings)) {
             startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
         }
-        findViewById<View>(R.id.choose_ime).setOnClickListener {
+        setupClick(findViewById(R.id.choose_ime)) {
             getSystemService(InputMethodManager::class.java).showInputMethodPicker()
         }
-        findViewById<View>(R.id.open_app_settings).setOnClickListener {
+        setupClick(findViewById(R.id.open_app_settings)) {
             if (!isImeReady()) {
                 Toast.makeText(this, R.string.setup_need_switch, Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
+                return@setupClick
             }
             startActivity(Intent(this, ImeSettingsActivity::class.java))
         }
-        findViewById<View>(R.id.voice_permission).setOnClickListener {
-            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) return@setOnClickListener
+        setupClick(findViewById(R.id.voice_permission)) {
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) return@setupClick
             val requested = getPreferences(MODE_PRIVATE).getBoolean("microphone_requested", false)
             if (requested && !shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)) {
                 startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
@@ -154,26 +146,10 @@ class MainActivity : Activity() {
         return status.enabled && status.selected
     }
 
-    private fun installSetupFeedback(view: View) {
-        view.setOnTouchListener { _, event ->
-            if (event.actionMasked == MotionEvent.ACTION_DOWN && view.isEnabled) {
-                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-            }
-            false
-        }
-        // Touch feedback does not run for keyboard and screen-reader clicks.
-        // Keep the same confirmation without replacing the page's click listener.
-        view.accessibilityDelegate = object : View.AccessibilityDelegate() {
-            override fun performAccessibilityAction(
-                host: View,
-                action: Int,
-                args: Bundle?,
-            ): Boolean {
-                if (action == AccessibilityNodeInfo.ACTION_CLICK && host.isEnabled) {
-                    host.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                }
-                return super.performAccessibilityAction(host, action, args)
-            }
+    private fun setupClick(view: View, onClick: () -> Unit) {
+        view.setOnClickListener {
+            if (view.isEnabled) view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+            onClick()
         }
     }
 
