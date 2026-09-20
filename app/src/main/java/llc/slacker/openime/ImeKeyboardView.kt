@@ -1692,7 +1692,10 @@ open class ImeKeyboardView(
                 contentDescription = p
                 isClickable = true
                 isFocusable = true
-                setOnClickListener { commitKeyboardCharacter(p) }
+                setOnClickListener {
+                    feedback()
+                    commitKeyboardCharacter(p)
+                }
             }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         }
         return stack
@@ -1767,7 +1770,10 @@ open class ImeKeyboardView(
                 contentDescription = s
                 isClickable = true
                 isFocusable = true
-                setOnClickListener { commitKeyboardCharacter(s) }
+                setOnClickListener {
+                    feedback()
+                    commitKeyboardCharacter(s)
+                }
             }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         }
         val left = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
@@ -2453,6 +2459,7 @@ open class ImeKeyboardView(
                     contentDescription = "管理自定义符号"
                     isClickable = true
                     setOnClickListener {
+                        feedback()
                         context.startActivity(
                             Intent(context, SymbolManagerActivity::class.java)
                                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
@@ -3020,7 +3027,10 @@ open class ImeKeyboardView(
         } else {
             col.addView(button("新增常用语", 13f, true).apply {
                 tag = "quick-phrase-add"
-                setOnClickListener { openQuickPhraseEditor(null) }
+                setOnClickListener {
+                    feedback()
+                    openQuickPhraseEditor(null)
+                }
             }, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 dp(48),
@@ -3046,11 +3056,15 @@ open class ImeKeyboardView(
                         )
                         row.addView(button("编辑", 11f, true).apply {
                             tag = "phrase-edit:${phrase.id}"
-                            setOnClickListener { openQuickPhraseEditor(phrase) }
+                            setOnClickListener {
+                                feedback()
+                                openQuickPhraseEditor(phrase)
+                            }
                         }, LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginEnd = dp(5) })
                         row.addView(button("删除", 11f, true).apply {
                             tag = "phrase-delete:${phrase.id}"
                             setOnClickListener {
+                                feedback()
                                 val dialog = android.app.AlertDialog.Builder(context)
                                     .setTitle("删除常用语？")
                                     .setMessage(phrase.text)
@@ -3205,7 +3219,10 @@ open class ImeKeyboardView(
         fun cell(label: String? = null, action: String? = null, center: Boolean = false): TextView =
             button(label ?: "", if (center) 9f else 14f, !center).apply {
                 if (action != null) {
-                    setOnClickListener { listener.onTextEdit(action) }
+                    setOnClickListener {
+                        feedback()
+                        listener.onTextEdit(action)
+                    }
                 } else {
                     tag = "textedit-spacer"
                     isClickable = false
@@ -3855,6 +3872,7 @@ open class ImeKeyboardView(
                 stateDescription = if (floatingKeyboard) "当前为浮动模式" else "当前为贴底模式"
             }
             setOnClickListener { view ->
+                feedback()
                 floatingKeyboard = !floatingKeyboard
                 listener.onFloatingKeyboardChanged(floatingKeyboard)
                 val label = if (floatingKeyboard) "贴底固定" else "恢复浮动"
