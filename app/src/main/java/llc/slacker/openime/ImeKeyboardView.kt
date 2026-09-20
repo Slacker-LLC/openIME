@@ -2598,7 +2598,24 @@ open class ImeKeyboardView(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(48),
         ).apply { bottomMargin = dp(7) })
+        var undoButton: ImeKeyView? = null
+        var clearButton: ImeKeyView? = null
+        fun refreshStrokeActions(hasStrokes: Boolean) {
+            listOf(
+                undoButton to "撤销",
+                clearButton to "清空",
+            ).forEach { (button, label) ->
+                button ?: return@forEach
+                button.isEnabled = hasStrokes
+                button.alpha = if (hasStrokes) 1f else 0.42f
+                button.contentDescription = if (hasStrokes) label else "$label（暂无笔画）"
+                if (Build.VERSION.SDK_INT >= 30) {
+                    button.stateDescription = if (hasStrokes) "可用" else "不可用"
+                }
+            }
+        }
         val pad = HandwritingPadView(context) { strokes ->
+            refreshStrokeActions(strokes.isNotEmpty())
             candRow.removeAllViews()
             val result = UnavailableHandwritingProvider.recognize(strokes)
             if (result is HandwritingResult.NotConfigured) {
@@ -2615,9 +2632,12 @@ open class ImeKeyboardView(
             dp(140),
         ).apply { bottomMargin = dp(7) })
         val actions = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        actions.addView(key("撤销", true, null, 1f, 13f) { pad.undo() }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(6) })
-        actions.addView(key("清空", true, null, 1f, 13f) { pad.clear() }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(6) })
+        undoButton = key("撤销", true, null, 1f, 13f) { pad.undo() }
+        clearButton = key("清空", true, null, 1f, 13f) { pad.clear() }
+        actions.addView(undoButton!!, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(6) })
+        actions.addView(clearButton!!, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(6) })
         actions.addView(key("空格", true, null, 1f, 13f) { listener.onSpace() }, LinearLayout.LayoutParams(0, dp(48), 1f))
+        refreshStrokeActions(false)
         body.addView(actions, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(48),
