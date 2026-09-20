@@ -3578,9 +3578,10 @@ open class ImeKeyboardView(
         val isOn = onState(seed)
         val knob = View(context).apply {
             layoutParams = FrameLayout.LayoutParams(dp(20), dp(20)).apply {
-                gravity = if (isOn) Gravity.END or Gravity.CENTER_VERTICAL else Gravity.START or Gravity.CENTER_VERTICAL
+                gravity = Gravity.START or Gravity.CENTER_VERTICAL
             }
             background = rounded(Color.WHITE, dp(99))
+            translationX = if (isOn) dp(22).toFloat() else 0f
         }
         return FrameLayout(context).apply {
             setPadding(dp(3), dp(3), dp(3), dp(3))
@@ -3603,9 +3604,17 @@ open class ImeKeyboardView(
                 toggleCallback(seed)?.invoke(next)
                 updateAccessibilityState(next)
                 onChanged(next)
-                (getChildAt(0)).layoutParams = FrameLayout.LayoutParams(dp(20), dp(20)).apply {
-                    gravity = if (next) Gravity.END or Gravity.CENTER_VERTICAL else Gravity.START or Gravity.CENTER_VERTICAL
+                val knobView = getChildAt(0)
+                knobView.layoutParams = FrameLayout.LayoutParams(dp(20), dp(20)).apply {
+                    gravity = Gravity.START or Gravity.CENTER_VERTICAL
                 }
+                knobView.animate()
+                    .cancel()
+                knobView.animate()
+                    .translationX(if (next) dp(22).toFloat() else 0f)
+                    .setDuration(160L)
+                    .setInterpolator(DecelerateInterpolator(1.5f))
+                    .start()
                 applyTheme()
             }
         }
