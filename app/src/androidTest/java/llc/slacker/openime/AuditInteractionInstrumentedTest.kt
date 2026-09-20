@@ -144,6 +144,10 @@ class AuditInteractionInstrumentedTest {
             keyboard.showPanel(Panel.SETTINGS)
             keyboard.showPanel(Panel.FUZZY_SETTINGS)
             assertEquals(Panel.FUZZY_SETTINGS, keyboard.currentPanel())
+            assertEquals(
+                "返回设置",
+                keyboard.findViewWithTag<View>("key-panel-back").contentDescription,
+            )
             assertTrue(keyboard.closePanelToKeyboard())
             assertEquals("Back from a child panel must restore its parent", Panel.SETTINGS, keyboard.currentPanel())
             assertTrue(keyboard.closePanelToKeyboard())

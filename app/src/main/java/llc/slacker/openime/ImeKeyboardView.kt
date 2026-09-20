@@ -2188,6 +2188,7 @@ open class ImeKeyboardView(
     }
 
     private fun panelHead(name: String): LinearLayout {
+        val backTarget = panelBackStack.lastOrNull()?.let(::panelTitle) ?: "键盘"
         val nav = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -2204,7 +2205,7 @@ open class ImeKeyboardView(
                 isFocusable = true
                 minimumHeight = dp(48)
                 minimumWidth = dp(48)
-                contentDescription = "返回键盘"
+                contentDescription = "返回$backTarget"
                 setOnTouchListener { _, event ->
                     if (event.actionMasked == MotionEvent.ACTION_DOWN) feedback()
                     false
@@ -2223,6 +2224,21 @@ open class ImeKeyboardView(
             tag = "panel-title"
         }, wrapParams())
         return nav
+    }
+
+    private fun panelTitle(value: Panel): String = when (value) {
+        Panel.TOOLS -> "更多"
+        Panel.KEYBOARD_SELECT -> "切换键盘"
+        Panel.SYMBOLS -> "符号"
+        Panel.EMOJI -> "表情"
+        Panel.HANDWRITING -> "手写输入"
+        Panel.VOICE -> "语音"
+        Panel.CLIPBOARD -> "剪贴板"
+        Panel.TEXT_EDITOR -> "文本编辑"
+        Panel.SETTINGS -> "设置"
+        Panel.FUZZY_SETTINGS -> "模糊音纠错"
+        Panel.GAMING -> "游戏键盘"
+        Panel.NONE, Panel.CANDIDATE_EXPANDED -> "键盘"
     }
 
     private fun addPanelHead(name: String) {
