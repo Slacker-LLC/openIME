@@ -3116,18 +3116,14 @@ open class ImeKeyboardView(
             col.addView(loadingHint, wrapParams())
             val gen = ++clipboardLoadGen
             Thread {
-                if (!passwordField) ClipboardHistoryRepository.capturePrimary(context)
-                val history = ClipboardHistoryRepository.load(context)
+                val historyResult = runCatching {
+                    if (!passwordField) ClipboardHistoryRepository.capturePrimary(context)
+                    ClipboardHistoryRepository.load(context)
+                }
                 post {
                     if (gen != clipboardLoadGen || clipboardTab != 0 || col.parent == null) return@post
                     (loadingHint.parent as? ViewGroup)?.removeView(loadingHint)
-                    if (history.isEmpty()) {
-                        col.addView(TextView(context).apply {
-                            text = "暂无剪贴历史；复制文本后重新打开这里即可看到。"
-                            textSize = 13f
-                            setPadding(dp(4), dp(6), dp(4), 0)
-                            tag = "panel-note"
-                        }, wrapParams())
+                    fun addRefreshAction() {
                         col.addView(button("重新读取", 12f, true).apply {
                             tag = "clipboard-refresh"
                             contentDescription = "重新读取剪贴板"
@@ -3141,8 +3137,25 @@ open class ImeKeyboardView(
                         ).apply {
                             topMargin = dp(8)
                         })
+                    }
+                    if (historyResult.isFailure) {
+                        col.addView(TextView(context).apply {
+                            text = "暂时无法读取剪贴板，请重试。"
+                            textSize = 13f
+                            setPadding(dp(4), dp(6), dp(4), 0)
+                            tag = "panel-error"
+                        }, wrapParams())
+                        addRefreshAction()
+                    } else if (historyResult.getOrThrow().isEmpty()) {
+                        col.addView(TextView(context).apply {
+                            text = "暂无剪贴历史；复制文本后重新打开这里即可看到。"
+                            textSize = 13f
+                            setPadding(dp(4), dp(6), dp(4), 0)
+                            tag = "panel-note"
+                        }, wrapParams())
+                        addRefreshAction()
                     } else {
-                        history.forEach { entry -> col.addView(clipboardHistoryCard(entry), LinearLayout.LayoutParams(
+                        historyResult.getOrThrow().forEach { entry -> col.addView(clipboardHistoryCard(entry), LinearLayout.LayoutParams(
                             LinearLayout.LayoutParams.MATCH_PARENT,
                             LinearLayout.LayoutParams.WRAP_CONTENT,
                         ).apply { bottomMargin = dp(7) }) }
