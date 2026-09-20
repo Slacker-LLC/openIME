@@ -4,6 +4,7 @@ import android.os.SystemClock
 import android.graphics.Color
 import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.StateListDrawable
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.View
@@ -255,6 +256,7 @@ class AuditInteractionInstrumentedTest {
                 val key = keyboard.findViewWithTag<View>("punct:$symbol")
                 assertTrue("Punctuation $symbol must be focusable", key.isFocusable)
                 assertTrue("Punctuation $symbol must remain clickable", key.isClickable)
+                assertTrue("Punctuation $symbol must use the skin pressed state", key.background is StateListDrawable)
             }
             keyboard.setMode(KeyboardMode.DIGITS, notifyListener = false)
             listOf("%", "+", "−", "＊").forEach { symbol ->

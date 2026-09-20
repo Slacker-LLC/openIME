@@ -4791,6 +4791,13 @@ open class ImeKeyboardView(
         if (voiceInlineActive) applyInlineVoicePalette()
     }
 
+    /** Reuse the renderer's design tokens for views added by production decorators. */
+    internal fun applyThemeToSubtree(target: View) {
+        val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        applyThemeRecursive(target, theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor)))
+    }
+
     private fun applyThemeRecursive(view: View, t: ImeTheme.Tokens) {
         when (view) {
             is ImeKeyView -> {
@@ -4935,6 +4942,22 @@ open class ImeKeyboardView(
                             t.destructive,
                             dim(t.destructive, 0.86f),
                             dp(10),
+                        )
+                    }
+                    tag?.startsWith("punct:") == true -> {
+                        view.setTextColor(t.keyText)
+                        view.background = statefulRounded(
+                            Color.TRANSPARENT,
+                            t.keyPressedBackground,
+                            dp(8),
+                        )
+                    }
+                    tag == "nine-pinyin-path-filter" -> {
+                        view.setTextColor(contrastText(t.primary))
+                        view.background = statefulRounded(
+                            t.primary,
+                            dim(t.primary, 0.86f),
+                            dp(8),
                         )
                     }
                     tag == "accent-custom" -> {

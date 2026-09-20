@@ -4,7 +4,6 @@ import android.content.Context
 import android.inputmethodservice.InputMethodService
 import android.text.Editable
 import android.text.TextWatcher
-import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -74,6 +73,7 @@ internal object NineKeySymbolRailDecorator {
 
         installFilterWatcher(root, onFeedback)
         refreshPinyinFilters(root, onFeedback)
+        (root as? ImeKeyboardView)?.applyThemeToSubtree(root)
     }
 
     /**
@@ -212,7 +212,6 @@ internal object NineKeySymbolRailDecorator {
                 .firstOrNull { it.tag != FILTER_TAG }
                 ?.currentTextColor
             inherited?.let(::setTextColor)
-            applySelectableBackground(this)
             content.addView(this, 0, cellParams(content.context, withGap = true))
         }
         view.text = active.replace(" ", "·") + " ›"
@@ -286,23 +285,9 @@ internal object NineKeySymbolRailDecorator {
         isFocusable = true
         minimumHeight = dp(context, CELL_HEIGHT_DP)
         inheritedTextColor?.let(::setTextColor)
-        applySelectableBackground(this)
         setOnClickListener {
             onFeedback()
             onCommit(symbol)
-        }
-    }
-
-    private fun applySelectableBackground(view: TextView) {
-        val selectable = TypedValue()
-        if (
-            view.context.theme.resolveAttribute(
-                android.R.attr.selectableItemBackground,
-                selectable,
-                true,
-            ) && selectable.resourceId != 0
-        ) {
-            view.setBackgroundResource(selectable.resourceId)
         }
     }
 
