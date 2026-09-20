@@ -611,7 +611,7 @@ open class ImeKeyboardView(
             LinearLayout.LayoutParams(dp(48), dp(48)),
         )
         toolbarRow.addView(
-            toolbarIcon(R.drawable.ic_emoji, "Emoji", "toolbar") { showPanel(Panel.EMOJI) },
+            toolbarIcon(R.drawable.ic_emoji, "表情", "toolbar") { showPanel(Panel.EMOJI) },
             LinearLayout.LayoutParams(dp(48), dp(48)),
         )
         toolbarRow.addView(
@@ -824,9 +824,13 @@ open class ImeKeyboardView(
         ImageView(context).apply {
             contentDescription = desc
             tag = tagValue
+            minimumWidth = dp(48)
+            minimumHeight = dp(48)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setImageResource(iconRes)
             isClickable = true
+            isFocusable = true
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             setOnClickListener { feedback(); onTap() }
         }
 

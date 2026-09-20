@@ -189,6 +189,17 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun toolbarActionsAreFocusableAndUseLocalizedLabels() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            val emoji = keyboard.findTestTarget("表情")
+            assertTrue("Emoji toolbar action must be discoverable in Chinese", emoji != null)
+            assertTrue("Toolbar actions must be keyboard-focusable", emoji!!.isFocusable)
+            assertTrue("Toolbar actions must keep a 48dp target", emoji.minimumHeight >= keyboard.resources.displayMetrics.density * 48f)
+            true
+        }
+    }
+
+    @Test
     fun textEditorSpacerCellsAreNotExposedAsActions() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.showPanel(Panel.TEXT_EDITOR)
