@@ -3845,6 +3845,18 @@ open class ImeKeyboardView(
                         }, FrameLayout.LayoutParams(dp(28), dp(28)).apply {
                             gravity = Gravity.CENTER
                         })
+                        if (selected) {
+                            addView(TextView(context).apply {
+                                text = "✓"
+                                textSize = 13f
+                                gravity = Gravity.CENTER
+                                includeFontPadding = false
+                                tag = "accent-selected-mark:$hex"
+                                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                            }, FrameLayout.LayoutParams(dp(28), dp(28)).apply {
+                                gravity = Gravity.CENTER
+                            })
+                        }
                         setOnClickListener { feedback(); applyAccentColor(hex) }
                     },
                     LinearLayout.LayoutParams(dp(48), dp(48)),
@@ -5175,6 +5187,10 @@ open class ImeKeyboardView(
                         } else {
                             statefulRounded(t.panelHeadBackground, dim(t.panelHeadBackground), dp(10))
                         }
+                    }
+                    tag?.startsWith("accent-selected-mark:") == true -> {
+                        val hex = tag.substringAfter(':')
+                        view.setTextColor(contrastText(AccentPalette.parse(hex)))
                     }
                     tag == "key-panel-back" -> {
                         view.setTextColor(t.keyText)

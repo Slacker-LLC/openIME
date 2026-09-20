@@ -233,6 +233,19 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun presetAccentSelectionHasAVisibleNonColorMark() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            keyboard.setSkin(96, 10, 18, "#1D9BF0")
+            keyboard.showPanel(Panel.SETTINGS)
+            assertTrue(
+                "Selected accent must expose a visible check mark in addition to color",
+                keyboard.findViewWithTag<View>("accent-selected-mark:#1D9BF0") != null,
+            )
+            true
+        }
+    }
+
+    @Test
     fun emptyCandidateOverflowActionIsDisabledUntilCandidatesExist() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             val expand = keyboard.findViewWithTag<View>("candidate-expand")
