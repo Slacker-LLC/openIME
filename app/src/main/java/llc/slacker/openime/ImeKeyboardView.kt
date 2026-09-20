@@ -2549,7 +2549,19 @@ open class ImeKeyboardView(
                 ).apply { bottomMargin = dp(8) })
             }
             val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-            symbolItems(symbolCategory).chunked(6).forEach { chunk ->
+            val items = symbolItems(symbolCategory)
+            if (items.isEmpty()) {
+                grid.addView(TextView(context).apply {
+                    text = "还没有自定义符号；点击上方按钮添加第一个。"
+                    textSize = 12f
+                    gravity = Gravity.CENTER
+                    tag = "panel-note"
+                }, LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    dp(56),
+                ))
+            }
+            items.chunked(6).forEach { chunk ->
                 val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
                 chunk.forEach { s ->
                     row.addView(
@@ -3150,8 +3162,16 @@ open class ImeKeyboardView(
                 dp(48),
             ).apply { bottomMargin = dp(8) })
 
-            QuickPhraseRepository.load(context)
-                .groupBy { it.category }
+            val phrases = QuickPhraseRepository.load(context)
+            if (phrases.isEmpty()) {
+                col.addView(TextView(context).apply {
+                    text = "还没有常用语；点击上方按钮添加后即可一键输入。"
+                    textSize = 12f
+                    setPadding(dp(4), dp(6), dp(4), 0)
+                    tag = "panel-note"
+                }, wrapParams())
+            }
+            phrases.groupBy { it.category }
                 .forEach { (category, phrases) ->
                     col.addView(sectionTitle(category), wrapParams())
                     phrases.forEach { phrase ->
