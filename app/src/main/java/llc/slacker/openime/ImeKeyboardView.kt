@@ -4220,6 +4220,8 @@ open class ImeKeyboardView(
             includeFontPadding = false
             tag = "floating-drag-handle"
             contentDescription = "拖动键盘"
+            minHeight = dp(48)
+            minimumHeight = dp(48)
             setPadding(dp(4), 0, dp(8), 0)
             isClickable = true
             isFocusable = true
