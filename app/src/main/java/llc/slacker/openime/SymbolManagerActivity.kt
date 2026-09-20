@@ -219,17 +219,30 @@ class SymbolManagerActivity : Activity() {
         }
         addView(actions, fullWrap())
         setOnLongClickListener {
+            alpha = 0.55f
             val data = ClipData.newPlainText("custom-symbol-id", item.id.toString())
             startDragAndDrop(data, View.DragShadowBuilder(this), item.id, 0)
             true
         }
         setOnDragListener { _, event ->
             when (event.action) {
-                DragEvent.ACTION_DRAG_ENTERED -> true
+                DragEvent.ACTION_DRAG_ENTERED -> {
+                    alpha = 0.72f
+                    true
+                }
+                DragEvent.ACTION_DRAG_EXITED -> {
+                    alpha = 1f
+                    true
+                }
                 DragEvent.ACTION_DROP -> {
+                    alpha = 1f
                     val movingId = event.localState as? Long ?: return@setOnDragListener false
                     CustomSymbolRepository.moveBefore(this@SymbolManagerActivity, movingId, item.id)
                     render()
+                    true
+                }
+                DragEvent.ACTION_DRAG_ENDED -> {
+                    alpha = 1f
                     true
                 }
                 else -> true
