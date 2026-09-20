@@ -57,6 +57,14 @@ object SetupUi {
                 rounded(pressed, dp(context, radiusDp.toInt()).toFloat()),
             )
             addState(
+                intArrayOf(android.R.attr.state_enabled, android.R.attr.state_focused),
+                rounded(
+                    color,
+                    dp(context, radiusDp.toInt()).toFloat(),
+                    contrastText(color),
+                ),
+            )
+            addState(
                 intArrayOf(-android.R.attr.state_enabled),
                 rounded(dim(color, 0.55f), dp(context, radiusDp.toInt()).toFloat()),
             )
@@ -92,6 +100,10 @@ object SetupUi {
             addState(
                 intArrayOf(android.R.attr.state_pressed),
                 rounded(dim(surface, 0.94f), radius, line),
+            )
+            addState(
+                intArrayOf(android.R.attr.state_focused),
+                rounded(surface, radius, accent(context)),
             )
             addState(intArrayOf(), rounded(surface, radius, line))
         }

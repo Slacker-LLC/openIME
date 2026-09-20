@@ -222,14 +222,16 @@ class MainActivity : Activity() {
         val pressed = dim(color, 0.86f)
         return StateListDrawable().apply {
             addState(intArrayOf(android.R.attr.state_pressed), rounded(pressed, 28f))
+            addState(intArrayOf(android.R.attr.state_focused), rounded(color, 28f, contrastText(color)))
             addState(intArrayOf(), rounded(color, 28f))
         }
     }
 
-    private fun rounded(color: Int, radiusDp: Float): GradientDrawable = GradientDrawable().apply {
+    private fun rounded(color: Int, radiusDp: Float, strokeColor: Int? = null): GradientDrawable = GradientDrawable().apply {
         shape = GradientDrawable.RECTANGLE
         setColor(color)
         cornerRadius = radiusDp * resources.displayMetrics.density
+        strokeColor?.let { setStroke(resources.displayMetrics.density.toInt().coerceAtLeast(1), it) }
     }
 
     private fun oval(color: Int): GradientDrawable = GradientDrawable().apply {
