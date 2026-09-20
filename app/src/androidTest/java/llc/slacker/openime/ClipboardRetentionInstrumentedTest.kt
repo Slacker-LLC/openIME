@@ -14,6 +14,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -92,6 +93,43 @@ class ClipboardRetentionInstrumentedTest {
         }
     }
 
+    @Test
+    fun clipboardCardTapUsesTheDisplayedEntry() {
+        lateinit var keyboard: ImeKeyboardViewV2
+        lateinit var listener: NoopListener
+        rule.scenario.onActivity { activity ->
+            ClipboardHistoryRepository.clearAll(activity)
+            ClipboardHistoryRepository.add(activity, "tap this entry")
+            listener = NoopListener()
+            val content = activity.findViewById<ViewGroup>(android.R.id.content)
+            keyboard = ImeKeyboardViewV2(activity, listener)
+            content.addView(
+                keyboard,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+            keyboard.showPanel(Panel.CLIPBOARD)
+        }
+
+        var card: View? = null
+        repeat(20) {
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            rule.scenario.onActivity { card = keyboard.findViewWithTag("clip-card") }
+            if (card != null) return@repeat
+            Thread.sleep(50)
+        }
+        assertNotNull("clipboard entry card must render", card)
+        assertTrue("clipboard entry card must be a primary action", card!!.isClickable)
+        assertEquals("剪贴板内容，点击使用", card!!.contentDescription)
+
+        rule.scenario.onActivity {
+            assertTrue(card!!.performClick())
+            assertEquals("tap this entry", listener.lastCharacter)
+        }
+    }
+
     private fun findTextView(root: View, label: String): TextView? {
         if (root is TextView && root.text.toString() == label) return root
         if (root is ViewGroup) {
@@ -103,9 +141,11 @@ class ClipboardRetentionInstrumentedTest {
     }
 
     private class NoopListener : ImeKeyboardViewV2.Listener {
+        var lastCharacter: String? = null
+
         override fun onModeChanged(mode: KeyboardMode) = Unit
         override fun onPanelChanged(panel: Panel) = Unit
-        override fun onCharacter(char: String) = Unit
+        override fun onCharacter(char: String) { lastCharacter = char }
         override fun onBackspace() = Unit
         override fun onClearAll() = Unit
         override fun onSpace() = Unit

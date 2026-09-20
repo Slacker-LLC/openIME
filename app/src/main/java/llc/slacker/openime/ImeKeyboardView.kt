@@ -2865,6 +2865,13 @@ open class ImeKeyboardView(
             setPadding(dp(12), dp(10), dp(12), dp(8))
             minimumHeight = dp(70)
             tag = "clip-card"
+            contentDescription = "剪贴板内容，点击使用"
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                feedback()
+                listener.onCharacter(entry.text)
+            }
         }
         card.addView(TextView(context).apply {
             text = entry.text
