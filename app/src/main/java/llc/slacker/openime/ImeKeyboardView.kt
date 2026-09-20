@@ -4716,6 +4716,15 @@ open class ImeKeyboardView(
                     }
                 }
             }
+            is SeekBar -> {
+                // Keep the value control in the same accent system as active
+                // tabs, primary keys, and selected swatches. The platform
+                // default tint is otherwise blue even after a custom accent
+                // has been chosen.
+                view.progressTintList = ColorStateList.valueOf(t.primary)
+                view.thumbTintList = ColorStateList.valueOf(t.primary)
+                view.progressBackgroundTintList = ColorStateList.valueOf(t.panelHeadBackground)
+            }
             is TextView -> {
                 val tag = view.tag as? String
                 if (view.parent !is ImeKeyView) view.setTextColor(t.keyText)
