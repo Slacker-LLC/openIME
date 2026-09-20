@@ -357,6 +357,7 @@ open class ImeKeyboardView(
     private lateinit var candidateExpandBtn: TextView
     private lateinit var candidateEmojiBtn: TextView
     private lateinit var voiceInlineZone: LinearLayout
+    private lateinit var voiceInlineIcon: ImageView
     private lateinit var voiceInlineStatus: TextView
     private val voiceInlineWaves = mutableListOf<View>()
     private val keyboardBody = LinearLayout(context)
@@ -761,14 +762,15 @@ open class ImeKeyboardView(
             visibility = View.GONE
             setPadding(dp(12), 0, dp(12), 0)
         }
+        voiceInlineIcon = ImageView(context).apply {
+            tag = "voice-inline-icon"
+            contentDescription = null
+            setImageResource(R.drawable.ic_mic)
+            imageTintList = ColorStateList.valueOf(Color.WHITE)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+        }
         voiceInlineZone.addView(
-            ImageView(context).apply {
-                tag = "voice-inline-icon"
-                contentDescription = null
-                setImageResource(R.drawable.ic_mic)
-                imageTintList = ColorStateList.valueOf(Color.WHITE)
-                scaleType = ImageView.ScaleType.CENTER_INSIDE
-            },
+            voiceInlineIcon,
             LinearLayout.LayoutParams(dp(22), dp(22)).apply { marginEnd = dp(9) },
         )
         voiceInlineStatus = TextView(context).apply {
@@ -1277,6 +1279,7 @@ open class ImeKeyboardView(
         inlineVoicePaletteColor = backgroundColor
         voiceInlineZone.background = rounded(backgroundColor, dp(13))
         val foregroundColor = contrastText(backgroundColor)
+        voiceInlineIcon.imageTintList = ColorStateList.valueOf(foregroundColor)
         voiceInlineStatus.setTextColor(foregroundColor)
         voiceInlineWaves.forEach { it.background = rounded(foregroundColor, dp(99)) }
     }
@@ -4835,6 +4838,17 @@ open class ImeKeyboardView(
                 "voice-wave-bar" -> view.background = rounded(t.primary, dp(99))
                 "setting-divider" -> view.setBackgroundColor(t.border)
             }
+        }
+        if (view is HandwritingPadView) {
+            view.setInkColor(t.primary)
+            view.setGridColor(
+                Color.argb(
+                    72,
+                    Color.red(t.border),
+                    Color.green(t.border),
+                    Color.blue(t.border),
+                ),
+            )
         }
         if (view is ViewGroup) {
             for (i in 0 until view.childCount) applyThemeRecursive(view.getChildAt(i), t)

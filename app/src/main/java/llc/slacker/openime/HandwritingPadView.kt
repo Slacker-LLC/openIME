@@ -35,6 +35,12 @@ class HandwritingPadView(
         pathEffect = DashPathEffect(floatArrayOf(8f, 8f), 0f)
     }
 
+    init {
+        isFocusable = true
+        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
+        contentDescription = "手写输入区域，落笔输入，支持撤销和清空"
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val w = width.toFloat()
@@ -104,4 +110,14 @@ class HandwritingPadView(
 
     fun candidate(result: HandwritingResult): List<String> =
         (result as? HandwritingResult.Success)?.candidates.orEmpty()
+
+    fun setInkColor(color: Int) {
+        paint.color = color
+        invalidate()
+    }
+
+    fun setGridColor(color: Int) {
+        gridPaint.color = color
+        invalidate()
+    }
 }
