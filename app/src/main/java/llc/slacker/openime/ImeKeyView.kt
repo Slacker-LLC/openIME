@@ -31,6 +31,7 @@ class ImeKeyView(
     private val density = resources.displayMetrics.density
     private var touchFeedbackPending = false
     private var touchGeneration = 0L
+    private val baseMainTextSize = mainTextSize
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
@@ -180,6 +181,11 @@ class ImeKeyView(
     fun setMainText(value: String) {
         mainTextView?.text = value
         contentDescription = value
+    }
+
+    /** Update key typography without rebuilding the keyboard hierarchy. */
+    fun applyMainTextScale(scale: Float) {
+        mainTextView?.textSize = baseMainTextSize * scale.coerceAtLeast(0.5f)
     }
 
     /**

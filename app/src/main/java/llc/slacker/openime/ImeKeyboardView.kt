@@ -3264,7 +3264,7 @@ open class ImeKeyboardView(
                 },
                 settingsSlider("按键字号", 14, 22, skinFontSize) { v ->
                     skinFontSize = v; listener.onSkinChanged(skinOpacity, skinRadius, skinFontSize, skinPrimaryColor)
-                    renderSettings(reusePanel = true)
+                    applyTheme()
                 },
             ),
             LinearLayout.LayoutParams(
@@ -4384,7 +4384,7 @@ open class ImeKeyboardView(
             text = text,
             secondary = if (func) null else secondary,
             iconRes = iconRes,
-            mainTextSize = (mainTextSizeOverride ?: (if (func) 15f else 20f)) * skinFontScale(),
+            mainTextSize = mainTextSizeOverride ?: (if (func) 15f else 20f),
         ).apply {
             tag = "key:$text"
             setTag(MARK_FUNCTION_KEY, func)
@@ -4757,6 +4757,7 @@ open class ImeKeyboardView(
                     function -> dim(t.functionKeyBackground, 0.88f)
                     else -> t.keyPressedBackground
                 }
+                view.applyMainTextScale(skinFontScale())
                 view.background = statefulRounded(color, pressedColor, dp(skinRadius))
                 // Skin opacity slider fades key backgrounds toward transparency.
                 view.background?.alpha = (skinOpacity.coerceIn(70, 100) * 255 / 100)
