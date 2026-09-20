@@ -72,6 +72,17 @@ class NineKeyChineseTest {
         }
     }
 
+    @Test
+    fun highConfidencePresetWinsAfterAnAmbiguousPrefix() {
+        val decoder = NineKeyLocalDecoder(engine)
+
+        decoder.resolve("6", preferredSuffix = null, fuzzy = false)
+        assertEquals("ni", decoder.resolve("64", preferredSuffix = null, fuzzy = false).previewSuffix)
+
+        decoder.resolve("644", preferredSuffix = null, fuzzy = false)
+        assertEquals("nihao", decoder.resolve("64426", preferredSuffix = null, fuzzy = false).previewSuffix)
+    }
+
     private fun resolve(digits: String): CandidatePipeline.NineKeyResolution =
         pipeline.resolveNineKey(
             digits = digits,

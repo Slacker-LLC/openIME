@@ -50,19 +50,34 @@ class NineKeyChineseInstrumentedTest {
     }
 
     private fun enterChineseNineKey() {
-        repeat(2) {
-            harness.awaitMain<View> { activity ->
-                val root = activity.findViewById<ViewGroup>(android.R.id.content) ?: return@awaitMain null
-                val mode = root.findViewWithTag<View>("key:mode") ?: return@awaitMain null
-                if (!mode.isShown) return@awaitMain null
-                mode.performClick()
-                mode
+        harness.awaitMain<View> { activity ->
+            val root = activity.findViewById<ViewGroup>(android.R.id.content) ?: return@awaitMain null
+            findView(root) { it.tag == "keyboard-selector" && it.isShown }?.also {
+                it.performClick()
+            }
+        }
+        harness.awaitMain<View> { activity ->
+            val root = activity.findViewById<ViewGroup>(android.R.id.content) ?: return@awaitMain null
+            findView(root) {
+                it.isShown && it.contentDescription == KeyboardMode.PINYIN_9.name
+            }?.also {
+                it.performClick()
             }
         }
         harness.awaitMain { activity ->
             val root = activity.findViewById<ViewGroup>(android.R.id.content) ?: return@awaitMain null
             root.findViewWithTag<View>("key-9:2")?.takeIf { it.isShown }
         }
+    }
+
+    private fun findView(root: View, predicate: (View) -> Boolean): View? {
+        if (predicate(root)) return root
+        if (root is ViewGroup) {
+            for (index in 0 until root.childCount) {
+                findView(root.getChildAt(index), predicate)?.let { return it }
+            }
+        }
+        return null
     }
 
     private fun tapDigits(digits: String) {
