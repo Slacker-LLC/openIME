@@ -3116,6 +3116,19 @@ open class ImeKeyboardView(
                             setPadding(dp(4), dp(6), dp(4), 0)
                             tag = "panel-note"
                         }, wrapParams())
+                        col.addView(button("重新读取", 12f, true).apply {
+                            tag = "clipboard-refresh"
+                            contentDescription = "重新读取剪贴板"
+                            setOnClickListener {
+                                feedback()
+                                renderClipboard(reusePanel = true)
+                            }
+                        }, LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            dp(48),
+                        ).apply {
+                            topMargin = dp(8)
+                        })
                     } else {
                         history.forEach { entry -> col.addView(clipboardHistoryCard(entry), LinearLayout.LayoutParams(
                             LinearLayout.LayoutParams.MATCH_PARENT,

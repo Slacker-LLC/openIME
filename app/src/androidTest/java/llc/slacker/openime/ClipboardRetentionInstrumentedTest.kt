@@ -104,6 +104,11 @@ class ClipboardRetentionInstrumentedTest {
             Thread.sleep(50)
         }
         assertNotNull("Clearing all history must expose an empty state", emptyState)
+        rule.scenario.onActivity { activity ->
+            val refresh = findTextView(keyboard, "重新读取")
+            assertNotNull("Empty clipboard state must offer an immediate refresh action", refresh)
+            assertTrue(refresh!!.contentDescription.toString().contains("重新读取剪贴板"))
+        }
     }
 
     @Test
