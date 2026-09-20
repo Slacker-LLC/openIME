@@ -5,7 +5,9 @@ import android.content.ClipData
 import android.content.res.ColorStateList
 import android.os.Build
 import android.os.Bundle
+import android.text.Editable
 import android.text.TextUtils
+import android.text.TextWatcher
 import android.util.TypedValue
 import android.view.DragEvent
 import android.view.Gravity
@@ -144,7 +146,7 @@ class SymbolManagerActivity : Activity() {
         }
         SetupUi.styleInput(this, symbolEdit)
         content.addView(symbolEdit, fullHeight(58).apply { bottomMargin = dp(12) })
-        content.addView(SetupUi.primaryButton(this, "保存符号") {
+        val save = SetupUi.primaryButton(this, "保存符号") {
             if (symbolEdit.text.isNullOrBlank()) {
                 symbolEdit.error = "请输入符号或自定义文本"
                 symbolEdit.requestFocus()
@@ -163,7 +165,28 @@ class SymbolManagerActivity : Activity() {
                 initialSymbol = ""
                 render()
             }
-        }, fullHeight(52).apply { bottomMargin = dp(20) })
+        }
+        fun refreshSaveState() {
+            val valid = symbolEdit.text.toString().isNotBlank()
+            save.isEnabled = valid
+            save.alpha = if (valid) 1f else 0.55f
+            save.contentDescription = if (valid) {
+                "保存符号"
+            } else {
+                "保存符号，不可用：请输入符号或自定义文本"
+            }
+            if (Build.VERSION.SDK_INT >= 30) {
+                save.stateDescription = if (valid) "可用" else "不可用"
+            }
+            if (valid) symbolEdit.error = null
+        }
+        symbolEdit.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = refreshSaveState()
+            override fun afterTextChanged(s: Editable?) = Unit
+        })
+        refreshSaveState()
+        content.addView(save, fullHeight(52).apply { bottomMargin = dp(20) })
         content.addView(TextView(this).apply {
             text = "已保存符号"
             textSize = 16f

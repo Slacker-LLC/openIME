@@ -4,6 +4,8 @@ import android.app.Activity
 import android.content.res.ColorStateList
 import android.os.Build
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
@@ -143,6 +145,26 @@ class QuickPhraseEditActivity : Activity() {
                 finish()
             }
         }
+        fun refreshSaveState() {
+            val valid = phraseEdit.text.toString().isNotBlank()
+            save.isEnabled = valid
+            save.alpha = if (valid) 1f else 0.55f
+            save.contentDescription = if (valid) {
+                "保存"
+            } else {
+                "保存，不可用：请输入常用语内容"
+            }
+            if (Build.VERSION.SDK_INT >= 30) {
+                save.stateDescription = if (valid) "可用" else "不可用"
+            }
+            if (valid) phraseEdit.error = null
+        }
+        phraseEdit.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = refreshSaveState()
+            override fun afterTextChanged(s: Editable?) = Unit
+        })
+        refreshSaveState()
         val cancel = SetupUi.secondaryButton(this, "取消") {
             requestClose()
         }
