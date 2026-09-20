@@ -200,6 +200,23 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun voiceControlsDescribeTheActiveGesture() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            keyboard.showPanel(Panel.VOICE)
+            keyboard.startVoiceFromSpace()
+            true
+        }
+        harness.awaitMain {
+            val mic = keyboard.findViewWithTag<View>("voice-mic")
+            assertTrue(mic.contentDescription.toString().contains("松开空格结束"))
+            val hint = keyboard.findViewWithTag<View>("voice-gesture-hint")
+            assertTrue(hint.contentDescription.toString().contains("上滑取消"))
+            keyboard.cancelVoiceForManualInput()
+            true
+        }
+    }
+
+    @Test
     fun disablingPopupAffectsExistingKeyWithoutRebuilding() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.setSettings(sound = false, haptic = false, popup = true)

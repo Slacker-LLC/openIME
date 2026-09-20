@@ -2628,14 +2628,23 @@ open class ImeKeyboardView(
         val micButton = button("🎤", 18f, false).apply {
             tag = "voice-mic"
             isEnabled = false
-            contentDescription = "语音状态，仅支持长按空格启动"
+            contentDescription = "语音状态，当前未开始，仅支持长按空格启动"
         }
         controls.addView(micButton, LinearLayout.LayoutParams(dp(58), dp(58)))
         val gestureHint = button("长按空格开始", 13f, true).apply {
+            tag = "voice-gesture-hint"
             isEnabled = false
             contentDescription = "长按空格开始语音，松开自动上屏，上滑取消"
         }
         controls.addView(gestureHint, LinearLayout.LayoutParams(0, dp(58), 1f))
+        fun setMicState(icon: String, description: String) {
+            micButton.text = icon
+            micButton.contentDescription = description
+        }
+        fun setGestureHint(label: String, description: String) {
+            gestureHint.text = label
+            gestureHint.contentDescription = description
+        }
         body.addView(controls, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(58),
@@ -2654,8 +2663,8 @@ open class ImeKeyboardView(
             voiceActive = true
             voicePending = true
             showInlineVoiceState("正在准备麦克风…")
-            micButton.text = "⏹"
-            gestureHint.text = "松开空格上屏 · 上滑取消"
+            setMicState("⏹", "语音输入进行中，松开空格结束，上滑取消")
+            setGestureHint("松开空格上屏 · 上滑取消", "松开空格结束语音并自动上屏，上滑取消")
             modelStatus.text = "正在使用离线模型 · 音频不出设备"
             transcript.text = "正在聆听… 松开空格结束"
             listener.onVoiceSessionStarted(true)
@@ -2674,6 +2683,8 @@ open class ImeKeyboardView(
                         if (text.isNotBlank()) recognizedText = text
                         transcript.text = text
                         modelStatus.text = "正在聆听 · 松开空格结束"
+                        setMicState("⏹", "语音输入进行中，松开空格结束，上滑取消")
+                        setGestureHint("松开空格上屏 · 上滑取消", "松开空格结束语音并自动上屏，上滑取消")
                         showInlineVoiceState(text.ifBlank { "正在聆听…" })
                         listener.onVoicePartial(text)
                     }
@@ -2684,8 +2695,8 @@ open class ImeKeyboardView(
                         if (voiceCancelled || cancelPreview) return@post
                         if (text.isNotBlank()) recognizedText = text
                         transcript.text = text
-                        micButton.text = "🎤"
-                        gestureHint.text = "长按空格开始"
+                        setMicState("🎤", "语音状态，已完成识别，仅支持长按空格启动")
+                        setGestureHint("长按空格开始", "长按空格开始语音，松开自动上屏，上滑取消")
                         voiceActive = false
                         voicePending = false
                         modelStatus.text = "离线识别完成 · 已自动上屏"
@@ -2720,8 +2731,8 @@ open class ImeKeyboardView(
                         if (voiceCancelled) return@post
                         recognizedText = ""
                         transcript.text = message
-                        micButton.text = "🎤"
-                        gestureHint.text = "长按空格开始"
+                        setMicState("🎤", "语音状态，识别失败，仅支持长按空格重试")
+                        setGestureHint("长按空格开始", "长按空格重新开始语音，松开自动上屏，上滑取消")
                         voiceActive = false
                         voicePending = false
                         modelStatus.text = "语音未完成 · 请检查本地模型和麦克风权限"
@@ -2734,13 +2745,14 @@ open class ImeKeyboardView(
                     post {
                         if (eventGeneration != voiceEventGeneration) return@post
                         if (voiceCancelled) return@post
-                        micButton.text = "⏹"
                         if (voiceActive) {
-                            gestureHint.text = "松开空格上屏 · 上滑取消"
+                            setMicState("⏹", "语音输入进行中，松开空格结束，上滑取消")
+                            setGestureHint("松开空格上屏 · 上滑取消", "松开空格结束语音并自动上屏，上滑取消")
                             modelStatus.text = "正在录音 · 本地模型准备中"
                             showInlineVoiceState("正在录音 · 模型准备中…")
                         } else {
-                            gestureHint.text = "整理识别结果…"
+                            setMicState("⏹", "正在整理语音识别结果，请稍候")
+                            setGestureHint("整理识别结果…", "正在整理语音识别结果，请稍候")
                             modelStatus.text = "正在整理识别结果…"
                             showInlineVoiceState("正在识别…")
                         }
@@ -2751,6 +2763,8 @@ open class ImeKeyboardView(
                         if (eventGeneration != voiceEventGeneration) return@post
                         if (!voiceActive || voiceCancelled || cancelPreview) return@post
                         modelPrepared = true
+                        setMicState("⏹", "语音输入进行中，松开空格结束，上滑取消")
+                        setGestureHint("松开空格上屏 · 上滑取消", "松开空格结束语音并自动上屏，上滑取消")
                         modelStatus.text = "正在识别 · 松开空格结束"
                         showInlineVoiceState("正在聆听…")
                     }
@@ -2760,8 +2774,8 @@ open class ImeKeyboardView(
         fun stopVoice() {
             if (!voiceActive) return
             listener.stopVoiceRecognition()
-            micButton.text = "🎤"
-            gestureHint.text = "整理识别结果…"
+            setMicState("🎤", "正在整理语音识别结果，请稍候")
+            setGestureHint("整理识别结果…", "正在整理语音识别结果，请稍候")
             voiceActive = false
             modelStatus.text = "正在整理识别结果…"
             showInlineVoiceState("正在识别…")
@@ -2775,8 +2789,8 @@ open class ImeKeyboardView(
             voiceActive = false
             listener.cancelVoiceRecognition()
             recognizedText = ""
-            micButton.text = "🎤"
-            gestureHint.text = "长按空格开始"
+            setMicState("🎤", "语音状态，已取消，仅支持长按空格启动")
+            setGestureHint("长按空格开始", "长按空格开始语音，松开自动上屏，上滑取消")
             listener.onVoiceCancel()
             transcript.text = "已取消语音输入"
             modelStatus.text = "语音已取消 · 音频未保存"
@@ -2792,10 +2806,14 @@ open class ImeKeyboardView(
         voiceCancelPreviewAction = { cancelling ->
             cancelPreview = cancelling
             if (cancelling) {
+                setMicState("⏹", "取消语音输入中，松开将丢弃本次语音")
+                setGestureHint("上滑取消 · 松开丢弃", "继续上滑取消语音，松开将丢弃本次语音")
                 transcript.text = "上滑取消 · 松开丢弃本次语音"
                 modelStatus.text = "取消状态 · 松开将丢弃"
                 showInlineVoiceState("松开取消", cancelling = true)
             } else {
+                setMicState("⏹", "语音输入进行中，松开空格结束，上滑取消")
+                setGestureHint("松开空格上屏 · 上滑取消", "松开空格结束语音并自动上屏，上滑取消")
                 transcript.text = recognizedText.ifBlank { "正在聆听… 松开空格结束" }
                 modelStatus.text = "正在聆听 · 松开空格结束"
                 showInlineVoiceState(recognizedText.ifBlank { "正在聆听…" })
