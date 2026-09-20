@@ -140,6 +140,22 @@ object SetupUi {
         }
     }
 
+    /** Transparent focus ring for inputs placed on an already styled surface. */
+    fun focusRingBackground(context: Context): StateListDrawable {
+        val accent = accent(context)
+        val radius = dp(context, 14).toFloat()
+        fun ring(stroke: Int?): GradientDrawable = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(Color.TRANSPARENT)
+            cornerRadius = radius
+            stroke?.let { setStroke(dp(context, 2), it) }
+        }
+        return StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_focused), ring(accent))
+            addState(intArrayOf(), ring(null))
+        }
+    }
+
     fun styleInput(context: Context, input: EditText) {
         input.background = inputBackground(context)
         input.setPadding(dp(context, 16), dp(context, 8), dp(context, 16), dp(context, 8))

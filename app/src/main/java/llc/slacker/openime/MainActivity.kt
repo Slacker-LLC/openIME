@@ -79,6 +79,7 @@ class MainActivity : Activity() {
         val enabled = status.enabled
         val selected = status.selected
         val accent = AccentPalette.parse(ImeSettingsRepository.loadSkinColor(this))
+        findViewById<View>(R.id.test_input).background = SetupUi.focusRingBackground(this)
         findViewById<TextView>(R.id.status).setText(when {
             selected -> R.string.setup_ready
             enabled -> R.string.setup_choose
