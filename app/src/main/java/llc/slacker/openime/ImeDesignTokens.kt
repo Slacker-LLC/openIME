@@ -11,11 +11,11 @@ import android.graphics.Color
  * compatibility, but the product intentionally exposes only this skin.
  */
 enum class ImeTheme(val key: String, val label: String) {
-    IOS("theme-ios", "iOS Minimal Glass"),
-    DARK("theme-dark", "Midnight Dark"),
-    CYBERPUNK("theme-cyberpunk", "Cyberpunk Neon"),
-    CLASSIC("theme-classic", "Classic Desktop"),
-    MACOS("theme-macos", "macOS Tahoe Minimal"),
+    IOS("theme-ios", "iOS 极简玻璃"),
+    DARK("theme-dark", "午夜深色"),
+    CYBERPUNK("theme-cyberpunk", "赛博霓虹"),
+    CLASSIC("theme-classic", "经典桌面"),
+    MACOS("theme-macos", "macOS Tahoe 极简"),
     ;
 
     data class Tokens(
