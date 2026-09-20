@@ -3271,9 +3271,7 @@ open class ImeKeyboardView(
         )
         row.addView(
             clipboardRetentionAction("清空全部", destructive = true) {
-                ClipboardHistoryRepository.clearAll(context)
-                renderClipboard(reusePanel = true)
-                focusPanelEntryPoint()
+                confirmClearClipboardHistory()
             },
             LinearLayout.LayoutParams(0, dp(48), 1f),
         )
@@ -3285,6 +3283,25 @@ open class ImeKeyboardView(
             ).apply { topMargin = dp(6) },
         )
         applyTheme()
+    }
+
+    private fun confirmClearClipboardHistory() {
+        val dialog = android.app.AlertDialog.Builder(context)
+            .setTitle("清空全部剪贴历史？")
+            .setMessage("已固定的内容也会删除，且无法恢复。")
+            .setNegativeButton("取消", null)
+            .setPositiveButton("清空全部", null)
+            .create()
+        dialog.setOnShowListener {
+            SetupUi.styleDialog(dialog, context, destructivePositive = true)
+            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setOnClickListener {
+                ClipboardHistoryRepository.clearAll(context)
+                dialog.dismiss()
+                renderClipboard(reusePanel = true)
+                focusPanelEntryPoint()
+            }
+        }
+        dialog.show()
     }
 
     private fun clipboardRetentionAction(
