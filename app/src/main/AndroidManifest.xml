@@ -16,7 +16,8 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:label="@string/app_name">
+            android:label="@string/app_name"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -26,17 +27,20 @@
         <activity
             android:name=".ImeSettingsActivity"
             android:exported="false"
-            android:label="偏好设置" />
+            android:label="偏好设置"
+            android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".QuickPhraseEditActivity"
             android:exported="false"
-            android:label="常用语" />
+            android:label="常用语"
+            android:windowSoftInputMode="stateAlwaysVisible|adjustResize" />
 
         <activity
             android:name=".SymbolManagerActivity"
             android:exported="false"
-            android:label="自定义符号" />
+            android:label="自定义符号"
+            android:windowSoftInputMode="adjustResize" />
 
         <service
             android:name=".LocalVoiceImeService"

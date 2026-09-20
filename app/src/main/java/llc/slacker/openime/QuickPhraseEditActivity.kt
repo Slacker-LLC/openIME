@@ -54,7 +54,6 @@ class QuickPhraseEditActivity : Activity() {
         render(category, phrase)
         if (savedFocusId == R.id.quick_phrase_category_editor) categoryEdit.requestFocus()
         else phraseEdit.requestFocus()
-        window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
         if (Build.VERSION.SDK_INT >= 33) {
             backCallback = OnBackInvokedCallback { requestClose() }
             onBackInvokedDispatcher.registerOnBackInvokedCallback(
