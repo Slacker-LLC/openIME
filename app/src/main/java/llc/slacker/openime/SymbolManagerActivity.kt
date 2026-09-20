@@ -25,11 +25,13 @@ class SymbolManagerActivity : Activity() {
     private lateinit var groupEdit: EditText
     private lateinit var symbolEdit: EditText
     private var editingId = 0L
+    private var savedScrollY = 0
 
     private fun dp(value: Int): Int = (value * density).toInt()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        savedScrollY = savedInstanceState?.getInt("scroll_y", 0) ?: 0
         render()
         savedInstanceState?.let {
             editingId = it.getLong("editing_id")
@@ -42,6 +44,7 @@ class SymbolManagerActivity : Activity() {
         outState.putLong("editing_id", editingId)
         outState.putString("draft_group", groupEdit.text.toString())
         outState.putString("draft_symbol", symbolEdit.text.toString())
+        outState.putInt("scroll_y", (content.parent as? ScrollView)?.scrollY ?: savedScrollY)
         super.onSaveInstanceState(outState)
     }
 
@@ -150,9 +153,12 @@ class SymbolManagerActivity : Activity() {
         content.addView(SetupUi.primaryButton(this, "完成") {
             finish()
         }, fullHeight(52).apply { topMargin = dp(12) })
-        setContentView(ScrollView(this).apply {
+        val scroll = ScrollView(this).apply {
             setBackgroundColor(getColor(R.color.setup_page_bg))
             isFillViewport = true
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            setOnScrollChangeListener { _, _, scrollY, _, _ -> savedScrollY = scrollY }
             setOnApplyWindowInsetsListener { view, insets ->
                 if (android.os.Build.VERSION.SDK_INT >= 30) {
                     val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
@@ -169,7 +175,9 @@ class SymbolManagerActivity : Activity() {
                 insets
             }
             addView(content)
-        })
+        }
+        setContentView(scroll)
+        scroll.post { scroll.scrollTo(0, savedScrollY.coerceAtLeast(0)) }
     }
 
     private fun symbolRow(item: CustomSymbol, accent: Int): LinearLayout = LinearLayout(this).apply {
