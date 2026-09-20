@@ -3500,7 +3500,9 @@ open class ImeKeyboardView(
         listOf("全选" to "select-all", "复制" to "copy", "剪切" to "cut", "粘贴" to "paste", "撤销" to "undo")
             .forEach { (label, action) ->
                 quick.addView(
-                    key(label, true, null, 1f, 10f) { listener.onTextEdit(action) },
+                    key(label, true, null, 1f, 10f) { listener.onTextEdit(action) }.apply {
+                        tag = "textedit-action:$action"
+                    },
                     LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(5) },
                 )
             }
@@ -3566,6 +3568,50 @@ open class ImeKeyboardView(
             }
         }
         visit(root)
+    }
+
+    /** Keep copy/cut/paste honest as the target editor selection changes. */
+    internal fun refreshTextEditAvailability(
+        selectionAvailable: Boolean,
+        clipboardAvailable: Boolean,
+    ) {
+        if (panel != Panel.TEXT_EDITOR) return
+
+        fun visit(view: View) {
+            val action = (view.tag as? String)
+                ?.takeIf { it.startsWith("textedit-action:") }
+                ?.substringAfter(':')
+            if (action != null && view is TextView) {
+                val label = view.text.toString()
+                val policyUnavailable = TextEditControlPolicy.isUnavailableLabel(label, passwordField)
+                val dynamicReason = when {
+                    passwordField && label in setOf("全选", "复制", "剪切", "粘贴") -> "密码输入中不可用"
+                    label in setOf("复制", "剪切") && !selectionAvailable -> "请先选择文本"
+                    label == "粘贴" && !clipboardAvailable -> "剪贴板暂无文本"
+                    else -> null
+                }
+                val unavailable = policyUnavailable || dynamicReason != null
+                view.isEnabled = !unavailable
+                view.isClickable = !unavailable
+                view.alpha = if (unavailable) 0.38f else 1f
+                view.contentDescription = if (unavailable) {
+                    "$label，不可用：${dynamicReason ?: "当前编辑器暂不支持"}"
+                } else {
+                    label
+                }
+                if (Build.VERSION.SDK_INT >= 30) {
+                    view.stateDescription = if (unavailable) {
+                        dynamicReason ?: "当前编辑器暂不支持"
+                    } else {
+                        "可用"
+                    }
+                }
+            }
+            if (view is ViewGroup) {
+                for (index in 0 until view.childCount) visit(view.getChildAt(index))
+            }
+        }
+        visit(expandedPanel)
     }
 
     private fun renderSettings(reusePanel: Boolean = false) {

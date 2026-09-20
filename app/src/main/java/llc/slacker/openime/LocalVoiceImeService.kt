@@ -388,6 +388,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
         candidatesEnd: Int,
     ) {
         gateway.updateSelection(newSelStart, newSelEnd)
+        refreshTextEditControls()
         super.onUpdateSelection(
             oldSelStart,
             oldSelEnd,
@@ -603,6 +604,15 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
     override fun onPanelChanged(panel: Panel) {
         state = state.copy(panel = panel)
         if (panel != Panel.GAMING && floatingWindowEnabled) restoreImeWindow()
+        if (panel == Panel.TEXT_EDITOR) mainHandler.post(::refreshTextEditControls)
+    }
+
+    private fun refreshTextEditControls() {
+        if (keyboardView?.currentPanel() != Panel.TEXT_EDITOR) return
+        keyboardView?.refreshTextEditAvailability(
+            selectionAvailable = gateway.hasSelection(),
+            clipboardAvailable = gateway.hasClipboardText(),
+        )
     }
 
     override fun onCharacter(char: String) {

@@ -415,6 +415,36 @@ class InputConnectionGateway(
         return window.text.substring(localStart, localEnd)
     }
 
+    /** Whether the target editor currently exposes a non-empty selection. */
+    fun hasSelection(): Boolean {
+        if (isPassword()) return false
+        val ic = connection() ?: return false
+        if (runCatching { ic.getSelectedText(0)?.isNotEmpty() == true }.getOrDefault(false)) {
+            return true
+        }
+        val window = extractedWindow(ic)
+        if (window != null && window.selectionStartAbsolute != window.selectionEndAbsolute) {
+            return true
+        }
+        return knownSelectionStart >= 0 &&
+            knownSelectionEnd >= 0 &&
+            knownSelectionStart != knownSelectionEnd
+    }
+
+    /** Whether a non-empty text clip is available for the current editor. */
+    fun hasClipboardText(): Boolean {
+        if (isPassword()) return false
+        val safeContext = context ?: return false
+        val cm = safeContext.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return false
+        return runCatching {
+            cm.primaryClip
+                ?.takeIf { it.itemCount > 0 }
+                ?.getItemAt(0)
+                ?.coerceToText(safeContext)
+                ?.isNotEmpty() == true
+        }.getOrDefault(false)
+    }
+
     fun copyToClipboard(text: String) {
         if (text.isEmpty() || isPassword()) return
         val cm = context?.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return

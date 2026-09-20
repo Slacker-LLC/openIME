@@ -206,7 +206,7 @@
 - standalone settings Activity 生命周期
 - accessibility description
 
-已完成：独立设置页与活动 IME 通过同一套 `applyPersistedSettings()` 一次应用完整持久化快照，避免主题、外观、皮肤参数分次重绘；`SETTINGS -> FUZZY_SETTINGS` 已有返回栈回归测试；密码字段的文本编辑面板会提前禁用全选、复制、剪切、粘贴并说明原因，避免点击后才失败。
+已完成：独立设置页与活动 IME 通过同一套 `applyPersistedSettings()` 一次应用完整持久化快照，避免主题、外观、皮肤参数分次重绘；`SETTINGS -> FUZZY_SETTINGS` 已有返回栈回归测试；密码字段的文本编辑面板会提前禁用全选、复制、剪切、粘贴并说明原因，普通编辑器还会依据实时选区和剪贴板内容提前禁用复制、剪切、粘贴，避免点击后才失败。
 
 仍待查：首页启用输入法 / 切换输入法状态、standalone Activity 生命周期，以及真机上设置保存后的即时刷新；当前环境无可用 Android 设备，暂以编译、Lint 和现有交互测试源码门禁为证据。
 

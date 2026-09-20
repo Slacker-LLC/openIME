@@ -96,6 +96,54 @@ class TextEditControlsInstrumentedTest {
         }
     }
 
+    @Test
+    fun editorActionsReflectSelectionAndClipboardAvailability() {
+        lateinit var keyboard: ImeKeyboardViewV2
+        rule.scenario.onActivity { activity ->
+            val content = activity.findViewById<ViewGroup>(android.R.id.content)
+            keyboard = ImeKeyboardViewV2(activity, NoopListener())
+            content.addView(
+                keyboard,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+            keyboard.showPanel(Panel.TEXT_EDITOR)
+            keyboard.refreshTextEditAvailability(
+                selectionAvailable = false,
+                clipboardAvailable = false,
+            )
+        }
+
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+
+        rule.scenario.onActivity {
+            listOf("copy", "cut", "paste").forEach { action ->
+                val control = findTextEditAction(keyboard, action)
+                assertNotNull("missing dynamic text-edit control $action", control)
+                assertFalse("$action must be disabled without its prerequisite", control!!.isEnabled)
+                assertTrue(
+                    "$action should explain why it is unavailable",
+                    control.contentDescription?.toString()?.contains("不可用") == true,
+                )
+            }
+            val selectAll = findTextEditAction(keyboard, "select-all")
+            assertNotNull("missing select-all control", selectAll)
+            assertTrue("select-all should remain available", selectAll!!.isEnabled)
+        }
+    }
+
+    private fun findTextEditAction(root: View, action: String): View? {
+        if (root.tag == "textedit-action:$action") return root
+        if (root is ViewGroup) {
+            for (index in 0 until root.childCount) {
+                findTextEditAction(root.getChildAt(index), action)?.let { return it }
+            }
+        }
+        return null
+    }
+
     private fun findInteractiveControl(root: View, label: String): View? {
         if (root is ImeKeyView && root.contentDescription?.toString() == label) return root
         if (root is TextView && root.text.toString() == label && root.parent !is ImeKeyView) return root
