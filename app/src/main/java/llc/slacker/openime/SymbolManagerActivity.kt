@@ -26,6 +26,9 @@ class SymbolManagerActivity : Activity() {
     private lateinit var groupEdit: EditText
     private lateinit var symbolEdit: EditText
     private var editingId = 0L
+    private var initialEditingId = 0L
+    private var initialGroup = ""
+    private var initialSymbol = ""
     private var savedScrollY = 0
     private var backCallback: OnBackInvokedCallback? = null
 
@@ -34,6 +37,9 @@ class SymbolManagerActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         savedScrollY = savedInstanceState?.getInt("scroll_y", 0) ?: 0
+        initialEditingId = savedInstanceState?.getLong("baseline_editing_id", 0L) ?: 0L
+        initialGroup = savedInstanceState?.getString("baseline_group").orEmpty()
+        initialSymbol = savedInstanceState?.getString("baseline_symbol").orEmpty()
         render()
         savedInstanceState?.let {
             editingId = it.getLong("editing_id")
@@ -65,6 +71,9 @@ class SymbolManagerActivity : Activity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putLong("editing_id", editingId)
+        outState.putLong("baseline_editing_id", initialEditingId)
+        outState.putString("baseline_group", initialGroup)
+        outState.putString("baseline_symbol", initialSymbol)
         outState.putString("draft_group", groupEdit.text.toString())
         outState.putString("draft_symbol", symbolEdit.text.toString())
         outState.putInt("scroll_y", (content.parent as? ScrollView)?.scrollY ?: savedScrollY)
@@ -149,6 +158,9 @@ class SymbolManagerActivity : Activity() {
                 groupEdit.text.clear()
                 symbolEdit.text.clear()
                 editingId = 0L
+                initialEditingId = 0L
+                initialGroup = ""
+                initialSymbol = ""
                 render()
             }
         }, fullHeight(52).apply { bottomMargin = dp(20) })
@@ -239,6 +251,9 @@ class SymbolManagerActivity : Activity() {
         }
         action("编辑") {
             editingId = item.id
+            initialEditingId = item.id
+            initialGroup = item.group
+            initialSymbol = item.symbol
             groupEdit.setText(item.group)
             symbolEdit.setText(item.symbol)
             symbolEdit.requestFocus()
@@ -262,7 +277,14 @@ class SymbolManagerActivity : Activity() {
                 .setNegativeButton("取消", null)
                 .setPositiveButton("删除") { _, _ ->
                     CustomSymbolRepository.remove(this@SymbolManagerActivity, item.id)
-                    if (editingId == item.id) editingId = 0L
+                    if (editingId == item.id) {
+                        editingId = 0L
+                        initialEditingId = 0L
+                        initialGroup = ""
+                        initialSymbol = ""
+                        groupEdit.text.clear()
+                        symbolEdit.text.clear()
+                    }
                     render()
                 }
                 .create()
@@ -321,7 +343,7 @@ class SymbolManagerActivity : Activity() {
 
     private fun requestClose() {
         if (!::groupEdit.isInitialized || !::symbolEdit.isInitialized ||
-            (editingId == 0L && groupEdit.text.isNullOrBlank() && symbolEdit.text.isNullOrBlank())
+            !hasUnsavedDraft()
         ) {
             finish()
             return
@@ -341,6 +363,11 @@ class SymbolManagerActivity : Activity() {
         }
         dialog.show()
     }
+
+    private fun hasUnsavedDraft(): Boolean =
+        editingId != initialEditingId ||
+            groupEdit.text.toString() != initialGroup ||
+            symbolEdit.text.toString() != initialSymbol
 
     private fun applySelectableBackground(view: View) {
         val value = TypedValue()

@@ -38,12 +38,12 @@ class QuickPhraseEditActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         phraseId = intent.getLongExtra(EXTRA_ID, 0L)
-        val category = savedInstanceState?.getString("draft_category")
+        initialCategory = savedInstanceState?.getString("baseline_category")
             ?: intent.getStringExtra(EXTRA_CATEGORY).orEmpty()
-        val phrase = savedInstanceState?.getString("draft_phrase")
+        initialPhrase = savedInstanceState?.getString("baseline_phrase")
             ?: intent.getStringExtra(EXTRA_TEXT).orEmpty()
-        initialCategory = category
-        initialPhrase = phrase
+        val category = savedInstanceState?.getString("draft_category") ?: initialCategory
+        val phrase = savedInstanceState?.getString("draft_phrase") ?: initialPhrase
         render(category, phrase)
         phraseEdit.requestFocus()
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
@@ -71,6 +71,8 @@ class QuickPhraseEditActivity : Activity() {
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString("baseline_category", initialCategory)
+        outState.putString("baseline_phrase", initialPhrase)
         outState.putString("draft_category", categoryEdit.text.toString())
         outState.putString("draft_phrase", phraseEdit.text.toString())
         super.onSaveInstanceState(outState)
