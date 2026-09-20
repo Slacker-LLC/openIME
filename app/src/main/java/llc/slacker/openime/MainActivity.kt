@@ -148,7 +148,8 @@ class MainActivity : Activity() {
 
     private fun setupClick(view: View, onClick: () -> Unit) {
         view.setOnClickListener {
-            if (view.isEnabled) view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+            if (!view.isEnabled) return@setOnClickListener
+            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
             onClick()
         }
     }
