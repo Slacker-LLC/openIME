@@ -280,6 +280,7 @@ internal object NineKeySymbolRailDecorator {
         text = symbol
         textSize = 17f
         gravity = Gravity.CENTER
+        tag = "punct:$symbol"
         contentDescription = symbol
         isClickable = true
         isFocusable = true
