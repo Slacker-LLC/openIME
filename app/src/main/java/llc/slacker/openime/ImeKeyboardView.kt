@@ -3785,6 +3785,7 @@ open class ImeKeyboardView(
             dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setTextColor(accent)
             dialog.getButton(android.content.DialogInterface.BUTTON_NEGATIVE).setTextColor(accent)
             field.backgroundTintList = ColorStateList.valueOf(accent)
+            SetupUi.styleCursor(context, field)
             field.requestFocus()
             field.selectAll()
             dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setOnClickListener {

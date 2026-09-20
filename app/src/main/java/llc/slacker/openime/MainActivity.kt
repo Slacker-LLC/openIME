@@ -14,6 +14,7 @@ import android.provider.Settings
 import android.net.Uri
 import android.view.inputmethod.InputMethodManager
 import android.widget.TextView
+import android.widget.EditText
 import android.widget.Toast
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -79,7 +80,10 @@ class MainActivity : Activity() {
         val enabled = status.enabled
         val selected = status.selected
         val accent = AccentPalette.parse(ImeSettingsRepository.loadSkinColor(this))
-        findViewById<View>(R.id.test_input).background = SetupUi.focusRingBackground(this)
+        findViewById<EditText>(R.id.test_input).let { view ->
+            view.background = SetupUi.focusRingBackground(this)
+            SetupUi.styleCursor(this, view)
+        }
         findViewById<TextView>(R.id.status).setText(when {
             selected -> R.string.setup_ready
             enabled -> R.string.setup_choose

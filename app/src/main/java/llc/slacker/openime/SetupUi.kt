@@ -3,8 +3,10 @@ package llc.slacker.openime
 import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
+import android.os.Build
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
@@ -184,6 +186,21 @@ object SetupUi {
         input.setPadding(dp(context, 16), dp(context, 8), dp(context, 16), dp(context, 8))
         input.setTextColor(context.getColor(R.color.setup_title))
         input.setHintTextColor(context.getColor(R.color.setup_muted_text))
+        styleCursor(context, input)
+    }
+
+    /** Keep the platform cursor and selection highlight aligned with the accent. */
+    fun styleCursor(context: Context, input: EditText) {
+        val accent = accent(context)
+        input.highlightColor = Color.argb(
+            72,
+            Color.red(accent),
+            Color.green(accent),
+            Color.blue(accent),
+        )
+        if (Build.VERSION.SDK_INT >= 29) {
+            input.textCursorDrawable = ColorDrawable(accent)
+        }
     }
 
     fun styleDialog(dialog: AlertDialog, context: Context, destructivePositive: Boolean = false) {
