@@ -817,6 +817,7 @@ open class ImeKeyboardView(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(64),
         ))
+        syncCandidateExpandControl()
     }
 
     private fun toolbarIcon(iconRes: Int, desc: String, tagValue: String, onTap: () -> Unit): ImageView =
@@ -977,6 +978,21 @@ open class ImeKeyboardView(
         }
         updateTopZone(state.composition.isNotEmpty())
         renderCandidateRow()
+        syncCandidateExpandControl()
+    }
+
+    /** Keep the overflow affordance honest when the current composition has no candidates. */
+    private fun syncCandidateExpandControl() {
+        if (!::candidateExpandBtn.isInitialized) return
+        val canExpandOrClose = candidateExpandedOpen || currentCandidates.isNotEmpty()
+        candidateExpandBtn.isEnabled = canExpandOrClose
+        candidateExpandBtn.alpha = if (canExpandOrClose) 1f else 0.38f
+        if (!canExpandOrClose) {
+            candidateExpandBtn.contentDescription = "暂无更多候选"
+            if (Build.VERSION.SDK_INT >= 30) candidateExpandBtn.stateDescription = "不可用"
+        } else if (Build.VERSION.SDK_INT >= 30) {
+            candidateExpandBtn.stateDescription = if (candidateExpandedOpen) "已展开" else "可展开"
+        }
     }
 
     fun setAssociationCandidates(candidates: List<String>) {
@@ -4189,6 +4205,7 @@ open class ImeKeyboardView(
             candidateExpandedOpen = false
             renderedExpandedCandidates = null
             renderedExpandedComposition = null
+            syncCandidateExpandControl()
             return
         }
         val preview = composition.text.toString()
@@ -4203,6 +4220,7 @@ open class ImeKeyboardView(
         candidateExpandedOpen = true
         candidateExpandBtn.text = "⌃"
         candidateExpandBtn.contentDescription = "收起候选"
+        if (Build.VERSION.SDK_INT >= 30) candidateExpandBtn.stateDescription = "已展开"
         candidateOverlay.visibility = View.VISIBLE
         candidateOverlay.removeAllViews()
         candidateOverlay.addView(

@@ -177,6 +177,18 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun emptyCandidateOverflowActionIsDisabledUntilCandidatesExist() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            val expand = keyboard.findViewWithTag<View>("candidate-expand")
+            assertTrue("Empty composition must not expose a dead overflow action", !expand.isEnabled)
+            assertTrue(expand.contentDescription.toString().contains("暂无更多候选"))
+            keyboard.renderState(ImeState(composition = "ni", candidates = listOf("你")))
+            assertTrue("Candidate overflow must become available with a result", expand.isEnabled)
+            true
+        }
+    }
+
+    @Test
     fun textEditorSpacerCellsAreNotExposedAsActions() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.showPanel(Panel.TEXT_EDITOR)
