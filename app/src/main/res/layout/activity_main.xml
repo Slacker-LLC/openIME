@@ -20,13 +20,14 @@
             android:layout_width="88dp"
             android:layout_height="88dp"
             android:layout_gravity="center_horizontal"
-            android:background="@drawable/bg_setup_icon_ring">
+            android:background="@drawable/bg_setup_icon_ring"
+            android:importantForAccessibility="no">
             <ImageView
                 android:layout_width="44dp"
                 android:layout_height="44dp"
                 android:layout_gravity="center"
                 android:src="@drawable/ic_launcher"
-                android:contentDescription="@string/app_name" />
+                android:importantForAccessibility="no" />
         </FrameLayout>
 
         <TextView
@@ -84,7 +85,8 @@
                 android:text="1"
                 android:textColor="@color/setup_primary"
                 android:textSize="14sp"
-                android:textStyle="bold" />
+                android:textStyle="bold"
+                android:importantForAccessibility="no" />
             <TextView
                 android:id="@+id/open_ime_settings_label"
                 android:layout_width="0dp"
@@ -94,14 +96,16 @@
                 android:text="@string/open_ime_settings"
                 android:textColor="@color/setup_on_primary"
                 android:textSize="16sp"
-                android:textStyle="bold" />
+                android:textStyle="bold"
+                android:importantForAccessibility="no" />
             <TextView
                 android:id="@+id/open_ime_settings_chevron"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="›"
                 android:textColor="@color/setup_on_primary"
-                android:textSize="22sp" />
+                android:textSize="22sp"
+                android:importantForAccessibility="no" />
         </LinearLayout>
 
         <LinearLayout
@@ -126,7 +130,8 @@
                 android:text="2"
                 android:textColor="@color/setup_primary"
                 android:textSize="14sp"
-                android:textStyle="bold" />
+                android:textStyle="bold"
+                android:importantForAccessibility="no" />
             <TextView
                 android:id="@+id/choose_ime_label"
                 android:layout_width="0dp"
@@ -136,14 +141,16 @@
                 android:text="@string/choose_ime"
                 android:textColor="@color/setup_title"
                 android:textSize="16sp"
-                android:textStyle="bold" />
+                android:textStyle="bold"
+                android:importantForAccessibility="no" />
             <TextView
                 android:id="@+id/choose_ime_chevron"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="›"
                 android:textColor="@color/setup_body"
-                android:textSize="22sp" />
+                android:textSize="22sp"
+                android:importantForAccessibility="no" />
         </LinearLayout>
 
         <LinearLayout
@@ -198,13 +205,15 @@
                 android:text="@string/open_app_settings"
                 android:textColor="@color/setup_title"
                 android:textSize="16sp"
-                android:textStyle="bold" />
+                android:textStyle="bold"
+                android:importantForAccessibility="no" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="›"
                 android:textColor="@color/setup_body"
-                android:textSize="22sp" />
+                android:textSize="22sp"
+                android:importantForAccessibility="no" />
         </LinearLayout>
 
         <LinearLayout
@@ -228,14 +237,16 @@
                 android:text="@string/voice_permission_enable"
                 android:textColor="@color/setup_title"
                 android:textSize="16sp"
-                android:textStyle="bold" />
+                android:textStyle="bold"
+                android:importantForAccessibility="no" />
             <TextView
                 android:id="@+id/voice_permission_chevron"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="›"
                 android:textColor="@color/setup_body"
-                android:textSize="22sp" />
+                android:textSize="22sp"
+                android:importantForAccessibility="no" />
         </LinearLayout>
 
         <TextView
