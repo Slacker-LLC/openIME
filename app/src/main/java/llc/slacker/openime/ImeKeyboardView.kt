@@ -3384,6 +3384,8 @@ open class ImeKeyboardView(
         text = label
         textSize = 12f
         gravity = Gravity.CENTER
+        minHeight = dp(48)
+        minimumHeight = dp(48)
         isClickable = true
         isFocusable = true
         tag = if (destructive) "clipboard-retention-destructive" else "clipboard-retention-action"

@@ -83,6 +83,8 @@ class ClipboardRetentionInstrumentedTest {
         rule.scenario.onActivity { activity ->
             val clearUnpinned = findTextView(keyboard, "清除未固定")
             assertNotNull(clearUnpinned)
+            val minimumTarget = (48 * activity.resources.displayMetrics.density).toInt()
+            assertTrue("clear-unpinned must keep a 48dp target", clearUnpinned!!.height >= minimumTarget)
             assertTrue(clearUnpinned!!.contentDescription.toString().contains("保留已固定内容"))
             clearUnpinned!!.performClick()
             val remaining = ClipboardHistoryRepository.load(activity)
@@ -91,6 +93,7 @@ class ClipboardRetentionInstrumentedTest {
 
             val clearAll = findTextView(keyboard, "清空全部")
             assertNotNull(clearAll)
+            assertTrue("clear-all must keep a 48dp target", clearAll!!.height >= minimumTarget)
             assertTrue(clearAll!!.contentDescription.toString().contains("删除全部剪贴历史"))
             clearAll!!.performClick()
             assertEquals(
