@@ -1,0 +1,30 @@
+schema:
+  schema_id: luna_pinyin_simp
+  name: openIME smoke
+  version: "1.0"
+
+engine:
+  processors:
+    - speller
+    - selector
+    - navigator
+    - express_editor
+  segmentors:
+    - abc_segmentor
+    - fallback_segmentor
+  translators:
+    - script_translator
+  filters:
+    - uniquifier
+
+speller:
+  alphabet: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA987654321
+  initials: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA987654321
+  delimiter: " '"
+  algebra:
+    - derive/^(.*)$/\U$1/
+    - xlit/ABCDEFGHIJKLMNOPQRSTUVWXYZ/22233344455566677778889999/
+
+translator:
+  dictionary: mini_pinyin
+  enable_user_dict: false

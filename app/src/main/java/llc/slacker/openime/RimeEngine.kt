@@ -1,6 +1,7 @@
 package llc.slacker.openime
 
 import android.content.Context
+import android.content.res.AssetManager
 import android.inputmethodservice.InputMethodService
 import android.os.Build
 import android.util.Log
@@ -104,7 +105,11 @@ internal class RimeStartupGate {
  * look frozen. Until it is ready, callers keep using the existing local
  * fallback engine; once ready, Chinese candidates come from librime.
  */
-class RimeEngine(private val context: Context) {
+class RimeEngine(
+    private val context: Context,
+    private val assetManager: AssetManager = context.assets,
+    private val assetRoot: String = "rime-data",
+) {
     private val lock = Any()
     private val startupGate = RimeStartupGate()
     private val mutationQueue = RimeMutationQueue()
@@ -129,8 +134,12 @@ class RimeEngine(private val context: Context) {
         startupExecutor.execute {
             var nativeStartupReturned = false
             try {
-                val sharedDir = File(context.filesDir, "rime-data").apply { mkdirs() }
-                val userDir = File(context.filesDir, "rime-user").apply { mkdirs() }
+                val dataDirName = assetRoot.replace('/', '_')
+                val sharedDir = File(context.filesDir, dataDirName).apply { mkdirs() }
+                // Keep the production user database path stable; custom test
+                // asset roots get an isolated user directory instead.
+                val userDirName = if (assetRoot == "rime-data") "rime-user" else "$dataDirName-user"
+                val userDir = File(context.filesDir, userDirName).apply { mkdirs() }
                 if (!startupGate.isCurrent(generation)) return@execute
                 copyAssetsIfNeeded(sharedDir)
                 if (!startupGate.isCurrent(generation)) return@execute
@@ -315,12 +324,19 @@ class RimeEngine(private val context: Context) {
         // the cleanup below finalized it, leaving a live session nobody owns
         // and no way to destroy. Give it a bounded grace period first.
         startupExecutor.shutdownNow()
-        runCatching {
-            if (!startupExecutor.awaitTermination(STARTUP_SHUTDOWN_GRACE_MS, TimeUnit.MILLISECONDS)) {
-                Log.w(TAG, "librime startup did not settle before shutdown")
-            }
+        val startupSettled = runCatching {
+            startupExecutor.awaitTermination(STARTUP_SHUTDOWN_GRACE_MS, TimeUnit.MILLISECONDS)
+        }.getOrDefault(false)
+        if (startupSettled) {
+            cleanupNative()
+        } else {
+            // nativeStartup serializes all native state behind its own mutex.
+            // Calling nativeShutdown here would wait on that mutex forever when
+            // a slow first deployment is still running. The stale worker sees
+            // the invalidated gate after nativeStartup returns and performs the
+            // cleanup itself.
+            Log.w(TAG, "librime startup did not settle before shutdown")
         }
-        cleanupNative()
     }
 
     /** Cached persisted fuzzy setting; invalidated explicitly from settings UI. */
@@ -379,7 +395,7 @@ class RimeEngine(private val context: Context) {
                 File(sharedDir, "luna_pinyin_simp_fuzzy.schema.yaml").exists()
         if (marker.exists() && requiredSchemasPresent) return
         deleteChildren(sharedDir)
-        copyAssetTree("rime-data", sharedDir)
+        copyAssetTree(assetRoot, sharedDir)
         marker.writeText("openIME Rime data revision $revision\n")
     }
 
@@ -394,10 +410,10 @@ class RimeEngine(private val context: Context) {
     }
 
     private fun copyAssetTree(assetPath: String, destination: File) {
-        val children = context.assets.list(assetPath).orEmpty()
+        val children = assetManager.list(assetPath).orEmpty()
         if (children.isEmpty()) {
             destination.parentFile?.mkdirs()
-            context.assets.open(assetPath).use { input ->
+            assetManager.open(assetPath).use { input ->
                 destination.outputStream().use { output -> input.copyTo(output) }
             }
             return

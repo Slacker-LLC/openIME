@@ -15,14 +15,27 @@ class RimeNineKeyInstrumentedTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val originalFuzzy = ImeSettingsRepository.loadFuzzy(context)
         ImeSettingsRepository.saveFuzzy(context, false)
-        val rime = RimeEngine(context)
+        // GitHub's software-only emulator can spend more than fifteen minutes
+        // compiling the production dictionaries. The compact fixture keeps
+        // this test focused on native schema selection and nine-key decoding;
+        // the production data path remains the default used by the IME.
+        val testAssets = InstrumentationRegistry.getInstrumentation().context.assets
+        val rime = RimeEngine(
+            context = context,
+            assetManager = testAssets,
+            assetRoot = "rime-test-data",
+        )
         try {
             rime.start()
-            val deadline = SystemClock.elapsedRealtime() + 120_000L
+            val startupTimeoutMs = 120_000L
+            val deadline = SystemClock.elapsedRealtime() + startupTimeoutMs
             while (!rime.isReady && rime.errorMessage.isBlank() && SystemClock.elapsedRealtime() < deadline) {
                 SystemClock.sleep(100L)
             }
-            assertTrue("librime failed to start: ${rime.errorMessage}", rime.isReady)
+            assertTrue(
+                "librime failed to start within ${startupTimeoutMs}ms: ${rime.errorMessage}",
+                rime.isReady,
+            )
 
             val continuous = rime.candidates("64426")
             assertTrue("64426 should resolve 你好, got ${continuous.take(12)}", "你好" in continuous)
