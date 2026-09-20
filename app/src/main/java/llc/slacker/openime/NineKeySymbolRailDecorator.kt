@@ -28,8 +28,12 @@ internal object NineKeySymbolRailDecorator {
     private const val CELL_HEIGHT_DP = 48
     private const val WATCHER_TAG = 0x1F000081
 
-    fun decorate(root: View, onCommit: (String) -> Unit) {
-        decoratePhoneKeypad(root, onCommit)
+    fun decorate(
+        root: View,
+        onCommit: (String) -> Unit,
+        onFeedback: () -> Unit = {},
+    ) {
+        decoratePhoneKeypad(root, onCommit, onFeedback)
 
         val tagged = root.findViewWithTag<View>(LEGACY_TAG) ?: return
         val scroll = when (tagged) {
@@ -62,14 +66,14 @@ internal object NineKeySymbolRailDecorator {
             }
             symbols.forEachIndexed { index, symbol ->
                 content.addView(
-                    symbolCell(content.context, symbol, inheritedTextColor, onCommit),
+                    symbolCell(content.context, symbol, inheritedTextColor, onCommit, onFeedback),
                     cellParams(content.context, withGap = index < symbols.lastIndex),
                 )
             }
         }
 
-        installFilterWatcher(root)
-        refreshPinyinFilters(root)
+        installFilterWatcher(root, onFeedback)
+        refreshPinyinFilters(root, onFeedback)
     }
 
     /**
@@ -78,7 +82,11 @@ internal object NineKeySymbolRailDecorator {
      * stable numeric renderer but replace those three bottom/side actions and
      * remove the finance column. The 0-9 grid, backspace and Enter stay intact.
      */
-    private fun decoratePhoneKeypad(root: View, onCommit: (String) -> Unit) {
+    private fun decoratePhoneKeypad(
+        root: View,
+        onCommit: (String) -> Unit,
+        onFeedback: () -> Unit,
+    ) {
         val service = root.context as? InputMethodService ?: return
         val kind = EditorInfoAdapter.kind(service.currentInputEditorInfo)
         if (kind != EditorInfoAdapter.EditorKind.PHONE) return
@@ -97,7 +105,10 @@ internal object NineKeySymbolRailDecorator {
                 key.setIcon(0)
                 key.setOnTouchListener(null)
             }
-            key.setOnClickListener { onCommit(literal) }
+            key.setOnClickListener {
+                onFeedback()
+                onCommit(literal)
+            }
         }
     }
 
@@ -106,21 +117,21 @@ internal object NineKeySymbolRailDecorator {
      * the visible preedit. Read its tiny path cache here instead of decoding the
      * same digits a second time on the UI thread.
      */
-    private fun installFilterWatcher(root: View) {
+    private fun installFilterWatcher(root: View, onFeedback: () -> Unit) {
         val editor = root.findViewWithTag<EditText>("pinyin-composition-editor") ?: return
         if (editor.getTag(WATCHER_TAG) != null) return
         val watcher = object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
             override fun afterTextChanged(s: Editable?) {
-                root.post { refreshPinyinFilters(root) }
+                root.post { refreshPinyinFilters(root, onFeedback) }
             }
         }
         editor.addTextChangedListener(watcher)
         editor.setTag(WATCHER_TAG, watcher)
     }
 
-    private fun refreshPinyinFilters(root: View) {
+    private fun refreshPinyinFilters(root: View, onFeedback: () -> Unit) {
         val scroll = root.findViewWithTag<ScrollView>(LEGACY_TAG) ?: return
         val content = scroll.getChildAt(0) as? LinearLayout ?: return
         if (root.findViewWithTag<View>("pinyin9-layout") == null) {
@@ -131,7 +142,7 @@ internal object NineKeySymbolRailDecorator {
         val editor = root.findViewWithTag<EditText>("pinyin-composition-editor") ?: return
         val text = editor.text?.toString().orEmpty()
         if (text.isBlank()) {
-            setPinyinFilters(root, emptyList(), null) { }
+            setPinyinFilters(root, emptyList(), null, onFeedback) { }
             return
         }
 
@@ -141,7 +152,7 @@ internal object NineKeySymbolRailDecorator {
         val digits = CandidatePipeline.nineKeyDigitsFor(suffix)
         val code = digits?.let { NineKeyLocalDecoder.nativeCode(prefix, it) }
         if (code.isNullOrEmpty()) {
-            setPinyinFilters(root, emptyList(), null) { }
+            setPinyinFilters(root, emptyList(), null, onFeedback) { }
             return
         }
 
@@ -151,6 +162,7 @@ internal object NineKeySymbolRailDecorator {
             root = root,
             filters = choices,
             selected = selected,
+            onFeedback = onFeedback,
         ) { chosen ->
             NineKeyUiState.select(code, chosen)
             if (chosen == editor.text?.toString()) return@setPinyinFilters
@@ -168,6 +180,7 @@ internal object NineKeySymbolRailDecorator {
         root: View,
         filters: List<String>,
         selected: String?,
+        onFeedback: () -> Unit = {},
         onSelect: (String) -> Unit,
     ) {
         val scroll = root.findViewWithTag<ScrollView>(LEGACY_TAG) ?: return
@@ -205,6 +218,7 @@ internal object NineKeySymbolRailDecorator {
         view.text = active.replace(" ", "·") + " ›"
         view.contentDescription = "九键拼音筛选，当前${active.replace(" ", "、")}，点击切换"
         view.setOnClickListener {
+            onFeedback()
             val current = choices.indexOf(active).coerceAtLeast(0)
             onSelect(choices[(current + 1) % choices.size])
         }
@@ -261,6 +275,7 @@ internal object NineKeySymbolRailDecorator {
         symbol: String,
         inheritedTextColor: Int?,
         onCommit: (String) -> Unit,
+        onFeedback: () -> Unit,
     ): TextView = TextView(context).apply {
         text = symbol
         textSize = 17f
@@ -271,7 +286,10 @@ internal object NineKeySymbolRailDecorator {
         minimumHeight = dp(context, CELL_HEIGHT_DP)
         inheritedTextColor?.let(::setTextColor)
         applySelectableBackground(this)
-        setOnClickListener { onCommit(symbol) }
+        setOnClickListener {
+            onFeedback()
+            onCommit(symbol)
+        }
     }
 
     private fun applySelectableBackground(view: TextView) {

@@ -4083,7 +4083,7 @@ open class ImeKeyboardView(
     private fun firstCandidateOrComposition(): String =
         currentCandidates.firstOrNull() ?: composition.text.toString()
 
-    private fun feedback() {
+    protected fun feedback() {
         if (hapticEnabled) performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
         if (soundEnabled) playSoundEffect(SoundEffectConstants.CLICK)
     }

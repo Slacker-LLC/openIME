@@ -103,7 +103,11 @@ class ImeKeyboardViewV2 private constructor(
                 Panel.CLIPBOARD -> decorateClipboardRetentionControls()
                 else -> Unit
             }
-            NineKeySymbolRailDecorator.decorate(this) { symbol -> adapter.onCharacter(symbol) }
+            NineKeySymbolRailDecorator.decorate(
+                root = this,
+                onCommit = { symbol -> adapter.onCharacter(symbol) },
+                onFeedback = ::feedback,
+            )
             installNineKeyAccessibilityRepair()
             syncProductionKeyPresentation()
         }
@@ -437,7 +441,10 @@ class ImeKeyboardViewV2 private constructor(
             ) {
                 setBackgroundResource(backgroundValue.resourceId)
             }
-            setOnClickListener { onClick() }
+            setOnClickListener {
+                feedback()
+                onClick()
+            }
         }
 
     private fun hideClipboardCards(includePinned: Boolean) {
