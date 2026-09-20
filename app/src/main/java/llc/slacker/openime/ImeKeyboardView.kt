@@ -289,6 +289,7 @@ open class ImeKeyboardView(
     private var settingsScrollY = 0
     private var voiceActive = false
     private var voicePending = false
+    private var voiceAllowed = true
     private var inlineVoicePaletteColor: Int? = null
     private var voiceStartAction: (() -> Unit)? = null
     private var voiceStopAction: (() -> Unit)? = null
@@ -908,7 +909,7 @@ open class ImeKeyboardView(
 
     fun showPanel(newPanel: Panel) {
         if (newPanel == Panel.NONE || newPanel == Panel.CANDIDATE_EXPANDED) return
-        if (passwordField && newPanel == Panel.CLIPBOARD) return
+        if (passwordField && newPanel in setOf(Panel.CLIPBOARD, Panel.VOICE)) return
         hidePopup()
         if (panel == Panel.VOICE && newPanel != Panel.VOICE) stopVoiceIfActive()
         if (panel != Panel.NONE && panel != newPanel) panelBackStack += panel
@@ -983,13 +984,18 @@ open class ImeKeyboardView(
     fun renderState(state: ImeState) {
         val passwordStateChanged = passwordField != state.passwordField
         passwordField = state.passwordField
+        voiceAllowed = !passwordField
         if (passwordStateChanged) {
+            if (!voiceAllowed && (voiceGestureSession || voiceActive || voicePending)) {
+                cancelVoiceForManualInput()
+            }
             if (passwordField && panel == Panel.CLIPBOARD) {
                 dismissPanelForModeSwitch()
             } else if (panel == Panel.TOOLS) {
                 renderPanel(Panel.TOOLS)
             }
             syncSensitiveToolbar()
+            syncSensitiveVoice()
         }
         val sameComposition = composition.text.toString() == state.composition
         setCompositionText(
@@ -1036,6 +1042,20 @@ open class ImeKeyboardView(
         }
         if (Build.VERSION.SDK_INT >= 30) {
             clipboardButton.stateDescription = if (blocked) "不可用" else "可用"
+        }
+    }
+
+    /** Password editors keep ordinary space input but remove the recording gesture. */
+    private fun syncSensitiveVoice() {
+        val space = findViewWithTag<View>("key-space") ?: return
+        space.isLongClickable = voiceAllowed
+        space.contentDescription = if (voiceAllowed) {
+            "空格，点击空格，长按语音输入"
+        } else {
+            "空格，密码输入中语音不可用"
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            space.stateDescription = if (voiceAllowed) "可长按语音" else "语音不可用"
         }
     }
 
@@ -1479,6 +1499,7 @@ open class ImeKeyboardView(
         applyTheme()
         onViewHierarchyRebuilt()
         renderedMode = mode
+        syncSensitiveVoice()
     }
 
     private fun renderPinyin26() {
@@ -1997,6 +2018,7 @@ open class ImeKeyboardView(
         contentDescription = "$label，点击空格，长按语音输入"
         var voiceLongPressed = false
         setOnLongClickListener {
+            if (!voiceAllowed) return@setOnLongClickListener true
             if (voiceLongPressed) return@setOnLongClickListener true
             // Accessibility actions do not deliver a touch DOWN/UP sequence.
             when {
@@ -2010,6 +2032,7 @@ open class ImeKeyboardView(
         var voiceCancelPreview = false
         var voiceDownY = 0f
         val voiceTrigger = Runnable {
+            if (!voiceAllowed) return@Runnable
             if (!voiceLongPressed) {
                 voiceLongPressed = true
                 spaceVoiceGestureActive = true
@@ -2076,6 +2099,7 @@ open class ImeKeyboardView(
 
     /** Starts recording after the combined space key crosses the long-press threshold. */
     fun startVoiceFromSpace() {
+        if (!voiceAllowed) return
         prepareVoiceController()
         voiceGestureSession = true
         voiceInlineGeneration++

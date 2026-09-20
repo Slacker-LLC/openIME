@@ -269,6 +269,25 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun passwordFieldsDisableVoiceGestureButKeepSpaceKey() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            keyboard.renderState(ImeState(passwordField = true))
+            val space = keyboard.findViewWithTag<View>("key-space")
+            assertFalse("Password fields must not expose the voice long-press", space.isLongClickable)
+            assertTrue(space.contentDescription.toString().contains("语音不可用"))
+            keyboard.startVoiceFromSpace()
+            assertFalse("Password fields must not start recording", keyboard.isVoiceActive())
+            assertTrue("Password fields must not open the voice panel", run {
+                keyboard.showPanel(Panel.VOICE)
+                keyboard.currentPanel() != Panel.VOICE
+            })
+            keyboard.renderState(ImeState(passwordField = false))
+            assertTrue("Voice gesture must return for ordinary editors", space.isLongClickable)
+            true
+        }
+    }
+
+    @Test
     fun toolCardsExposeOneAccessibleActionWithoutDuplicateLabels() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.showPanel(Panel.TOOLS)
