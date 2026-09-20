@@ -198,7 +198,7 @@ internal object NineKeySymbolRailDecorator {
             return
         }
 
-        val active = selected?.takeIf { it in choices } ?: choices.first()
+        var active = selected?.takeIf { it in choices } ?: choices.first()
         val view = existing ?: TextView(content.context).apply {
             tag = FILTER_TAG
             textSize = 12f
@@ -214,12 +214,20 @@ internal object NineKeySymbolRailDecorator {
             inherited?.let(::setTextColor)
             content.addView(this, 0, cellParams(content.context, withGap = true))
         }
-        view.text = active.replace(" ", "·") + " ›"
-        view.contentDescription = "九键拼音筛选，当前${active.replace(" ", "、")}，点击切换"
+        fun updateFilterPresentation() {
+            view.text = active.replace(" ", "·") + " ›"
+            view.contentDescription = "九键拼音筛选，当前${active.replace(" ", "、")}，点击切换"
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                view.stateDescription = "当前${active.replace(" ", "、")}"
+            }
+        }
+        updateFilterPresentation()
         view.setOnClickListener {
             onFeedback()
             val current = choices.indexOf(active).coerceAtLeast(0)
-            onSelect(choices[(current + 1) % choices.size])
+            active = choices[(current + 1) % choices.size]
+            updateFilterPresentation()
+            onSelect(active)
         }
         // Symbols can leave this column scrolled down between compositions.
         // A newly available ambiguity filter is more important than preserving
