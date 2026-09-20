@@ -149,6 +149,20 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun settingsSlidersExposeCurrentValuesToTouchAndAccessibility() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            keyboard.showPanel(Panel.SETTINGS)
+            val settings = keyboard.findViewWithTag<ViewGroup>("settings-panel")
+            listOf("圆角", "不透明度", "按键字号").forEach { label ->
+                val slider = settings.findViewWithTag<View>("settings-slider:$label")
+                assertTrue("$label must keep a 48dp touch target", slider.minimumHeight >= keyboard.resources.displayMetrics.density * 48f)
+                assertTrue("$label must expose its current value", slider.contentDescription.toString().contains(label))
+            }
+            true
+        }
+    }
+
+    @Test
     fun disablingPopupAffectsExistingKeyWithoutRebuilding() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.setSettings(sound = false, haptic = false, popup = true)

@@ -2160,7 +2160,7 @@ open class ImeKeyboardView(
             gravity = Gravity.CENTER
             includeFontPadding = false
             minWidth = dp(48)
-            minHeight = dp(48)
+            minimumHeight = dp(48)
             setPadding(dp(10), 0, dp(10), 0)
             tag = if (active) "tab-active" else "panel-tab"
             contentDescription = "$label，${if (active) "已选中" else "未选中"}"
@@ -3537,20 +3537,47 @@ open class ImeKeyboardView(
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(10), dp(4), dp(10), dp(4))
             tag = "setting-row"
+            minimumHeight = dp(64)
         }
         row.addView(TextView(context).apply { text = labelText; textSize = 13f }, weightParams(1f))
-        row.addView(SeekBar(context).apply {
+        val valueView = TextView(context).apply {
+            textSize = 12f
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            minWidth = dp(48)
+            contentDescription = "$labelText 当前值"
+        }
+        val suffix = when (labelText) {
+            "圆角" -> " dp"
+            "不透明度" -> "%"
+            "按键字号" -> " sp"
+            else -> ""
+        }
+        val seekBar = SeekBar(context).apply {
             this.min = min
             this.max = max
-            progress = initial
+            progress = initial.coerceIn(min, max)
+            minimumHeight = dp(48)
+            isFocusable = true
+            tag = "settings-slider:$labelText"
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                    val description = "$labelText，$progress$suffix"
+                    valueView.text = "$progress$suffix"
+                    contentDescription = description
+                    if (Build.VERSION.SDK_INT >= 30) stateDescription = description
                     if (fromUser) onChange(progress)
                 }
                 override fun onStartTrackingTouch(seekBar: SeekBar) {}
                 override fun onStopTrackingTouch(seekBar: SeekBar) {}
             })
-        }, weightParams(2f))
+        }
+        row.addView(seekBar, weightParams(2f))
+        row.addView(valueView, LinearLayout.LayoutParams(dp(48), dp(48)))
+        val initialDescription = "$labelText，${seekBar.progress}$suffix"
+        valueView.text = "${seekBar.progress}$suffix"
+        seekBar.contentDescription = initialDescription
+        if (Build.VERSION.SDK_INT >= 30) seekBar.stateDescription = initialDescription
         return row
     }
 
