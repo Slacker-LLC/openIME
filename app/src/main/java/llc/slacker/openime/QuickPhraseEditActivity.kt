@@ -33,6 +33,8 @@ class QuickPhraseEditActivity : Activity() {
     private var phraseId = 0L
     private var initialCategory = ""
     private var initialPhrase = ""
+    private var savedScrollY = 0
+    private var savedFocusId = R.id.quick_phrase_text_editor
     private var backCallback: OnBackInvokedCallback? = null
 
     private fun dp(value: Int): Int = (value * density).toInt()
@@ -40,6 +42,9 @@ class QuickPhraseEditActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         phraseId = intent.getLongExtra(EXTRA_ID, 0L)
+        savedScrollY = savedInstanceState?.getInt("scroll_y", 0) ?: 0
+        savedFocusId = savedInstanceState?.getInt("focused_field", R.id.quick_phrase_text_editor)
+            ?: R.id.quick_phrase_text_editor
         initialCategory = savedInstanceState?.getString("baseline_category")
             ?: intent.getStringExtra(EXTRA_CATEGORY).orEmpty()
         initialPhrase = savedInstanceState?.getString("baseline_phrase")
@@ -47,7 +52,8 @@ class QuickPhraseEditActivity : Activity() {
         val category = savedInstanceState?.getString("draft_category") ?: initialCategory
         val phrase = savedInstanceState?.getString("draft_phrase") ?: initialPhrase
         render(category, phrase)
-        phraseEdit.requestFocus()
+        if (savedFocusId == R.id.quick_phrase_category_editor) categoryEdit.requestFocus()
+        else phraseEdit.requestFocus()
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
         if (Build.VERSION.SDK_INT >= 33) {
             backCallback = OnBackInvokedCallback { requestClose() }
@@ -77,6 +83,11 @@ class QuickPhraseEditActivity : Activity() {
         outState.putString("baseline_phrase", initialPhrase)
         outState.putString("draft_category", categoryEdit.text.toString())
         outState.putString("draft_phrase", phraseEdit.text.toString())
+        outState.putInt("focused_field", currentFocus?.id ?: savedFocusId)
+        outState.putInt(
+            "scroll_y",
+            (window.decorView.findViewById<ScrollView>(R.id.quick_phrase_scroll)?.scrollY ?: savedScrollY),
+        )
         super.onSaveInstanceState(outState)
     }
 
@@ -240,8 +251,10 @@ class QuickPhraseEditActivity : Activity() {
             ))
         }
         setContentView(ScrollView(this).apply {
+            id = R.id.quick_phrase_scroll
             setBackgroundColor(getColor(R.color.setup_page_bg))
             isFillViewport = true
+            setOnScrollChangeListener { _, _, scrollY, _, _ -> savedScrollY = scrollY }
             setOnApplyWindowInsetsListener { view, insets ->
                 if (Build.VERSION.SDK_INT >= 30) {
                     val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
@@ -258,6 +271,7 @@ class QuickPhraseEditActivity : Activity() {
                 insets
             }
             addView(content)
+            post { scrollTo(0, savedScrollY.coerceAtLeast(0)) }
         })
     }
 
