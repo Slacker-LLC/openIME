@@ -6,7 +6,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -399,7 +398,7 @@ class ImeKeyboardViewV2 private constructor(
             tag = "clipboard-retention-actions"
         }
         row.addView(
-            clipboardRetentionAction("清除未固定") {
+            clipboardRetentionAction("清除未固定", destructive = false) {
                 ClipboardHistoryRepository.clearUnpinned(context)
                 renderClipboard(reusePanel = true)
                 focusPanelEntryPoint()
@@ -407,7 +406,7 @@ class ImeKeyboardViewV2 private constructor(
             LinearLayout.LayoutParams(0, insetDp(48), 1f).apply { marginEnd = insetDp(6) },
         )
         row.addView(
-            clipboardRetentionAction("清空全部") {
+            clipboardRetentionAction("清空全部", destructive = true) {
                 ClipboardHistoryRepository.clearAll(context)
                 renderClipboard(reusePanel = true)
                 focusPanelEntryPoint()
@@ -421,25 +420,32 @@ class ImeKeyboardViewV2 private constructor(
                 insetDp(48),
             ).apply { topMargin = insetDp(6) },
         )
+        // Retention controls are appended after the base renderer's theme pass.
+        // Re-run the same design-token pass so they never fall back to the
+        // platform's default blue selectable background.
+        applyTheme()
     }
 
-    private fun clipboardRetentionAction(label: String, onClick: () -> Unit): TextView =
+    private fun clipboardRetentionAction(
+        label: String,
+        destructive: Boolean,
+        onClick: () -> Unit,
+    ): TextView =
         TextView(context).apply {
             text = label
             textSize = 12f
             gravity = Gravity.CENTER
             isClickable = true
             isFocusable = true
-            contentDescription = label
-            val backgroundValue = TypedValue()
-            if (
-                context.theme.resolveAttribute(
-                    android.R.attr.selectableItemBackground,
-                    backgroundValue,
-                    true,
-                ) && backgroundValue.resourceId != 0
-            ) {
-                setBackgroundResource(backgroundValue.resourceId)
+            tag = if (destructive) {
+                "clipboard-retention-destructive"
+            } else {
+                "clipboard-retention-action"
+            }
+            contentDescription = if (destructive) {
+                "$label，删除全部剪贴历史"
+            } else {
+                "$label，保留已固定内容"
             }
             setOnClickListener {
                 feedback()

@@ -736,6 +736,7 @@ open class ImeKeyboardView(
             isClickable = true
             isFocusable = true
             setOnClickListener {
+                feedback()
                 val open = candidateOverlay.visibility == View.GONE
                 renderExpanded(open)
                 listener.onCandidateExpanded(open)
@@ -2140,7 +2141,10 @@ open class ImeKeyboardView(
                     if (event.actionMasked == MotionEvent.ACTION_DOWN) feedback()
                     false
                 }
-                setOnClickListener { closePanelToKeyboard() }
+                setOnClickListener {
+                    feedback()
+                    closePanelToKeyboard()
+                }
             },
             LinearLayout.LayoutParams(dp(48), dp(48)),
         )
@@ -2684,6 +2688,7 @@ open class ImeKeyboardView(
                 stateDescription = languages[voiceLanguageIndex].first
             }
             setOnClickListener {
+                feedback()
                 voiceLanguageIndex = (voiceLanguageIndex + 1) % languages.size
                 val selectedLanguage = languages[voiceLanguageIndex].first
                 text = selectedLanguage
@@ -2912,7 +2917,10 @@ open class ImeKeyboardView(
             setPadding(dp(12), dp(10), dp(12), dp(8))
             minimumHeight = dp(70)
             tag = "clip-card"
-            contentDescription = "剪贴板内容，点击使用"
+            contentDescription = "剪贴板：${entry.text}，点击使用"
+            if (Build.VERSION.SDK_INT >= 30) {
+                stateDescription = if (entry.pinned) "已置顶" else "未置顶"
+            }
             isClickable = true
             isFocusable = true
             setOnClickListener {
@@ -2934,13 +2942,19 @@ open class ImeKeyboardView(
             textSize = 11f
         }, weightParams(1f))
         meta.addView(button(if (entry.pinned) "取消置顶" else "置顶", 10f, true).apply {
+            tag = "clip-pin:${entry.text}"
             setOnClickListener {
+                feedback()
                 ClipboardHistoryRepository.togglePin(context, entry.text)
                 renderClipboard(reusePanel = true)
             }
         }, wrapParams())
         meta.addView(button("使用", 10f, true).apply {
-            setOnClickListener { listener.onCharacter(entry.text) }
+            tag = "clip-use:${entry.text}"
+            setOnClickListener {
+                feedback()
+                listener.onCharacter(entry.text)
+            }
         }, wrapParams())
         card.addView(meta, wrapParams())
         return card
@@ -4742,7 +4756,7 @@ open class ImeKeyboardView(
         keepPopupAfterKeyUp = false
     }
 
-    private fun applyTheme() {
+    protected fun applyTheme() {
         val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
         val t = theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor))
@@ -4883,9 +4897,27 @@ open class ImeKeyboardView(
                         view.setTextColor(t.keySecondaryText)
                         view.background = statefulRounded(t.panelHeadBackground, dim(t.panelHeadBackground), dp(99))
                     }
-                    tag == "panel-button" -> {
+                    tag == "panel-button" ||
+                        tag?.startsWith("clip-pin:") == true ||
+                        tag?.startsWith("clip-use:") == true -> {
                         view.setTextColor(t.keyText)
                         view.background = statefulRounded(t.panelHeadBackground, dim(t.panelHeadBackground), dp(10))
+                    }
+                    tag == "clipboard-retention-action" -> {
+                        view.setTextColor(t.keyText)
+                        view.background = statefulRounded(
+                            t.panelHeadBackground,
+                            dim(t.panelHeadBackground),
+                            dp(10),
+                        )
+                    }
+                    tag == "clipboard-retention-destructive" -> {
+                        view.setTextColor(contrastText(t.destructive))
+                        view.background = statefulRounded(
+                            t.destructive,
+                            dim(t.destructive, 0.86f),
+                            dp(10),
+                        )
                     }
                     tag == "accent-custom" -> {
                         val customSelected = AccentPalette.presets.none {

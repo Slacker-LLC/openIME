@@ -41,6 +41,7 @@ enum class ImeTheme(val key: String, val label: String) {
         val sideKeyText: Int,
         val toolCardBackground: Int,
         val panelHeadBackground: Int,
+        val destructive: Int = Color.parseColor("#F4212E"),
     )
 
     fun tokens(

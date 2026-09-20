@@ -81,6 +81,7 @@ class ClipboardRetentionInstrumentedTest {
         rule.scenario.onActivity { activity ->
             val clearUnpinned = findTextView(keyboard, "清除未固定")
             assertNotNull(clearUnpinned)
+            assertTrue(clearUnpinned!!.contentDescription.toString().contains("保留已固定内容"))
             clearUnpinned!!.performClick()
             val remaining = ClipboardHistoryRepository.load(activity)
             assertEquals(listOf("keep pinned"), remaining.map { it.text })
@@ -88,6 +89,7 @@ class ClipboardRetentionInstrumentedTest {
 
             val clearAll = findTextView(keyboard, "清空全部")
             assertNotNull(clearAll)
+            assertTrue(clearAll!!.contentDescription.toString().contains("删除全部剪贴历史"))
             clearAll!!.performClick()
             assertEquals(emptyList<ClipboardEntry>(), ClipboardHistoryRepository.load(activity))
         }
@@ -133,7 +135,8 @@ class ClipboardRetentionInstrumentedTest {
         }
         assertNotNull("clipboard entry card must render", card)
         assertTrue("clipboard entry card must be a primary action", card!!.isClickable)
-        assertEquals("剪贴板内容，点击使用", card!!.contentDescription)
+        assertTrue(card!!.contentDescription.toString().contains("tap this entry"))
+        assertTrue(card!!.contentDescription.toString().contains("点击使用"))
 
         rule.scenario.onActivity {
             assertTrue(card!!.performClick())
