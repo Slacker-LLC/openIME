@@ -18,11 +18,11 @@ class RimeNineKeyInstrumentedTest {
         val rime = RimeEngine(context)
         try {
             rime.start()
-            // The first run deploys the bundled dictionaries on-device. The
-            // API 29 emulator can need several minutes for that one-time
+            // The first run deploys the bundled dictionaries on-device. Cold
+            // CI emulators can take over ten minutes for that one-time
             // compile; keep the wait bounded without mistaking slow deployment
             // for a schema failure.
-            val startupTimeoutMs = 300_000L
+            val startupTimeoutMs = 900_000L
             val deadline = SystemClock.elapsedRealtime() + startupTimeoutMs
             while (!rime.isReady && rime.errorMessage.isBlank() && SystemClock.elapsedRealtime() < deadline) {
                 SystemClock.sleep(100L)

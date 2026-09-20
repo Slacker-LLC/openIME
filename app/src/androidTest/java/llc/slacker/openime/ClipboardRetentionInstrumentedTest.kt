@@ -38,7 +38,10 @@ class ClipboardRetentionInstrumentedTest {
             assertEquals(emptyList<ClipboardEntry>(), ClipboardHistoryRepository.load(activity))
             val connection = BaseInputConnection(View(activity), true)
             val gateway = InputConnectionGateway(activity, { connection })
-            assertEquals("synthetic test secret", gateway.pasteClipboard { pasted ->
+            // Android 12+ may redact a sensitive clip when it is read back
+            // through ClipboardManager. Exercise the gateway with the exact
+            // immutable snapshot instead of depending on that platform detail.
+            assertEquals("synthetic test secret", gateway.pasteClipSnapshot(clip) { pasted ->
                 // A new system clip must not change the sensitivity of the one pasted.
                 clipboard.setPrimaryClip(ClipData.newPlainText("new", "ordinary replacement"))
                 ClipboardHistoryRepository.captureClip(activity, pasted)
