@@ -6,9 +6,11 @@ import android.os.Bundle
 import android.view.View
 import android.view.WindowInsets
 import android.widget.FrameLayout
+import android.window.OnBackInvokedCallback
 
 class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
     private lateinit var keyboardView: ImeKeyboardView
+    private var backCallback: OnBackInvokedCallback? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,19 +51,45 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
             ),
         )
         setContentView(host)
+        if (Build.VERSION.SDK_INT >= 33) {
+            backCallback = OnBackInvokedCallback { handleBack() }
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(
+                android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                backCallback!!,
+            )
+        }
     }
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        handleBack()
+    }
+
+    override fun onDestroy() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            backCallback?.let(onBackInvokedDispatcher::unregisterOnBackInvokedCallback)
+            backCallback = null
+        }
+        super.onDestroy()
+    }
+
+    private fun handleBack() {
         if (keyboardView.currentPanel() == Panel.SETTINGS) {
             finish()
             return
         }
-        if (keyboardView.closePanelToKeyboard() || keyboardView.currentPanel() == Panel.NONE) {
+        if (keyboardView.closePanelToKeyboard()) {
+            if (keyboardView.currentPanel() == Panel.NONE) finish()
+            return
+        }
+        if (keyboardView.currentPanel() == Panel.NONE) {
             finish()
             return
         }
-        super.onBackPressed()
+        if (Build.VERSION.SDK_INT < 33) {
+            @Suppress("DEPRECATION")
+            super.onBackPressed()
+        }
     }
 
     override fun onModeChanged(mode: KeyboardMode) = Unit

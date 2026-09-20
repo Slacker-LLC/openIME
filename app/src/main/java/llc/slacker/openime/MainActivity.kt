@@ -109,10 +109,16 @@ class MainActivity : Activity() {
         }
         findViewById<TextView>(R.id.voice_permission_chevron).visibility =
             if (microphoneGranted) View.GONE else View.VISIBLE
+        findViewById<View>(R.id.voice_permission).contentDescription = getString(
+            if (microphoneGranted) R.string.voice_permission_ready else R.string.voice_permission_enable,
+        )
         val ready = enabled && selected
         findViewById<View>(R.id.open_app_settings).apply {
             isEnabled = ready
             alpha = if (ready) 1f else 0.45f
+            contentDescription = getString(
+                if (ready) R.string.open_app_settings else R.string.setup_need_switch,
+            )
         }
     }
 
@@ -179,5 +185,10 @@ class MainActivity : Activity() {
         )
         chevron?.visibility = if (done) View.GONE else View.VISIBLE
         row.alpha = if (done) 0.72f else 1f
+        row.contentDescription = when {
+            done -> doneText
+            active -> activeText
+            else -> "$activeText，完成上一步后可用"
+        }
     }
 }

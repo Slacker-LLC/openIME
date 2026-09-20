@@ -125,11 +125,25 @@ class AuditInteractionInstrumentedTest {
             keyboard.showPanel(Panel.FUZZY_SETTINGS)
             val panel = keyboard.findViewWithTag<ViewGroup>("fuzzy-settings-panel")
             val toggle = panel.findViewWithTag<View>("toggle")
-            assertEquals("启用模糊音", toggle.contentDescription.toString())
+            assertEquals("启用模糊音，已关闭", toggle.contentDescription.toString())
             assertTrue(toggle.performClick())
             assertEquals(listOf(true), recorder.fuzzyChanges)
             assertTrue(toggle.performClick())
             assertEquals(listOf(true, false), recorder.fuzzyChanges)
+            true
+        }
+    }
+
+    @Test
+    fun nestedPanelBackReturnsToTheOriginatingSettingsPage() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            keyboard.showPanel(Panel.SETTINGS)
+            keyboard.showPanel(Panel.FUZZY_SETTINGS)
+            assertEquals(Panel.FUZZY_SETTINGS, keyboard.currentPanel())
+            assertTrue(keyboard.closePanelToKeyboard())
+            assertEquals("Back from a child panel must restore its parent", Panel.SETTINGS, keyboard.currentPanel())
+            assertTrue(keyboard.closePanelToKeyboard())
+            assertEquals(Panel.NONE, keyboard.currentPanel())
             true
         }
     }

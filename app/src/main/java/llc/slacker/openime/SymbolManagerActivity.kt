@@ -2,11 +2,12 @@ package llc.slacker.openime
 
 import android.app.Activity
 import android.content.ClipData
-import android.text.TextUtils
 import android.os.Bundle
+import android.text.TextUtils
 import android.view.DragEvent
 import android.view.Gravity
 import android.view.View
+import android.view.WindowInsets
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -115,7 +116,26 @@ class SymbolManagerActivity : Activity() {
             minHeight = dp(52)
             setOnClickListener { finish() }
         }, fullHeight(52).apply { topMargin = dp(12) })
-        setContentView(ScrollView(this).apply { addView(content) })
+        setContentView(ScrollView(this).apply {
+            setBackgroundColor(getColor(R.color.setup_page_bg))
+            isFillViewport = true
+            setOnApplyWindowInsetsListener { view, insets ->
+                if (android.os.Build.VERSION.SDK_INT >= 30) {
+                    val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+                    view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+                } else {
+                    @Suppress("DEPRECATION")
+                    view.setPadding(
+                        insets.systemWindowInsetLeft,
+                        insets.systemWindowInsetTop,
+                        insets.systemWindowInsetRight,
+                        insets.systemWindowInsetBottom,
+                    )
+                }
+                insets
+            }
+            addView(content)
+        })
     }
 
     private fun symbolRow(item: CustomSymbol): LinearLayout = LinearLayout(this).apply {
@@ -184,7 +204,7 @@ class SymbolManagerActivity : Activity() {
     private fun smallButton(label: String, action: () -> Unit) = Button(this).apply {
         text = label
         textSize = 10f
-        minHeight = dp(44)
+        minHeight = dp(48)
         setPadding(dp(3), 0, dp(3), 0)
         setOnClickListener { action() }
     }
