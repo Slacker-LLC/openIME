@@ -39,13 +39,17 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
             }
         }
         keyboardView = ImeKeyboardView(this, this, standalonePanel = true).apply {
-            setTheme(ImeSettingsRepository.loadTheme(this@ImeSettingsActivity))
-            setAppearance(ImeSettingsRepository.loadAppearance(this@ImeSettingsActivity))
-            setSettings(
-                ImeSettingsRepository.loadSound(this@ImeSettingsActivity),
-                ImeSettingsRepository.loadHaptic(this@ImeSettingsActivity),
-                ImeSettingsRepository.loadPopup(this@ImeSettingsActivity),
-                ImeSettingsRepository.loadFuzzy(this@ImeSettingsActivity),
+            applyPersistedSettings(
+                newTheme = ImeSettingsRepository.loadTheme(this@ImeSettingsActivity),
+                newAppearance = ImeSettingsRepository.loadAppearance(this@ImeSettingsActivity),
+                sound = ImeSettingsRepository.loadSound(this@ImeSettingsActivity),
+                haptic = ImeSettingsRepository.loadHaptic(this@ImeSettingsActivity),
+                popup = ImeSettingsRepository.loadPopup(this@ImeSettingsActivity),
+                fuzzy = ImeSettingsRepository.loadFuzzy(this@ImeSettingsActivity),
+                opacity = ImeSettingsRepository.loadSkinOpacity(this@ImeSettingsActivity),
+                radius = ImeSettingsRepository.loadSkinRadius(this@ImeSettingsActivity),
+                fontSize = ImeSettingsRepository.loadSkinFont(this@ImeSettingsActivity),
+                primaryColor = ImeSettingsRepository.loadSkinColor(this@ImeSettingsActivity),
             )
             showPanel(Panel.SETTINGS)
         }

@@ -233,6 +233,34 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun persistedSettingsSnapshotAppliesVisualAndInteractionStateTogether() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            keyboard.applyPersistedSettings(
+                newTheme = ImeTheme.IOS,
+                newAppearance = ImeAppearance.LIGHT,
+                sound = false,
+                haptic = true,
+                popup = true,
+                fuzzy = true,
+                opacity = 92,
+                radius = 14,
+                fontSize = 19,
+                primaryColor = "#00C2D7",
+            )
+            keyboard.showPanel(Panel.SETTINGS)
+            assertEquals(
+                Color.parseColor("#00C2D7"),
+                (keyboard.findViewWithTag<View>("accent-custom").background as GradientDrawable).color?.defaultColor,
+            )
+            keyboard.showPanel(Panel.FUZZY_SETTINGS)
+            assertTrue(
+                keyboard.findViewWithTag<View>("toggle").contentDescription.toString().contains("已开启"),
+            )
+            true
+        }
+    }
+
+    @Test
     fun presetAccentSelectionHasAVisibleNonColorMark() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.setSkin(96, 10, 18, "#1D9BF0")

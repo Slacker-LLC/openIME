@@ -193,7 +193,7 @@
 已知待查：Accent override 当前主要替换 primary，依赖色未必同步推导，需要做对比度和状态色审计。
 
 ### Block 12：设置 / 首页 / 状态同步
-状态：已有设置统一改造，待整块验收。
+状态：设置快照同步与子页返回已完成代码收敛，待整块验收。
 
 重点范围：
 - App 独立设置页和键盘内设置必须共用同一套实现
@@ -204,7 +204,9 @@
 - standalone settings Activity 生命周期
 - accessibility description
 
-已知待查：设置子页返回层级曾确认不合理；另外仅在 `onStartInput()` reload settings 的即时同步行为要继续验证。
+已完成：独立设置页与活动 IME 通过同一套 `applyPersistedSettings()` 一次应用完整持久化快照，避免主题、外观、皮肤参数分次重绘；`SETTINGS -> FUZZY_SETTINGS` 已有返回栈回归测试。
+
+仍待查：首页启用输入法 / 切换输入法状态、standalone Activity 生命周期，以及真机上设置保存后的即时刷新；当前环境无可用 Android 设备，暂以编译、Lint 和现有交互测试源码门禁为证据。
 
 ### Block 13：Native / Rime / JNI / ABI
 状态：未做完整专项审计。

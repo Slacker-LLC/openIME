@@ -1114,6 +1114,48 @@ open class ImeKeyboardView(
         listener.onThemeChanged(newTheme)
     }
 
+    /**
+     * Apply the complete persisted appearance in one render pass.
+     *
+     * The standalone settings page and the live IME can both refresh while a
+     * panel is visible. Updating theme, appearance and skin through separate
+     * setters briefly mixed old and new tokens and rebuilt the whole subtree
+     * several times. Keep the individual setters for user actions, but use
+     * this atomic boundary whenever a persisted snapshot is loaded.
+     */
+    internal fun applyPersistedSettings(
+        newTheme: ImeTheme,
+        newAppearance: ImeAppearance,
+        sound: Boolean,
+        haptic: Boolean,
+        popup: Boolean,
+        fuzzy: Boolean,
+        opacity: Int,
+        radius: Int,
+        fontSize: Int,
+        primaryColor: String,
+    ) {
+        val normalizedColor = AccentPalette.normalize(primaryColor)
+        val visualChanged = theme != newTheme ||
+            appearance != newAppearance ||
+            skinOpacity != opacity ||
+            skinRadius != radius ||
+            skinFontSize != fontSize ||
+            skinPrimaryColor != normalizedColor
+
+        theme = newTheme
+        appearance = newAppearance
+        soundEnabled = sound
+        hapticEnabled = haptic
+        popupEnabled = popup
+        fuzzyEnabled = fuzzy
+        skinOpacity = opacity
+        skinRadius = radius
+        skinFontSize = fontSize
+        skinPrimaryColor = normalizedColor
+        if (visualChanged) applyTheme()
+    }
+
     fun setAppearance(newAppearance: ImeAppearance) {
         if (appearance == newAppearance) return
         appearance = newAppearance

@@ -283,19 +283,17 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
             skinFontSize = ImeSettingsRepository.loadSkinFont(this),
             skinPrimaryColor = ImeSettingsRepository.loadSkinColor(this),
         )
-        keyboardView?.setTheme(state.theme)
-        keyboardView?.setAppearance(state.appearance)
-        keyboardView?.setSettings(
-            state.soundEnabled,
-            state.hapticEnabled,
-            state.popupEnabled,
-            state.fuzzyPinyinEnabled,
-        )
-        keyboardView?.setSkin(
-            state.skinOpacity,
-            state.skinRadius,
-            state.skinFontSize,
-            state.skinPrimaryColor,
+        keyboardView?.applyPersistedSettings(
+            newTheme = state.theme,
+            newAppearance = state.appearance,
+            sound = state.soundEnabled,
+            haptic = state.hapticEnabled,
+            popup = state.popupEnabled,
+            fuzzy = state.fuzzyPinyinEnabled,
+            opacity = state.skinOpacity,
+            radius = state.skinRadius,
+            fontSize = state.skinFontSize,
+            primaryColor = state.skinPrimaryColor,
         )
     }
 
