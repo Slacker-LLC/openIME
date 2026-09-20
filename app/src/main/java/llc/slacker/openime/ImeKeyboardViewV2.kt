@@ -58,7 +58,6 @@ class ImeKeyboardViewV2 private constructor(
             presentationDirty = true
             when (panel) {
                 Panel.CLIPBOARD -> post {
-                    decorateClipboardRetentionControls()
                     syncProductionKeyPresentation()
                 }
                 else -> post { syncProductionKeyPresentation() }
@@ -89,10 +88,6 @@ class ImeKeyboardViewV2 private constructor(
         super.onViewHierarchyRebuilt()
         presentationDirty = true
         post {
-            when (panel) {
-                Panel.CLIPBOARD -> decorateClipboardRetentionControls()
-                else -> Unit
-            }
             NineKeySymbolRailDecorator.decorate(
                 root = this,
                 onCommit = { symbol -> adapter.onCharacter(symbol) },
@@ -101,12 +96,6 @@ class ImeKeyboardViewV2 private constructor(
             installNineKeyAccessibilityRepair()
             syncProductionKeyPresentation()
         }
-    }
-
-    override fun onClipboardContentLoaded() {
-        if (panel != Panel.CLIPBOARD) return
-        decorateClipboardRetentionControls()
-        syncProductionKeyPresentation()
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
@@ -368,73 +357,6 @@ class ImeKeyboardViewV2 private constructor(
         }
         visit(this)
     }
-
-    private fun decorateClipboardRetentionControls() {
-        if (findViewWithTag<View>("quick-phrase-add") != null) return
-        val body = findViewWithTag<LinearLayout>("clipboard-panel") ?: return
-        if (body.findViewWithTag<View>("clipboard-retention-actions") != null) return
-        if (ClipboardHistoryRepository.load(context).isEmpty()) return
-
-        val row = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            tag = "clipboard-retention-actions"
-        }
-        row.addView(
-            clipboardRetentionAction("清除未固定", destructive = false) {
-                ClipboardHistoryRepository.clearUnpinned(context)
-                renderClipboard(reusePanel = true)
-                focusPanelEntryPoint()
-            },
-            LinearLayout.LayoutParams(0, insetDp(48), 1f).apply { marginEnd = insetDp(6) },
-        )
-        row.addView(
-            clipboardRetentionAction("清空全部", destructive = true) {
-                ClipboardHistoryRepository.clearAll(context)
-                renderClipboard(reusePanel = true)
-                focusPanelEntryPoint()
-            },
-            LinearLayout.LayoutParams(0, insetDp(48), 1f),
-        )
-        body.addView(
-            row,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                insetDp(48),
-            ).apply { topMargin = insetDp(6) },
-        )
-        // Retention controls are appended after the base renderer's theme pass.
-        // Re-run the same design-token pass so they never fall back to the
-        // platform's default blue selectable background.
-        applyTheme()
-    }
-
-    private fun clipboardRetentionAction(
-        label: String,
-        destructive: Boolean,
-        onClick: () -> Unit,
-    ): TextView =
-        TextView(context).apply {
-            text = label
-            textSize = 12f
-            gravity = Gravity.CENTER
-            isClickable = true
-            isFocusable = true
-            tag = if (destructive) {
-                "clipboard-retention-destructive"
-            } else {
-                "clipboard-retention-action"
-            }
-            contentDescription = if (destructive) {
-                "$label，删除全部剪贴历史"
-            } else {
-                "$label，保留已固定内容"
-            }
-            setOnClickListener {
-                feedback()
-                onClick()
-            }
-        }
 
     private fun insetDp(value: Int): Int =
         (value * resources.displayMetrics.density).toInt()

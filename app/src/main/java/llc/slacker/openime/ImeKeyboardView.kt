@@ -3159,6 +3159,7 @@ open class ImeKeyboardView(
                             LinearLayout.LayoutParams.MATCH_PARENT,
                             LinearLayout.LayoutParams.WRAP_CONTENT,
                         ).apply { bottomMargin = dp(7) }) }
+                        addClipboardRetentionControls(body)
                     }
                     onClipboardContentLoaded()
                 }
@@ -3250,6 +3251,62 @@ open class ImeKeyboardView(
         ))
         applyTheme()
         onViewHierarchyRebuilt()
+    }
+
+    /** Keep clipboard retention actions available in every keyboard-view entry point. */
+    private fun addClipboardRetentionControls(body: LinearLayout) {
+        if (body.findViewWithTag<View>("clipboard-retention-actions") != null) return
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            tag = "clipboard-retention-actions"
+        }
+        row.addView(
+            clipboardRetentionAction("清除未固定", destructive = false) {
+                ClipboardHistoryRepository.clearUnpinned(context)
+                renderClipboard(reusePanel = true)
+                focusPanelEntryPoint()
+            },
+            LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(6) },
+        )
+        row.addView(
+            clipboardRetentionAction("清空全部", destructive = true) {
+                ClipboardHistoryRepository.clearAll(context)
+                renderClipboard(reusePanel = true)
+                focusPanelEntryPoint()
+            },
+            LinearLayout.LayoutParams(0, dp(48), 1f),
+        )
+        body.addView(
+            row,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(48),
+            ).apply { topMargin = dp(6) },
+        )
+        applyTheme()
+    }
+
+    private fun clipboardRetentionAction(
+        label: String,
+        destructive: Boolean,
+        onClick: () -> Unit,
+    ): TextView = TextView(context).apply {
+        text = label
+        textSize = 12f
+        gravity = Gravity.CENTER
+        isClickable = true
+        isFocusable = true
+        tag = if (destructive) "clipboard-retention-destructive" else "clipboard-retention-action"
+        contentDescription = if (destructive) {
+            "$label，删除全部剪贴历史"
+        } else {
+            "$label，保留已固定内容"
+        }
+        setOnClickListener {
+            feedback()
+            onClick()
+        }
     }
 
     /** Called on the UI thread after the asynchronous clipboard body is populated. */
