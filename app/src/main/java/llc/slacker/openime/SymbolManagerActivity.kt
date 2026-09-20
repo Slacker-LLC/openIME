@@ -194,12 +194,13 @@ class SymbolManagerActivity : Activity() {
             setTextColor(getColor(R.color.setup_title))
             maxLines = 2
             ellipsize = TextUtils.TruncateAt.END
-            contentDescription = "符号：${item.symbol}"
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }, fullWrap())
         addView(TextView(this@SymbolManagerActivity).apply {
             text = if (item.pinned) "已固定" else "未固定"
             textSize = 12f
             setTextColor(if (item.pinned) accent else getColor(R.color.setup_body))
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }, fullWrap())
         val actions = LinearLayout(this@SymbolManagerActivity).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -245,7 +246,10 @@ class SymbolManagerActivity : Activity() {
             dialog.show()
         }
         addView(actions, fullWrap())
+        tag = "symbol-row:${item.id}"
         contentDescription = "自定义符号：${item.symbol}，${if (item.pinned) "已固定" else "未固定"}"
+        isFocusable = true
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
         setOnLongClickListener {
             alpha = 0.55f
             val data = ClipData.newPlainText("custom-symbol-id", item.id.toString())
