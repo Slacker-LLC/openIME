@@ -1,6 +1,7 @@
 package llc.slacker.openime
 
 import android.os.SystemClock
+import android.graphics.Color
 import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
 import android.view.InputDevice
@@ -191,6 +192,18 @@ class AuditInteractionInstrumentedTest {
             assertTrue("Floating mode must enable drag", dragHandle.isEnabled)
             assertEquals("拖动键盘", dragHandle.contentDescription.toString())
             assertTrue(toggle.contentDescription.toString().contains("贴底固定"))
+            true
+        }
+    }
+
+    @Test
+    fun customAccentControlExposesSelectionAndUsesTheAccentBackground() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            keyboard.setSkin(96, 10, 18, "#123456")
+            keyboard.showPanel(Panel.SETTINGS)
+            val custom = keyboard.findViewWithTag<View>("accent-custom")
+            assertTrue(custom.contentDescription.toString().contains("已选中"))
+            assertEquals(Color.parseColor("#123456"), (custom.background as GradientDrawable).color?.defaultColor)
             true
         }
     }

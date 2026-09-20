@@ -3582,20 +3582,24 @@ open class ImeKeyboardView(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(144),
         ))
+        val customSelected = AccentPalette.presets.none { AccentPalette.normalize(it.first) == current }
         row.addView(TextView(context).apply {
-            text = "自定义"
+            text = if (customSelected) "自定义 · $current" else "自定义颜色"
             textSize = 12f
             gravity = Gravity.CENTER
             includeFontPadding = false
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
             setPadding(dp(10), 0, dp(10), 0)
-            tag = "panel-button"
+            tag = "accent-custom"
             minHeight = dp(48)
             minimumHeight = dp(48)
             isClickable = true
             isFocusable = true
-            contentDescription = "自定义强调色"
+            contentDescription = "自定义强调色，${if (customSelected) "已选中" else "未选中"}"
+            if (Build.VERSION.SDK_INT >= 30) stateDescription = if (customSelected) "已选中" else "未选中"
             setOnClickListener { feedback(); showCustomAccentDialog() }
-        }, LinearLayout.LayoutParams(dp(96), dp(48)).apply {
+        }, LinearLayout.LayoutParams(dp(132), dp(48)).apply {
             topMargin = dp(6)
         })
         row.addView(TextView(context).apply {
@@ -4819,6 +4823,17 @@ open class ImeKeyboardView(
                     tag == "panel-button" -> {
                         view.setTextColor(t.keyText)
                         view.background = statefulRounded(t.panelHeadBackground, dim(t.panelHeadBackground), dp(10))
+                    }
+                    tag == "accent-custom" -> {
+                        val customSelected = AccentPalette.presets.none {
+                            AccentPalette.normalize(it.first) == AccentPalette.normalize(skinPrimaryColor)
+                        }
+                        view.setTextColor(if (customSelected) contrastText(t.primary) else t.keyText)
+                        view.background = if (customSelected) {
+                            statefulRounded(t.primary, dim(t.primary), dp(10))
+                        } else {
+                            statefulRounded(t.panelHeadBackground, dim(t.panelHeadBackground), dp(10))
+                        }
                     }
                     tag == "key-panel-back" -> {
                         view.setTextColor(t.keyText)
