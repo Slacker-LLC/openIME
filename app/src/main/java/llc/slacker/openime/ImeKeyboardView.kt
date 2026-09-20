@@ -3421,18 +3421,17 @@ open class ImeKeyboardView(
         }
     }
 
-    private fun settingIcon(label: String): TextView = TextView(context).apply {
-        text = when (label) {
-            "按键音效" -> "◖"
-            "触感震动" -> "✦"
-            "按键气泡" -> "A"
-            "模糊音与智能纠错", "启用模糊音" -> "✧"
-            "外观与键盘高度" -> "◐"
-            else -> "•"
-        }
-        textSize = 15f
-        gravity = Gravity.CENTER
-        includeFontPadding = false
+    private fun settingIcon(label: String): ImageView = ImageView(context).apply {
+        setImageResource(
+            when (label) {
+                "按键音效" -> R.drawable.ic_volume
+                "触感震动" -> R.drawable.ic_vibration
+                "按键气泡" -> R.drawable.ic_bubble
+                "模糊音与智能纠错", "启用模糊音" -> R.drawable.ic_tune
+                else -> R.drawable.ic_tune
+            },
+        )
+        scaleType = ImageView.ScaleType.CENTER
         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         tag = "setting-icon"
     }
@@ -4891,7 +4890,16 @@ open class ImeKeyboardView(
                 }
             }
             is ImageView -> {
-                if (view.tag == "key-panel-back") {
+                if (view.tag == "setting-icon") {
+                    val icon = t.primary
+                    view.imageTintList = ColorStateList.valueOf(icon)
+                    val dark = contrastText(t.keyboardBackground) == Color.WHITE
+                    view.background = rounded(
+                        if (dark) Color.argb(42, Color.red(icon), Color.green(icon), Color.blue(icon))
+                        else Color.argb(24, Color.red(icon), Color.green(icon), Color.blue(icon)),
+                        dp(8),
+                    )
+                } else if (view.tag == "key-panel-back") {
                     view.imageTintList = ColorStateList.valueOf(t.keyText)
                     view.background = statefulRounded(
                         t.panelHeadBackground,
@@ -4919,16 +4927,6 @@ open class ImeKeyboardView(
                 val tag = view.tag as? String
                 if (view.parent !is ImeKeyView) view.setTextColor(t.keyText)
                 when {
-                    tag == "setting-icon" -> {
-                        val icon = t.primary
-                        view.setTextColor(icon)
-                        val dark = contrastText(t.keyboardBackground) == Color.WHITE
-                        view.background = rounded(
-                            if (dark) Color.argb(42, Color.red(icon), Color.green(icon), Color.blue(icon))
-                            else Color.argb(24, Color.red(icon), Color.green(icon), Color.blue(icon)),
-                            dp(8),
-                        )
-                    }
                     tag == "backspace-clear-hint" -> {
                         view.setTextColor(t.keySecondaryText)
                     }
