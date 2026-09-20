@@ -183,7 +183,9 @@ class MainActivity : Activity() {
         markText: String,
         accent: Int,
     ) {
-        row.isEnabled = !done
+        // A completed setup step remains an action: users may need to revisit
+        // the system picker or input-method settings after initial setup.
+        row.isEnabled = true
         if (active) row.background = primaryPill(accent) else row.background = SetupUi.mutedPillBackground(this)
         label.text = if (done) doneText else activeText
         label.setTextColor(
@@ -217,7 +219,7 @@ class MainActivity : Activity() {
             if (active) contrastText(accent) else getColor(R.color.setup_body),
         )
         chevron?.visibility = if (done) View.GONE else View.VISIBLE
-        row.alpha = if (done) 0.72f else 1f
+        row.alpha = if (done) 0.86f else 1f
         row.contentDescription = when {
             done -> doneText
             active -> activeText

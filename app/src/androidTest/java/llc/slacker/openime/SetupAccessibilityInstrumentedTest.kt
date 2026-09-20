@@ -38,6 +38,10 @@ class SetupAccessibilityInstrumentedTest {
                     )
                 }
             }
+            assertTrue(
+                "The completed enable step must remain actionable for revisiting system settings",
+                activity.findViewById<View>(R.id.open_ime_settings).isEnabled,
+            )
         }
     }
 }
