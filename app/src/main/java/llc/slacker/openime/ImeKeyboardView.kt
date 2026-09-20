@@ -3005,7 +3005,7 @@ open class ImeKeyboardView(
                         row.addView(button("删除", 11f, true).apply {
                             tag = "phrase-delete:${phrase.id}"
                             setOnClickListener {
-                                android.app.AlertDialog.Builder(context)
+                                val dialog = android.app.AlertDialog.Builder(context)
                                     .setTitle("删除常用语？")
                                     .setMessage(phrase.text)
                                     .setNegativeButton("取消", null)
@@ -3013,7 +3013,11 @@ open class ImeKeyboardView(
                                         QuickPhraseRepository.remove(context, phrase.id)
                                         renderClipboard(reusePanel = true)
                                     }
-                                    .show()
+                                    .create()
+                                dialog.setOnShowListener {
+                                    SetupUi.styleDialog(dialog, context, destructivePositive = true)
+                                }
+                                dialog.show()
                             }
                         }, LinearLayout.LayoutParams(dp(48), dp(48)))
                         col.addView(row, LinearLayout.LayoutParams(
@@ -3639,6 +3643,7 @@ open class ImeKeyboardView(
             .setNegativeButton("取消", null)
             .create()
         dialog.setOnShowListener {
+            SetupUi.styleDialog(dialog, context)
             val accent = AccentPalette.parse(skinPrimaryColor)
             dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setTextColor(accent)
             dialog.getButton(android.content.DialogInterface.BUTTON_NEGATIVE).setTextColor(accent)

@@ -229,7 +229,7 @@ class SymbolManagerActivity : Activity() {
             render()
         }
         action("删除") {
-            android.app.AlertDialog.Builder(this@SymbolManagerActivity)
+            val dialog = android.app.AlertDialog.Builder(this@SymbolManagerActivity)
                 .setTitle("删除自定义符号？")
                 .setMessage(item.symbol)
                 .setNegativeButton("取消", null)
@@ -238,7 +238,11 @@ class SymbolManagerActivity : Activity() {
                     if (editingId == item.id) editingId = 0L
                     render()
                 }
-                .show()
+                .create()
+            dialog.setOnShowListener {
+                SetupUi.styleDialog(dialog, this@SymbolManagerActivity, destructivePositive = true)
+            }
+            dialog.show()
         }
         addView(actions, fullWrap())
         contentDescription = "自定义符号：${item.symbol}，${if (item.pinned) "已固定" else "未固定"}"

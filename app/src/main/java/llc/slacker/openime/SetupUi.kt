@@ -1,5 +1,6 @@
 package llc.slacker.openime
 
+import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -10,6 +11,8 @@ import kotlin.math.pow
 
 /** Shared visual primitives for the non-IME setup and editor screens. */
 object SetupUi {
+    private const val DESTRUCTIVE = "#F4212E"
+
     fun dp(context: Context, value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
 
@@ -129,6 +132,21 @@ object SetupUi {
         input.setPadding(dp(context, 16), dp(context, 8), dp(context, 16), dp(context, 8))
         input.setTextColor(context.getColor(R.color.setup_title))
         input.setHintTextColor(context.getColor(R.color.setup_muted_text))
+    }
+
+    fun styleDialog(dialog: AlertDialog, context: Context, destructivePositive: Boolean = false) {
+        val accent = accent(context)
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(
+            if (destructivePositive) Color.parseColor(DESTRUCTIVE) else accent,
+        )
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(accent)
+        dialog.getButton(AlertDialog.BUTTON_NEUTRAL)?.setTextColor(accent)
+        dialog.window?.setBackgroundDrawable(
+            rounded(
+                context.getColor(R.color.setup_surface),
+                dp(context, 24).toFloat(),
+            ),
+        )
     }
 
 }
