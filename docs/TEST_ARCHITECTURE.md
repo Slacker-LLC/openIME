@@ -30,7 +30,7 @@ SOP Evidence Orchestrator
 | E2E | `scripts/field_matrix_regression.ps1` | RUN |
 | Security | `scripts/security_regression.ps1` | RUN |
 | Orchestrator | `scripts/test_sop.ps1` | L0～L3 |
-| Visual | `docs/VISUAL_ACCEPTANCE.md` | PASS |
+| Visual | `scripts/visual_check.ps1` 截图与 UI 树 | RUN |
 
 ## 坐标与自动化
 

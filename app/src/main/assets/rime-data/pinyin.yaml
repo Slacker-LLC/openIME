@@ -143,3 +143,12 @@ key_correction:
     - derive/ong$/on/                  # zhonguo => zhong guo
     - derive/ao$/oa/                   # hoa => hao
     - derive/([iu])a(o|ng?)$/a$1$2/    # tain => tian
+
+# 九键数字碼：先把完整拼式克隆成大寫，再只對克隆做 2-9 數字轉寫。
+# 這樣避免八條獨立 T9 規則各自派生造成的拼式膨脹。
+# 必須是命名節點再以 path:/node 引用；直接寫進 __patch 列表的字面規則
+# 會被 librime 當成路徑引用解析，觸發循環依賴並讓整個方案編譯失敗。
+t9_transliteration:
+  __append:
+    - derive/^(.*)$/\U$1/
+    - xlit/ABCDEFGHIJKLMNOPQRSTUVWXYZ/22233344455566677778889999/

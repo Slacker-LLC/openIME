@@ -147,7 +147,7 @@ bash scripts/verify_linux.sh emulator-5554
 - [输入法架构](docs/ARCHITECTURE.md)
 - [本地语音模型接入边界](docs/LOCAL_VOICE_MODEL.md)
 - [适配与坐标规范](docs/COORDINATE_SYSTEM.md)
-- [测试报告](docs/TEST_REPORT.md)
+- [测试流程 SOP](docs/TEST_SOP.md)
 - [脚本说明](scripts/README.md)
 
 ## 隐私与安全
