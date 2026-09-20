@@ -2084,6 +2084,15 @@ open class ImeKeyboardView(
         }
         applyTheme()
         onViewHierarchyRebuilt()
+        focusPanelEntryPoint()
+    }
+
+    /** Keep hardware-keyboard focus inside the newly visible panel. */
+    private fun focusPanelEntryPoint() {
+        expandedPanel.post {
+            val entryPoint = expandedPanel.findViewWithTag<View>("key-panel-back") ?: return@post
+            if (entryPoint.isShown && entryPoint.isFocusable) entryPoint.requestFocus()
+        }
     }
 
     /** Build the voice controller while it remains hidden, so a space gesture does not relayout the IME. */
