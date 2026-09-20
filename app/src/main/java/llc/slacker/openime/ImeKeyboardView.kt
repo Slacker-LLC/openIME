@@ -3210,6 +3210,7 @@ open class ImeKeyboardView(
     }
 
     private fun renderSettings(reusePanel: Boolean = false) {
+        val previousFocusKey = if (reusePanel) semanticFocusKey(expandedPanel.findFocus()) else null
         val previousScrollY = if (reusePanel && expandedPanel.childCount > 1) {
             (expandedPanel.getChildAt(1) as? ScrollView)?.scrollY ?: settingsScrollY
         } else {
@@ -3306,11 +3307,31 @@ open class ImeKeyboardView(
             0,
             1f,
         ))
-        scroll.post { scroll.scrollTo(0, previousScrollY) }
+        scroll.post {
+            scroll.scrollTo(0, previousScrollY)
+            previousFocusKey?.let { key -> findSemanticFocusTarget(expandedPanel, key)?.requestFocus() }
+        }
         if (reusePanel) {
             applyTheme()
             onViewHierarchyRebuilt()
         }
+    }
+
+    private fun semanticFocusKey(view: View?): String? {
+        val description = view?.contentDescription?.toString()
+            ?.substringBefore('，')
+            ?.takeIf { it.isNotBlank() }
+        return description ?: (view?.tag as? String)?.takeIf { it.isNotBlank() }
+    }
+
+    private fun findSemanticFocusTarget(root: View, key: String): View? {
+        if (semanticFocusKey(root) == key && root.isFocusable) return root
+        if (root is ViewGroup) {
+            for (index in 0 until root.childCount) {
+                findSemanticFocusTarget(root.getChildAt(index), key)?.let { return it }
+            }
+        }
+        return null
     }
 
     private fun sectionTitle(textValue: String): TextView = TextView(context).apply {
