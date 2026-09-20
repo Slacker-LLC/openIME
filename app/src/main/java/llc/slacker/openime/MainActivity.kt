@@ -121,6 +121,7 @@ class MainActivity : Activity() {
         findViewById<View>(R.id.voice_permission).apply {
             isEnabled = !microphoneGranted
             alpha = if (microphoneGranted) 0.72f else 1f
+            background = SetupUi.mutedPillBackground(this@MainActivity)
         }
         findViewById<TextView>(R.id.voice_permission_label).apply {
             setText(if (microphoneGranted) R.string.voice_permission_ready else R.string.voice_permission_enable)
@@ -135,6 +136,7 @@ class MainActivity : Activity() {
         findViewById<View>(R.id.open_app_settings).apply {
             isEnabled = ready
             alpha = if (ready) 1f else 0.45f
+            background = SetupUi.mutedPillBackground(this@MainActivity)
             contentDescription = getString(
                 if (ready) R.string.open_app_settings else R.string.setup_need_switch,
             )
@@ -178,7 +180,7 @@ class MainActivity : Activity() {
         accent: Int,
     ) {
         row.isEnabled = !done
-        if (active) row.background = primaryPill(accent) else row.setBackgroundResource(R.drawable.bg_setup_muted_pill)
+        if (active) row.background = primaryPill(accent) else row.background = SetupUi.mutedPillBackground(this)
         label.text = if (done) doneText else activeText
         label.setTextColor(
             getColor(
@@ -198,7 +200,7 @@ class MainActivity : Activity() {
             },
         )
         mark.setTextColor(
-            if (active) accent else getColor(if (done) R.color.setup_ready else R.color.setup_primary),
+            if (active) accent else if (done) getColor(R.color.setup_ready) else accent,
         )
         if (active) {
             mark.background = oval(contrastText(accent))
