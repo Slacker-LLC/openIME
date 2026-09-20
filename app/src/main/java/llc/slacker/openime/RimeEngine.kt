@@ -315,12 +315,19 @@ class RimeEngine(private val context: Context) {
         // the cleanup below finalized it, leaving a live session nobody owns
         // and no way to destroy. Give it a bounded grace period first.
         startupExecutor.shutdownNow()
-        runCatching {
-            if (!startupExecutor.awaitTermination(STARTUP_SHUTDOWN_GRACE_MS, TimeUnit.MILLISECONDS)) {
-                Log.w(TAG, "librime startup did not settle before shutdown")
-            }
+        val startupSettled = runCatching {
+            startupExecutor.awaitTermination(STARTUP_SHUTDOWN_GRACE_MS, TimeUnit.MILLISECONDS)
+        }.getOrDefault(false)
+        if (startupSettled) {
+            cleanupNative()
+        } else {
+            // nativeStartup serializes all native state behind its own mutex.
+            // Calling nativeShutdown here would wait on that mutex forever when
+            // a slow first deployment is still running. The stale worker sees
+            // the invalidated gate after nativeStartup returns and performs the
+            // cleanup itself.
+            Log.w(TAG, "librime startup did not settle before shutdown")
         }
-        cleanupNative()
     }
 
     /** Cached persisted fuzzy setting; invalidated explicitly from settings UI. */
