@@ -3594,14 +3594,15 @@ open class ImeKeyboardView(
                 view.isEnabled = !unavailable
                 view.isClickable = !unavailable
                 view.alpha = if (unavailable) 0.38f else 1f
-                view.contentDescription = if (unavailable) {
-                    "$label，不可用：${dynamicReason ?: "当前编辑器暂不支持"}"
+                val reason = dynamicReason ?: "当前编辑器暂不支持"
+                view.contentDescription = if (unavailable && Build.VERSION.SDK_INT < 30) {
+                    "$label，不可用：$reason"
                 } else {
                     label
                 }
                 if (Build.VERSION.SDK_INT >= 30) {
                     view.stateDescription = if (unavailable) {
-                        dynamicReason ?: "当前编辑器暂不支持"
+                        reason
                     } else {
                         "可用"
                     }

@@ -123,10 +123,12 @@ class TextEditControlsInstrumentedTest {
                 val control = findTextEditAction(keyboard, action)
                 assertNotNull("missing dynamic text-edit control $action", control)
                 assertFalse("$action must be disabled without its prerequisite", control!!.isEnabled)
-                assertTrue(
-                    "$action should explain why it is unavailable",
-                    control.contentDescription?.toString()?.contains("不可用") == true,
-                )
+                val explained = if (Build.VERSION.SDK_INT >= 30) {
+                    control.stateDescription?.toString()?.isNotEmpty() == true
+                } else {
+                    control.contentDescription?.toString()?.contains("不可用") == true
+                }
+                assertTrue("$action should explain why it is unavailable", explained)
             }
             val selectAll = findTextEditAction(keyboard, "select-all")
             assertNotNull("missing select-all control", selectAll)
