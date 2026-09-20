@@ -173,20 +173,30 @@ class SymbolManagerActivity : Activity() {
             if (Build.VERSION.SDK_INT >= 28) setAccessibilityHeading(true)
         }, fullWrap())
 
-        CustomSymbolRepository.load(this)
-            .groupBy { it.group }
-            .forEach { (group, symbols) ->
-                content.addView(TextView(this).apply {
-                    text = group
-                    textSize = 14f
-                    setTextColor(accent)
-                    setTypeface(typeface, android.graphics.Typeface.BOLD)
-                    setPadding(0, dp(8), 0, dp(4))
-                }, fullWrap())
-                symbols.forEach { item ->
-                    content.addView(symbolRow(item, accent), fullWrap().apply { bottomMargin = dp(12) })
+        val symbols = CustomSymbolRepository.load(this)
+        if (symbols.isEmpty()) {
+            content.addView(TextView(this).apply {
+                text = "还没有保存的自定义符号；在上方填写后点击保存符号。"
+                textSize = 13f
+                setTextColor(getColor(R.color.setup_body))
+                setPadding(dp(4), dp(4), dp(4), dp(8))
+                tag = "symbol-empty-state"
+            }, fullWrap())
+        } else {
+            symbols.groupBy { it.group }
+                .forEach { (group, groupedSymbols) ->
+                    content.addView(TextView(this).apply {
+                        text = group
+                        textSize = 14f
+                        setTextColor(accent)
+                        setTypeface(typeface, android.graphics.Typeface.BOLD)
+                        setPadding(0, dp(8), 0, dp(4))
+                    }, fullWrap())
+                    groupedSymbols.forEach { item ->
+                        content.addView(symbolRow(item, accent), fullWrap().apply { bottomMargin = dp(12) })
+                    }
                 }
-            }
+        }
         content.addView(SetupUi.primaryButton(this, "完成") {
             requestClose()
         }, fullHeight(52).apply { topMargin = dp(12) })
