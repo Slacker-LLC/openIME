@@ -7,10 +7,11 @@ package llc.slacker.openime
  */
 internal object TextEditControlPolicy {
     private val unavailableLabels = setOf("撤销", "▲", "▼")
+    private val passwordUnavailableLabels = setOf("全选", "复制", "剪切", "粘贴")
 
     fun isUnavailableLabel(label: String, passwordField: Boolean = false): Boolean =
-        label in unavailableLabels || (passwordField && label == "粘贴")
+        label in unavailableLabels || (passwordField && label in passwordUnavailableLabels)
 
     fun unavailableReason(label: String, passwordField: Boolean = false): String =
-        if (passwordField && label == "粘贴") "密码输入中不可用" else "当前编辑器暂不支持"
+        if (passwordField && label in passwordUnavailableLabels) "密码输入中不可用" else "当前编辑器暂不支持"
 }

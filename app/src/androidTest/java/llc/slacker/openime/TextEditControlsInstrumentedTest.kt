@@ -59,7 +59,7 @@ class TextEditControlsInstrumentedTest {
     }
 
     @Test
-    fun passwordFieldsDisablePasteBeforeTheUserCanTriggerADeadAction() {
+    fun passwordFieldsDisableClipboardActionsBeforeTheUserCanTriggerADeadAction() {
         lateinit var keyboard: ImeKeyboardViewV2
         rule.scenario.onActivity { activity ->
             val content = activity.findViewById<ViewGroup>(android.R.id.content)
@@ -78,17 +78,20 @@ class TextEditControlsInstrumentedTest {
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
 
         rule.scenario.onActivity {
-            val paste = findInteractiveControl(keyboard, "粘贴")
-            assertNotNull("password editor must still show the paste affordance", paste)
-            assertFalse("password paste must not remain clickable", paste!!.isClickable)
-            assertFalse("password paste must expose an enabled state", paste.isEnabled)
-            assertTrue("password paste should look unavailable", paste.alpha < 1f)
-            if (Build.VERSION.SDK_INT >= 30) {
-                assertTrue(
-                    "password paste must explain why it is unavailable",
-                    paste.stateDescription?.toString()?.contains("密码输入中不可用") == true,
-                )
+            listOf("全选", "复制", "剪切", "粘贴").forEach { label ->
+                val control = findInteractiveControl(keyboard, label)
+                assertNotNull("password editor must still show $label", control)
+                assertFalse("password $label must not remain clickable", control!!.isClickable)
+                assertFalse("password $label must expose an enabled state", control.isEnabled)
+                assertTrue("password $label should look unavailable", control.alpha < 1f)
+                if (Build.VERSION.SDK_INT >= 30) {
+                    assertTrue(
+                        "password $label must explain why it is unavailable",
+                        control.stateDescription?.toString()?.contains("密码输入中不可用") == true,
+                    )
+                }
             }
+            assertTrue("cursor movement must remain available", findInteractiveControl(keyboard, "◀")!!.isEnabled)
         }
     }
 
