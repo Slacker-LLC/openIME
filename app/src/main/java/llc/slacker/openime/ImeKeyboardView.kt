@@ -2343,6 +2343,7 @@ open class ImeKeyboardView(
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(0, dp(8), 0, dp(6))
+            tag = "tool:$label"
             contentDescription = label
             isClickable = true
             isFocusable = true
@@ -2358,6 +2359,7 @@ open class ImeKeyboardView(
             textSize = 11f
             gravity = Gravity.CENTER
             includeFontPadding = false
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }, wrapParams())
         return card
     }
@@ -2367,6 +2369,7 @@ open class ImeKeyboardView(
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(0, dp(8), 0, dp(6))
+            tag = "tool:$label"
             contentDescription = label
             isClickable = true
             isFocusable = true
@@ -2377,12 +2380,14 @@ open class ImeKeyboardView(
             textSize = if (glyph == "Aa") 15f else 16f
             gravity = Gravity.CENTER
             includeFontPadding = false
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }, LinearLayout.LayoutParams(dp(20), dp(20)).apply { bottomMargin = dp(6) })
         card.addView(TextView(context).apply {
             text = label
             textSize = 11f
             gravity = Gravity.CENTER
             includeFontPadding = false
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }, wrapParams())
         return card
     }

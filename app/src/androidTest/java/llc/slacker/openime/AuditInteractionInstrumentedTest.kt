@@ -232,6 +232,22 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun toolCardsExposeOneAccessibleActionWithoutDuplicateLabels() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            keyboard.showPanel(Panel.TOOLS)
+            val card = keyboard.findViewWithTag<View>("tool:表情")
+            assertTrue("Tool card must be keyboard-focusable", card.isFocusable)
+            assertEquals("表情", card.contentDescription)
+            val label = (card as ViewGroup).getChildAt(1)
+            assertTrue(
+                "Visual tool label must not create a duplicate node",
+                label.importantForAccessibility == View.IMPORTANT_FOR_ACCESSIBILITY_NO,
+            )
+            true
+        }
+    }
+
+    @Test
     fun settingToggleUsesOneFocusableStatefulRow() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.showPanel(Panel.FUZZY_SETTINGS)
