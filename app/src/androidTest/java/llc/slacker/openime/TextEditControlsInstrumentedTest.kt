@@ -71,8 +71,9 @@ class TextEditControlsInstrumentedTest {
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                 ),
             )
-            keyboard.renderState(ImeState(passwordField = true))
+            keyboard.renderState(ImeState(passwordField = false))
             keyboard.showPanel(Panel.TEXT_EDITOR)
+            keyboard.renderState(ImeState(passwordField = true))
         }
 
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()

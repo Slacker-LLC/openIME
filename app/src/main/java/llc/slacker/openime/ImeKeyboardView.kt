@@ -994,6 +994,11 @@ open class ImeKeyboardView(
                 dismissPanelForModeSwitch()
             } else if (panel == Panel.TOOLS) {
                 renderPanel(Panel.TOOLS)
+            } else if (panel == Panel.TEXT_EDITOR) {
+                // The same IME view can survive an editor switch. Rebuild the
+                // open text-edit panel so clipboard actions reflect the new
+                // password/privacy boundary immediately.
+                renderPanel(Panel.TEXT_EDITOR)
             }
             syncSensitiveToolbar()
             syncSensitiveVoice()
