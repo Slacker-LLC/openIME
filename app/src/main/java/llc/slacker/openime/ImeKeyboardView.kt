@@ -2101,7 +2101,7 @@ open class ImeKeyboardView(
     }
 
     /** Keep hardware-keyboard focus inside the newly visible panel. */
-    private fun focusPanelEntryPoint() {
+    protected fun focusPanelEntryPoint() {
         expandedPanel.post {
             val entryPoint = expandedPanel.findViewWithTag<View>("key-panel-back") ?: return@post
             if (entryPoint.isShown && entryPoint.isFocusable) entryPoint.requestFocus()
@@ -2946,7 +2946,7 @@ open class ImeKeyboardView(
         return card
     }
 
-    private fun renderClipboard(reusePanel: Boolean = false) {
+    protected fun renderClipboard(reusePanel: Boolean = false) {
         inlineEditTarget = null
         if (!reusePanel || expandedPanel.childCount == 0) {
             expandedPanel.removeAllViews()

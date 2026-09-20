@@ -91,6 +91,17 @@ class ClipboardRetentionInstrumentedTest {
             clearAll!!.performClick()
             assertEquals(emptyList<ClipboardEntry>(), ClipboardHistoryRepository.load(activity))
         }
+
+        var emptyState: TextView? = null
+        repeat(20) {
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            rule.scenario.onActivity {
+                emptyState = findTextView(keyboard, "暂无剪贴历史；复制文本后重新打开这里即可看到。")
+            }
+            if (emptyState != null) return@repeat
+            Thread.sleep(50)
+        }
+        assertNotNull("Clearing all history must expose an empty state", emptyState)
     }
 
     @Test

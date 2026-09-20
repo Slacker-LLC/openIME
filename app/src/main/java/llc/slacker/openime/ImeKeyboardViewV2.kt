@@ -401,16 +401,16 @@ class ImeKeyboardViewV2 private constructor(
         row.addView(
             clipboardRetentionAction("清除未固定") {
                 ClipboardHistoryRepository.clearUnpinned(context)
-                hideClipboardCards(includePinned = false)
-                if (ClipboardHistoryRepository.load(context).isEmpty()) row.visibility = View.GONE
+                renderClipboard(reusePanel = true)
+                focusPanelEntryPoint()
             },
             LinearLayout.LayoutParams(0, insetDp(48), 1f).apply { marginEnd = insetDp(6) },
         )
         row.addView(
             clipboardRetentionAction("清空全部") {
                 ClipboardHistoryRepository.clearAll(context)
-                hideClipboardCards(includePinned = true)
-                row.visibility = View.GONE
+                renderClipboard(reusePanel = true)
+                focusPanelEntryPoint()
             },
             LinearLayout.LayoutParams(0, insetDp(48), 1f),
         )
@@ -446,29 +446,6 @@ class ImeKeyboardViewV2 private constructor(
                 onClick()
             }
         }
-
-    private fun hideClipboardCards(includePinned: Boolean) {
-        fun containsPinnedMarker(view: View): Boolean {
-            if (view is TextView && view.text.toString() == "已置顶") return true
-            if (view is ViewGroup) {
-                for (index in 0 until view.childCount) {
-                    if (containsPinnedMarker(view.getChildAt(index))) return true
-                }
-            }
-            return false
-        }
-
-        fun visit(view: View) {
-            if (view.tag == "clip-card") {
-                if (includePinned || !containsPinnedMarker(view)) view.visibility = View.GONE
-                return
-            }
-            if (view is ViewGroup) {
-                for (index in 0 until view.childCount) visit(view.getChildAt(index))
-            }
-        }
-        visit(this)
-    }
 
     private fun insetDp(value: Int): Int =
         (value * resources.displayMetrics.density).toInt()
