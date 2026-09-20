@@ -4213,6 +4213,7 @@ open class ImeKeyboardView(
             gravity = Gravity.CENTER_VERTICAL
             tag = "floating-header"
         }
+        var floatingToggle: TextView? = null
         val dragHandle = TextView(context).apply {
             text = "⠿  拖动键盘"
             textSize = 12f
@@ -4225,6 +4226,9 @@ open class ImeKeyboardView(
             setPadding(dp(4), 0, dp(8), 0)
             isClickable = true
             isFocusable = true
+            setOnClickListener {
+                if (floatingKeyboard) floatingToggle?.performClick()
+            }
             setOnTouchListener { _, event ->
                 if (!floatingKeyboard) return@setOnTouchListener false
                 when (event.actionMasked) {
@@ -4250,19 +4254,24 @@ open class ImeKeyboardView(
         fun refreshDragHandleState() {
             dragHandle.isEnabled = floatingKeyboard
             dragHandle.isClickable = floatingKeyboard
+            dragHandle.isFocusable = floatingKeyboard
             dragHandle.alpha = if (floatingKeyboard) 1f else 0.52f
             dragHandle.contentDescription = if (floatingKeyboard) {
-                "拖动键盘"
+                "拖动键盘，点击切换浮动状态"
             } else {
                 "拖动键盘（恢复浮动后可用）"
             }
             if (Build.VERSION.SDK_INT >= 30) {
-                dragHandle.stateDescription = if (floatingKeyboard) "当前可拖动" else "当前不可用"
+                dragHandle.stateDescription = if (floatingKeyboard) {
+                    "当前可拖动，点击可贴底固定"
+                } else {
+                    "当前不可用"
+                }
             }
         }
         refreshDragHandleState()
         header.addView(dragHandle, weightParams(1f))
-        val floatingToggle = button(if (floatingKeyboard) "贴底固定" else "恢复浮动", 11f, true).apply {
+        val toggle = button(if (floatingKeyboard) "贴底固定" else "恢复浮动", 11f, true).apply {
             tag = "floating-toggle"
             contentDescription = if (floatingKeyboard) "贴底固定" else "恢复浮动"
             if (Build.VERSION.SDK_INT >= 30) {
@@ -4281,7 +4290,8 @@ open class ImeKeyboardView(
                 refreshDragHandleState()
             }
         }
-        header.addView(floatingToggle, LinearLayout.LayoutParams(dp(88), dp(48)))
+        floatingToggle = toggle
+        header.addView(toggle, LinearLayout.LayoutParams(dp(88), dp(48)))
         hud.addView(header, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(48),

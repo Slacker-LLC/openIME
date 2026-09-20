@@ -214,8 +214,11 @@ class AuditInteractionInstrumentedTest {
             assertTrue(toggle.contentDescription.toString().contains("恢复浮动"))
             toggle.performClick()
             assertTrue("Floating mode must enable drag", dragHandle.isEnabled)
-            assertEquals("拖动键盘", dragHandle.contentDescription.toString())
+            assertTrue(dragHandle.isFocusable)
+            assertTrue(dragHandle.contentDescription.toString().contains("点击切换浮动状态"))
             assertTrue(toggle.contentDescription.toString().contains("贴底固定"))
+            assertTrue("Keyboard activation must have a useful drag-handle action", dragHandle.performClick())
+            assertFalse("Drag-handle activation must dock the keyboard", dragHandle.isEnabled)
             true
         }
     }
