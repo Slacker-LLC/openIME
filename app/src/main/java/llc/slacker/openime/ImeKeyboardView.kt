@@ -4404,8 +4404,18 @@ open class ImeKeyboardView(
         if (!open) {
             candidateExpandBtn.text = "⌄"
             candidateExpandBtn.contentDescription = "展开更多候选"
+            candidateOverlay.animate().cancel()
+            keyboardBody.animate().cancel()
             candidateOverlay.visibility = View.GONE
+            candidateOverlay.alpha = 1f
+            candidateOverlay.translationY = 0f
             keyboardBody.visibility = View.VISIBLE
+            keyboardBody.alpha = 0.96f
+            keyboardBody.animate()
+                .alpha(1f)
+                .setDuration(120L)
+                .setInterpolator(DecelerateInterpolator(1.5f))
+                .start()
             candidateExpandedOpen = false
             renderedExpandedCandidates = null
             renderedExpandedComposition = null
@@ -4426,7 +4436,10 @@ open class ImeKeyboardView(
         candidateExpandBtn.contentDescription = "收起候选"
         if (Build.VERSION.SDK_INT >= 30) candidateExpandBtn.stateDescription = "已展开"
         keyboardBody.visibility = View.GONE
+        keyboardBody.alpha = 1f
         candidateOverlay.visibility = View.VISIBLE
+        candidateOverlay.alpha = 0f
+        candidateOverlay.translationY = dp(8).toFloat()
         candidateOverlay.removeAllViews()
         candidateOverlay.addView(
             panelHead("候选字词"),
@@ -4467,6 +4480,12 @@ open class ImeKeyboardView(
         )
         applyTheme()
         if (previousScroll > 0) scroll.post { scroll.scrollTo(0, previousScroll) }
+        candidateOverlay.animate()
+            .alpha(1f)
+            .translationY(0f)
+            .setDuration(160L)
+            .setInterpolator(DecelerateInterpolator(1.5f))
+            .start()
     }
 
     private fun key(
