@@ -1,6 +1,7 @@
 package llc.slacker.openime
 
 import android.content.Context
+import android.inputmethodservice.InputMethodService
 import android.os.Build
 import android.util.Log
 import java.io.File
@@ -118,6 +119,10 @@ class RimeEngine(private val context: Context) {
     var errorMessage: String = ""
         private set
 
+    init {
+        PersonalizationRepository.configure(context)
+    }
+
     fun start() {
         if (isReady) return
         val generation = startupGate.begin() ?: return
@@ -207,7 +212,10 @@ class RimeEngine(private val context: Context) {
         if (!allowLearning) return candidate
         val normalized = RimeInputNormalizer.normalize(input)
         if (!isReady || normalized.isBlank()) return ""
-        return synchronized(lock) {
+        val allowPersonalization = PersonalizationPolicy.allow(
+            (context as? InputMethodService)?.currentInputEditorInfo,
+        )
+        val committed = synchronized(lock) {
             runCatching {
                 if (!syncSchemaFromSettingsLocked()) return@runCatching ""
                 val snapshot = RimeNative.nativeSetInput(normalized)
@@ -215,6 +223,10 @@ class RimeEngine(private val context: Context) {
                 if (entry != null) RimeNative.nativeSelectCandidate(entry.nativeIndex).orEmpty() else ""
             }.getOrDefault("")
         }
+        if (allowPersonalization && committed.isNotBlank()) {
+            PersonalizationRepository.record(committed)
+        }
+        return committed
     }
 
     /**
@@ -226,6 +238,9 @@ class RimeEngine(private val context: Context) {
         // Capture the editor's policy at submission time. Private selections
         // must never enter the mutation queue, even if the editor later changes.
         if (!allowLearning) return ""
+        val allowPersonalization = PersonalizationPolicy.allow(
+            (context as? InputMethodService)?.currentInputEditorInfo,
+        )
 
         val deferred = NativeCandidateReference.decodeDeferred(input)
         val sourceInput = deferred?.first ?: input
@@ -235,31 +250,32 @@ class RimeEngine(private val context: Context) {
         if (nativeIndex < 0 && deferred == null) return ""
 
         mutationQueue.submit {
-            if (isReady) {
-                synchronized(lock) {
-                    if (isReady) {
-                        runCatching {
-                            val resolvedIndex = if (deferred != null) {
-                                // Deferred snapshots were rendered before a native
-                                // query completed. Synchronize the current schema,
-                                // replay the exact code, and locate the visible word.
-                                if (!syncSchemaFromSettingsLocked()) return@runCatching
-                                val snapshot = RimeNative.nativeSetInput(normalized)
-                                snapshotCandidateEntries(snapshot)
-                                    .firstOrNull { it.text == deferredText }
-                                    ?.nativeIndex
-                                    ?: return@runCatching
-                            } else {
-                                // A concrete native index belongs to the schema that
-                                // produced the rendered snapshot. Do not switch schemas
-                                // before consuming it.
-                                RimeNative.nativeSetInput(normalized)
-                                nativeIndex
-                            }
-                            RimeNative.nativeSelectCandidate(resolvedIndex)
-                        }
+            if (!isReady) return@submit
+            val committed = synchronized(lock) {
+                if (!isReady) return@synchronized ""
+                runCatching {
+                    val resolvedIndex = if (deferred != null) {
+                        // Deferred snapshots were rendered before a native
+                        // query completed. Synchronize the current schema,
+                        // replay the exact code, and locate the visible word.
+                        if (!syncSchemaFromSettingsLocked()) return@runCatching ""
+                        val snapshot = RimeNative.nativeSetInput(normalized)
+                        snapshotCandidateEntries(snapshot)
+                            .firstOrNull { it.text == deferredText }
+                            ?.nativeIndex
+                            ?: return@runCatching ""
+                    } else {
+                        // A concrete native index belongs to the schema that
+                        // produced the rendered snapshot. Do not switch schemas
+                        // before consuming it.
+                        RimeNative.nativeSetInput(normalized)
+                        nativeIndex
                     }
-                }
+                    RimeNative.nativeSelectCandidate(resolvedIndex).orEmpty()
+                }.getOrDefault("")
+            }
+            if (allowPersonalization && committed.isNotBlank()) {
+                PersonalizationRepository.record(committed)
             }
         }
         return ""
