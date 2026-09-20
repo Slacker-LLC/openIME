@@ -2605,15 +2605,23 @@ open class ImeKeyboardView(
         val controls = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         // The bundled model is bilingual Mandarin + English. Do not expose
         // dialect buttons that the packaged model cannot actually recognize.
-        val languages = listOf("普通话" to "zh-CN", "English" to "en-US")
+        val languages = listOf("普通话" to "zh-CN", "英文" to "en-US")
         var recognizedText = ""
         var voiceCancelled = false
         var cancelPreview = false
         var modelPrepared = false
         val langButton = button(languages[voiceLanguageIndex].first, 13f, true).apply {
+            tag = "voice-language"
+            contentDescription = "语音语言：${languages[voiceLanguageIndex].first}，点击切换"
+            if (Build.VERSION.SDK_INT >= 30) {
+                stateDescription = languages[voiceLanguageIndex].first
+            }
             setOnClickListener {
                 voiceLanguageIndex = (voiceLanguageIndex + 1) % languages.size
-                text = languages[voiceLanguageIndex].first
+                val selectedLanguage = languages[voiceLanguageIndex].first
+                text = selectedLanguage
+                contentDescription = "语音语言：$selectedLanguage，点击切换"
+                if (Build.VERSION.SDK_INT >= 30) stateDescription = selectedLanguage
             }
         }
         controls.addView(langButton, LinearLayout.LayoutParams(0, dp(58), 1f))

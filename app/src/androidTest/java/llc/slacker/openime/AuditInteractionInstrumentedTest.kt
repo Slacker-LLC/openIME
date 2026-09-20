@@ -188,6 +188,18 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun voiceLanguageButtonUpdatesItsAccessibleState() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            keyboard.showPanel(Panel.VOICE)
+            val language = keyboard.findViewWithTag<View>("voice-language")
+            assertTrue(language.contentDescription.toString().contains("普通话"))
+            assertTrue(language.performClick())
+            assertTrue(language.contentDescription.toString().contains("英文"))
+            true
+        }
+    }
+
+    @Test
     fun disablingPopupAffectsExistingKeyWithoutRebuilding() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.setSettings(sound = false, haptic = false, popup = true)
