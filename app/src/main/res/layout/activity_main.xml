@@ -164,7 +164,7 @@
                 android:id="@+id/test_input"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:background="@null"
+                android:background="@drawable/bg_setup_test_field"
                 android:hint="@string/test_hint"
                 android:textColorHint="@color/setup_muted_text"
                 android:textColor="@color/setup_title"
