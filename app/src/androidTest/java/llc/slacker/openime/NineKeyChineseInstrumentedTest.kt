@@ -59,7 +59,7 @@ class NineKeyChineseInstrumentedTest {
         harness.awaitMain<View> { activity ->
             val root = activity.findViewById<ViewGroup>(android.R.id.content) ?: return@awaitMain null
             findView(root) {
-                it.isShown && it.contentDescription == KeyboardMode.PINYIN_9.name
+                it.isShown && it.contentDescription?.toString()?.startsWith("拼音 9 键") == true
             }?.also {
                 it.performClick()
             }
