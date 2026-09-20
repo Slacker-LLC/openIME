@@ -3731,6 +3731,7 @@ open class ImeKeyboardView(
             contentDescription = "拖动键盘"
             setPadding(dp(4), 0, dp(8), 0)
             isClickable = true
+            isFocusable = true
             setOnTouchListener { _, event ->
                 if (!floatingKeyboard) return@setOnTouchListener false
                 when (event.actionMasked) {
@@ -3753,15 +3754,37 @@ open class ImeKeyboardView(
                 }
             }
         }
+        fun refreshDragHandleState() {
+            dragHandle.isEnabled = floatingKeyboard
+            dragHandle.isClickable = floatingKeyboard
+            dragHandle.alpha = if (floatingKeyboard) 1f else 0.52f
+            dragHandle.contentDescription = if (floatingKeyboard) {
+                "拖动键盘"
+            } else {
+                "拖动键盘（恢复浮动后可用）"
+            }
+            if (Build.VERSION.SDK_INT >= 30) {
+                dragHandle.stateDescription = if (floatingKeyboard) "当前可拖动" else "当前不可用"
+            }
+        }
+        refreshDragHandleState()
         header.addView(dragHandle, weightParams(1f))
         val floatingToggle = button(if (floatingKeyboard) "贴底固定" else "恢复浮动", 11f, true).apply {
+            tag = "floating-toggle"
             contentDescription = if (floatingKeyboard) "贴底固定" else "恢复浮动"
+            if (Build.VERSION.SDK_INT >= 30) {
+                stateDescription = if (floatingKeyboard) "当前为浮动模式" else "当前为贴底模式"
+            }
             setOnClickListener { view ->
                 floatingKeyboard = !floatingKeyboard
                 listener.onFloatingKeyboardChanged(floatingKeyboard)
                 val label = if (floatingKeyboard) "贴底固定" else "恢复浮动"
                 (view as TextView).text = label
                 view.contentDescription = label
+                if (Build.VERSION.SDK_INT >= 30) {
+                    view.stateDescription = if (floatingKeyboard) "当前为浮动模式" else "当前为贴底模式"
+                }
+                refreshDragHandleState()
             }
         }
         header.addView(floatingToggle, LinearLayout.LayoutParams(dp(88), dp(48)))

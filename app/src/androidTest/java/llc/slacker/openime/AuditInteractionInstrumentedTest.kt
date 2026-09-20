@@ -10,6 +10,7 @@ import android.view.ViewConfiguration
 import android.view.ViewGroup
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -173,6 +174,23 @@ class AuditInteractionInstrumentedTest {
             val button = keyboard.findViewWithTag<View>("panel-button")
             assertTrue("Panel actions must be keyboard-focusable", button.isFocusable)
             assertTrue("Panel actions must keep a 48dp target", button.minimumHeight >= keyboard.resources.displayMetrics.density * 48f)
+            true
+        }
+    }
+
+    @Test
+    fun gamingFloatingControlsExposeTheirCurrentAvailability() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            keyboard.showPanel(Panel.GAMING)
+            val dragHandle = keyboard.findViewWithTag<View>("floating-drag-handle")
+            val toggle = keyboard.findViewWithTag<View>("floating-toggle")
+            assertFalse("Docked keyboard must not expose a dead drag action", dragHandle.isEnabled)
+            assertTrue(dragHandle.contentDescription.toString().contains("恢复浮动后可用"))
+            assertTrue(toggle.contentDescription.toString().contains("恢复浮动"))
+            toggle.performClick()
+            assertTrue("Floating mode must enable drag", dragHandle.isEnabled)
+            assertEquals("拖动键盘", dragHandle.contentDescription.toString())
+            assertTrue(toggle.contentDescription.toString().contains("贴底固定"))
             true
         }
     }
