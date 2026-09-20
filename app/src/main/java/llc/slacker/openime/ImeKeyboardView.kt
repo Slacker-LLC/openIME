@@ -2314,8 +2314,10 @@ open class ImeKeyboardView(
             ).apply { bottomMargin = dp(8) })
         }
         body.addView(grid, matchParams())
+        val toolsScroll = panelVerticalScroll(body, "tools-scroll")
+        rememberPanelVerticalScroll(toolsScroll, "tools")
         expandedPanel.addView(
-            panelVerticalScroll(body, "tools-scroll"),
+            toolsScroll,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 0,
@@ -2555,8 +2557,10 @@ open class ImeKeyboardView(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(48),
         ))
+        val handwritingScroll = panelVerticalScroll(body, "handwriting-scroll")
+        rememberPanelVerticalScroll(handwritingScroll, "handwriting")
         expandedPanel.addView(
-            panelVerticalScroll(body, "handwriting-scroll"),
+            handwritingScroll,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 dp(panelBodyHeightDp()),
@@ -3009,8 +3013,10 @@ open class ImeKeyboardView(
                     }
                 }
         }
+        val clipboardScroll = panelVerticalScroll(col, "clipboard-scroll")
+        rememberPanelVerticalScroll(clipboardScroll, "clipboard:$clipboardTab")
         body.addView(
-            panelVerticalScroll(col, "clipboard-scroll"),
+            clipboardScroll,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 0,
