@@ -3609,6 +3609,7 @@ open class ImeKeyboardView(
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE
             setSingleLine(true)
+            setSelectAllOnFocus(true)
             filters = arrayOf(android.text.InputFilter.LengthFilter(6))
         }
         val dialog = android.app.AlertDialog.Builder(context)
@@ -3619,6 +3620,12 @@ open class ImeKeyboardView(
             .setNegativeButton("取消", null)
             .create()
         dialog.setOnShowListener {
+            val accent = AccentPalette.parse(skinPrimaryColor)
+            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setTextColor(accent)
+            dialog.getButton(android.content.DialogInterface.BUTTON_NEGATIVE).setTextColor(accent)
+            field.backgroundTintList = ColorStateList.valueOf(accent)
+            field.requestFocus()
+            field.selectAll()
             dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setOnClickListener {
                 val value = field.text.toString().trim().removePrefix("#")
                 if (!value.matches(Regex("[0-9a-fA-F]{6}"))) {
