@@ -367,6 +367,7 @@ class ImeKeyboardViewV2 private constructor(
                 view.isLongClickable = false
                 view.alpha = 0.38f
                 view.contentDescription = "手写输入（未配置）"
+                if (Build.VERSION.SDK_INT >= 30) view.stateDescription = "不可用"
                 markUnavailableLabel(view)
                 return
             }
@@ -384,6 +385,7 @@ class ImeKeyboardViewV2 private constructor(
                 view.isClickable = false
                 view.alpha = 0.38f
                 view.contentDescription = "${view.text}（当前编辑器暂不支持）"
+                if (Build.VERSION.SDK_INT >= 30) view.stateDescription = "不可用"
             }
             if (view is ViewGroup) {
                 for (index in 0 until view.childCount) visit(view.getChildAt(index))
