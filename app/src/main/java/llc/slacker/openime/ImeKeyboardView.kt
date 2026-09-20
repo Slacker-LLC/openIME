@@ -2100,10 +2100,19 @@ open class ImeKeyboardView(
             tag = "panel-head"
         }
         nav.addView(
-            button("‹", 18f, true).apply {
+            ImageView(context).apply {
                 tag = "key-panel-back"
+                setImageResource(R.drawable.ic_arrow_back)
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+                isClickable = true
+                isFocusable = true
                 minimumHeight = dp(48)
+                minimumWidth = dp(48)
                 contentDescription = "返回键盘"
+                setOnTouchListener { _, event ->
+                    if (event.actionMasked == MotionEvent.ACTION_DOWN) feedback()
+                    false
+                }
                 setOnClickListener { closePanelToKeyboard() }
             },
             LinearLayout.LayoutParams(dp(48), dp(48)),
@@ -4729,7 +4738,14 @@ open class ImeKeyboardView(
                 }
             }
             is ImageView -> {
-                if ((view.parent is LinearLayout && (view.parent as LinearLayout).tag == "toolbar-row") ||
+                if (view.tag == "key-panel-back") {
+                    view.imageTintList = ColorStateList.valueOf(t.keyText)
+                    view.background = statefulRounded(
+                        t.panelHeadBackground,
+                        dim(t.panelHeadBackground),
+                        dp(12),
+                    )
+                } else if ((view.parent is LinearLayout && (view.parent as LinearLayout).tag == "toolbar-row") ||
                     hasAncestorTag(view, "tools-panel")) {
                     view.imageTintList = ColorStateList.valueOf(t.keyText)
                     if (view.isClickable) {
