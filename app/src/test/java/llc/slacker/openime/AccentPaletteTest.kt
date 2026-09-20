@@ -47,8 +47,29 @@ class AccentPaletteTest {
     @Test
     fun focusRingFallsBackToDarkHighContrastForBrightAccentOnLightSurface() {
         assertEquals(
-            0xff0f172a.toInt(),
+            0xff07131d.toInt(),
             ImeFocusRingPolicy.resolve(0xffffffff.toInt(), 0xffffd400.toInt()),
         )
+    }
+
+    @Test
+    fun accentForegroundKeepsAtLeastAccessibleTextContrast() {
+        val accents = listOf(
+            0xff1d9bf0.toInt(), 0xffffd400.toInt(), 0xfff91880.toInt(),
+            0xff7856ff.toInt(), 0xffff7a00.toInt(), 0xff00ba7c.toInt(),
+            0xff00c2d7.toInt(), 0xff38bdf8.toInt(), 0xff5865f2.toInt(),
+            0xff9b5de5.toInt(), 0xffe94fb8.toInt(), 0xfff4212e.toInt(),
+            0xffff5a5f.toInt(), 0xfff59e0b.toInt(), 0xff84cc16.toInt(),
+            0xff22c55e.toInt(), 0xff10cfa0.toInt(), 0xff14b8a6.toInt(),
+        )
+        accents.forEach { accent ->
+            assertTrue(
+                "accent foreground must remain readable: ${accent.toUInt().toString(16)}",
+                ImeContrastPolicy.contrastRatio(
+                    accent,
+                    ImeContrastPolicy.contrastText(accent),
+                ) >= 4.5,
+            )
+        }
     }
 }

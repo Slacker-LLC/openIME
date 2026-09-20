@@ -5258,7 +5258,10 @@ open class ImeKeyboardView(
                 view.background?.alpha = (skinOpacity.coerceIn(70, 100) * 255 / 100)
                 view.elevation = 0f
                 when {
-                    primary -> view.setColors(contrastText(t.primary), t.keySecondaryText, contrastText(t.primary))
+                    primary -> {
+                        val onPrimary = contrastText(t.primary)
+                        view.setColors(onPrimary, onPrimary, onPrimary)
+                    }
                     white -> view.setColors(t.lightKeyText, t.lightKeyText, t.lightKeyText)
                     side -> view.setColors(t.sideKeyText, t.sideKeyText, t.sideKeyText)
                     function -> view.setColors(t.functionKeyText, t.functionKeyText, t.functionKeyText)
@@ -5511,24 +5514,7 @@ open class ImeKeyboardView(
         (Color.blue(color) * factor).toInt().coerceIn(0, 255),
     )
 
-    private fun contrastText(background: Int): Int {
-        val luminance = relativeLuminance(background)
-        val whiteContrast = 1.05 / (luminance + 0.05)
-        val dark = Color.rgb(15, 23, 42)
-        val darkContrast = (luminance + 0.05) / 0.0572
-        return if (whiteContrast >= darkContrast) Color.WHITE else dark
-    }
-
-    private fun relativeLuminance(color: Int): Double {
-        fun channel(value: Int): Double {
-            val normalized = value / 255.0
-            return if (normalized <= 0.04045) normalized / 12.92
-            else Math.pow((normalized + 0.055) / 1.055, 2.4)
-        }
-        return 0.2126 * channel(Color.red(color)) +
-            0.7152 * channel(Color.green(color)) +
-            0.0722 * channel(Color.blue(color))
-    }
+    private fun contrastText(background: Int): Int = ImeContrastPolicy.contrastText(background)
 
     private fun hasAncestorTag(view: View, tag: String): Boolean {
         var parent = view.parent

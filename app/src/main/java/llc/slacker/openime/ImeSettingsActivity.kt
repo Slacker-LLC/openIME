@@ -1,7 +1,6 @@
 package llc.slacker.openime
 
 import android.app.Activity
-import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -117,7 +116,7 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
         host.setBackgroundColor(chrome)
         window.statusBarColor = chrome
         window.navigationBarColor = chrome
-        val lightChrome = relativeLuminance(chrome) > 0.55
+        val lightChrome = ImeContrastPolicy.relativeLuminance(chrome) > 0.55
         var flags = window.decorView.systemUiVisibility
         flags = if (lightChrome) {
             flags or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
@@ -132,17 +131,6 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
             }
         }
         window.decorView.systemUiVisibility = flags
-    }
-
-    private fun relativeLuminance(color: Int): Double {
-        fun channel(value: Int): Double {
-            val normalized = value / 255.0
-            return if (normalized <= 0.03928) normalized / 12.92
-            else Math.pow((normalized + 0.055) / 1.055, 2.4)
-        }
-        return 0.2126 * channel(Color.red(color)) +
-            0.7152 * channel(Color.green(color)) +
-            0.0722 * channel(Color.blue(color))
     }
 
     override fun onModeChanged(mode: KeyboardMode) = Unit

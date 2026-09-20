@@ -10,7 +10,6 @@ import android.os.Build
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
-import kotlin.math.pow
 
 /** Shared visual primitives for the non-IME setup and editor screens. */
 object SetupUi {
@@ -22,20 +21,7 @@ object SetupUi {
     fun accent(context: Context): Int =
         AccentPalette.parse(ImeSettingsRepository.loadSkinColor(context))
 
-    fun contrastText(background: Int): Int {
-        fun channel(value: Int): Double {
-            val normalized = value / 255.0
-            return if (normalized <= 0.04045) normalized / 12.92 else {
-                ((normalized + 0.055) / 1.055).pow(2.4)
-            }
-        }
-        val luminance = 0.2126 * channel(Color.red(background)) +
-            0.7152 * channel(Color.green(background)) +
-            0.0722 * channel(Color.blue(background))
-        val whiteContrast = 1.05 / (luminance + 0.05)
-        val blackContrast = (luminance + 0.05) / 0.05
-        return if (whiteContrast >= blackContrast) Color.WHITE else Color.rgb(7, 19, 29)
-    }
+    fun contrastText(background: Int): Int = ImeContrastPolicy.contrastText(background)
 
     fun dim(color: Int, factor: Float): Int = Color.rgb(
         (Color.red(color) * factor).toInt().coerceIn(0, 255),

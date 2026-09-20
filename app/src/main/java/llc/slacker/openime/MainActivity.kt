@@ -18,7 +18,6 @@ import android.widget.Toast
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
-import kotlin.math.pow
 
 /** Match the selected IME by the exact package component, never by substring. */
 internal fun matchesSelectedInputMethod(defaultInputMethodId: String, packageName: String): Boolean {
@@ -260,15 +259,6 @@ class MainActivity : Activity() {
     )
 
     private fun contrastText(background: Int): Int {
-        fun channel(value: Int): Double {
-            val normalized = value / 255.0
-            return if (normalized <= 0.04045) normalized / 12.92 else ((normalized + 0.055) / 1.055).pow(2.4)
-        }
-        val luminance = 0.2126 * channel(Color.red(background)) +
-            0.7152 * channel(Color.green(background)) +
-            0.0722 * channel(Color.blue(background))
-        val whiteContrast = 1.05 / (luminance + 0.05)
-        val blackContrast = (luminance + 0.05) / 0.05
-        return if (whiteContrast >= blackContrast) Color.WHITE else Color.rgb(7, 19, 29)
+        return ImeContrastPolicy.contrastText(background)
     }
 }

@@ -103,12 +103,18 @@ enum class ImeTheme(val key: String, val label: String) {
     }
 }
 
-/** Select an accessible, accent-aware focus indicator for keyboard navigation. */
-internal object ImeFocusRingPolicy {
-    fun resolve(background: Int, accent: Int): Int =
-        if (contrastRatio(accent, background) >= 3.0) accent else contrastText(background)
+/** Shared WCAG contrast decisions for every native surface. */
+internal object ImeContrastPolicy {
+    private const val DARK_CONTENT = 0xff07131d.toInt()
 
-    private fun contrastRatio(first: Int, second: Int): Double {
+    fun contrastText(background: Int): Int {
+        val luminance = relativeLuminance(background)
+        val whiteContrast = (1.0 + 0.05) / (luminance + 0.05)
+        val darkContrast = (luminance + 0.05) / (relativeLuminance(DARK_CONTENT) + 0.05)
+        return if (whiteContrast >= darkContrast) 0xffffffff.toInt() else DARK_CONTENT
+    }
+
+    fun contrastRatio(first: Int, second: Int): Double {
         val firstLuminance = relativeLuminance(first)
         val secondLuminance = relativeLuminance(second)
         val lighter = maxOf(firstLuminance, secondLuminance)
@@ -116,15 +122,7 @@ internal object ImeFocusRingPolicy {
         return (lighter + 0.05) / (darker + 0.05)
     }
 
-    private fun contrastText(background: Int): Int {
-        val luminance = relativeLuminance(background)
-        val whiteContrast = 1.05 / (luminance + 0.05)
-        val dark = 0xff0f172a.toInt()
-        val darkContrast = (luminance + 0.05) / 0.0572
-        return if (whiteContrast >= darkContrast) 0xffffffff.toInt() else dark
-    }
-
-    private fun relativeLuminance(color: Int): Double {
+    fun relativeLuminance(color: Int): Double {
         fun channel(value: Int): Double {
             val normalized = value / 255.0
             return if (normalized <= 0.04045) normalized / 12.92
@@ -134,4 +132,14 @@ internal object ImeFocusRingPolicy {
             0.7152 * channel((color ushr 8) and 0xff) +
             0.0722 * channel(color and 0xff)
     }
+}
+
+/** Select an accessible, accent-aware focus indicator for keyboard navigation. */
+internal object ImeFocusRingPolicy {
+    fun resolve(background: Int, accent: Int): Int =
+        if (ImeContrastPolicy.contrastRatio(accent, background) >= 3.0) {
+            accent
+        } else {
+            ImeContrastPolicy.contrastText(background)
+        }
 }
