@@ -21,7 +21,7 @@ class HandwritingPadView(
     private val strokes = mutableListOf<Stroke>()
     private var currentPoints = mutableListOf<StrokePoint>()
     private val paint = Paint().apply {
-        color = Color.rgb(37, 99, 235)
+        color = AccentPalette.parse(ImeSettingsRepository.loadSkinColor(context))
         style = Paint.Style.STROKE
         strokeWidth = 5f * resources.displayMetrics.density
         strokeCap = Paint.Cap.ROUND
@@ -88,6 +88,14 @@ class HandwritingPadView(
                 if (currentPoints.isNotEmpty()) strokes.add(Stroke(currentPoints.toList()))
                 currentPoints = mutableListOf()
                 onStrokesChanged(strokes.toList())
+                invalidate()
+                return true
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                // A system gesture, parent scroll, or window transition can
+                // cancel the stroke before ACTION_UP. Never leave an
+                // uncommitted half-stroke painted on the canvas.
+                currentPoints = mutableListOf()
                 invalidate()
                 return true
             }
