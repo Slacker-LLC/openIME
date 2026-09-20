@@ -2,4 +2,6 @@
 <resources>
     <item name="quick_phrase_category_editor" type="id" />
     <item name="quick_phrase_text_editor" type="id" />
+    <item name="custom_symbol_group_editor" type="id" />
+    <item name="custom_symbol_text_editor" type="id" />
 </resources>

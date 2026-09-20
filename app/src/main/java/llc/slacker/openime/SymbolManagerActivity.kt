@@ -114,8 +114,9 @@ class SymbolManagerActivity : Activity() {
             setLineSpacing(dp(2).toFloat(), 1f)
             setPadding(0, 0, 0, dp(12))
         }, fullWrap())
-        content.addView(fieldLabel("分组（可选）"), fullWrap())
+        content.addView(fieldLabel("分组（可选）", R.id.custom_symbol_group_editor), fullWrap())
         groupEdit = EditText(this).apply {
+            id = R.id.custom_symbol_group_editor
             hint = "分组，例如：常用箭头"
             setSingleLine(true)
             textSize = 16f
@@ -123,8 +124,9 @@ class SymbolManagerActivity : Activity() {
         }
         SetupUi.styleInput(this, groupEdit)
         content.addView(groupEdit, fullHeight(56).apply { bottomMargin = dp(10) })
-        content.addView(fieldLabel("符号或自定义文本"), fullWrap().apply { bottomMargin = dp(2) })
+        content.addView(fieldLabel("符号或自定义文本", R.id.custom_symbol_text_editor), fullWrap().apply { bottomMargin = dp(2) })
         symbolEdit = EditText(this).apply {
+            id = R.id.custom_symbol_text_editor
             hint = "符号，例如：⇢ 或 自定义文本"
             setSingleLine(true)
             textSize = 20f
@@ -308,11 +310,12 @@ class SymbolManagerActivity : Activity() {
     private fun smallButton(label: String, action: () -> Unit) =
         SetupUi.secondaryButton(this, label, action)
 
-    private fun fieldLabel(label: String) = TextView(this).apply {
+    private fun fieldLabel(label: String, targetId: Int) = TextView(this).apply {
         text = label
         textSize = 12f
         setTextColor(getColor(R.color.setup_body))
         setPadding(dp(4), 0, dp(4), dp(4))
+        labelFor = targetId
     }
 
     private fun requestClose() {

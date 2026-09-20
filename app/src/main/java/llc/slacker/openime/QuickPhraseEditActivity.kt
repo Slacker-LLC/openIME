@@ -172,7 +172,7 @@ class QuickPhraseEditActivity : Activity() {
                 dp(20).toFloat(),
                 getColor(R.color.setup_input_line),
             )
-            addView(fieldLabel("分类（可选）"), LinearLayout.LayoutParams(
+            addView(fieldLabel("分类（可选）", R.id.quick_phrase_category_editor), LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
             ))
@@ -180,7 +180,7 @@ class QuickPhraseEditActivity : Activity() {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 dp(58),
             ).apply { bottomMargin = dp(14) })
-            addView(fieldLabel("常用语内容"), LinearLayout.LayoutParams(
+            addView(fieldLabel("常用语内容", R.id.quick_phrase_text_editor), LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
             ))
@@ -236,11 +236,12 @@ class QuickPhraseEditActivity : Activity() {
         })
     }
 
-    private fun fieldLabel(label: String) = TextView(this).apply {
+    private fun fieldLabel(label: String, targetId: Int) = TextView(this).apply {
         text = label
         textSize = 12f
         setTextColor(getColor(R.color.setup_body))
         setPadding(dp(4), 0, dp(4), dp(4))
+        labelFor = targetId
     }
 
     private fun requestClose() {
