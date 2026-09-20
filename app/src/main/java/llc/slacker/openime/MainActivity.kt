@@ -7,6 +7,8 @@ import android.content.ComponentName
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Build
+import android.view.HapticFeedbackConstants
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowInsets
 import android.provider.Settings
@@ -34,6 +36,12 @@ class MainActivity : Activity() {
             }
             insets
         }
+        listOf(
+            R.id.open_ime_settings,
+            R.id.choose_ime,
+            R.id.open_app_settings,
+            R.id.voice_permission,
+        ).forEach { installSetupFeedback(findViewById(it)) }
         findViewById<View>(R.id.open_ime_settings).setOnClickListener {
             startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
         }
@@ -100,9 +108,19 @@ class MainActivity : Activity() {
             activeText = getString(R.string.choose_ime),
             markText = "2",
         )
-        findViewById<View>(R.id.choose_ime).isEnabled = enabled
+        findViewById<View>(R.id.choose_ime).apply {
+            isEnabled = enabled
+            alpha = when {
+                selected -> 0.72f
+                enabled -> 1f
+                else -> 0.55f
+            }
+        }
         val microphoneGranted = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-        findViewById<View>(R.id.voice_permission).isEnabled = !microphoneGranted
+        findViewById<View>(R.id.voice_permission).apply {
+            isEnabled = !microphoneGranted
+            alpha = if (microphoneGranted) 0.72f else 1f
+        }
         findViewById<TextView>(R.id.voice_permission_label).apply {
             setText(if (microphoneGranted) R.string.voice_permission_ready else R.string.voice_permission_enable)
             setTextColor(getColor(if (microphoneGranted) R.color.setup_muted_text else R.color.setup_title))
@@ -126,6 +144,15 @@ class MainActivity : Activity() {
     private fun isImeReady(): Boolean {
         val status = imeStatus()
         return status.enabled && status.selected
+    }
+
+    private fun installSetupFeedback(view: View) {
+        view.setOnTouchListener { _, event ->
+            if (event.actionMasked == MotionEvent.ACTION_DOWN && view.isEnabled) {
+                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+            }
+            false
+        }
     }
 
     private data class ImeStatus(val enabled: Boolean, val selected: Boolean)
