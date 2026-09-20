@@ -14,6 +14,7 @@ import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.WindowInsets
+import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.LinearLayout
@@ -131,6 +132,7 @@ class SymbolManagerActivity : Activity() {
             id = R.id.custom_symbol_group_editor
             hint = "分组，例如：常用箭头"
             setSingleLine(true)
+            imeOptions = EditorInfo.IME_ACTION_NEXT
             textSize = 16f
             setText(draftGroup)
         }
@@ -141,6 +143,7 @@ class SymbolManagerActivity : Activity() {
             id = R.id.custom_symbol_text_editor
             hint = "符号，例如：⇢ 或 自定义文本"
             setSingleLine(true)
+            imeOptions = EditorInfo.IME_ACTION_DONE
             textSize = 20f
             setText(draftSymbol)
         }
@@ -164,6 +167,22 @@ class SymbolManagerActivity : Activity() {
                 initialGroup = ""
                 initialSymbol = ""
                 render()
+            }
+        }
+        groupEdit.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_NEXT) {
+                symbolEdit.requestFocus()
+                true
+            } else {
+                false
+            }
+        }
+        symbolEdit.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE) {
+                save.performClick()
+                true
+            } else {
+                false
             }
         }
         fun refreshSaveState() {
