@@ -993,12 +993,16 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
     override fun onTextEdit(action: String) {
         if (action in setOf("select-all", "cut", "paste", "left", "right")) prepareForManualInput()
         when (action) {
-            "select-all" -> gateway.selectAll()
+            "select-all" -> if (!gateway.selectAll()) {
+                showTextEditFeedback("当前应用不支持全选")
+            }
             "copy" -> {
                 val selected = gateway.copySelection()
                 if (selected.isNotEmpty()) {
                     ClipboardHistoryRepository.add(this, selected)
                     gateway.copyToClipboard(selected)
+                } else {
+                    showTextEditFeedback("请先选择要复制的文本")
                 }
             }
             "cut" -> {
@@ -1007,12 +1011,19 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
                     ClipboardHistoryRepository.add(this, selected)
                     gateway.copyToClipboard(selected)
                     gateway.deleteSelection()
+                } else {
+                    showTextEditFeedback("请先选择要剪切的文本")
                 }
             }
             "paste" -> {
                 commitPendingComposition()
                 keyboardView?.clearAssociationCandidates()
-                gateway.pasteClipboard { clip -> ClipboardHistoryRepository.captureClip(this, clip) }
+                val pasted = gateway.pasteClipboard { clip -> ClipboardHistoryRepository.captureClip(this, clip) }
+                if (pasted.isEmpty()) {
+                    showTextEditFeedback(
+                        if (state.passwordField) "密码输入框不允许通过此处粘贴" else "剪贴板没有可粘贴文本",
+                    )
+                }
             }
             "left" -> {
                 gateway.moveCursorHorizontally(-1)
@@ -1024,6 +1035,10 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
                 // These depend on the target editor; no fake implementation here.
             }
         }
+    }
+
+    private fun showTextEditFeedback(message: String) {
+        android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_SHORT).show()
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {

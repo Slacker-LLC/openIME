@@ -298,14 +298,15 @@ class InputConnectionGateway(
      * Prefer the editor's own select-all implementation. A bounded extracted
      * window must never be mistaken for the complete document.
      */
-    fun selectAll() {
-        if (isPassword()) return
-        val ic = connection() ?: return
-        if (runCatching { ic.performContextMenuAction(android.R.id.selectAll) }.getOrDefault(false)) return
-        val window = extractedWindow(ic) ?: return
+    fun selectAll(): Boolean {
+        if (isPassword()) return false
+        val ic = connection() ?: return false
+        if (runCatching { ic.performContextMenuAction(android.R.id.selectAll) }.getOrDefault(false)) return true
+        val window = extractedWindow(ic) ?: return false
         if (window.isCompleteDocument) {
-            ic.setSelection(0, window.text.length)
+            return runCatching { ic.setSelection(0, window.text.length) }.getOrDefault(false)
         }
+        return false
     }
 
     /**
