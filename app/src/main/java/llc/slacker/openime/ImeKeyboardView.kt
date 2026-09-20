@@ -1347,7 +1347,7 @@ open class ImeKeyboardView(
         val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
         val tokens = theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor))
-        val backgroundColor = if (voiceInlineCancel) Color.rgb(220, 38, 38) else tokens.primary
+        val backgroundColor = if (voiceInlineCancel) tokens.destructive else tokens.primary
         if (inlineVoicePaletteColor == backgroundColor) return
         inlineVoicePaletteColor = backgroundColor
         voiceInlineZone.background = rounded(backgroundColor, dp(13))
@@ -4950,13 +4950,23 @@ open class ImeKeyboardView(
         fun setClearHintActive(active: Boolean) {
             clearHint.visibility = if (backspaceGestureActive) View.VISIBLE else View.INVISIBLE
             if (active) {
+                val destructive = theme.tokens(
+                    appearance,
+                    isNight(),
+                    AccentPalette.parse(skinPrimaryColor),
+                ).destructive
                 clearHint.text = "清空"
-                clearHint.setTextColor(Color.WHITE)
-                clearHint.background = rounded(Color.rgb(211, 47, 47), dp(5))
+                clearHint.setTextColor(contrastText(destructive))
+                clearHint.background = rounded(destructive, dp(5))
                 clearHint.alpha = 1f
             } else {
+                val secondary = theme.tokens(
+                    appearance,
+                    isNight(),
+                    AccentPalette.parse(skinPrimaryColor),
+                ).keySecondaryText
                 clearHint.text = "↑ 清空"
-                clearHint.setTextColor(Color.GRAY)
+                clearHint.setTextColor(secondary)
                 clearHint.background = null
                 clearHint.alpha = 0.72f
             }
@@ -5004,9 +5014,10 @@ open class ImeKeyboardView(
             ellipsize = TextUtils.TruncateAt.END
             gravity = Gravity.CENTER
             setPadding(dp(8), dp(6), dp(8), dp(6))
-            setTextColor(if (char == "清空") Color.WHITE else t.keyText)
+            val popupBackground = if (char == "清空") t.destructive else t.keyBackground
+            setTextColor(if (char == "清空") contrastText(popupBackground) else t.keyText)
             background = rounded(
-                if (char == "清空") Color.rgb(185, 40, 40) else t.keyBackground,
+                popupBackground,
                 dp(10),
             )
             elevation = dp(2).toFloat()
