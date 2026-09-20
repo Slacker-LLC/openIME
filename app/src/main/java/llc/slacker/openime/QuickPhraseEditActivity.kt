@@ -3,9 +3,12 @@ package llc.slacker.openime
 import android.app.Activity
 import android.os.Build
 import android.os.Bundle
+import android.util.TypedValue
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.WindowInsets
+import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -34,6 +37,7 @@ class QuickPhraseEditActivity : Activity() {
             hint = "分类，例如：工作"
             setText(category)
             setSingleLine(true)
+            imeOptions = EditorInfo.IME_ACTION_NEXT
             textSize = 16f
         }
         val phraseEdit = EditText(this).apply {
@@ -43,6 +47,7 @@ class QuickPhraseEditActivity : Activity() {
             minLines = 4
             maxLines = 8
             gravity = Gravity.TOP or Gravity.START
+            imeOptions = EditorInfo.IME_ACTION_DONE
             textSize = 17f
         }
         val title = TextView(this).apply {
@@ -64,13 +69,18 @@ class QuickPhraseEditActivity : Activity() {
                 minHeight = dp(48)
                 isClickable = true
                 isFocusable = true
-                setOnClickListener { finish() }
+                applySelectableBackground(this)
+                setOnClickListener {
+                    performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                    finish()
+                }
             }, LinearLayout.LayoutParams(dp(48), dp(56)))
             addView(title, LinearLayout.LayoutParams(0, dp(56), 1f))
         }
         val save = Button(this).apply {
             text = "保存"
             setOnClickListener {
+                performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                 if (phraseEdit.text.isNullOrBlank()) {
                     phraseEdit.error = "请输入常用语内容"
                     phraseEdit.requestFocus()
@@ -87,7 +97,26 @@ class QuickPhraseEditActivity : Activity() {
         }
         val cancel = Button(this).apply {
             text = "取消"
-            setOnClickListener { finish() }
+            setOnClickListener {
+                performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                finish()
+            }
+        }
+        categoryEdit.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_NEXT) {
+                phraseEdit.requestFocus()
+                true
+            } else {
+                false
+            }
+        }
+        phraseEdit.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE) {
+                save.performClick()
+                true
+            } else {
+                false
+            }
         }
         val actions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -136,5 +165,18 @@ class QuickPhraseEditActivity : Activity() {
         })
         phraseEdit.requestFocus()
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+    }
+
+    private fun applySelectableBackground(view: View) {
+        val value = TypedValue()
+        if (
+            theme.resolveAttribute(
+                android.R.attr.selectableItemBackgroundBorderless,
+                value,
+                true,
+            ) && value.resourceId != 0
+        ) {
+            view.setBackgroundResource(value.resourceId)
+        }
     }
 }

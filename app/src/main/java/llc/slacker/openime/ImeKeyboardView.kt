@@ -2921,8 +2921,16 @@ open class ImeKeyboardView(
                         row.addView(button("删除", 11f, true).apply {
                             tag = "phrase-delete:${phrase.id}"
                             setOnClickListener {
-                                QuickPhraseRepository.remove(context, phrase.id)
-                                renderClipboard(reusePanel = true)
+                                feedback()
+                                android.app.AlertDialog.Builder(context)
+                                    .setTitle("删除常用语？")
+                                    .setMessage(phrase.text)
+                                    .setNegativeButton("取消", null)
+                                    .setPositiveButton("删除") { _, _ ->
+                                        QuickPhraseRepository.remove(context, phrase.id)
+                                        renderClipboard(reusePanel = true)
+                                    }
+                                    .show()
                             }
                         }, LinearLayout.LayoutParams(dp(48), dp(48)))
                         col.addView(row, LinearLayout.LayoutParams(

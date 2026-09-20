@@ -187,6 +187,7 @@ AssertTestInput 'quick phrase edit and use' $editedPhrase
 StartReal
 OpenQuickPhrases
 SendExpect ('quick-phrase-delete64:' + (Encode $editedPhrase)) $true
+TapUiText '删除'
 SendExpect ('quick-phrase-exists64:' + (Encode $editedPhrase)) $false
 
 'PANEL DATA REGRESSION PASS (clipboard + quick phrase add/edit/delete)'

@@ -4,8 +4,10 @@ import android.app.Activity
 import android.content.ClipData
 import android.os.Bundle
 import android.text.TextUtils
+import android.util.TypedValue
 import android.view.DragEvent
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.WindowInsets
 import android.widget.Button
@@ -67,7 +69,11 @@ class SymbolManagerActivity : Activity() {
                 minHeight = dp(48)
                 isClickable = true
                 isFocusable = true
-                setOnClickListener { finish() }
+                applySelectableBackground(this)
+                setOnClickListener {
+                    performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                    finish()
+                }
             }, LinearLayout.LayoutParams(dp(48), dp(56)))
             addView(title, LinearLayout.LayoutParams(0, dp(56), 1f))
         }
@@ -95,6 +101,7 @@ class SymbolManagerActivity : Activity() {
             text = "保存符号"
             minHeight = dp(52)
             setOnClickListener {
+                performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                 if (symbolEdit.text.isNullOrBlank()) {
                     symbolEdit.error = "请输入符号或自定义文本"
                     symbolEdit.requestFocus()
@@ -133,7 +140,10 @@ class SymbolManagerActivity : Activity() {
         content.addView(Button(this).apply {
             text = "完成"
             minHeight = dp(52)
-            setOnClickListener { finish() }
+            setOnClickListener {
+                performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                finish()
+            }
         }, fullHeight(52).apply { topMargin = dp(12) })
         setContentView(ScrollView(this).apply {
             setBackgroundColor(getColor(R.color.setup_page_bg))
@@ -196,9 +206,16 @@ class SymbolManagerActivity : Activity() {
             render()
         }
         action("删除") {
-            CustomSymbolRepository.remove(this@SymbolManagerActivity, item.id)
-            if (editingId == item.id) editingId = 0L
-            render()
+            android.app.AlertDialog.Builder(this@SymbolManagerActivity)
+                .setTitle("删除自定义符号？")
+                .setMessage(item.symbol)
+                .setNegativeButton("取消", null)
+                .setPositiveButton("删除") { _, _ ->
+                    CustomSymbolRepository.remove(this@SymbolManagerActivity, item.id)
+                    if (editingId == item.id) editingId = 0L
+                    render()
+                }
+                .show()
         }
         addView(actions, fullWrap())
         setOnLongClickListener {
@@ -226,6 +243,19 @@ class SymbolManagerActivity : Activity() {
         minHeight = dp(48)
         setPadding(dp(3), 0, dp(3), 0)
         setOnClickListener { action() }
+    }
+
+    private fun applySelectableBackground(view: View) {
+        val value = TypedValue()
+        if (
+            theme.resolveAttribute(
+                android.R.attr.selectableItemBackgroundBorderless,
+                value,
+                true,
+            ) && value.resourceId != 0
+        ) {
+            view.setBackgroundResource(value.resourceId)
+        }
     }
 
     private fun fullWrap() = LinearLayout.LayoutParams(
