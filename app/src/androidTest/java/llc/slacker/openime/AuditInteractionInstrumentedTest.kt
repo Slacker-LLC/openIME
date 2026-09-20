@@ -200,6 +200,22 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun settingToggleUsesOneFocusableStatefulRow() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            keyboard.showPanel(Panel.FUZZY_SETTINGS)
+            val panel = keyboard.findViewWithTag<ViewGroup>("fuzzy-settings-panel")
+            val row = panel.findViewWithTag<ViewGroup>("setting-row")
+            val toggle = panel.findViewWithTag<View>("toggle")
+            assertTrue("Settings row must be keyboard-focusable", row.isFocusable)
+            assertTrue("Settings row must expose its current state", row.contentDescription.toString().contains("已关闭"))
+            assertTrue("The visual switch must not create a duplicate accessibility node", toggle.importantForAccessibility == View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS)
+            assertTrue(row.performClick())
+            assertTrue(row.contentDescription.toString().contains("已开启"))
+            true
+        }
+    }
+
+    @Test
     fun textEditorSpacerCellsAreNotExposedAsActions() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.showPanel(Panel.TEXT_EDITOR)

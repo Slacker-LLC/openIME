@@ -3312,15 +3312,27 @@ open class ImeKeyboardView(
     }
 
     private fun settingToggleRow(label: String, sub: String): LinearLayout {
-        val toggleView = toggle(label)
-        return LinearLayout(context).apply {
+        val row = LinearLayout(context)
+        fun updateRowAccessibility(enabled: Boolean) {
+            row.contentDescription = "$label，${if (enabled) "已开启" else "已关闭"}"
+            if (Build.VERSION.SDK_INT >= 30) {
+                row.stateDescription = if (enabled) "已开启" else "已关闭"
+            }
+        }
+        val toggleView = toggle(label, ::updateRowAccessibility).apply {
+            // The row is the single accessibility/control target. Keep the
+            // visual switch touchable, but do not expose a duplicate node.
+            isFocusable = false
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+        }
+        row.apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(14), 0, dp(14), 0)
             tag = "setting-row"
-            contentDescription = label
             minimumHeight = dp(56)
             isClickable = true
+            isFocusable = true
             setOnClickListener { toggleView.performClick() }
             addView(settingIcon(label), LinearLayout.LayoutParams(dp(26), dp(26)).apply {
                 marginEnd = dp(8)
@@ -3342,6 +3354,8 @@ open class ImeKeyboardView(
             }, weightParams(1f))
             addView(toggleView, wrapParams())
         }
+        updateRowAccessibility(onState(label))
+        return row
     }
 
     private fun settingNavigationRow(label: String, sub: String, onTap: () -> Unit): LinearLayout =
@@ -3434,7 +3448,7 @@ open class ImeKeyboardView(
         ))
     }
 
-    private fun toggle(seed: String): View {
+    private fun toggle(seed: String, onChanged: (Boolean) -> Unit = {}): View {
         val on = when (seed) {
             "按键音效" -> soundEnabled
             "触感震动" -> hapticEnabled
@@ -3469,6 +3483,7 @@ open class ImeKeyboardView(
                 val next = !onState(seed)
                 toggleCallback(seed)?.invoke(next)
                 updateAccessibilityState(next)
+                onChanged(next)
                 (getChildAt(0)).layoutParams = FrameLayout.LayoutParams(dp(20), dp(20)).apply {
                     gravity = if (next) Gravity.END or Gravity.CENTER_VERTICAL else Gravity.START or Gravity.CENTER_VERTICAL
                 }
