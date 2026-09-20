@@ -2080,7 +2080,7 @@ open class ImeKeyboardView(
                 tag = "key-panel-back"
                 minimumHeight = dp(48)
                 contentDescription = "返回键盘"
-                setOnClickListener { feedback(); closePanelToKeyboard() }
+                setOnClickListener { closePanelToKeyboard() }
             },
             LinearLayout.LayoutParams(dp(48), dp(48)),
         )
@@ -3640,7 +3640,6 @@ open class ImeKeyboardView(
         val floatingToggle = button(if (floatingKeyboard) "贴底固定" else "恢复浮动", 11f, true).apply {
             contentDescription = if (floatingKeyboard) "贴底固定" else "恢复浮动"
             setOnClickListener { view ->
-                feedback()
                 floatingKeyboard = !floatingKeyboard
                 listener.onFloatingKeyboardChanged(floatingKeyboard)
                 val label = if (floatingKeyboard) "贴底固定" else "恢复浮动"
@@ -4256,6 +4255,12 @@ open class ImeKeyboardView(
         includeFontPadding = false
         minHeight = dp(48)
         minimumHeight = dp(48)
+        isClickable = true
+        isFocusable = true
+        setOnTouchListener { _, event ->
+            if (event.actionMasked == MotionEvent.ACTION_DOWN && isEnabled) feedback()
+            false
+        }
     }
 
     private fun performBackspaceOnce() {

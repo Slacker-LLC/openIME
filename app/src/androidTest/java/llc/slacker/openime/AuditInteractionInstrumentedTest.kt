@@ -163,6 +163,20 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun panelButtonsAreFocusableAndKeepTouchFeedbackTarget() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            keyboard.showPanel(Panel.GAMING)
+            val back = keyboard.findViewWithTag<View>("key-panel-back")
+            assertTrue("Panel back must be keyboard-focusable", back.isFocusable)
+            assertTrue("Panel back must keep a 48dp target", back.minimumHeight >= keyboard.resources.displayMetrics.density * 48f)
+            val button = keyboard.findViewWithTag<View>("panel-button")
+            assertTrue("Panel actions must be keyboard-focusable", button.isFocusable)
+            assertTrue("Panel actions must keep a 48dp target", button.minimumHeight >= keyboard.resources.displayMetrics.density * 48f)
+            true
+        }
+    }
+
+    @Test
     fun disablingPopupAffectsExistingKeyWithoutRebuilding() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.setSettings(sound = false, haptic = false, popup = true)
