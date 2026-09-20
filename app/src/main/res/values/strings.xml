@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">openIME</string>
     <string name="subtitle_zh">中文</string>
-    <string name="subtitle_en">English</string>
+    <string name="subtitle_en">英文</string>
     <string name="main_description">本地拼音输入法\n词库和语音都在设备内运行</string>
     <string name="test_hint">在这里试打</string>
     <string name="open_ime_settings">第一步 启用 openIME</string>
