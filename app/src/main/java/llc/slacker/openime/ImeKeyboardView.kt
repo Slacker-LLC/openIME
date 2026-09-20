@@ -5119,15 +5119,25 @@ open class ImeKeyboardView(
         }
     }
 
-    private fun rounded(color: Int, radius: Int) = GradientDrawable().apply {
+    private fun rounded(color: Int, radius: Int, strokeColor: Int? = null) = GradientDrawable().apply {
         shape = GradientDrawable.RECTANGLE
         setColor(color)
         cornerRadius = radius.toFloat()
+        strokeColor?.let { setStroke(dp(1), it) }
     }
 
     private fun statefulRounded(normal: Int, pressed: Int, radius: Int) = StateListDrawable().apply {
         addState(intArrayOf(android.R.attr.state_pressed), rounded(pressed, radius))
+        addState(intArrayOf(android.R.attr.state_focused), rounded(normal, radius, focusStroke(normal)))
         addState(intArrayOf(), rounded(normal, radius))
+    }
+
+    private fun focusStroke(color: Int): Int {
+        if (Color.alpha(color) == 0) return Color.rgb(148, 163, 184)
+        val brightness = 0.299 * Color.red(color) +
+            0.587 * Color.green(color) +
+            0.114 * Color.blue(color)
+        return if (brightness > 150) Color.rgb(15, 23, 42) else Color.WHITE
     }
 
     private fun dim(color: Int, factor: Float = 0.82f): Int = Color.argb(
