@@ -167,6 +167,25 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun settingsExposeEveryKeyboardThemeAndKeepSelectionAccessible() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            keyboard.showPanel(Panel.SETTINGS)
+            ImeTheme.entries.forEach { theme ->
+                val chip = keyboard.findTestTarget(theme.label)
+                assertTrue("${theme.label} must be selectable from settings", chip != null)
+                assertTrue("${theme.label} must expose a 48dp target", chip!!.minimumHeight >= keyboard.resources.displayMetrics.density * 48f)
+            }
+            val cyberpunk = keyboard.findTestTarget(ImeTheme.CYBERPUNK.label)
+            assertTrue(cyberpunk!!.performClick())
+            assertTrue(
+                "Selected theme must expose its accessible state",
+                keyboard.findTestTarget(ImeTheme.CYBERPUNK.label)!!.contentDescription.toString().contains("已选中"),
+            )
+            true
+        }
+    }
+
+    @Test
     fun panelButtonsAreFocusableAndKeepTouchFeedbackTarget() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.showPanel(Panel.GAMING)

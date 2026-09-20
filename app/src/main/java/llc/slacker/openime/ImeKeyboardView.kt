@@ -3283,6 +3283,16 @@ open class ImeKeyboardView(
             setPadding(dp(12), dp(12), dp(12), dp(18))
             tag = "settings-panel"
         }
+        content.addView(sectionTitle("键盘主题"), wrapParams())
+        content.addView(panelChipScroll(ImeTheme.entries.map { it.label }, theme.label) { label ->
+            ImeTheme.entries.firstOrNull { it.label == label }?.let { selectedTheme ->
+                setTheme(selectedTheme)
+                renderSettings(reusePanel = true)
+            }
+        }, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            dp(48),
+        ).apply { bottomMargin = dp(12) })
         content.addView(sectionTitle("外观"), wrapParams())
         content.addView(panelChipScroll(ImeAppearance.entries.map { it.label }, appearance.label) { label ->
             appearance = ImeAppearance.entries.first { it.label == label }
