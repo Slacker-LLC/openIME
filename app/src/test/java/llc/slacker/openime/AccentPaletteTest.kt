@@ -37,4 +37,18 @@ class AccentPaletteTest {
     fun everyPresetIsAValidSixDigitColor() {
         assertTrue(AccentPalette.presets.all { (hex, _) -> AccentPalette.normalize(hex) == hex })
     }
+
+    @Test
+    fun focusRingUsesAccentWhenItHasEnoughContrast() {
+        val accent = 0xff00c2d7.toInt()
+        assertEquals(accent, ImeFocusRingPolicy.resolve(0xff303238.toInt(), accent))
+    }
+
+    @Test
+    fun focusRingFallsBackToDarkHighContrastForBrightAccentOnLightSurface() {
+        assertEquals(
+            0xff0f172a.toInt(),
+            ImeFocusRingPolicy.resolve(0xffffffff.toInt(), 0xffffd400.toInt()),
+        )
+    }
 }

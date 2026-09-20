@@ -5393,11 +5393,16 @@ open class ImeKeyboardView(
     }
 
     private fun focusStroke(color: Int): Int {
-        if (Color.alpha(color) == 0) return Color.rgb(148, 163, 184)
-        val brightness = 0.299 * Color.red(color) +
-            0.587 * Color.green(color) +
-            0.114 * Color.blue(color)
-        return if (brightness > 150) Color.rgb(15, 23, 42) else Color.WHITE
+        val background = if (Color.alpha(color) == 0) {
+            theme.tokens(
+                appearance,
+                isNight(),
+                AccentPalette.parse(skinPrimaryColor),
+            ).keyboardBackground
+        } else {
+            color
+        }
+        return ImeFocusRingPolicy.resolve(background, AccentPalette.parse(skinPrimaryColor))
     }
 
     private fun dim(color: Int, factor: Float = 0.82f): Int = Color.argb(
@@ -5408,19 +5413,22 @@ open class ImeKeyboardView(
     )
 
     private fun contrastText(background: Int): Int {
+        val luminance = relativeLuminance(background)
+        val whiteContrast = 1.05 / (luminance + 0.05)
+        val dark = Color.rgb(15, 23, 42)
+        val darkContrast = (luminance + 0.05) / 0.0572
+        return if (whiteContrast >= darkContrast) Color.WHITE else dark
+    }
+
+    private fun relativeLuminance(color: Int): Double {
         fun channel(value: Int): Double {
             val normalized = value / 255.0
             return if (normalized <= 0.04045) normalized / 12.92
             else Math.pow((normalized + 0.055) / 1.055, 2.4)
         }
-        val luminance =
-            0.2126 * channel(Color.red(background)) +
-                0.7152 * channel(Color.green(background)) +
-                0.0722 * channel(Color.blue(background))
-        val whiteContrast = 1.05 / (luminance + 0.05)
-        val dark = Color.rgb(15, 23, 42)
-        val darkContrast = (luminance + 0.05) / 0.0572
-        return if (whiteContrast >= darkContrast) Color.WHITE else dark
+        return 0.2126 * channel(Color.red(color)) +
+            0.7152 * channel(Color.green(color)) +
+            0.0722 * channel(Color.blue(color))
     }
 
     private fun hasAncestorTag(view: View, tag: String): Boolean {
