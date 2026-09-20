@@ -6,13 +6,16 @@ __include: luna_pinyin_simp.schema:/
 schema:
   schema_id: luna_pinyin_simp_fuzzy
   name: 朙月拼音·简化字·模糊音
-  version: "0.22"
+  version: "0.24"
   author:
-    - 佛振 <chen.sst@gmail.com>
+    - openIME
   description: |
-    朙月拼音简化字方案，额外启用 openIME 模糊音规则。
+    朙月拼音简化字方案，额外启用 openIME 模糊音规则；全拼和 2-9 九键数字码共用同一词库/userdb。
 
 speller:
+  alphabet: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA987654321
+  initials: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA987654321
+  delimiter: " '"
   algebra:
     __patch:
       - pinyin:/zh_z_bufen
@@ -21,8 +24,8 @@ speller:
       - pinyin:/abbreviation
       - pinyin:/spelling_correction
       - pinyin:/key_correction
+      - pinyin:/t9_transliteration
 
 translator:
-  # Fuzzy algebra must use its own prism; reusing luna_pinyin_simp would keep
-  # the non-fuzzy compiled spelling graph even after selecting this schema.
+  # Fuzzy algebra and the T9 transliteration use their own compiled prism.
   prism: luna_pinyin_simp_fuzzy

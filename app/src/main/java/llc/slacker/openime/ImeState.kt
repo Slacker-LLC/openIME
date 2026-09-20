@@ -52,18 +52,20 @@ data class ImeState(
     val appearance: ImeAppearance = ImeAppearance.SYSTEM,
     val soundEnabled: Boolean = true,
     val hapticEnabled: Boolean = true,
-    val popupEnabled: Boolean = true,
+    // Default off, matching ImeSettingsRepository.loadPopup and the View field.
+    val popupEnabled: Boolean = false,
     val fuzzyPinyinEnabled: Boolean = false,
     val editorInfo: EditorInfo? = null,
     val editorAction: Int = EditorInfo.IME_ACTION_NONE,
     val passwordField: Boolean = false,
     val symbolCategory: String = "常用",
-    val emojiCategory: String = "表情",
+    // First real emoji category tab (see ImeData.fluentSmileysByCategory order).
+    val emojiCategory: String = "笑脸",
     val voiceState: VoiceUiState = VoiceUiState(),
     val skinOpacity: Int = 95,
     val skinRadius: Int = 8,
     val skinFontSize: Int = 17,
-    val skinPrimaryColor: String = "#2563eb",
+    val skinPrimaryColor: String = AccentPalette.DEFAULT,
 ) {
     fun withMode(mode: KeyboardMode): ImeState = copy(
         previousKeyboardMode = keyboardMode,

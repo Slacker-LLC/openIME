@@ -1,4 +1,4 @@
-﻿param([string]$Serial = '')
+param([string]$Serial = '')
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'adb_context.ps1')
@@ -13,20 +13,31 @@ $apk = Join-Path $project 'artifacts\openIME-1.0-debug.apk'
 function Adb { & $adb -s $Serial @args }
 
 function FocusById([string]$id) {
-    for ($attempt = 0; $attempt -lt 8; $attempt++) {
+    $local = Join-Path $env:TEMP 'lc-focus.xml'
+    for ($attempt = 0; $attempt -lt 10; $attempt++) {
+        Remove-Item -LiteralPath $local -Force -ErrorAction SilentlyContinue
+        Adb shell rm -f /sdcard/lc.xml | Out-Null
         Adb shell uiautomator dump /sdcard/lc.xml | Out-Null
-        $local = Join-Path $env:TEMP 'lc-focus.xml'
-        Adb pull /sdcard/lc.xml $local | Out-Null
-        $h = [xml](Get-Content -Raw -Encoding UTF8 -LiteralPath $local)
-        $xpath = '//node[@resource-id="' + $id + '"]'
-        $node = $h.SelectNodes($xpath) | Select-Object -First 1
-        if ($node -and $node.bounds -match '\[(\d+),(\d+)\]\[(\d+),(\d+)\]') {
-            $x = ([int]$Matches[1] + [int]$Matches[3]) / 2
-            $y = ([int]$Matches[2] + [int]$Matches[4]) / 2
-            Adb shell input tap ([int]$x) ([int]$y) | Out-Null
-            WaitForIme
-            return
+        Adb pull /sdcard/lc.xml $local 2>$null | Out-Null
+        if (-not (Test-Path -LiteralPath $local)) {
+            Start-Sleep -Milliseconds 500
+            continue
         }
+        try {
+            $raw = Get-Content -Raw -Encoding UTF8 -LiteralPath $local
+            if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                $h = [xml]$raw
+                $xpath = '//node[@resource-id="' + $id + '"]'
+                $node = $h.SelectNodes($xpath) | Select-Object -First 1
+                if ($node -and $node.bounds -match '\[(\d+),(\d+)\]\[(\d+),(\d+)\]') {
+                    $x = ([int]$Matches[1] + [int]$Matches[3]) / 2
+                    $y = ([int]$Matches[2] + [int]$Matches[4]) / 2
+                    Adb shell input tap ([int]$x) ([int]$y) | Out-Null
+                    WaitForIme
+                    return
+                }
+            }
+        } catch { }
         Start-Sleep -Seconds 1
     }
     throw ('element not found: ' + $id)
@@ -61,12 +72,26 @@ function TypeText([string]$text) {
 }
 
 function GetText([string]$id) {
-    Adb shell uiautomator dump /sdcard/lc.xml | Out-Null
     $local = Join-Path $env:TEMP 'lc-text.xml'
-    Adb pull /sdcard/lc.xml $local | Out-Null
-    $h = [xml](Get-Content -Raw -Encoding UTF8 -LiteralPath $local)
-    $xpath = '//node[@resource-id="' + $id + '"]'
-    ($h.SelectNodes($xpath) | Select-Object -First 1).text
+    for ($attempt = 0; $attempt -lt 6; $attempt++) {
+        Remove-Item -LiteralPath $local -Force -ErrorAction SilentlyContinue
+        Adb shell rm -f /sdcard/lc.xml | Out-Null
+        Adb shell uiautomator dump /sdcard/lc.xml | Out-Null
+        Adb pull /sdcard/lc.xml $local 2>$null | Out-Null
+        if (Test-Path -LiteralPath $local) {
+            try {
+                $raw = Get-Content -Raw -Encoding UTF8 -LiteralPath $local
+                if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                    $h = [xml]$raw
+                    $xpath = '//node[@resource-id="' + $id + '"]'
+                    $node = $h.SelectNodes($xpath) | Select-Object -First 1
+                    if ($node) { return $node.text }
+                }
+            } catch { }
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    throw "GetText failed for $id"
 }
 
 function StateLog {

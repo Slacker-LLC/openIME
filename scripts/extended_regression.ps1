@@ -1,4 +1,4 @@
-﻿param([string]$Serial = '')
+param([string]$Serial = '')
 
 $ErrorActionPreference = 'Stop'
 $project = Split-Path $PSScriptRoot -Parent
@@ -12,20 +12,29 @@ $action = "$pkg.TEST_COMMAND"
 function Adb { & $adb -s $Serial @args }
 
 function FocusById([string]$id, [int]$waitSeconds = 3) {
-    for ($attempt = 0; $attempt -lt 8; $attempt++) {
+    $local = Join-Path $env:TEMP 'ext-focus.xml'
+    for ($attempt = 0; $attempt -lt 10; $attempt++) {
+        Remove-Item -LiteralPath $local -Force -ErrorAction SilentlyContinue
+        Adb shell rm -f /sdcard/focus.xml | Out-Null
         Adb shell uiautomator dump /sdcard/focus.xml | Out-Null
-        $local = Join-Path $env:TEMP 'ext-focus.xml'
-        Adb pull /sdcard/focus.xml $local | Out-Null
-        $h = [xml](Get-Content -Raw -Encoding UTF8 -LiteralPath $local)
-        $xpath = '//node[@resource-id="' + $id + '"]'
-        $node = $h.SelectNodes($xpath) | Select-Object -First 1
-        if ($node -and $node.bounds -match '\[(\d+),(\d+)\]\[(\d+),(\d+)\]') {
-            $x = ([int]$Matches[1] + [int]$Matches[3]) / 2
-            $y = ([int]$Matches[2] + [int]$Matches[4]) / 2
-            Adb shell input tap ([int]$x) ([int]$y) | Out-Null
-            Start-Sleep -Seconds $waitSeconds
-            WaitForIme
-            return
+        Adb pull /sdcard/focus.xml $local 2>$null | Out-Null
+        if (Test-Path -LiteralPath $local) {
+            try {
+                $raw = Get-Content -Raw -Encoding UTF8 -LiteralPath $local
+                if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                    $h = [xml]$raw
+                    $xpath = '//node[@resource-id="' + $id + '"]'
+                    $node = $h.SelectNodes($xpath) | Select-Object -First 1
+                    if ($node -and $node.bounds -match '\[(\d+),(\d+)\]\[(\d+),(\d+)\]') {
+                        $x = ([int]$Matches[1] + [int]$Matches[3]) / 2
+                        $y = ([int]$Matches[2] + [int]$Matches[4]) / 2
+                        Adb shell input tap ([int]$x) ([int]$y) | Out-Null
+                        Start-Sleep -Seconds $waitSeconds
+                        WaitForIme
+                        return
+                    }
+                }
+            } catch { }
         }
         Start-Sleep -Seconds 1
     }
@@ -65,12 +74,26 @@ function TypeText([string]$text) {
 }
 
 function GetText([string]$id) {
-    Adb shell uiautomator dump /sdcard/ext.xml | Out-Null
     $local = Join-Path $env:TEMP 'ext.xml'
-    Adb pull /sdcard/ext.xml $local | Out-Null
-    $h = [xml](Get-Content -Raw -Encoding UTF8 -LiteralPath $local)
-    $xpath = '//node[@resource-id="' + $id + '"]'
-    ($h.SelectNodes($xpath) | Select-Object -First 1).text
+    for ($attempt = 0; $attempt -lt 6; $attempt++) {
+        Remove-Item -LiteralPath $local -Force -ErrorAction SilentlyContinue
+        Adb shell rm -f /sdcard/ext.xml | Out-Null
+        Adb shell uiautomator dump /sdcard/ext.xml | Out-Null
+        Adb pull /sdcard/ext.xml $local 2>$null | Out-Null
+        if (Test-Path -LiteralPath $local) {
+            try {
+                $raw = Get-Content -Raw -Encoding UTF8 -LiteralPath $local
+                if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                    $h = [xml]$raw
+                    $xpath = '//node[@resource-id="' + $id + '"]'
+                    $node = $h.SelectNodes($xpath) | Select-Object -First 1
+                    if ($node) { return $node.text }
+                }
+            } catch { }
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    throw "GetText failed for $id"
 }
 
 function AssertText([string]$name, [string]$expected, [string]$actual) {
@@ -90,10 +113,15 @@ function AssertContains([string]$name, [string]$expected, [string]$actual) {
 function WaitForMode([string]$mode) {
     for ($i = 0; $i -lt 8; $i++) {
         SendCommand 'state'
-        $log = Adb logcat -d -t 300 | Select-String -Pattern 'OpenImeE2E' | Out-String
-        if ($log -match ('OpenImeE2E: STATE mode=' + $mode)) { return }
+        $log = Adb logcat -d -t 100 | Select-String -Pattern 'OpenImeE2E: STATE' | Select-Object -Last 1 | Out-String
+        if ($log -match ('mode=' + $mode)) { return }
+        SendCommand ('mode:' + $mode)
+        Start-Sleep -Milliseconds 150
+        SendCommand 'state'
+        $log = Adb logcat -d -t 100 | Select-String -Pattern 'OpenImeE2E: STATE' | Select-Object -Last 1 | Out-String
+        if ($log -match ('mode=' + $mode)) { return }
         Tap 'key:mode'
-        Start-Sleep -Milliseconds 350
+        Start-Sleep -Milliseconds 250
     }
     throw ('mode not reached: ' + $mode)
 }

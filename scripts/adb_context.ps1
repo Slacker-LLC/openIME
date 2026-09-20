@@ -50,5 +50,12 @@ function Resolve-OpenImeSerial {
     if ($devices.Count -eq 0) {
         throw 'No adb device is available; connect a device or pass -Serial <serial>'
     }
+
+    $emulators = @($devices | Where-Object { $_ -match '^emulator-\d+' })
+    if ($emulators.Count -eq 1) {
+        Write-Warning ("Multiple adb devices found ($($devices -join ', ')); defaulting to emulator " + $emulators[0])
+        return $emulators[0]
+    }
+
     throw ('Multiple adb devices found; pass -Serial: ' + ($devices -join ', '))
 }

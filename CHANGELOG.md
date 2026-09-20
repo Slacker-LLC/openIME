@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- 修复九键方案未编译导致的 librime 静默降级：`luna_pinyin_simp` 与 `luna_pinyin_simp_fuzzy` 把字面代数规则写进了 `speller/algebra` 的 `__patch` 列表，librime 会把列表项当作补丁路径解析并报循环依赖，整个方案构建失败（部署日志 `4 success, 5 failure`），中文候选一直退回本地九键解码器。现改为在 `pinyin.yaml` 中定义命名的 `t9_transliteration` 节点并引用它。
+- `versionCode` 3 → 4：rime 数据部署标记随版本号变化，让已安装的设备重新拷贝修复后的 schema。
 - 持续完善输入法 UI、自适应布局和本地语音模型接入。
 - 引入固定版本的 Rime Ice 基础、扩展和 8105 字表，并增加首次部署期间即时可用的高频候选层。
 - 增强全拼、简拼、显式分词、首选命中和用户词排序，候选读取上限扩展到 96 项。

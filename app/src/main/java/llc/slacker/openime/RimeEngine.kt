@@ -6,14 +6,15 @@ import android.os.Build
 import android.util.Log
 import java.io.File
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 internal data class RimeCandidateEntry(
     val text: String,
     val nativeIndex: Int,
 )
 
-internal fun rimeProbeHasCandidate(snapshot: Array<String>): Boolean =
-    snapshot.drop(2).any { it.isNotBlank() }
+internal fun rimeProbeHasCandidate(snapshot: Array<String>?): Boolean =
+    snapshot.orEmpty().drop(2).any { !it.isNullOrBlank() }
 
 internal fun rimeDataRevision(versionCode: Long): String = "apk-$versionCode"
 
@@ -177,6 +178,12 @@ class RimeEngine(private val context: Context) {
                     errorMessage = throwable.message ?: throwable.javaClass.simpleName
                     Log.w(TAG, "librime unavailable; keeping Kotlin fallback", throwable)
                 }
+                // An Error (OutOfMemoryError, StackOverflowError) is not made
+                // recoverable by falling back to a second dictionary: the
+                // fallback needs the same memory that is already gone. Record
+                // it, clean up, then let it surface instead of hiding a fatal
+                // condition behind a silent "fallback" state.
+                if (throwable is Error) throw throwable
             }
         }
     }
@@ -185,12 +192,7 @@ class RimeEngine(private val context: Context) {
         return candidateEntries(input).map { it.text }
     }
 
-    /**
-     * Return display text together with its absolute librime candidate index.
-     * The index must travel with a nine-key path; the same label can occur for
-     * several ambiguous Pinyin inputs and cannot safely be selected by the
-     * preview string alone.
-     */
+    /** Return display text together with its absolute librime candidate index. */
     internal fun candidateEntries(input: String): List<RimeCandidateEntry> {
         val normalized = RimeInputNormalizer.normalize(input)
         if (!isReady || normalized.isBlank()) return emptyList()
@@ -206,7 +208,8 @@ class RimeEngine(private val context: Context) {
     }
 
     /** Let Rime learn the selected candidate, then return its committed text. */
-    fun selectCandidate(input: String, candidate: String): String {
+    fun selectCandidate(input: String, candidate: String, allowLearning: Boolean = true): String {
+        if (!allowLearning) return candidate
         val normalized = RimeInputNormalizer.normalize(input)
         if (!isReady || normalized.isBlank()) return ""
         val allowPersonalization = PersonalizationPolicy.allow(
@@ -217,7 +220,7 @@ class RimeEngine(private val context: Context) {
                 if (!syncSchemaFromSettingsLocked()) return@runCatching ""
                 val snapshot = RimeNative.nativeSetInput(normalized)
                 val entry = snapshotCandidateEntries(snapshot).firstOrNull { it.text == candidate }
-                if (entry != null) RimeNative.nativeSelectCandidate(entry.nativeIndex) else ""
+                if (entry != null) RimeNative.nativeSelectCandidate(entry.nativeIndex).orEmpty() else ""
             }.getOrDefault("")
         }
         if (allowPersonalization && committed.isNotBlank()) {
@@ -227,27 +230,48 @@ class RimeEngine(private val context: Context) {
     }
 
     /**
-     * Queue learning for an already-rendered native entry and return
-     * immediately. The editor commit is owned by CandidateSnapshot, so the IME
-     * thread never needs native committed text here.
+     * Queue learning for a rendered native entry. A deferred reference uses
+     * nativeIndex=-1 and carries both input code and visible text; it is resolved
+     * on this background lane so a fast tap never blocks the IME thread.
      */
-    fun selectCandidate(input: String, nativeIndex: Int): String {
-        val normalized = RimeInputNormalizer.normalize(input)
-        if (!isReady || normalized.isBlank() || nativeIndex < 0) return ""
+    fun selectCandidate(input: String, nativeIndex: Int, allowLearning: Boolean = true): String {
+        // Capture the editor's policy at submission time. Private selections
+        // must never enter the mutation queue, even if the editor later changes.
+        if (!allowLearning) return ""
         val allowPersonalization = PersonalizationPolicy.allow(
             (context as? InputMethodService)?.currentInputEditorInfo,
         )
+
+        val deferred = NativeCandidateReference.decodeDeferred(input)
+        val sourceInput = deferred?.first ?: input
+        val deferredText = deferred?.second
+        val normalized = RimeInputNormalizer.normalize(sourceInput)
+        if (!isReady || normalized.isBlank()) return ""
+        if (nativeIndex < 0 && deferred == null) return ""
+
         mutationQueue.submit {
             if (!isReady) return@submit
             val committed = synchronized(lock) {
                 if (!isReady) return@synchronized ""
                 runCatching {
-                    // nativeIndex belongs to the schema that produced the
-                    // rendered snapshot. Do not switch schemas between
-                    // rendering and consuming that index; the next native
-                    // candidate query will synchronize a changed setting.
-                    RimeNative.nativeSetInput(normalized)
-                    RimeNative.nativeSelectCandidate(nativeIndex)
+                    val resolvedIndex = if (deferred != null) {
+                        // Deferred snapshots were rendered before a native
+                        // query completed. Synchronize the current schema,
+                        // replay the exact code, and locate the visible word.
+                        if (!syncSchemaFromSettingsLocked()) return@runCatching ""
+                        val snapshot = RimeNative.nativeSetInput(normalized)
+                        snapshotCandidateEntries(snapshot)
+                            .firstOrNull { it.text == deferredText }
+                            ?.nativeIndex
+                            ?: return@runCatching ""
+                    } else {
+                        // A concrete native index belongs to the schema that
+                        // produced the rendered snapshot. Do not switch schemas
+                        // before consuming it.
+                        RimeNative.nativeSetInput(normalized)
+                        nativeIndex
+                    }
+                    RimeNative.nativeSelectCandidate(resolvedIndex).orEmpty()
                 }.getOrDefault("")
             }
             if (allowPersonalization && committed.isNotBlank()) {
@@ -257,14 +281,15 @@ class RimeEngine(private val context: Context) {
         return ""
     }
 
-    fun commitFirst(input: String): String {
+    fun commitFirst(input: String, allowLearning: Boolean = true): String {
+        if (!allowLearning) return candidates(input).firstOrNull().orEmpty()
         val normalized = RimeInputNormalizer.normalize(input)
         if (!isReady || normalized.isBlank()) return ""
         return synchronized(lock) {
             runCatching {
                 if (!syncSchemaFromSettingsLocked()) return@runCatching ""
                 RimeNative.nativeSetInput(normalized)
-                RimeNative.nativeCommitFirst()
+                RimeNative.nativeCommitFirst().orEmpty()
             }.getOrDefault("")
         }
     }
@@ -285,12 +310,37 @@ class RimeEngine(private val context: Context) {
         startupGate.destroy()
         isReady = false
         mutationQueue.close()
-        cleanupNative()
+        // shutdownNow() does not wait for the task currently running. If that
+        // task is inside nativeStartup it can re-initialize librime *after*
+        // the cleanup below finalized it, leaving a live session nobody owns
+        // and no way to destroy. Give it a bounded grace period first.
         startupExecutor.shutdownNow()
+        runCatching {
+            if (!startupExecutor.awaitTermination(STARTUP_SHUTDOWN_GRACE_MS, TimeUnit.MILLISECONDS)) {
+                Log.w(TAG, "librime startup did not settle before shutdown")
+            }
+        }
+        cleanupNative()
+    }
+
+    /** Cached persisted fuzzy setting; invalidated explicitly from settings UI. */
+    @Volatile
+    private var cachedFuzzyPinyin: Boolean? = null
+
+    /** Drop the cached fuzzy setting so the next query re-reads it. */
+    fun invalidateSettingsCache() {
+        cachedFuzzyPinyin = null
+    }
+
+    private fun fuzzyPinyinEnabled(): Boolean {
+        cachedFuzzyPinyin?.let { return it }
+        val value = ImeSettingsRepository.loadFuzzy(context)
+        cachedFuzzyPinyin = value
+        return value
     }
 
     private fun syncSchemaFromSettingsLocked(): Boolean {
-        val desiredSchemaId = rimeSchemaId(ImeSettingsRepository.loadFuzzy(context))
+        val desiredSchemaId = rimeSchemaId(fuzzyPinyinEnabled())
         if (activeSchemaId == desiredSchemaId) return true
         if (!RimeNative.nativeSelectSchema(desiredSchemaId)) return false
         activeSchemaId = desiredSchemaId
@@ -306,11 +356,14 @@ class RimeEngine(private val context: Context) {
         }
     }
 
-    private fun snapshotCandidateEntries(snapshot: Array<String>): List<RimeCandidateEntry> =
-        snapshot.drop(2)
+    private fun snapshotCandidateEntries(snapshot: Array<String>?): List<RimeCandidateEntry> =
+        snapshot.orEmpty()
+            .drop(2)
             .mapIndexedNotNull { index, text ->
-                text.takeIf { it.isNotBlank() }?.let {
-                    RimeCandidateEntry(text = it, nativeIndex = index)
+                if (text.isNullOrBlank()) {
+                    null
+                } else {
+                    RimeCandidateEntry(text = text, nativeIndex = index)
                 }
             }
             .distinctBy { it.text }
@@ -365,5 +418,11 @@ class RimeEngine(private val context: Context) {
     private companion object {
         const val TAG = "RimeEngine"
         const val HEALTH_PROBE_INPUT = "ni"
+        /**
+         * Upper bound for waiting on an in-flight startup before tearing down.
+         * Short enough to stay off the IME shutdown path, long enough for the
+         * common case where the worker is between cancellation checks.
+         */
+        const val STARTUP_SHUTDOWN_GRACE_MS = 1_500L
     }
 }

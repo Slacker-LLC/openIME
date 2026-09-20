@@ -3,21 +3,75 @@ package llc.slacker.openime
 internal data class NativeCandidateReference(
     val input: String,
     val nativeIndex: Int,
-)
+) {
+    companion object {
+        private const val DEFERRED_PREFIX = "\u0000openime-deferred\u0000"
+        private const val SEP = '\u0000'
+        const val DEFERRED_INDEX = -1
+
+        /**
+         * Reference used before the async native snapshot exists. The editor can
+         * commit immediately; RimeEngine later resolves [candidate] by text on
+         * its mutation queue and learns the exact visible choice.
+         */
+        fun deferred(input: String, candidate: String): NativeCandidateReference =
+            NativeCandidateReference(
+                input = DEFERRED_PREFIX + input + SEP + candidate,
+                nativeIndex = DEFERRED_INDEX,
+            )
+
+        fun decodeDeferred(encoded: String): Pair<String, String>? {
+            if (!encoded.startsWith(DEFERRED_PREFIX)) return null
+            val payload = encoded.removePrefix(DEFERRED_PREFIX)
+            val split = payload.indexOf(SEP)
+            if (split <= 0 || split >= payload.lastIndex) return null
+            return payload.substring(0, split) to payload.substring(split + 1)
+        }
+    }
+}
 
 internal data class NativeCandidateChoice(
     val text: String,
     val reference: NativeCandidateReference,
 )
 
-/** Pure merge policy shared by 26-key and ambiguous nine-key Rime queries. */
-internal object NativeCandidatePipeline {
+/**
+ * Small LRU bridge between the immediate Kotlin nine-key frame and the later
+ * native Rime frame. It is keyed by the authoritative T9 code, so a stale
+ * candidate list for another composition can never be merged accidentally.
+ */
+internal object NineKeyFallbackRegistry {
+    private const val MAX_CODES = 32
+    private const val MAX_PER_CODE = 96
+    private val lock = Any()
+    private val byCode = object : LinkedHashMap<String, List<String>>(MAX_CODES, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<String>>?): Boolean =
+            size > MAX_CODES
+    }
 
-    /**
-     * Interleave equal native ranks across Pinyin paths, then preserve path
-     * score order. This prevents the first guessed nine-key path from filling
-     * all 96 slots before another valid path gets a single candidate.
-     */
+    fun remember(code: String?, candidates: List<String>) {
+        val key = code?.takeIf(::isNineKeyCode) ?: return
+        val clean = candidates
+            .asSequence()
+            .filter { it.isNotBlank() && it.none(Char::isDigit) }
+            .distinct()
+            .take(MAX_PER_CODE)
+            .toList()
+        synchronized(lock) {
+            if (clean.isEmpty()) byCode.remove(key) else byCode[key] = clean
+        }
+    }
+
+    fun candidatesFor(code: String): List<String> = synchronized(lock) {
+        byCode[code].orEmpty()
+    }
+
+    private fun isNineKeyCode(value: String): Boolean =
+        value.isNotEmpty() && value.all { it in '2'..'9' || it == '\'' }
+}
+
+/** Pure merge policy for one or more native Rime query batches. */
+internal object NativeCandidatePipeline {
     fun mergeRoundRobin(
         batches: List<Pair<String, List<RimeCandidateEntry>>>,
         limit: Int = 96,
@@ -33,6 +87,27 @@ internal object NativeCandidatePipeline {
                 result += NativeCandidateChoice(
                     text = entry.text,
                     reference = NativeCandidateReference(input, entry.nativeIndex),
+                )
+                if (result.size >= limit) return result
+            }
+        }
+
+        // If librime returned nothing, leave the result empty. The service then
+        // follows its established offline path, including UserPhraseRepository.
+        // Only a real native refresh is allowed to keep the immediate fallback
+        // tail so an unavailable Rime session is never misclassified as native.
+        if (result.isEmpty()) return result
+
+        // A non-empty native callback used to replace the entire immediate list.
+        // Keep Rime's authoritative ordering first, but retain useful first-frame
+        // choices that native did not return on its current page. Deferred
+        // references make those choices learnable if tapped after the refresh.
+        for ((input, _) in batches) {
+            for (candidate in NineKeyFallbackRegistry.candidatesFor(input)) {
+                if (!seen.add(candidate)) continue
+                result += NativeCandidateChoice(
+                    text = candidate,
+                    reference = NativeCandidateReference.deferred(input, candidate),
                 )
                 if (result.size >= limit) return result
             }

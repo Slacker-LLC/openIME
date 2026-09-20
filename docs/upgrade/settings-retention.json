@@ -1,8 +1,0 @@
-﻿{
-    "Device":  "redacted-device",
-    "Apk":  "openIME-1.0-debug.apk",
-    "Reinstall":  "PASS",
-    "ThemeBefore":  "DARK",
-    "ThemeAfter":  "DARK",
-    "PrefsPath":  "shared_prefs/ime_settings.xml"
-}

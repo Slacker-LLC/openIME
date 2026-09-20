@@ -30,6 +30,8 @@ class InputConnectionGatewayTest {
             partialEndOffset = -1
         },
         var contextMenuResult: Boolean = false,
+        var deleteSurroundingResult: Boolean = true,
+        var commitTextResult: Boolean = true,
     ) : InputConnection {
         val events = mutableListOf<String>()
 
@@ -41,15 +43,15 @@ class InputConnectionGatewayTest {
         override fun commitCorrection(correctionInfo: CorrectionInfo?): Boolean = false
         override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
             events += "commit:${text?.toString().orEmpty()}"
-            return true
+            return commitTextResult
         }
         override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean {
             events += "delete:$beforeLength:$afterLength"
-            return true
+            return deleteSurroundingResult
         }
         override fun deleteSurroundingTextInCodePoints(beforeLength: Int, afterLength: Int): Boolean {
             events += "deleteCodePoints:$beforeLength:$afterLength"
-            return true
+            return deleteSurroundingResult
         }
         override fun endBatchEdit(): Boolean = false
         override fun finishComposingText(): Boolean {
@@ -75,7 +77,7 @@ class InputConnectionGatewayTest {
         override fun reportFullscreenMode(monochrome: Boolean): Boolean = false
         override fun requestCursorUpdates(cursorUpdateMode: Int): Boolean = false
         override fun sendKeyEvent(event: KeyEvent?): Boolean {
-            events += "key:${event?.keyCode}"
+            events += "key"
             return true
         }
         override fun setComposingRegion(start: Int, end: Int): Boolean = false
@@ -114,6 +116,22 @@ class InputConnectionGatewayTest {
     }
 
     @Test
+    fun horizontalArrowsDelegateUnicodeAndSelectionSemanticsToEditor() {
+        val fake = FakeInputConnection(extractedText = extracted("A😀B", 0, 3, 3))
+        val gateway = InputConnectionGateway(null, { fake })
+        gateway.moveCursorHorizontally(-1)
+        gateway.moveCursorHorizontally(1)
+        assertEquals(listOf("key", "key", "key", "key"), fake.events)
+    }
+
+    @Test
+    fun unsupportedArrowDeltaHasNoEditorSideEffects() {
+        val fake = FakeInputConnection()
+        InputConnectionGateway(null, { fake }).moveCursorHorizontally(2)
+        assertTrue(fake.events.isEmpty())
+    }
+
+    @Test
     fun candidateCommitUsesCommitText() {
         val fake = FakeInputConnection()
         val gateway = InputConnectionGateway(null, { fake })
@@ -133,6 +151,21 @@ class InputConnectionGatewayTest {
                 it == "deleteCodePoints:1:0" || it == "delete:1:0"
             },
         )
+    }
+
+    @Test
+    fun forwardDeleteDoesNotSplitSupplementaryCodePoint() {
+        val fake = FakeInputConnection(afterText = "😀x")
+        val gateway = InputConnectionGateway(null, { fake })
+
+        gateway.deleteForwards()
+
+        assertTrue(
+            fake.events.any {
+                it == "deleteCodePoints:0:1" || it == "delete:0:2"
+            },
+        )
+        assertFalse(fake.events.contains("delete:0:1"))
     }
 
     @Test
@@ -186,6 +219,28 @@ class InputConnectionGatewayTest {
         val gateway = InputConnectionGateway(null, { fake })
 
         assertEquals("234", gateway.copySelection())
+    }
+
+    @Test
+    fun copyReverseSelectionNormalizesEndpointsInOffsetWindow() {
+        val fake = FakeInputConnection(
+            selectedText = "",
+            extractedText = extracted("0123456789", 100, 5, 2),
+        )
+
+        assertEquals("234", InputConnectionGateway(null, { fake }).copySelection())
+    }
+
+    @Test
+    fun copyReverseSelectionOutsideWindowReturnsEmpty() {
+        for ((start, end) in listOf(11 to 2, 5 to -1, 5 to 5)) {
+            val fake = FakeInputConnection(
+                selectedText = "",
+                extractedText = extracted("0123456789", 100, start, end),
+            )
+
+            assertEquals("", InputConnectionGateway(null, { fake }).copySelection())
+        }
     }
 
     @Test
@@ -253,10 +308,34 @@ class InputConnectionGatewayTest {
 
         assertTrue(gateway.clearAllText())
 
-        assertEquals("compose:", fake.events[0])
-        assertEquals("finish", fake.events[1])
-        assertTrue(fake.events.contains("context:${android.R.id.selectAll}"))
+        assertEquals("context:${android.R.id.selectAll}", fake.events.first())
+        assertTrue(fake.events.none { it.startsWith("compose:") })
         assertEquals(1, fake.events.count { it == "commit:" })
+        assertEquals(1, fake.events.count { it == "finish" })
+        assertTrue(fake.events.none { it.startsWith("delete") })
+    }
+
+    @Test
+    fun failedClearAllRestoresSelectionWithoutPreDeletingContent() {
+        val fake = FakeInputConnection(
+            selectedText = "234",
+            extractedText = extracted(
+                text = "0123456789",
+                startOffset = 0,
+                selectionStart = 2,
+                selectionEnd = 5,
+            ),
+            contextMenuResult = true,
+            commitTextResult = false,
+        )
+        val gateway = InputConnectionGateway(null, { fake })
+        gateway.updateSelection(2, 5)
+
+        assertFalse(gateway.clearAllText())
+
+        assertTrue(fake.events.contains("commit:"))
+        assertTrue(fake.events.contains("selection:2:5"))
+        assertTrue(fake.events.none { it.startsWith("compose:") })
         assertTrue(fake.events.none { it.startsWith("delete") })
     }
 
@@ -311,6 +390,7 @@ class InputConnectionGatewayTest {
         val gateway = InputConnectionGateway(null, { fake })
 
         assertFalse(gateway.clearAllText())
+        assertTrue(fake.events.none { it.startsWith("compose:") })
         assertTrue(fake.events.none { it.startsWith("delete") })
         assertTrue(fake.events.none { it == "commit:" })
     }
@@ -323,5 +403,91 @@ class InputConnectionGatewayTest {
         assertEquals(emptyList<String>(), fake.events)
         assertEquals("", gateway.copySelection())
         assertEquals("", gateway.readClipboard())
+    }
+
+    @Test
+    fun deleteBackwardsWithActiveSelectionReplacesWithEmptyString() {
+        val fake = FakeInputConnection(
+            selectedText = "hello",
+            beforeText = "abc",
+            afterText = "def",
+        )
+        val gateway = InputConnectionGateway(null, { fake })
+
+        gateway.deleteBackwards()
+
+        assertTrue(fake.events.contains("commit:"))
+        assertTrue(fake.events.none { it.startsWith("delete") })
+    }
+
+    @Test
+    fun deleteBackwardsWithReverseSelection() {
+        val fake = FakeInputConnection(
+            extractedText = extracted(
+                text = "0123456789",
+                startOffset = 0,
+                selectionStart = 8,
+                selectionEnd = 3,
+            ),
+        )
+        val gateway = InputConnectionGateway(null, { fake })
+        gateway.updateSelection(8, 3)
+
+        gateway.deleteBackwards()
+
+        assertTrue(fake.events.contains("commit:"))
+        assertTrue(fake.events.none { it.startsWith("delete") })
+    }
+
+    @Test
+    fun deleteBackwardsInPasswordFieldWithSelection() {
+        val fake = FakeInputConnection(
+            selectedText = "SECRET",
+        )
+        val gateway = InputConnectionGateway(null, { fake }, isPassword = { true })
+        gateway.updateSelection(2, 6)
+
+        gateway.deleteBackwards()
+
+        // Should commit empty string to delete without exposing password text or deleting surrounding
+        assertTrue(fake.events.contains("commit:"))
+        assertTrue(fake.events.none { it.startsWith("delete") })
+    }
+
+    @Test
+    fun deleteBackwardsFallsBackToDelKeyWhenEditorReturnsFalse() {
+        val fake = FakeInputConnection(
+            beforeText = "a",
+            deleteSurroundingResult = false,
+        )
+        val gateway = InputConnectionGateway(null, { fake })
+
+        gateway.deleteBackwards()
+
+        assertTrue(fake.events.any { it.startsWith("delete") })
+        // Falling back to sendKeyDownUp (down and up)
+        assertEquals(2, fake.events.count { it == "key" })
+    }
+
+    @Test
+    fun subsequentDeleteBackwardsAfterSelectionDeletionDeletesSingleChar() {
+        val fake = FakeInputConnection(
+            selectedText = "hello",
+            beforeText = "abc",
+        )
+        val gateway = InputConnectionGateway(null, { fake })
+        gateway.updateSelection(3, 8)
+
+        // First backspace deletes selection
+        gateway.deleteBackwards()
+        assertTrue(fake.events.contains("commit:"))
+
+        // Now clear selectedText on fake to simulate editor updated state
+        fake.selectedText = ""
+        fake.events.clear()
+
+        // Second backspace deletes single character before cursor
+        gateway.deleteBackwards()
+        assertTrue(fake.events.any { it.startsWith("delete") })
     }
 }

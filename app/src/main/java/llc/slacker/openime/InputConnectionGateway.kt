@@ -97,35 +97,116 @@ class InputConnectionGateway(
         finishComposing()
     }
 
+    @Volatile
+    private var knownSelectionStart: Int = -1
+    @Volatile
+    private var knownSelectionEnd: Int = -1
+
+    fun updateSelection(start: Int, end: Int) {
+        knownSelectionStart = start
+        knownSelectionEnd = end
+    }
+
     fun deleteBackwards() {
         val ic = connection() ?: return
+        if (deleteSelection()) return
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            ic.deleteSurroundingTextInCodePoints(1, 0)
+            val deleted = runCatching { ic.deleteSurroundingTextInCodePoints(1, 0) }.getOrDefault(false)
+            if (!deleted) {
+                val before = runCatching { ic.getTextBeforeCursor(2, 0) }.getOrNull()
+                val utf16Units = previousCodePointUtf16Length(before).coerceAtLeast(1)
+                val fallbackDeleted = runCatching { ic.deleteSurroundingText(utf16Units, 0) }.getOrDefault(false)
+                if (!fallbackDeleted) {
+                    sendKeyDownUp(ic, KeyEvent.KEYCODE_DEL)
+                }
+            }
         } else {
-            // API 26/27 only exposes UTF-16-unit deletion. Inspect the two
-            // units before the cursor so one backspace never leaves half of a
-            // supplementary code point (emoji / extension Han) behind.
             val before = runCatching { ic.getTextBeforeCursor(2, 0) }.getOrNull()
             val utf16Units = previousCodePointUtf16Length(before).coerceAtLeast(1)
-            ic.deleteSurroundingText(utf16Units, 0)
+            val deleted = runCatching { ic.deleteSurroundingText(utf16Units, 0) }.getOrDefault(false)
+            if (!deleted) {
+                sendKeyDownUp(ic, KeyEvent.KEYCODE_DEL)
+            }
         }
     }
 
     /** Delete the active selection without falling back to one-character delete. */
     fun deleteSelection(): Boolean {
-        if (isPassword()) return false
         val ic = connection() ?: return false
+        if (isPassword()) {
+            if (knownSelectionStart >= 0 && knownSelectionEnd >= 0 && knownSelectionStart != knownSelectionEnd) {
+                val collapsed = minOf(knownSelectionStart, knownSelectionEnd)
+                knownSelectionStart = collapsed
+                knownSelectionEnd = collapsed
+                val committed = runCatching { ic.commitText("", 1) }.getOrDefault(false)
+                if (!committed) {
+                    sendKeyDownUp(ic, KeyEvent.KEYCODE_DEL)
+                }
+                return true
+            }
+            return false
+        }
         val selected = runCatching { ic.getSelectedText(0)?.toString().orEmpty() }.getOrDefault("")
-        if (selected.isEmpty()) return false
-        return ic.commitText("", 1)
+        if (selected.isNotEmpty()) {
+            if (knownSelectionStart >= 0 && knownSelectionEnd >= 0) {
+                val collapsed = minOf(knownSelectionStart, knownSelectionEnd)
+                knownSelectionStart = collapsed
+                knownSelectionEnd = collapsed
+            } else {
+                knownSelectionStart = -1
+                knownSelectionEnd = -1
+            }
+            val committed = runCatching { ic.commitText("", 1) }.getOrDefault(false)
+            if (!committed) {
+                sendKeyDownUp(ic, KeyEvent.KEYCODE_DEL)
+            }
+            return true
+        }
+        val window = extractedWindow(ic)
+        if (window != null && window.selectionStartAbsolute != window.selectionEndAbsolute) {
+            val collapsed = minOf(window.selectionStartAbsolute, window.selectionEndAbsolute)
+            knownSelectionStart = collapsed
+            knownSelectionEnd = collapsed
+            val committed = runCatching { ic.commitText("", 1) }.getOrDefault(false)
+            if (!committed) {
+                sendKeyDownUp(ic, KeyEvent.KEYCODE_DEL)
+            }
+            return true
+        }
+        if (knownSelectionStart >= 0 && knownSelectionEnd >= 0 && knownSelectionStart != knownSelectionEnd) {
+            val collapsed = minOf(knownSelectionStart, knownSelectionEnd)
+            knownSelectionStart = collapsed
+            knownSelectionEnd = collapsed
+            val committed = runCatching { ic.commitText("", 1) }.getOrDefault(false)
+            if (!committed) {
+                sendKeyDownUp(ic, KeyEvent.KEYCODE_DEL)
+            }
+            return true
+        }
+        return false
     }
 
     fun deleteForwards() {
         val ic = connection() ?: return
+        if (deleteSelection()) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            ic.deleteSurroundingTextInCodePoints(0, 1)
+            val deleted = runCatching { ic.deleteSurroundingTextInCodePoints(0, 1) }.getOrDefault(false)
+            if (!deleted) {
+                val after = runCatching { ic.getTextAfterCursor(2, 0) }.getOrNull()
+                val utf16Units = nextCodePointUtf16Length(after).coerceAtLeast(1)
+                val fallbackDeleted = runCatching { ic.deleteSurroundingText(0, utf16Units) }.getOrDefault(false)
+                if (!fallbackDeleted) {
+                    sendKeyDownUp(ic, KeyEvent.KEYCODE_FORWARD_DEL)
+                }
+            }
         } else {
-            ic.deleteSurroundingText(0, 1)
+            val after = runCatching { ic.getTextAfterCursor(2, 0) }.getOrNull()
+            val utf16Units = nextCodePointUtf16Length(after).coerceAtLeast(1)
+            val deleted = runCatching { ic.deleteSurroundingText(0, utf16Units) }.getOrDefault(false)
+            if (!deleted) {
+                sendKeyDownUp(ic, KeyEvent.KEYCODE_FORWARD_DEL)
+            }
         }
     }
 
@@ -138,22 +219,29 @@ class InputConnectionGateway(
      * complete document. A bounded/local window is never partially deleted while
      * returning success: callers receive false instead and can present an
      * unsupported-capability state.
+     *
+     * Nothing in this method mutates composing text before a full-document
+     * selection has been established. That matters because setComposingText("")
+     * can replace an ordinary user selection in editors that expose no active
+     * composing span. A failed clear therefore leaves document content intact.
      */
     fun clearAllText(): Boolean {
         if (isPassword()) return false
         val ic = connection() ?: return false
         ic.beginBatchEdit()
         return try {
-            // Remove active pre-edit rather than committing it before selecting.
-            ic.setComposingText("", 1)
-            ic.finishComposingText()
+            val originalSelection = selectionBeforeDestructiveSelectAll(ic)
 
             if (runCatching { ic.performContextMenuAction(android.R.id.selectAll) }.getOrDefault(false)) {
                 val selected = runCatching { ic.getSelectedText(0)?.toString().orEmpty() }
                     .getOrDefault("")
                 if (selected.isNotEmpty()) {
                     val cleared = runCatching { ic.commitText("", 1) }.getOrDefault(false)
-                    ic.finishComposingText()
+                    if (!cleared) {
+                        restoreSelectionAfterFailedClear(ic, originalSelection)
+                    } else {
+                        ic.finishComposingText()
+                    }
                     return cleared
                 }
 
@@ -162,32 +250,35 @@ class InputConnectionGateway(
                 // Only the complete extracted state can distinguish those safely.
                 val selectedWindow = extractedWindow(ic)
                 if (selectedWindow?.isCompleteDocument == true) {
-                    if (selectedWindow.text.isEmpty()) {
-                        ic.finishComposingText()
-                        return true
-                    }
+                    if (selectedWindow.text.isEmpty()) return true
                     val fullSelection = selectedWindow.selectionStartAbsolute == 0 &&
                         selectedWindow.selectionEndAbsolute == selectedWindow.text.length
                     if (fullSelection) {
                         val cleared = runCatching { ic.commitText("", 1) }.getOrDefault(false)
-                        ic.finishComposingText()
+                        if (!cleared) {
+                            restoreSelectionAfterFailedClear(ic, originalSelection)
+                        } else {
+                            ic.finishComposingText()
+                        }
                         return cleared
                     }
                 }
+                restoreSelectionAfterFailedClear(ic, originalSelection)
                 return false
             }
 
             val window = extractedWindow(ic) ?: return false
             if (!window.isCompleteDocument) return false
-            if (window.text.isEmpty()) {
-                ic.finishComposingText()
-                return true
-            }
+            if (window.text.isEmpty()) return true
             if (!runCatching { ic.setSelection(0, window.text.length) }.getOrDefault(false)) {
                 return false
             }
             val cleared = runCatching { ic.commitText("", 1) }.getOrDefault(false)
-            ic.finishComposingText()
+            if (!cleared) {
+                restoreSelectionAfterFailedClear(ic, originalSelection)
+            } else {
+                ic.finishComposingText()
+            }
             cleared
         } finally {
             ic.endBatchEdit()
@@ -253,6 +344,14 @@ class InputConnectionGateway(
         }
     }
 
+    /** Let the editor handle character boundaries, reversed selections and document edges. */
+    fun moveCursorHorizontally(direction: Int) {
+        if (isPassword()) return
+        val keyCode = relativeCursorKeyCode(direction) ?: return
+        val ic = connection() ?: return
+        sendKeyDownUp(ic, keyCode)
+    }
+
     fun currentSelectionStart(): Int = when (val selection = selectionSnapshot()) {
         is SelectionSnapshot.Absolute -> selection.start
         is SelectionSnapshot.Relative -> selection.cursor
@@ -309,8 +408,8 @@ class InputConnectionGateway(
         if (!selected.isNullOrEmpty()) return selected
 
         val window = extractedWindow(ic) ?: return ""
-        val localStart = window.selectionStartAbsolute - window.windowStart
-        val localEnd = window.selectionEndAbsolute - window.windowStart
+        val localStart = minOf(window.selectionStartAbsolute, window.selectionEndAbsolute) - window.windowStart
+        val localEnd = maxOf(window.selectionStartAbsolute, window.selectionEndAbsolute) - window.windowStart
         if (localStart < 0 || localEnd <= localStart || localEnd > window.text.length) return ""
         return window.text.substring(localStart, localEnd)
     }
@@ -335,9 +434,18 @@ class InputConnectionGateway(
         }.getOrDefault("")
     }
 
-    fun pasteClipboard(): String {
-        val text = readClipboard()
-        if (text.isNotEmpty()) commitText(text)
+    fun pasteClipboard(onPasted: (ClipData) -> Unit = {}): String {
+        if (isPassword()) return ""
+        val safeContext = context ?: return ""
+        val cm = safeContext.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return ""
+        val clip = runCatching { cm.primaryClip }.getOrNull() ?: return ""
+        val text = runCatching {
+            clip.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(safeContext)?.toString().orEmpty()
+        }.getOrDefault("")
+        if (text.isEmpty()) return ""
+        val committed = connection()?.commitText(text, 1) == true
+        if (!committed) return ""
+        onPasted(clip)
         return text
     }
 
@@ -363,6 +471,41 @@ class InputConnectionGateway(
         val before = runCatching { ic.getTextBeforeCursor(FALLBACK_WINDOW_CHARS, 0)?.toString() }
             .getOrNull() ?: return null
         return SelectionSnapshot.Relative(cursor = before.length)
+    }
+
+    /** Capture the best absolute selection available before a select-all mutates editor state. */
+    private fun selectionBeforeDestructiveSelectAll(ic: InputConnection): SelectionSnapshot? {
+        val snapshot = selectionSnapshot(ic)
+        if (snapshot is SelectionSnapshot.Absolute) return snapshot
+        if (knownSelectionStart >= 0 && knownSelectionEnd >= 0) {
+            return SelectionSnapshot.Absolute(knownSelectionStart, knownSelectionEnd)
+        }
+        return snapshot
+    }
+
+    /**
+     * A failed clear must never leave the target document selected. Restore the
+     * original absolute range when possible. Editors that expose only a local
+     * relative window cannot be restored exactly, so collapse any accidental
+     * select-all at its right edge as the safe fallback.
+     */
+    private fun restoreSelectionAfterFailedClear(
+        ic: InputConnection,
+        snapshot: SelectionSnapshot?,
+    ) {
+        when (snapshot) {
+            is SelectionSnapshot.Absolute -> {
+                if (runCatching { ic.setSelection(snapshot.start, snapshot.end) }.getOrDefault(false)) {
+                    knownSelectionStart = snapshot.start
+                    knownSelectionEnd = snapshot.end
+                    return
+                }
+                sendKeyDownUp(ic, KeyEvent.KEYCODE_DPAD_RIGHT)
+            }
+            is SelectionSnapshot.Relative,
+            null,
+            -> sendKeyDownUp(ic, KeyEvent.KEYCODE_DPAD_RIGHT)
+        }
     }
 
     private fun extractedWindow(ic: InputConnection): ExtractedWindow? {

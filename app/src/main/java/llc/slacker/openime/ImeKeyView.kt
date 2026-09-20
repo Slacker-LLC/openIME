@@ -3,6 +3,9 @@ package llc.slacker.openime
 import android.content.res.ColorStateList
 import android.content.Context
 import android.graphics.Color
+import android.text.TextUtils
+import android.view.View
+import android.view.MotionEvent
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -26,6 +29,35 @@ class ImeKeyView(
 ) : FrameLayout(context) {
 
     private val density = resources.displayMetrics.density
+    private var touchFeedbackPending = false
+    private var touchGeneration = 0L
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            touchGeneration++
+            touchFeedbackPending = isEnabled
+        } else if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            touchFeedbackPending = false
+        }
+        val handled = super.dispatchTouchEvent(event)
+        if (event.actionMasked == MotionEvent.ACTION_UP) {
+            val generation = touchGeneration
+            post { if (generation == touchGeneration) touchFeedbackPending = false }
+        }
+        return handled
+    }
+
+    internal fun consumeTouchFeedback(): Boolean {
+        val pending = touchFeedbackPending
+        touchFeedbackPending = false
+        return pending
+    }
+
+    override fun onDetachedFromWindow() {
+        touchGeneration++
+        touchFeedbackPending = false
+        super.onDetachedFromWindow()
+    }
     private val mainTextView: TextView?
     private val secondaryTextView: TextView?
     private val iconView: ImageView?
@@ -33,13 +65,15 @@ class ImeKeyView(
     init {
         isClickable = true
         isLongClickable = true
-        isFocusable = false
+        isFocusable = true
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
         contentDescription = if (iconRes != 0) text.ifEmpty { "功能键" } else text
 
         iconView = if (iconRes != 0) {
             ImageView(context).apply {
                 setImageResource(iconRes)
                 contentDescription = null
+                isDuplicateParentStateEnabled = true
             }
         } else {
             null
@@ -66,6 +100,10 @@ class ImeKeyView(
                 gravity = Gravity.CENTER
                 isAllCaps = false
                 includeFontPadding = false
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                isDuplicateParentStateEnabled = true
             }
         } else {
             null
@@ -78,6 +116,8 @@ class ImeKeyView(
                 gravity = Gravity.CENTER
                 isAllCaps = false
                 includeFontPadding = false
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                isDuplicateParentStateEnabled = true
             }
         }
 
@@ -104,10 +144,12 @@ class ImeKeyView(
             addView(
                 view,
                 FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
                 ).apply {
                     gravity = Gravity.CENTER
+                    leftMargin = dp(4)
+                    rightMargin = dp(4)
                 },
             )
         }
@@ -132,10 +174,29 @@ class ImeKeyView(
         iconView?.imageTintList = ColorStateList.valueOf(iconColor)
     }
 
+    val currentMainText: String
+        get() = mainTextView?.text?.toString().orEmpty()
+
     fun setMainText(value: String) {
-        if (iconView != null) return
         mainTextView?.text = value
         contentDescription = value
+    }
+
+    /**
+     * Hide the small corner long-press hint without removing the long-press
+     * action itself. Used to keep the 26-key letter surface visually clean.
+     */
+    fun setSecondaryVisible(visible: Boolean) {
+        val view = secondaryTextView ?: return
+        val target = if (visible) View.VISIBLE else View.GONE
+        if (view.visibility != target) {
+            view.visibility = target
+            invalidate()
+        }
+    }
+
+    fun allowTwoLineLabel() {
+        mainTextView?.maxLines = 2
     }
 
     fun setIcon(value: Int) {

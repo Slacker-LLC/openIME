@@ -3,6 +3,7 @@ package llc.slacker.openime
 import android.content.Context
 import android.inputmethodservice.InputMethodService
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.TypedValue
@@ -12,6 +13,8 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.WindowInsets
+import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import kotlin.math.abs
@@ -29,12 +32,31 @@ class ImeKeyboardViewV2 private constructor(
     constructor(context: Context, listener: Listener) : this(context, Adapter(listener))
 
     private var navigationBottomInsetPx = 0
+    private var repairingEarlierNineKeySegment = false
+
+    /**
+     * [syncProductionKeyPresentation] walks the whole key tree three times
+     * (space geometry, Enter label, handwriting capability). onMeasure fires on
+     * every key tap, every async candidate callback, every insets change and
+     * every rotation, so the previous unconditional call made ~450 node visits
+     * per keystroke. Geometry only depends on the editor's IME options and on
+     * explicit invalidate calls; gate on those.
+     */
+    private var presentationDirty = true
+    private var lastSyncedImeOptions: Int? = null
+
+    /** Force the next measure pass to resynchronize key presentation. */
+    fun invalidatePresentation() {
+        presentationDirty = true
+    }
 
     init {
         adapter.afterModeChanged = {
+            presentationDirty = true
             post { syncProductionKeyPresentation() }
         }
         adapter.afterPanelChanged = { panel ->
+            presentationDirty = true
             when (panel) {
                 Panel.TEXT_EDITOR -> {
                     // The legacy renderer invokes onPanelChanged before renderPanel,
@@ -72,19 +94,150 @@ class ImeKeyboardViewV2 private constructor(
         }
     }
 
+    override fun onViewHierarchyRebuilt() {
+        super.onViewHierarchyRebuilt()
+        presentationDirty = true
+        post {
+            when (panel) {
+                Panel.TEXT_EDITOR -> disableUnsupportedTextEditControls()
+                Panel.CLIPBOARD -> decorateClipboardRetentionControls()
+                else -> Unit
+            }
+            NineKeySymbolRailDecorator.decorate(this) { symbol -> adapter.onCharacter(symbol) }
+            installNineKeyAccessibilityRepair()
+            syncProductionKeyPresentation()
+        }
+    }
+
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         // The legacy space implementation reports only pressed=true/false to
         // the listener. Preserve whether the release was a cancellation so the
-        // adapter can recover a 150..system-timeout hold as a normal space only
-        // on a real ACTION_UP, never on ACTION_CANCEL.
-        adapter.releaseWasCancel = event.actionMasked == MotionEvent.ACTION_CANCEL
-        return super.dispatchTouchEvent(event)
+        // adapter can recover a sub-long-press hold as a normal space only on a
+        // real ACTION_UP, never on ACTION_CANCEL.
+        if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            adapter.releaseWasCancel = true
+        }
+        val handled = super.dispatchTouchEvent(event)
+        if (event.actionMasked == MotionEvent.ACTION_UP) {
+            repairEarlierNineKeySegmentIfNeeded()
+        }
+        return handled
+    }
+
+    /**
+     * The legacy 9-key renderer only owns a digit buffer for the final Pinyin
+     * segment. Editing an earlier segment therefore used to insert literal
+     * digits (for example `n2i hao`) or fall back to a full-Pinyin query.
+     *
+     * Reconstruct the edited segment's digit code from the visible preedit,
+     * decode that segment again, then publish one complete native T9 code. This
+     * keeps middle-segment insertion/deletion inside the same Rime 9-key model
+     * without coupling the legacy renderer to the new decoder.
+     */
+    private fun repairEarlierNineKeySegmentIfNeeded() {
+        if (repairingEarlierNineKeySegment) return
+        if (findViewWithTag<View>("pinyin9-layout") == null) return
+        val editor = findViewWithTag<EditText>("pinyin-composition-editor") ?: return
+        val text = editor.text?.toString().orEmpty()
+        if (text.isEmpty()) return
+        val lastSpace = text.lastIndexOf(' ')
+        if (lastSpace < 0) return
+
+        val rawCursor = editor.selectionStart.takeIf { it >= 0 }?.coerceIn(0, text.length) ?: text.length
+        // The final segment is already handled losslessly by the legacy digit
+        // buffer; only an earlier segment needs this bridge.
+        if (rawCursor > lastSpace) return
+
+        val segmentAnchor = when {
+            rawCursor <= 0 -> 0
+            rawCursor < text.length && text[rawCursor] == ' ' -> rawCursor - 1
+            else -> (rawCursor - 1).coerceAtLeast(0)
+        }
+        val segmentStart = text.lastIndexOf(' ', segmentAnchor).let { if (it < 0) 0 else it + 1 }
+        val segmentEnd = text.indexOf(' ', segmentStart).let { if (it < 0) text.length else it }
+        if (segmentEnd <= segmentStart) return
+        val segment = text.substring(segmentStart, segmentEnd)
+
+        val digitCode = buildString(segment.length) {
+            segment.forEach { ch ->
+                when {
+                    ch in '2'..'9' -> append(ch)
+                    ch in 'a'..'z' || ch in 'A'..'Z' || ch == 'ü' || ch == 'Ü' -> {
+                        val digit = NineKeyLocalDecoder.digitsForPinyin(ch.toString()) ?: return
+                        append(digit)
+                    }
+                    else -> return
+                }
+            }
+        }
+        if (digitCode.isEmpty()) return
+
+        val resolver = context as? CandidateResolver ?: return
+        val preferred = segment
+            .takeIf { candidate -> candidate.none(Char::isDigit) }
+            ?.lowercase()
+        val fuzzy = ImeSettingsRepository.loadFuzzy(context)
+        val segmentResolution = resolver.resolveNineKey(
+            digits = digitCode,
+            segmentPrefix = "",
+            preferredSuffix = preferred,
+            fuzzy = fuzzy,
+        )
+        val decodedSegment = segmentResolution.preview.ifBlank { return }
+        val repaired = text.substring(0, segmentStart) + decodedSegment + text.substring(segmentEnd)
+        val repairedCursor = (segmentStart + (rawCursor - segmentStart).coerceAtLeast(0))
+            .coerceAtMost(segmentStart + decodedSegment.length)
+        val nativeCode = NineKeyLocalDecoder.nativeCode(repaired, "") ?: return
+        val localCandidates = resolver.candidatesFor(KeyboardMode.PINYIN_9, repaired, fuzzy)
+            .filter { candidate -> candidate.isNotBlank() && candidate.none(Char::isDigit) }
+            .take(96)
+
+        repairingEarlierNineKeySegment = true
+        try {
+            if (repaired != text) editor.setText(repaired)
+            editor.setSelection(repairedCursor.coerceIn(0, repaired.length))
+            adapter.onNineKeyCompositionChanged(
+                composition = repaired,
+                digitBuffer = digitCode,
+                pinyinPaths = listOf(nativeCode),
+                candidates = localCandidates,
+            )
+        } finally {
+            repairingEarlierNineKeySegment = false
+        }
+    }
+
+    /** Accessibility clicks do not emit root ACTION_UP; run the same earlier-segment repair explicitly. */
+    private fun installNineKeyAccessibilityRepair() {
+        for (digit in '2'..'9') {
+            val key = findViewWithTag<View>("key-9:$digit") ?: continue
+            key.accessibilityDelegate = object : View.AccessibilityDelegate() {
+                override fun performAccessibilityAction(host: View, action: Int, args: Bundle?): Boolean {
+                    val handled = super.performAccessibilityAction(host, action, args)
+                    if (handled && action == AccessibilityNodeInfo.ACTION_CLICK) {
+                        host.post { repairEarlierNineKeySegmentIfNeeded() }
+                    }
+                    return handled
+                }
+            }
+        }
     }
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        presentationDirty = true
         requestApplyInsets()
         post { syncProductionKeyPresentation() }
+    }
+
+    override fun onDetachedFromWindow() {
+        shutdown()
+        super.onDetachedFromWindow()
+    }
+
+    override fun shutdown() {
+        adapter.shutdown()
+        super.shutdown()
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -109,6 +262,10 @@ class ImeKeyboardViewV2 private constructor(
     }
 
     private fun syncProductionKeyPresentation() {
+        val imeOptions = (context as? InputMethodService)?.currentInputEditorInfo?.imeOptions
+        if (!presentationDirty && imeOptions == lastSyncedImeOptions) return
+        presentationDirty = false
+        lastSyncedImeOptions = imeOptions
         normalizeSpaceRowGeometry()
         syncEnterKeyPresentation()
         syncHandwritingCapability()
@@ -243,7 +400,7 @@ class ImeKeyboardViewV2 private constructor(
                 hideClipboardCards(includePinned = false)
                 if (ClipboardHistoryRepository.load(context).isEmpty()) row.visibility = View.GONE
             },
-            LinearLayout.LayoutParams(0, insetDp(36), 1f).apply { marginEnd = insetDp(6) },
+            LinearLayout.LayoutParams(0, insetDp(44), 1f).apply { marginEnd = insetDp(6) },
         )
         row.addView(
             clipboardRetentionAction("清空全部") {
@@ -251,13 +408,13 @@ class ImeKeyboardViewV2 private constructor(
                 hideClipboardCards(includePinned = true)
                 row.visibility = View.GONE
             },
-            LinearLayout.LayoutParams(0, insetDp(36), 1f),
+            LinearLayout.LayoutParams(0, insetDp(44), 1f),
         )
         body.addView(
             row,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                insetDp(36),
+                insetDp(44),
             ).apply { topMargin = insetDp(6) },
         )
     }
@@ -345,6 +502,14 @@ class ImeKeyboardViewV2 private constructor(
             onCompositionChanged(composition, candidates)
         }
         fun onCandidateSelected(candidate: String)
+
+        /**
+         * Association chips are shown after a commit, when no composition is
+         * live. They must not be funnelled through [onCandidateSelected], which
+         * is guarded on an active composition and silently drops them.
+         */
+        fun onAssociationSelected(text: String) = Unit
+
         fun onCompositionBackspace()
         fun onThemeChanged(theme: ImeTheme)
         fun onAppearanceChanged(appearance: ImeAppearance)
@@ -388,6 +553,7 @@ class ImeKeyboardViewV2 private constructor(
         override fun onVoicePressChanged(pressed: Boolean) {
             if (pressed) {
                 if (voiceStartForwarded || pendingVoiceStart != null) return
+                releaseWasCancel = false
                 val start = Runnable {
                     pendingVoiceStart = null
                     if (!releaseWasCancel) {
@@ -410,14 +576,21 @@ class ImeKeyboardViewV2 private constructor(
                 voiceHandler.removeCallbacks(pending)
                 pendingVoiceStart = null
                 // The legacy renderer has already consumed this release because
-                // it crossed its old 150 ms threshold. Recover it as the normal
+                // it crossed the long-press threshold. Recover it as the normal
                 // space action unless Android cancelled the gesture.
                 if (!releaseWasCancel) delegate.onSpace()
+                releaseWasCancel = false
                 return
             }
             if (voiceStartForwarded) {
                 voiceStartForwarded = false
-                delegate.onVoicePressChanged(false)
+                if (releaseWasCancel) {
+                    delegate.cancelVoiceRecognition()
+                    delegate.onVoiceCancel()
+                } else {
+                    delegate.onVoicePressChanged(false)
+                }
+                releaseWasCancel = false
             }
         }
         override fun onVoiceSessionStarted(autoCommitOnFinal: Boolean) =
@@ -426,12 +599,25 @@ class ImeKeyboardViewV2 private constructor(
         override fun onVoiceFinal(text: String) = delegate.onVoiceFinal(text)
         override fun onVoiceError(message: String) = delegate.onVoiceError(message)
         override fun onVoiceCommit() = delegate.onVoiceCommit()
-        override fun onVoiceCancel() = delegate.onVoiceCancel()
+        override fun onVoiceCancel() {
+            cancelPendingVoiceStart()
+            delegate.onVoiceCancel()
+        }
         override fun voiceModelState() = delegate.voiceModelState()
         override fun startVoiceRecognition(languageTag: String, events: VoiceRecognitionEvents) =
             delegate.startVoiceRecognition(languageTag, events)
         override fun stopVoiceRecognition() = delegate.stopVoiceRecognition()
-        override fun cancelVoiceRecognition() = delegate.cancelVoiceRecognition()
+        override fun cancelVoiceRecognition() {
+            cancelPendingVoiceStart()
+            delegate.cancelVoiceRecognition()
+        }
+
+        private fun cancelPendingVoiceStart() {
+            pendingVoiceStart?.let { voiceHandler.removeCallbacks(it) }
+            pendingVoiceStart = null
+            voiceStartForwarded = false
+            releaseWasCancel = false
+        }
         override fun onEnter() = delegate.onEnter()
         override fun onCompositionChanged(composition: String, candidates: List<String>) =
             delegate.onCompositionChanged(composition, candidates)
@@ -442,6 +628,7 @@ class ImeKeyboardViewV2 private constructor(
             candidates: List<String>,
         ) = delegate.onNineKeyCompositionChanged(composition, digitBuffer, pinyinPaths, candidates)
         override fun onCandidateSelected(candidate: String) = delegate.onCandidateSelected(candidate)
+        override fun onAssociationSelected(text: String) = delegate.onAssociationSelected(text)
         override fun onCompositionBackspace() = delegate.onCompositionBackspace()
         override fun onThemeChanged(theme: ImeTheme) = delegate.onThemeChanged(theme)
         override fun onAppearanceChanged(appearance: ImeAppearance) = delegate.onAppearanceChanged(appearance)
@@ -454,5 +641,20 @@ class ImeKeyboardViewV2 private constructor(
         override fun onHapticChanged(enabled: Boolean) = delegate.onHapticChanged(enabled)
         override fun onPopupChanged(enabled: Boolean) = delegate.onPopupChanged(enabled)
         override fun onFuzzyChanged(enabled: Boolean) = delegate.onFuzzyChanged(enabled)
+        override fun onSkinChanged(opacity: Int, radius: Int, fontSize: Int, primaryColor: String) =
+            delegate.onSkinChanged(opacity, radius, fontSize, primaryColor)
+
+        /**
+         * A pending voice-start runnable survives for the long-press delay. If
+         * the editor goes away first it would still fire and begin recording,
+         * writing partial recognition into whichever InputConnection became
+         * current in the meantime.
+         */
+        fun shutdown() {
+            pendingVoiceStart?.let { voiceHandler.removeCallbacks(it) }
+            pendingVoiceStart = null
+            voiceStartForwarded = false
+            releaseWasCancel = false
+        }
     }
 }

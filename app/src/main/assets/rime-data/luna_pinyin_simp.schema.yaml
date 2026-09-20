@@ -6,11 +6,12 @@ __include: luna_pinyin.schema:/
 schema:
   schema_id: luna_pinyin_simp
   name: 朙月拼音·简化字
-  version: "0.22"
+  version: "0.24"
   author:
     - 佛振 <chen.sst@gmail.com>
+    - openIME
   description: |
-    朙月拼音，簡化字輸出模式。
+    朙月拼音，简化字输出模式。openIME 同一方案同时接受全拼字母和中文九键 2-9 数字码。
 
 switches:
   - name: ascii_mode
@@ -23,6 +24,20 @@ switches:
     states: [ 漢字, 汉字 ]
   - name: ascii_punct
     states: [ 。，, ．， ]
+
+# Keep the original lowercase full-Pinyin spelling. Clone each completed
+# spelling to uppercase, then transliterate only that clone to its T9 digits.
+# This avoids the large derived-spelling fan-out of eight independent T9 rules.
+speller:
+  alphabet: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA987654321
+  initials: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA987654321
+  delimiter: " '"
+  algebra:
+    __patch:
+      - pinyin:/abbreviation
+      - pinyin:/spelling_correction
+      - pinyin:/key_correction
+      - pinyin:/t9_transliteration
 
 translator:
   prism: luna_pinyin_simp

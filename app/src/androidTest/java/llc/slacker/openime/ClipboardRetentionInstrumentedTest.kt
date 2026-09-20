@@ -3,14 +3,17 @@ package llc.slacker.openime
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.os.PersistableBundle
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.BaseInputConnection
 import android.widget.TextView
 import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -20,6 +23,31 @@ class ClipboardRetentionInstrumentedTest {
 
     @get:Rule
     val rule = ActivityScenarioRule(DebugKeyboardActivity::class.java)
+
+    @Test
+    fun sensitiveSystemClipIsNeverCapturedIntoHistory() {
+        rule.scenario.onActivity { activity ->
+            ClipboardHistoryRepository.clearAll(activity)
+            val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newPlainText("sensitive fixture", "synthetic test secret")
+            clip.description.extras = PersistableBundle().apply {
+                putBoolean("android.content.extra.IS_SENSITIVE", true)
+            }
+            clipboard.setPrimaryClip(clip)
+            assertFalse(ClipboardHistoryRepository.capturePrimary(activity))
+            assertEquals(emptyList<ClipboardEntry>(), ClipboardHistoryRepository.load(activity))
+            val connection = BaseInputConnection(View(activity), true)
+            val gateway = InputConnectionGateway(activity, { connection })
+            assertEquals("synthetic test secret", gateway.pasteClipboard { pasted ->
+                // A new system clip must not change the sensitivity of the one pasted.
+                clipboard.setPrimaryClip(ClipData.newPlainText("new", "ordinary replacement"))
+                ClipboardHistoryRepository.captureClip(activity, pasted)
+            })
+            assertEquals("synthetic test secret", connection.editable.toString())
+            assertEquals(emptyList<ClipboardEntry>(), ClipboardHistoryRepository.load(activity))
+            clipboard.setPrimaryClip(ClipData.newPlainText("test cleanup", ""))
+        }
+    }
 
     @Test
     fun clearButtonsMutatePersistentHistoryWithoutTouchingPinnedUntilRequested() {

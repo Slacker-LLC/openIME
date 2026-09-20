@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="AppTheme" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">@color/setup_page_bg</item>
+        <item name="android:navigationBarColor">@color/setup_page_bg</item>
+        <item name="android:windowBackground">@color/setup_page_bg</item>
+        <item name="android:colorAccent">@color/setup_primary</item>
+        <item name="android:textColorPrimary">@color/setup_title</item>
+        <item name="android:textColorSecondary">@color/setup_body</item>
+    </style>
+</resources>

@@ -3,7 +3,23 @@
     <string name="app_name">openIME</string>
     <string name="subtitle_zh">中文</string>
     <string name="subtitle_en">English</string>
-    <string name="main_description">这是一个独立的本地语音输入法。\n\n在系统设置中启用并切换到它，然后在下方输入框或任意第三方 App 中使用。</string>
-    <string name="test_hint">在这里测试本地输入法</string>
-    <string name="open_ime_settings">打开输入法设置</string>
+    <string name="main_description">本地拼音输入法\n词库和语音都在设备内运行</string>
+    <string name="test_hint">在这里试打</string>
+    <string name="open_ime_settings">第一步 启用 openIME</string>
+    <string name="open_ime_settings_done">已启用</string>
+    <string name="choose_ime">第二步 切换到 openIME</string>
+    <string name="choose_ime_done">当前正在使用</string>
+    <string name="setup_enable">启用后即可开始输入</string>
+    <string name="setup_choose">已启用，切换后就能打字</string>
+    <string name="setup_ready">已就绪，在下方试打</string>
+    <string name="typing_tips">输入 nihao 得到 你好。点候选上屏，点空格选首选。</string>
+    <string name="voice_permission_description">语音可选。授权后长按空格说话，不授权也能打字。</string>
+    <string name="voice_permission_enable">开启本地语音</string>
+    <string name="voice_permission_ready">麦克风已授权</string>
+    <string name="open_app_settings">打开偏好设置</string>
+    <string name="setup_need_switch">先启用并切换到 openIME，再进入设置</string>
+    <string name="settings_accent_title">强调色</string>
+    <string name="settings_accent_custom">自定义</string>
+    <string name="settings_accent_hint">输入 6 位十六进制颜色，例如 5B6B7A</string>
+    <string name="settings_title">偏好设置</string>
 </resources>

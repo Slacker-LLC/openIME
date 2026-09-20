@@ -1,9 +1,9 @@
 package llc.slacker.openime
 
 /**
- * Unicode helpers shared by composition editing and pre-Android-9 editor deletion.
- * Android's legacy deleteSurroundingText() counts UTF-16 code units, while users
- * expect one backspace to remove one Unicode code point.
+ * Unicode helpers shared by composition editing and legacy editor deletion.
+ * Android's deleteSurroundingText() counts UTF-16 code units, while users
+ * expect one delete action to remove one Unicode code point.
  */
 internal fun dropLastCodePointSafe(text: String): String {
     if (text.isEmpty()) return text
@@ -20,6 +20,21 @@ internal fun previousCodePointUtf16Length(text: CharSequence?): Int {
         Character.isLowSurrogate(last) &&
         lastIndex > 0 &&
         Character.isHighSurrogate(text[lastIndex - 1])
+    ) {
+        2
+    } else {
+        1
+    }
+}
+
+/** Return the UTF-16 width of the first complete code point in [text]. */
+internal fun nextCodePointUtf16Length(text: CharSequence?): Int {
+    if (text.isNullOrEmpty()) return 0
+    val first = text[0]
+    return if (
+        Character.isHighSurrogate(first) &&
+        text.length > 1 &&
+        Character.isLowSurrogate(text[1])
     ) {
         2
     } else {

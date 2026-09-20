@@ -233,6 +233,13 @@ try {
                         }
                         $freshInstallApplied = $true
                     }
+                    $growthLimit = (DeviceText shell getprop dalvik.vm.heapgrowthlimit).Trim()
+                    if ($growthLimit -match '^(\d+)m' -and [int]$Matches[1] -lt 256) {
+                        Adb root | Out-Null
+                        Start-Sleep -Seconds 1
+                        Adb shell setprop dalvik.vm.heapgrowthlimit 256m | Out-Null
+                        Adb shell am force-stop $pkg | Out-Null
+                    }
                     $devicePrepared = $true
                 }
                 Adb logcat -c

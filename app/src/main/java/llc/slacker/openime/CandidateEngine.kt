@@ -343,7 +343,7 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
         val candidates = linkedSetOf<String>()
 
         fun addEntry(entry: NineKeyEntry, resolvePinyin: Boolean) {
-            pinyins.add(entry.pinyin)
+            if (resolvePinyin) pinyins.add(entry.pinyin)
             candidates.addAll(entry.candidates)
             if (resolvePinyin && entry.pinyin.length <= MAX_LOCAL_RESOLVE_LENGTH) {
                 candidates.addAll(getCandidates(entry.pinyin))

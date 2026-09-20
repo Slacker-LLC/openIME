@@ -43,29 +43,33 @@ enum class ImeTheme(val key: String, val label: String) {
         val panelHeadBackground: Int,
     )
 
-    fun tokens(appearance: ImeAppearance = ImeAppearance.DARK, systemDark: Boolean = false): Tokens {
+    fun tokens(
+        appearance: ImeAppearance = ImeAppearance.DARK,
+        systemDark: Boolean = false,
+        accentOverride: Int? = null,
+    ): Tokens {
         fun c(hex: String): Int = Color.parseColor(hex)
         val useDark = when (appearance) {
             ImeAppearance.SYSTEM -> systemDark
             ImeAppearance.LIGHT -> false
             ImeAppearance.DARK -> true
         }
-        return when (this) {
+        val base = when (this) {
             // minis_ime_dual_theme_renderer.html 的 Dark Obsidian / Light Crystal
             // 调色板。390 × 296 只是设计基准，尺寸仍由原生 View 的实际窗口计算。
             IOS -> if (useDark) {
                 Tokens(
-                    c("#3b82f6"), c("#13151b"), c("#171b22"), c("#171b22"), c("#f1f5f9"),
-                    c("#2d3341"), c("#f1f5f9"), c("#94a3b8"), c("#1f232d"), c("#94a3b8"), c("#3c4456"),
-                    Color.argb(9, 255, 255, 255), Color.argb(20, 255, 255, 255), c("#1f232d"), c("#13151b"), c("#1f232d"),
-                    c("#2d3341"), c("#f1f5f9"), c("#1f232d"), c("#94a3b8"), Color.argb(9, 255, 255, 255), c("#171b22"),
+                    c("#afc6ff"), c("#181a1e"), c("#202228"), c("#202228"), c("#e8e9ed"),
+                    c("#303238"), c("#e8e9ed"), c("#b3b7c2"), c("#25272c"), c("#d7dae2"), c("#3a3d44"),
+                    c("#25272c"), c("#343740"), c("#25272c"), c("#181a1e"), c("#202228"),
+                    c("#303238"), c("#e8e9ed"), c("#25272c"), c("#d7dae2"), c("#25272c"), c("#202228"),
                 )
             } else {
                 Tokens(
-                    c("#007aff"), c("#d3d7de"), c("#e2e6ec"), c("#e2e6ec"), c("#0f172a"),
-                    c("#ffffff"), c("#0f172a"), c("#475569"), c("#abb4c2"), c("#475569"), c("#eceff3"),
-                    Color.argb(30, 0, 0, 0), Color.argb(15, 0, 0, 0), c("#abb4c2"), c("#d3d7de"), c("#ffffff"),
-                    c("#ffffff"), c("#0f172a"), c("#abb4c2"), c("#475569"), Color.argb(153, 255, 255, 255), c("#e2e6ec"),
+                    c("#245bc7"), c("#e6e7eb"), c("#f0f1f3"), c("#f0f1f3"), c("#202124"),
+                    c("#fafafb"), c("#202124"), c("#555b66"), c("#d2d4db"), c("#374151"), c("#e3e5e9"),
+                    c("#f5f6f8"), c("#c8cbd2"), c("#d2d4db"), c("#e6e7eb"), c("#f0f1f3"),
+                    c("#fafafb"), c("#202124"), c("#d2d4db"), c("#374151"), c("#f8f9fa"), c("#f0f1f3"),
                 )
             }
             DARK -> Tokens(
@@ -93,5 +97,7 @@ enum class ImeTheme(val key: String, val label: String) {
                 c("#ffffff"), c("#0f172a"), c("#cbd5e1"), c("#0f172a"), c("#f1f5f9"), c("#e2e8f0"),
             )
         }
+        val accent = accentOverride ?: return base
+        return base.copy(primary = accent)
     }
 }

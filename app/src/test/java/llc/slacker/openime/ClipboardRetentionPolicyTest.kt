@@ -10,6 +10,30 @@ class ClipboardRetentionPolicyTest {
     private val now = 1_000_000_000L
 
     @Test
+    fun countTrimKeepsOldPinsAndNewestUnpinnedEntriesInOrder() {
+        val entries = (30 downTo 1).map { ClipboardEntry("$it", now, it == 1 || it == 5) }
+        val retained = ClipboardRetentionPolicy.trimToCount(entries, 24)
+
+        assertEquals(entries.take(22) + entries.filter { it.pinned }, retained)
+    }
+
+    @Test
+    fun countTrimNeverEvictsPinsEvenWhenTheyExceedLimit() {
+        val pins = (1..25).map { ClipboardEntry("pin $it", now, true) }
+        val entries = listOf(ClipboardEntry("new", now)) + pins
+
+        assertEquals(pins, ClipboardRetentionPolicy.trimToCount(entries, 24))
+    }
+
+    @Test
+    fun countTrimWithoutPinsKeepsNewestEntries() {
+        val entries = (30 downTo 1).map { ClipboardEntry("$it", now) }
+
+        assertEquals(entries.take(24), ClipboardRetentionPolicy.trimToCount(entries, 24))
+        assertEquals(entries, ClipboardRetentionPolicy.trimToCount(entries, 40))
+    }
+
+    @Test
     fun unpinnedEntriesExpireAfterTwentyFourHours() {
         val fresh = ClipboardEntry("fresh", now - ClipboardRetentionPolicy.UNPINNED_TTL_MS, false)
         val expired = ClipboardEntry("expired", now - ClipboardRetentionPolicy.UNPINNED_TTL_MS - 1L, false)

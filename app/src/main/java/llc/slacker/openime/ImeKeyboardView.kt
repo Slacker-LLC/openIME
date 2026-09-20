@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.BitmapFactory
 import android.graphics.drawable.GradientDrawable
@@ -15,6 +16,7 @@ import android.text.InputType
 import android.text.TextUtils
 import android.text.TextWatcher
 import android.util.Log
+import android.util.LruCache
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
@@ -30,6 +32,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
+import java.util.concurrent.Executors
 
 /**
  * Native IME top-level view. Visual baseline: the supplied preview.html prototype.
@@ -40,6 +43,7 @@ import android.widget.TextView
 open class ImeKeyboardView(
     context: Context,
     private val listener: Listener,
+    private val standalonePanel: Boolean = false,
 ) : FrameLayout(context) {
 
     interface Listener {
@@ -79,6 +83,16 @@ open class ImeKeyboardView(
             onCompositionChanged(composition, candidates)
         }
         fun onCandidateSelected(candidate: String)
+
+        /**
+         * An association ("联想") chip is rendered only *after* a candidate was
+         * committed, i.e. when the composition is already empty. Routing those
+         * clicks through [onCandidateSelected] is therefore always a no-op:
+         * that path guards on a non-empty composition. Associations need their
+         * own commit funnel that does not depend on a live composition.
+         */
+        fun onAssociationSelected(text: String) = Unit
+
         fun onCompositionBackspace()
         fun onThemeChanged(theme: ImeTheme)
         fun onAppearanceChanged(appearance: ImeAppearance)
@@ -91,6 +105,7 @@ open class ImeKeyboardView(
         fun onHapticChanged(enabled: Boolean)
         fun onPopupChanged(enabled: Boolean)
         fun onFuzzyChanged(enabled: Boolean)
+        fun onSkinChanged(opacity: Int, radius: Int, fontSize: Int, primaryColor: String) {}
     }
 
     /** Visual class marker for white keys (nine/digits grid). */
@@ -99,7 +114,78 @@ open class ImeKeyboardView(
     private val MARK_SIDE_KEY = 0x1F000002
     private val MARK_FUNCTION_KEY = 0x1F000003
 
+    companion object {
+        /** Compiled once. [applyThemeRecursive] walks ~150 nodes per pass. */
+        private val DIGITS_ONLY = Regex("[0-9]+")
+
+        /**
+         * Emoji cells used to decode their PNG from assets inline on the UI
+         * thread: 23-40 synchronous decodes every time the panel opened or
+         * switched category, with no reuse and no recycling. Cache by asset
+         * path so the cost is paid once per process, not once per render.
+         */
+        private const val EMOJI_CACHE_BYTES = 4 * 1024 * 1024
+        private const val CANDIDATE_STRIP_LIMIT = 24
+        /** How often a deferred row rebuild re-checks whether the press ended. */
+        private const val ROW_REBUILD_POLL_MS = 40L
+        private val emojiBitmaps = object : LruCache<String, Bitmap>(EMOJI_CACHE_BYTES) {
+            override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
+        }
+        private val emojiDecodeExecutor = Executors.newFixedThreadPool(2) { runnable ->
+            Thread(runnable, "openime-emoji-decode").apply { isDaemon = true }
+        }
+        private val emojiMainHandler = Handler(Looper.getMainLooper())
+        private val emojiDecodeLock = Any()
+        private val emojiDecodeWaiters = mutableMapOf<String, MutableList<(Bitmap) -> Unit>>()
+
+        private fun requestEmojiBitmap(context: Context, assetPath: String, onReady: (Bitmap) -> Unit) {
+            emojiBitmaps.get(assetPath)?.let { cached ->
+                onReady(cached)
+                return
+            }
+            val shouldDecode = synchronized(emojiDecodeLock) {
+                emojiBitmaps.get(assetPath)?.let { cached ->
+                    emojiMainHandler.post { onReady(cached) }
+                    return@synchronized false
+                }
+                val waiters = emojiDecodeWaiters[assetPath]
+                if (waiters != null) {
+                    waiters += onReady
+                    false
+                } else {
+                    emojiDecodeWaiters[assetPath] = mutableListOf(onReady)
+                    true
+                }
+            }
+            if (!shouldDecode) return
+
+            val appContext = context.applicationContext
+            emojiDecodeExecutor.execute {
+                val bitmap = runCatching {
+                    appContext.assets.open(assetPath).use { BitmapFactory.decodeStream(it) }
+                }.getOrNull()
+                val waiters = synchronized(emojiDecodeLock) {
+                    if (bitmap != null) emojiBitmaps.put(assetPath, bitmap)
+                    emojiDecodeWaiters.remove(assetPath).orEmpty()
+                }
+                if (bitmap != null && waiters.isNotEmpty()) {
+                    emojiMainHandler.post { waiters.forEach { it(bitmap) } }
+                }
+            }
+        }
+    }
+
     private val repeatHandler = Handler(Looper.getMainLooper())
+    // Voice arms at the platform long-press threshold instead of a hard-coded
+    // 150 ms, so a deliberate-but-brief space press no longer opens the mic.
+    private val spaceVoiceTriggerMs = ViewConfiguration.getLongPressTimeout().toLong()
+    // Whether long-press alternate glyphs are shown as small corner hints.
+    private var showSecondaryHints = true
+    // Touch-coordinate trace logs are debug-only; they must never spam logcat
+    // (or cost latency) in release builds.
+    private val debugLogging: Boolean by lazy {
+        (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+    }
     private val repeatAction = object : Runnable {
         override fun run() {
             if (!backspaceGestureActive || backspaceClearArmed) return
@@ -111,6 +197,8 @@ open class ImeKeyboardView(
     private var backspaceGestureActive = false
     private var backspaceClearArmed = false
     private var backspaceRepeatStarted = false
+    private var backspaceRepeatSuspended = false
+    private var backspacePointerId = -1
     private var backspaceStartX = 0f
     private var backspaceStartY = 0f
     private var backspaceAnchor: View? = null
@@ -121,13 +209,45 @@ open class ImeKeyboardView(
     private var theme = ImeTheme.IOS
     private var appearance = ImeAppearance.SYSTEM
     private var mode = KeyboardMode.PINYIN_26
-    private var panel = Panel.NONE
+    // The mode whose key rows are currently built. setMode skips an expensive
+    // removeAllViews()+rebuild when focus moves between fields without a layout
+    // change.
+    private var renderedMode: KeyboardMode? = null
+    // Android drops a gesture the moment its view leaves the hierarchy, so a row
+    // rebuild that lands while a key is held swallows that press (the space tap,
+    // a letter, the backspace repeat). Remember the request and replay it once
+    // the finger lifts instead of tearing the key out from under the gesture.
+    private var pendingRowRebuild = false
+    private val pendingRowRebuildPoll = object : Runnable {
+        override fun run() {
+            if (!pendingRowRebuild) return
+            if (hasPressedKey()) {
+                postDelayed(this, ROW_REBUILD_POLL_MS)
+                return
+            }
+            pendingRowRebuild = false
+            renderModeBody()
+        }
+    }
+    // Only these configuration values change the derived row and IME heights.
+    private var appliedOrientation = resources.configuration.orientation
+    private var appliedFontScale = resources.configuration.fontScale
+    private var appliedDensityDpi = resources.displayMetrics.densityDpi
+    private var lastTextMode = KeyboardMode.PINYIN_26
+    private var preferredChineseMode = ImeSettingsRepository.loadPreferredChineseMode(context)
+    protected var panel = Panel.NONE
+    fun currentPanel(): Panel = panel
     private var shiftState = ShiftState.LOWERCASE
     private var soundEnabled = true
     private var hapticEnabled = true
-    private var popupEnabled = true
+    private var popupEnabled = false
     private var fuzzyEnabled = false
-    private var skinRadius = 8
+    private var skinRadius = ImeSettingsRepository.loadSkinRadius(context)
+    private var skinOpacity = ImeSettingsRepository.loadSkinOpacity(context)
+    private var skinFontSize = ImeSettingsRepository.loadSkinFont(context)
+    private var skinPrimaryColor = ImeSettingsRepository.loadSkinColor(context)
+
+    protected open fun onViewHierarchyRebuilt() = Unit
 
     private val pinyinBuffer = StringBuilder()
     private var lastNineDigits = ""
@@ -138,12 +258,22 @@ open class ImeKeyboardView(
     private var currentCandidates = emptyList<String>()
     private var currentItems: List<String>? = null
     private var candidateExpandedOpen = false
+    private var voiceEventGeneration = 0L
+    private var renderedStripCandidates: List<String>? = null
+    private var renderedStripComposition: String? = null
+    private var renderedExpandedCandidates: List<String>? = null
+    private var renderedExpandedComposition: String? = null
     private var symbolCategory = "中文"
     private var emojiCategory = "笑脸"
     private var clipboardTab = 0
+    // Guards async clipboard loads so a stale background result can't render over a newer panel.
+    private var clipboardLoadGen = 0
     private var voiceLanguageIndex = 0
     private var toolPage = 0
+    private var settingsScrollY = 0
     private var voiceActive = false
+    private var voicePending = false
+    private var inlineVoicePaletteColor: Int? = null
     private var voiceStartAction: (() -> Unit)? = null
     private var voiceStopAction: (() -> Unit)? = null
     private var voiceCancelAction: (() -> Unit)? = null
@@ -152,6 +282,7 @@ open class ImeKeyboardView(
     private var spaceVoiceGestureActive = false
     private var spaceVoiceGestureCancel = false
     private var spaceVoiceDownY = 0f
+    private var spaceVoicePointerId = -1
     private var voiceInlineActive = false
     private var voiceInlineCancel = false
     private var voiceInlineGeneration = 0L
@@ -171,19 +302,40 @@ open class ImeKeyboardView(
             repeatHandler.postDelayed(this, 72L)
         }
     }
-    private var floatingKeyboard = true
+    // Gaming opens docked by default; the in-panel "恢复浮动" toggle opts into
+    // the floating drag surface instead of forcing it on entry.
+    private var floatingKeyboard = false
     private var popupView: View? = null
     private var keepPopupAfterKeyUp = false
     private val popupHideRunnable = Runnable { hidePopup() }
     private var contentInsetPx = dp(5)
     private var systemBottomInsetPx = 0
     private val maxContentWidthDp = 600
-    private val fixedImeHeightDp = 296
-    private val fixedKeyboardBodyHeightDp = fixedImeHeightDp - 64
+    // Portrait keeps the historical 296dp total. Landscape uses a compact
+    // keyboard, and key rows grow with the system font scale so sp labels are
+    // never clipped inside a fixed-height key.
+    private fun isLandscape(): Boolean =
+        resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
+    private fun keyRowHeightDp(): Int {
+        val base = if (isLandscape()) 40 else 48
+        val fontGrow = ((resources.configuration.fontScale - 1f).coerceAtLeast(0f) * 12f)
+            .toInt().coerceAtMost(12)
+        return base + fontGrow
+    }
+
+    private fun imeHeightDp(): Int {
+        // 64dp top zone + four key rows + three 6dp gaps + 22dp bottom breathing.
+        val derived = 64 + keyRowHeightDp() * 4 + 6 * 3 + 22
+        return maxOf(if (isLandscape()) 258 else 296, derived)
+    }
+
+    private fun keyboardBodyHeightDp(): Int = imeHeightDp() - 64
     private var syncingComposition = false
     private var t9Filter = "T9"
     private var passwordField = false
     private var inlineEditTarget: EditText? = null
+    private val panelChipScrollPositions = mutableMapOf<String, Int>()
 
     private lateinit var mainDock: LinearLayout
     private lateinit var keyboardHost: FrameLayout
@@ -194,6 +346,7 @@ open class ImeKeyboardView(
     private lateinit var candidateRow: LinearLayout
     private lateinit var associationRow: LinearLayout
     private lateinit var candidateExpandBtn: TextView
+    private lateinit var candidateEmojiBtn: TextView
     private lateinit var voiceInlineZone: LinearLayout
     private lateinit var voiceInlineStatus: TextView
     private val voiceInlineWaves = mutableListOf<View>()
@@ -209,23 +362,33 @@ open class ImeKeyboardView(
 
     init {
         tag = "ime_root"
+        val rootHeight = if (standalonePanel) {
+            FrameLayout.LayoutParams.MATCH_PARENT
+        } else {
+            dp(imeHeightDp())
+        }
+        val dockHeight = if (standalonePanel) {
+            FrameLayout.LayoutParams.MATCH_PARENT
+        } else {
+            dp(imeHeightDp())
+        }
         layoutParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
-            dp(fixedImeHeightDp),
+            rootHeight,
         )
         mainDock = LinearLayout(context).apply {
             tag = "main-dock"
             orientation = LinearLayout.VERTICAL
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
-                dp(fixedImeHeightDp),
+                dockHeight,
             )
         }
         keyboardHost = FrameLayout(context).apply {
             tag = "keyboard-host"
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
-                dp(fixedKeyboardBodyHeightDp),
+                dp(keyboardBodyHeightDp()),
             )
         }
         keyboardBody.orientation = LinearLayout.VERTICAL
@@ -255,20 +418,20 @@ open class ImeKeyboardView(
         buildTopZone()
         mainDock.addView(keyboardHost, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(fixedKeyboardBodyHeightDp),
+            dp(keyboardBodyHeightDp()),
         ))
         addView(
             mainDock,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
-                dp(fixedImeHeightDp),
+                rootHeight,
             ),
         )
         addView(
             expandedPanel,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
-                dp(fixedImeHeightDp),
+                rootHeight,
             ),
         )
         renderModeBody()
@@ -295,10 +458,42 @@ open class ImeKeyboardView(
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
         if (appearance == ImeAppearance.SYSTEM) applyTheme()
+        // Resize containers and rebuild rows so compact landscape heights / larger
+        // font rows take effect. Unrelated configuration changes (locale, UI mode,
+        // keyboard presence) do not alter the derived geometry, so they must not
+        // tear down the key surface.
+        val geometryChanged = newConfig.orientation != appliedOrientation ||
+            newConfig.fontScale != appliedFontScale ||
+            newConfig.densityDpi != appliedDensityDpi
+        appliedOrientation = newConfig.orientation
+        appliedFontScale = newConfig.fontScale
+        appliedDensityDpi = newConfig.densityDpi
+        if (!geometryChanged) return
+        // Do not yank the user out of an open panel.
+        applyDynamicHeights()
+        if (!standalonePanel && currentPanel() == Panel.NONE) renderModeBody()
+    }
+
+    /** True while any key in this keyboard still owns a press. */
+    private fun hasPressedKey(): Boolean {
+        fun walk(view: View): Boolean {
+            if (view.isPressed) return true
+            if (view is ViewGroup) {
+                for (index in 0 until view.childCount) {
+                    if (walk(view.getChildAt(index))) return true
+                }
+            }
+            return false
+        }
+        return walk(this)
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val desiredHeight = dp(fixedImeHeightDp)
+        if (standalonePanel) {
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+            return
+        }
+        val desiredHeight = dp(imeHeightDp())
         val mode = MeasureSpec.getMode(heightMeasureSpec)
         val size = MeasureSpec.getSize(heightMeasureSpec)
         val measuredHeight = when {
@@ -310,6 +505,41 @@ open class ImeKeyboardView(
             widthMeasureSpec,
             MeasureSpec.makeMeasureSpec(measuredHeight, MeasureSpec.EXACTLY),
         )
+    }
+
+    /**
+     * Keep the dock/host/panel heights aligned with the current orientation and
+     * font scale. Construction already uses the current values; this resizes a
+     * retained view on a configuration change before the rows are rebuilt.
+     */
+    private fun applyDynamicHeights() {
+        if (standalonePanel) return
+        val totalPx = dp(imeHeightDp())
+        val bodyPx = dp(keyboardBodyHeightDp())
+        (layoutParams as? FrameLayout.LayoutParams)?.let {
+            if (it.height != totalPx) {
+                it.height = totalPx
+                layoutParams = it
+            }
+        }
+        (mainDock.layoutParams as? FrameLayout.LayoutParams)?.let {
+            if (it.height != totalPx) {
+                it.height = totalPx
+                mainDock.layoutParams = it
+            }
+        }
+        (expandedPanel.layoutParams as? FrameLayout.LayoutParams)?.let {
+            if (it.height != totalPx) {
+                it.height = totalPx
+                expandedPanel.layoutParams = it
+            }
+        }
+        (keyboardHost.layoutParams as? LinearLayout.LayoutParams)?.let {
+            if (it.height != bodyPx) {
+                it.height = bodyPx
+                keyboardHost.layoutParams = it
+            }
+        }
     }
 
     /**
@@ -450,6 +680,8 @@ open class ImeKeyboardView(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
+        renderedStripCandidates = null
+        renderedStripComposition = null
         val candScroll = HorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
             addView(
@@ -462,6 +694,25 @@ open class ImeKeyboardView(
         }
         candField.setPadding(dp(8), 0, dp(8), 0)
         candField.addView(candScroll, LinearLayout.LayoutParams(0, dp(42), 1f))
+        // Persistent emoji shortcut kept visible while composing, so the user can
+        // jump straight to the emoji panel without first committing/clearing.
+        candidateEmojiBtn = TextView(context).apply {
+            tag = "candidate-emoji"
+            text = "☺"
+            textSize = 17f
+            gravity = Gravity.CENTER
+            contentDescription = "表情"
+            setPadding(dp(7), 0, dp(7), 0)
+            isClickable = true
+            setOnClickListener {
+                feedback()
+                showPanel(Panel.EMOJI)
+            }
+        }
+        candField.addView(
+            candidateEmojiBtn,
+            LinearLayout.LayoutParams(dp(40), dp(42)),
+        )
         candidateExpandBtn = TextView(context).apply {
             tag = "candidate-expand"
             text = "⌄"
@@ -477,7 +728,7 @@ open class ImeKeyboardView(
         }
         candField.addView(
             candidateExpandBtn,
-            LinearLayout.LayoutParams(dp(28), dp(42)),
+            LinearLayout.LayoutParams(dp(42), dp(42)),
         )
         composeZone.addView(candField, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -563,31 +814,39 @@ open class ImeKeyboardView(
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setImageResource(iconRes)
             isClickable = true
-            setOnClickListener { onTap() }
+            setOnClickListener { feedback(); onTap() }
         }
 
     fun cycleMode() {
         val next = when (mode) {
-            KeyboardMode.PINYIN_26 -> KeyboardMode.ENGLISH_26
-            KeyboardMode.ENGLISH_26 -> KeyboardMode.PINYIN_9
-            KeyboardMode.PINYIN_9 -> KeyboardMode.DIGITS
-            // Kept only for compatibility with old saved/test state; it is no
-            // longer exposed as an English nine-key layout.
-            KeyboardMode.ENGLISH_T9 -> KeyboardMode.DIGITS
-            KeyboardMode.DIGITS -> KeyboardMode.PINYIN_26
+            KeyboardMode.PINYIN_26, KeyboardMode.PINYIN_9 -> KeyboardMode.ENGLISH_26
+            KeyboardMode.ENGLISH_26 -> preferredChineseMode
+            KeyboardMode.DIGITS -> lastTextMode
+            KeyboardMode.ENGLISH_T9 -> preferredChineseMode
         }
         setMode(next)
     }
 
-    fun setMode(newMode: KeyboardMode) {
+    fun setMode(newMode: KeyboardMode, notifyListener: Boolean = true) {
         val effectiveMode = if (newMode == KeyboardMode.ENGLISH_T9) {
             KeyboardMode.PINYIN_26
         } else {
             newMode
         }
-        if (panel != Panel.NONE) closePanelToKeyboard()
+        if (effectiveMode != KeyboardMode.DIGITS) {
+            lastTextMode = effectiveMode
+            if (effectiveMode == KeyboardMode.PINYIN_26 || effectiveMode == KeyboardMode.PINYIN_9) {
+                // Persist the 26/9-key choice so it survives process death.
+                if (preferredChineseMode != effectiveMode) {
+                    ImeSettingsRepository.savePreferredChineseMode(context, effectiveMode)
+                }
+                preferredChineseMode = effectiveMode
+            }
+        }
+        if (panel != Panel.NONE) dismissPanelForModeSwitch()
         repeatHandler.removeCallbacks(nineTapReset)
         nineTapReset.run()
+        val layoutChanged = mode != effectiveMode
         mode = effectiveMode
         symbolCategory = when (effectiveMode) {
             KeyboardMode.ENGLISH_26 -> "英文"
@@ -603,15 +862,21 @@ open class ImeKeyboardView(
         lastT9Digits = ""
         currentCandidates = emptyList()
         currentItems = emptyList()
-        keyboardBody.animate().cancel()
-        keyboardBody.alpha = 0.96f
-        renderModeBody()
-        keyboardBody.animate().alpha(1f).setDuration(100L).start()
-        listener.onModeChanged(effectiveMode)
+        // Rebuild the key rows (and play the switch fade) only when the layout
+        // actually changes. Re-focusing another field in the same mode now reuses
+        // the existing rows instead of recreating ~150 views on every focus.
+        if (layoutChanged || renderedMode != effectiveMode) {
+            keyboardBody.animate().cancel()
+            keyboardBody.alpha = 0.96f
+            renderModeBody()
+            keyboardBody.animate().alpha(1f).setDuration(100L).start()
+        }
+        if (notifyListener) listener.onModeChanged(effectiveMode)
     }
 
     fun showPanel(newPanel: Panel) {
         if (newPanel == Panel.NONE || newPanel == Panel.CANDIDATE_EXPANDED) return
+        hidePopup()
         if (panel == Panel.VOICE && newPanel != Panel.VOICE) stopVoiceIfActive()
         panel = newPanel
         mainDock.visibility = View.GONE
@@ -625,6 +890,18 @@ open class ImeKeyboardView(
         expandedPanel.animate().alpha(1f).setDuration(120L).start()
     }
 
+    private fun dismissPanelForModeSwitch() {
+        if (panel == Panel.NONE) return
+        stopVoiceIfActive()
+        panel = Panel.NONE
+        expandedPanel.animate().cancel()
+        expandedPanel.visibility = View.GONE
+        mainDock.visibility = View.VISIBLE
+        keyboardBody.visibility = View.VISIBLE
+        candidateOverlay.visibility = View.GONE
+        listener.onPanelChanged(Panel.NONE)
+    }
+
     fun closePanelToKeyboard(): Boolean {
         if (candidateExpandedOpen) {
             renderExpanded(false)
@@ -634,7 +911,12 @@ open class ImeKeyboardView(
         if (panel == Panel.NONE) return false
         stopVoiceIfActive()
         panel = Panel.NONE
-        renderModeBody()
+        expandedPanel.animate().cancel()
+        expandedPanel.visibility = View.GONE
+        mainDock.animate().cancel()
+        mainDock.visibility = View.VISIBLE
+        keyboardBody.visibility = View.VISIBLE
+        candidateOverlay.visibility = View.GONE
         mainDock.alpha = 0.96f
         mainDock.animate().alpha(1f).setDuration(100L).start()
         listener.onPanelChanged(Panel.NONE)
@@ -643,10 +925,11 @@ open class ImeKeyboardView(
 
     fun renderState(state: ImeState) {
         passwordField = state.passwordField
-        val previousSelection = composition.selectionStart
+        val sameComposition = composition.text.toString() == state.composition
         setCompositionText(
             state.composition,
-            previousSelection.takeIf { it >= 0 },
+            composition.selectionStart.takeIf { sameComposition && it >= 0 },
+            composition.selectionEnd.takeIf { sameComposition && it >= 0 },
         )
         currentItems = state.candidates
         currentCandidates = state.candidates
@@ -657,14 +940,20 @@ open class ImeKeyboardView(
             lastNineSegmentPrefix = ""
             lastNinePinyinPaths = emptyList()
             lastT9Digits = ""
+            if (candidateExpandedOpen) {
+                renderExpanded(false)
+                listener.onCandidateExpanded(false)
+            }
         } else {
             pinyinBuffer.setLength(0)
             pinyinBuffer.append(state.composition)
             if (mode == KeyboardMode.ENGLISH_T9) lastT9Digits = state.composition
+            if (candidateExpandedOpen) {
+                renderExpanded(true)
+            }
         }
         updateTopZone(state.composition.isNotEmpty())
         renderCandidateRow()
-        applyCandidateTheme()
     }
 
     fun setAssociationCandidates(candidates: List<String>) {
@@ -682,7 +971,7 @@ open class ImeKeyboardView(
                     tag = "association-candidate"
                     isClickable = true
                     setPadding(dp(8), 0, dp(8), 0)
-                    setOnClickListener { listener.onCandidateSelected(candidate) }
+                    setOnClickListener { listener.onAssociationSelected(candidate) }
                 },
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -690,7 +979,7 @@ open class ImeKeyboardView(
                 ).apply { marginEnd = dp(5) },
             )
         }
-        applyCandidateTheme()
+        applyAssociationTheme()
     }
 
     fun clearAssociationCandidates() {
@@ -698,13 +987,34 @@ open class ImeKeyboardView(
     }
 
     fun setTheme(newTheme: ImeTheme) {
+        // Called on every focus via reloadPersistedSettings(); avoid a full-tree
+        // recolor when nothing changed.
+        if (theme == newTheme) return
         theme = newTheme
         applyTheme()
         listener.onThemeChanged(newTheme)
     }
 
     fun setAppearance(newAppearance: ImeAppearance) {
+        if (appearance == newAppearance) return
         appearance = newAppearance
+        applyTheme()
+    }
+
+    /** Apply persisted visual settings when another entry point changed them. */
+    fun setSkin(opacity: Int, radius: Int, fontSize: Int, primaryColor: String) {
+        val normalizedColor = AccentPalette.normalize(primaryColor)
+        if (skinOpacity == opacity &&
+            skinRadius == radius &&
+            skinFontSize == fontSize &&
+            skinPrimaryColor == normalizedColor
+        ) {
+            return
+        }
+        skinOpacity = opacity
+        skinRadius = radius
+        skinFontSize = fontSize
+        skinPrimaryColor = normalizedColor
         applyTheme()
     }
 
@@ -721,9 +1031,39 @@ open class ImeKeyboardView(
         fuzzyEnabled = fuzzy
     }
 
-    fun shutdown() {
+    /**
+     * Shift state is owned by this view, and nothing else could reset it. A
+     * Caps Lock engaged in one app therefore survived into the next editor,
+     * including password and banking fields. Called from onStartInput.
+     */
+    fun setShiftState(next: ShiftState) {
+        if (shiftState == next) return
+        shiftState = next
+        listener.onShiftStateChanged(next)
+        refreshEnglishShiftPresentation()
+    }
+
+    open fun shutdown() {
         stopVoiceIfActive()
-        repeatHandler.removeCallbacks(repeatAction)
+        // Drop every pending callback, not just the repeat one. A surviving
+        // backspace/voice runnable fires after the editor changed and would
+        // delete or compose into whichever InputConnection is current then.
+        repeatHandler.removeCallbacksAndMessages(null)
+        removeCallbacks(null)
+        backspaceRepeatStartAction?.let { repeatHandler.removeCallbacks(it) }
+        backspaceRepeatStartAction = null
+        backspaceGestureActive = false
+        backspaceClearArmed = false
+        backspaceRepeatStarted = false
+        backspaceAnchor?.isPressed = false
+        backspaceAnchor = null
+        backspaceClearUiAction = null
+        spaceVoiceGestureActive = false
+        spaceVoiceGestureCancel = false
+        pendingRowRebuild = false
+        voiceInlineActive = false
+        voiceInlineCancel = false
+        hidePopup()
     }
 
     internal fun isVoiceActive(): Boolean = voiceActive
@@ -739,7 +1079,11 @@ open class ImeKeyboardView(
             }
             return null
         }
-        return deep(this)
+        return deep(this) ?: if (query == "确定" || query == "key:确定") {
+            findViewWithTag<View>("key-enter")
+        } else {
+            null
+        }
     }
 
     internal fun tapTestTarget(query: String): Boolean {
@@ -824,8 +1168,10 @@ open class ImeKeyboardView(
     ) {
         voiceInlineActive = true
         voiceInlineCancel = cancelling
-        voiceInlineStatus.text = message
-        voiceInlineZone.contentDescription = message
+        if (voiceInlineStatus.text.toString() != message) {
+            voiceInlineStatus.text = message
+            voiceInlineZone.contentDescription = message
+        }
         if (rms != null) {
             voiceInlineHasLiveRms = true
             repeatHandler.removeCallbacks(voiceInlinePulseAction)
@@ -833,8 +1179,11 @@ open class ImeKeyboardView(
             voiceInlineWaves.forEachIndexed { index, bar ->
                 val shape = if (index in 2..3) 1f else if (index in 1..4) 0.72f else 0.48f
                 val params = bar.layoutParams
-                params.height = dp((6f + 22f * strength * shape).toInt().coerceIn(6, 28))
-                bar.layoutParams = params
+                val height = dp((6f + 22f * strength * shape).toInt().coerceIn(6, 28))
+                if (params.height != height) {
+                    params.height = height
+                    bar.layoutParams = params
+                }
             }
         }
         applyInlineVoicePalette()
@@ -856,11 +1205,14 @@ open class ImeKeyboardView(
         if (!::voiceInlineZone.isInitialized) return
         val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val tokens = theme.tokens(appearance, night)
+        val tokens = theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor))
         val backgroundColor = if (voiceInlineCancel) Color.rgb(220, 38, 38) else tokens.primary
+        if (inlineVoicePaletteColor == backgroundColor) return
+        inlineVoicePaletteColor = backgroundColor
         voiceInlineZone.background = rounded(backgroundColor, dp(13))
-        voiceInlineStatus.setTextColor(Color.WHITE)
-        voiceInlineWaves.forEach { it.background = rounded(Color.WHITE, dp(99)) }
+        val foregroundColor = contrastText(backgroundColor)
+        voiceInlineStatus.setTextColor(foregroundColor)
+        voiceInlineWaves.forEach { it.background = rounded(foregroundColor, dp(99)) }
     }
 
     private fun hideInlineVoiceState() {
@@ -879,52 +1231,115 @@ open class ImeKeyboardView(
     }
 
     private fun renderCandidateRow() {
-        candidateRow.removeAllViews()
+        val visibleCandidates = currentCandidates.take(CANDIDATE_STRIP_LIMIT)
+        val preview = composition.text.toString()
+        if (renderedStripCandidates == visibleCandidates && renderedStripComposition == preview) return
+        val scroll = candidateRow.parent as? HorizontalScrollView
+        val keepScroll = renderedStripComposition == preview
+        val previousScrollX = if (keepScroll) scroll?.scrollX ?: 0 else 0
+        renderedStripCandidates = visibleCandidates.toList()
+        renderedStripComposition = preview
         if (currentCandidates.isEmpty()) {
-            candidateRow.addView(
-                TextView(context).apply {
-                    text = if (composeZone.visibility == View.VISIBLE) composition.text else ""
-                    textSize = 12f
-                    setPadding(dp(10), 0, dp(10), 0)
-                },
-                wrapParams(),
-            )
+            if (candidateRow.childCount != 1 || candidateRow.getChildAt(0) !is TextView ||
+                candidateRow.getChildAt(0).tag != "candidate-empty"
+            ) {
+                candidateRow.removeAllViews()
+                candidateRow.addView(
+                    TextView(context).apply {
+                        tag = "candidate-empty"
+                        textSize = 12f
+                        setPadding(dp(10), 0, dp(10), 0)
+                    },
+                    wrapParams(),
+                )
+            }
+            (candidateRow.getChildAt(0) as TextView).text =
+                if (composeZone.visibility == View.VISIBLE) composition.text else ""
+            if (!keepScroll) scroll?.scrollTo(0, 0)
             return
         }
-        currentCandidates.take(6).forEachIndexed { index, cand ->
-            candidateRow.addView(
-                candidateItemView(index, cand),
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    dp(32),
-                ).apply { marginEnd = dp(6) },
-            )
+        if (candidateRow.childCount == 1 && candidateRow.getChildAt(0).tag == "candidate-empty") {
+            candidateRow.removeAllViews()
+        }
+        val extra = candidateRow.childCount - visibleCandidates.size
+        if (extra > 0) candidateRow.removeViews(visibleCandidates.size, extra)
+        visibleCandidates.forEachIndexed { index, cand ->
+            val existing = candidateRow.getChildAt(index) as? LinearLayout
+            if (existing == null) {
+                candidateRow.addView(
+                    candidateItemView(index, cand),
+                    LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        dp(42),
+                    ).apply { marginEnd = dp(6) },
+                )
+            } else {
+                bindCandidateItem(existing, index, cand)
+            }
+        }
+        if (keepScroll && previousScrollX > 0) {
+            scroll?.post { scroll.scrollTo(previousScrollX.coerceAtMost(candidateRow.width), 0) }
+        } else {
+            scroll?.scrollTo(0, 0)
         }
     }
 
     private fun candidateItemView(index: Int, cand: String): LinearLayout {
-        val word = TextView(context).apply {
-            text = cand
-            textSize = 14f
-            if (index == 0) typeface = android.graphics.Typeface.DEFAULT_BOLD
-            maxLines = 1
-            setPadding(dp(12), 0, dp(12), 0)
-            tag = if (index == 0) "candidate-first" else "candidate-word"
-            isClickable = false
-        }
         return LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            tag = if (index == 0) "candidate-first-row" else null
-            contentDescription = "候选:$cand"
-            minimumHeight = dp(32)
-            addView(word, wrapParams())
+            minimumHeight = dp(42)
+            isFocusable = true
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             isClickable = true
-            setOnClickListener { listener.onCandidateSelected(cand) }
+            addView(
+                TextView(context).apply {
+                    textSize = 14f
+                    maxLines = 1
+                    includeFontPadding = false
+                    setPadding(dp(12), 0, dp(12), 0)
+                    isClickable = false
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                },
+                wrapParams(),
+            )
+            bindCandidateItem(this, index, cand)
+        }
+    }
+
+    private fun bindCandidateItem(row: LinearLayout, index: Int, cand: String) {
+        row.tag = if (index == 0) "candidate-first-row" else "candidate-row"
+        row.contentDescription = "候选:$cand"
+        val word = row.getChildAt(0) as TextView
+        if (word.text.toString() != cand) word.text = cand
+        word.tag = if (index == 0) "candidate-first" else "candidate-word"
+        word.typeface = if (index == 0) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
+        val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        val t = theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor))
+        word.setTextColor(if (index == 0) t.keyText else t.candidateText)
+        row.background = statefulRounded(
+            if (index == 0) t.keyBackground else Color.TRANSPARENT,
+            t.keyPressedBackground,
+            dp(8),
+        )
+        row.setOnClickListener {
+            feedback()
+            listener.onCandidateSelected(cand)
         }
     }
 
     private fun renderModeBody() {
+        // Never rebuild out from under a finger: the press would be lost silently.
+        if (hasPressedKey()) {
+            pendingRowRebuild = true
+            removeCallbacks(pendingRowRebuildPoll)
+            postDelayed(pendingRowRebuildPoll, ROW_REBUILD_POLL_MS)
+            return
+        }
+        pendingRowRebuild = false
+        // Corner hints default on (9-key needs them); renderPinyin26 opts out.
+        showSecondaryHints = true
         mainDock.visibility = View.VISIBLE
         keyboardBody.removeAllViews()
         keyboardBody.visibility = View.VISIBLE
@@ -941,9 +1356,14 @@ open class ImeKeyboardView(
         updateTopZone(composition.text?.isNotEmpty() == true)
         if (width > 0) updateResponsiveGeometry(width)
         applyTheme()
+        onViewHierarchyRebuilt()
+        renderedMode = mode
     }
 
     private fun renderPinyin26() {
+        // Keep the 26-key surface clean: long-press digits still work, but the
+        // small corner numerals are not painted by default.
+        showSecondaryHints = false
         val rows = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
         val hints = mapOf(
             'q' to "1", 'w' to "2", 'e' to "3", 'r' to "4", 't' to "5",
@@ -1002,12 +1422,25 @@ open class ImeKeyboardView(
             keyboardBody.addView(row, rowParams())
         }
         val bottom = rowHost()
-        bottom.addView(key("123", true, null, 1f, 15f) { setMode(KeyboardMode.DIGITS) }, flexKeyParams(1.3f))
+        // Balance the two outer keys around the centered space so it is optically
+        // centered on the first frame (same result ProductionKeyPolicy/V2 used to
+        // apply in a post pass).
+        val outerLeft0 = 1.3f
+        val innerLeft = 0.95f
+        val innerRight = 1.05f
+        val outerRight0 = 1.8f
+        val balanced = ProductionKeyPolicy.balancedOuterWeights(
+            leftTotal = outerLeft0 + innerLeft,
+            rightTotal = innerRight + outerRight0,
+            leftOuter = outerLeft0,
+            rightOuter = outerRight0,
+        )
+        bottom.addView(key("123", true, null, 1f, 15f) { setMode(KeyboardMode.DIGITS) }, flexKeyParams(balanced.leftOuter))
         bottom.addView(
-            key(if (mode == KeyboardMode.ENGLISH_26) "." else "，。", true, null, 1f, 15f) {
+            key(if (mode == KeyboardMode.ENGLISH_26) "." else "，", true, null, 1f, 15f) {
                 commitKeyboardCharacter(if (mode == KeyboardMode.ENGLISH_26) "." else "，")
             },
-            flexKeyParams(0.95f),
+            flexKeyParams(innerLeft),
         )
         bottom.addView(
             spaceVoiceKey(if (mode == KeyboardMode.ENGLISH_26) "space" else "空格", white = true) {
@@ -1017,17 +1450,29 @@ open class ImeKeyboardView(
         )
         bottom.addView(
             key("中/英", true, null, 1f, 14f) { cycleMode() }.apply { tag = "key:mode" },
-            flexKeyParams(1.05f),
+            flexKeyParams(innerRight),
         )
         bottom.addView(
-            key(if (mode == KeyboardMode.ENGLISH_26) "Go" else "确定", true, null, 1f, 15f) { listener.onEnter() }
+            key(enterKeyLabel(mode == KeyboardMode.ENGLISH_26), true, null, 1f, 15f) { listener.onEnter() }
                 .apply { tag = "key-enter" },
-            flexKeyParams(1.8f),
+            flexKeyParams(balanced.rightOuter),
         )
         keyboardBody.addView(bottom, rowParams(includeBottomGap = false))
     }
 
     private fun renderEnglish26() = renderPinyin26()
+
+    /**
+     * Resolve the Enter label from the bound editor at render time so the key is
+     * correct on its first frame (V2 keeps an idempotent re-sync as a safety net).
+     * Outside an InputMethodService host (settings/test) the legacy fallback is used.
+     */
+    private fun enterKeyLabel(english: Boolean, fallback: String? = null): String {
+        val imeOptions = (context as? android.inputmethodservice.InputMethodService)
+            ?.currentInputEditorInfo?.imeOptions
+        if (imeOptions != null) return enterKeyPresentationFor(imeOptions).label
+        return fallback ?: if (english) "Go" else "确定"
+    }
 
     private fun rowHost(): LinearLayout = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
@@ -1133,12 +1578,8 @@ open class ImeKeyboardView(
             sideKeyParams(48, true),
         )
         side.addView(
-            key(if (chinese) "确定" else "Go", true, null, 1f, 13f) {
-                if (composition.text.isNotEmpty()) {
-                    listener.onCandidateSelected(firstCandidateOrComposition())
-                } else {
-                    listener.onEnter()
-                }
+            key(enterKeyLabel(!chinese), true, null, 1f, 13f) {
+                listener.onEnter()
             }.apply {
                 tag = "key-enter"
                 setTag(MARK_SIDE_KEY, true)
@@ -1283,7 +1724,7 @@ open class ImeKeyboardView(
         ))
         val centerBottom = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         centerBottom.addView(
-            key("返回", true, null, 1f, 14f) { setMode(KeyboardMode.PINYIN_26) }.apply {
+            key("返回", true, null, 1f, 14f) { setMode(lastTextMode) }.apply {
                 tag = "key:mode"
                 setTag(MARK_SIDE_KEY, true)
             },
@@ -1326,7 +1767,7 @@ open class ImeKeyboardView(
             sideKeyParams(48, true),
         )
         side.addView(
-            key("换行", true, null, 1f, 13f) { listener.onEnter() }
+            key(enterKeyLabel(false, "换行"), true, null, 1f, 13f) { listener.onEnter() }
                 .apply { tag = "key-enter"; setTag(MARK_SIDE_KEY, true) },
             sideKeyParams(48),
         )
@@ -1351,10 +1792,25 @@ open class ImeKeyboardView(
      * exactly once without falling back to a stream of synthetic taps.
      */
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            popupView?.let { popup ->
+                if (event.x < popup.left || event.x >= popup.right ||
+                    event.y < popup.top || event.y >= popup.bottom) hidePopup()
+            }
+        }
         val handled = super.dispatchTouchEvent(event)
         if (backspaceGestureActive) {
             when (event.actionMasked) {
-                MotionEvent.ACTION_MOVE -> updateBackspaceGesture(event.rawX, event.rawY)
+                MotionEvent.ACTION_MOVE -> {
+                    val index = event.findPointerIndex(backspacePointerId)
+                    if (index >= 0) updateBackspaceGesture(
+                        event.rawX + event.getX(index) - event.x,
+                        event.rawY + event.getY(index) - event.y,
+                    )
+                }
+                MotionEvent.ACTION_POINTER_UP -> if (event.getPointerId(event.actionIndex) == backspacePointerId) {
+                    finishBackspaceGesture(commit = true)
+                }
                 MotionEvent.ACTION_UP -> finishBackspaceGesture(commit = true)
                 MotionEvent.ACTION_CANCEL -> finishBackspaceGesture(commit = false)
             }
@@ -1362,18 +1818,27 @@ open class ImeKeyboardView(
         if (spaceVoiceGestureActive) {
             when (event.actionMasked) {
                 MotionEvent.ACTION_MOVE -> {
-                    val cancelNow = spaceVoiceDownY - event.rawY >= dp(48)
+                    val index = event.findPointerIndex(spaceVoicePointerId)
+                    if (index < 0) return handled
+                    val pointerY = event.rawY + event.getY(index) - event.y
+                    val cancelNow = spaceVoiceDownY - pointerY >= dp(48)
                     if (cancelNow != spaceVoiceGestureCancel) {
                         spaceVoiceGestureCancel = cancelNow
                         voiceCancelPreviewAction?.invoke(cancelNow)
                     }
                 }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    val shouldCancel = spaceVoiceGestureCancel
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_UP -> {
+                    if (event.actionMasked == MotionEvent.ACTION_POINTER_UP &&
+                        event.getPointerId(event.actionIndex) != spaceVoicePointerId) return handled
+                    val isCancel = spaceVoiceGestureCancel || event.actionMasked == MotionEvent.ACTION_CANCEL
                     spaceVoiceGestureActive = false
                     spaceVoiceGestureCancel = false
-                    if (shouldCancel) {
-                        voiceCancelAction?.invoke()
+                    if (isCancel) {
+                        if (voiceCancelAction != null) {
+                            voiceCancelAction?.invoke()
+                        } else {
+                            cancelVoiceGesture()
+                        }
                     } else {
                         listener.onVoicePressChanged(false)
                     }
@@ -1399,8 +1864,18 @@ open class ImeKeyboardView(
     ).apply {
         tag = "key-space"
         contentDescription = "$label，点击空格，长按语音输入"
-        if (white) setTag(MARK_WHITE_KEY, true)
         var voiceLongPressed = false
+        setOnLongClickListener {
+            if (voiceLongPressed) return@setOnLongClickListener true
+            // Accessibility actions do not deliver a touch DOWN/UP sequence.
+            when {
+                voiceActive -> stopVoiceFromSpace()
+                voicePending -> cancelVoiceForManualInput()
+                else -> listener.onVoiceToggle()
+            }
+            true
+        }
+        if (white) setTag(MARK_WHITE_KEY, true)
         var voiceCancelPreview = false
         var voiceDownY = 0f
         val voiceTrigger = Runnable {
@@ -1409,19 +1884,22 @@ open class ImeKeyboardView(
                 spaceVoiceGestureActive = true
                 spaceVoiceGestureCancel = false
                 spaceVoiceDownY = voiceDownY
-                feedback()
+                // Tactile confirmation the moment voice actually arms.
+                hapticFeedback()
                 listener.onVoicePressChanged(true)
             }
         }
         setOnTouchListener { _, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    feedback()
                     voiceDownY = event.rawY
+                    spaceVoicePointerId = event.getPointerId(event.actionIndex)
                     voiceCancelPreview = false
                     spaceVoiceDownY = event.rawY
                     spaceVoiceGestureActive = false
                     spaceVoiceGestureCancel = false
-                    repeatHandler.postDelayed(voiceTrigger, 150L)
+                    repeatHandler.postDelayed(voiceTrigger, spaceVoiceTriggerMs)
                     false
                 }
                 MotionEvent.ACTION_MOVE -> {
@@ -1436,11 +1914,17 @@ open class ImeKeyboardView(
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     repeatHandler.removeCallbacks(voiceTrigger)
                     if (voiceLongPressed) {
+                        isPressed = false
                         voiceLongPressed = false
                         spaceVoiceGestureActive = false
                         spaceVoiceGestureCancel = false
-                        if (voiceCancelPreview) {
-                            voiceCancelAction?.invoke()
+                        val isCancel = voiceCancelPreview || event.actionMasked == MotionEvent.ACTION_CANCEL
+                        if (isCancel) {
+                            if (voiceCancelAction != null) {
+                                voiceCancelAction?.invoke()
+                            } else {
+                                cancelVoiceGesture()
+                            }
                         } else {
                             listener.onVoicePressChanged(false)
                         }
@@ -1479,9 +1963,28 @@ open class ImeKeyboardView(
         stopInlineVoicePulse()
         showInlineVoiceState("正在识别…")
         voiceStopAction?.invoke()
-        // A first-use model startup can be cancelled before the backend emits
-        // a terminal callback. Never leave the keyboard stuck in voice UI.
-        hideInlineVoiceStateLater(4_000L)
+        // Keep progress visible until a terminal callback or explicit cancel.
+    }
+
+    private fun cancelVoiceGesture() {
+        voicePending = false
+        voiceGestureSession = false
+        voiceActive = false
+        spaceVoiceGestureActive = false
+        spaceVoiceGestureCancel = false
+        voiceInlineGeneration++
+        stopInlineVoicePulse()
+        showInlineVoiceState("已取消")
+        hideInlineVoiceStateLater(260L)
+        listener.cancelVoiceRecognition()
+        listener.onVoiceCancel()
+    }
+
+    /** Revoke recognition ownership before the editor accepts manual input. */
+    fun cancelVoiceForManualInput() {
+        if (!voicePending && !voiceActive && !voiceGestureSession) return
+        voiceCancelAction?.invoke() ?: cancelVoiceGesture()
+        hideInlineVoiceState()
     }
 
     private fun renderPanel(panel: Panel) {
@@ -1506,6 +2009,7 @@ open class ImeKeyboardView(
             else -> closePanelToKeyboard()
         }
         applyTheme()
+        onViewHierarchyRebuilt()
     }
 
     /** Build the voice controller while it remains hidden, so a space gesture does not relayout the IME. */
@@ -1527,13 +2031,13 @@ open class ImeKeyboardView(
             tag = "panel-head"
         }
         nav.addView(
-            button("‹", 22f, true).apply {
+            button("‹", 18f, true).apply {
                 tag = "key-panel-back"
-                minimumHeight = dp(40)
-                contentDescription = "✕ 键盘"
-                setOnClickListener { closePanelToKeyboard() }
+                minimumHeight = dp(44)
+                contentDescription = "返回键盘"
+                setOnClickListener { feedback(); closePanelToKeyboard() }
             },
-            LinearLayout.LayoutParams(dp(40), dp(40)),
+            LinearLayout.LayoutParams(dp(44), dp(44)),
         )
         nav.addView(TextView(context).apply {
             text = name
@@ -1596,7 +2100,7 @@ open class ImeKeyboardView(
         }
         expandedPanel.addView(body, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(fixedImeHeightDp - 44),
+            dp(imeHeightDp() - 44),
         ))
     }
 
@@ -1607,12 +2111,12 @@ open class ImeKeyboardView(
             gravity = Gravity.CENTER
             includeFontPadding = false
             minWidth = dp(42)
-            minHeight = dp(34)
+            minHeight = dp(44)
             setPadding(dp(10), 0, dp(10), 0)
             tag = if (active) "tab-active" else "panel-tab"
             contentDescription = label
             isClickable = true
-            setOnClickListener { onTap() }
+            setOnClickListener { feedback(); onTap() }
         }
 
     private fun panelChipScroll(
@@ -1623,20 +2127,39 @@ open class ImeKeyboardView(
         isHorizontalScrollBarEnabled = false
         isFillViewport = false
         overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+        val scrollKey = labels.joinToString("\u001f")
         val row = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
+        var selectedView: View? = null
         labels.forEach { label ->
+            val chip = filterChip(label, label == selected) { onSelected(label) }
+            if (label == selected) selectedView = chip
             row.addView(
-                filterChip(label, label == selected) { onSelected(label) },
+                chip,
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
-                    dp(32),
+                    dp(44),
                 ).apply { marginEnd = dp(6) },
             )
         }
-        addView(row, ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)))
+        addView(row, ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)))
+        setOnScrollChangeListener { _, scrollX, _, _, _ ->
+            panelChipScrollPositions[scrollKey] = scrollX
+        }
+        post {
+            val remembered = panelChipScrollPositions[scrollKey]
+            if (remembered != null) {
+                scrollTo(remembered, 0)
+            } else {
+                selectedView?.let { active ->
+                    val target = (active.left - (width - active.width) / 2).coerceAtLeast(0)
+                    scrollTo(target, 0)
+                    panelChipScrollPositions[scrollKey] = scrollX
+                }
+            }
+        }
     }
 
     private fun panelVerticalScroll(content: View, tagValue: String): ScrollView =
@@ -1667,57 +2190,45 @@ open class ImeKeyboardView(
             val target: Panel,
             val iconRes: Int? = null,
             val glyph: String? = null,
+            val enabled: Boolean = true,
         )
-        val cards = if (toolPage == 0) {
-            listOf(
-                ToolEntry("表情", Panel.EMOJI, R.drawable.ic_emoji),
-                ToolEntry("剪贴板", Panel.CLIPBOARD, R.drawable.ic_clipboard),
-                ToolEntry("手写输入", Panel.HANDWRITING, R.drawable.ic_handwriting),
-                ToolEntry("符号", Panel.SYMBOLS, R.drawable.ic_symbols),
-                ToolEntry("更多设置", Panel.SETTINGS, R.drawable.ic_settings),
-                ToolEntry("切换键盘", Panel.KEYBOARD_SELECT, R.drawable.ic_grid),
-                ToolEntry("繁体输入", Panel.SETTINGS, glyph = "繁"),
-                ToolEntry("主题设置", Panel.SETTINGS, glyph = "Aa"),
-            )
-        } else {
-            listOf(
-                ToolEntry("浮动键盘", Panel.GAMING, R.drawable.ic_game),
-                ToolEntry("文本编辑", Panel.TEXT_EDITOR, R.drawable.ic_keyboard),
-            )
-        }
+        // When no handwriting recognizer is configured, hide the entry entirely
+        // instead of showing a dead grey card (V2 used to patch this in a post pass).
+        val handwritingAvailable = HandwritingFeaturePolicy.entryEnabled(UnavailableHandwritingProvider)
+        val cards = listOf(
+            ToolEntry("表情", Panel.EMOJI, R.drawable.ic_emoji),
+            ToolEntry("剪贴板", Panel.CLIPBOARD, R.drawable.ic_clipboard),
+            ToolEntry("手写输入", Panel.HANDWRITING, R.drawable.ic_handwriting, enabled = handwritingAvailable),
+            ToolEntry("符号", Panel.SYMBOLS, R.drawable.ic_symbols),
+            ToolEntry("切换键盘", Panel.KEYBOARD_SELECT, R.drawable.ic_grid),
+            ToolEntry("文本编辑", Panel.TEXT_EDITOR, R.drawable.ic_keyboard),
+            ToolEntry("游戏键盘", Panel.GAMING, R.drawable.ic_game),
+            ToolEntry("设置", Panel.SETTINGS, R.drawable.ic_settings),
+        ).filter { it.enabled }
         cards.chunked(4).forEach { chunk ->
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             chunk.forEach { entry ->
+                val toolEntryView = if (entry.glyph != null) {
+                    toolGlyphCard(entry.glyph, entry.label) { showPanel(entry.target) }
+                } else {
+                    toolCard(entry.iconRes ?: R.drawable.ic_settings, entry.label) {
+                        showPanel(entry.target)
+                    }
+                }
                 row.addView(
-                    if (entry.glyph != null) {
-                        toolGlyphCard(entry.glyph, entry.label) { showPanel(entry.target) }
-                    } else {
-                        toolCard(entry.iconRes ?: R.drawable.ic_settings, entry.label) {
-                            showPanel(entry.target)
-                        }
-                    },
-                    LinearLayout.LayoutParams(0, dp(70), 1f).apply { marginEnd = dp(8) },
+                    toolEntryView,
+                    LinearLayout.LayoutParams(0, dp(66), 1f).apply { marginEnd = dp(8) },
                 )
+            }
+            repeat(4 - chunk.size) {
+                row.addView(View(context), LinearLayout.LayoutParams(0, dp(66), 1f).apply { marginEnd = dp(8) })
             }
             grid.addView(row, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(70),
+                dp(66),
             ).apply { bottomMargin = dp(8) })
         }
         body.addView(grid, matchParams())
-        body.addView(TextView(context).apply {
-            text = if (toolPage == 0) "•  ○" else "○  •"
-            textSize = 14f
-            gravity = Gravity.CENTER
-            setPadding(0, dp(6), 0, 0)
-            tag = "tools-page-dots"
-            contentDescription = "工具下一页"
-            isClickable = true
-            setOnClickListener {
-                toolPage = if (toolPage == 0) 1 else 0
-                renderPanel(Panel.TOOLS)
-            }
-        }, wrapParams())
         expandedPanel.addView(
             panelVerticalScroll(body, "tools-scroll"),
             LinearLayout.LayoutParams(
@@ -1735,7 +2246,7 @@ open class ImeKeyboardView(
             setPadding(0, dp(8), 0, dp(6))
             contentDescription = label
             isClickable = true
-            setOnClickListener { onTap() }
+            setOnClickListener { feedback(); onTap() }
         }
         card.addView(ImageView(context).apply {
             setImageResource(iconRes)
@@ -1779,131 +2290,142 @@ open class ImeKeyboardView(
         addPanelHead("符号")
         val body = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(12), dp(12), dp(12))
+            setPadding(dp(10), dp(10), dp(10), dp(10))
             tag = "symbols-panel"
         }
-        val cats = listOf("常用", "中文", "英文", "数学", "序号", "单位", "特殊", "编程", "自定义")
-        val tabs = panelChipScroll(cats, symbolCategory) { cat ->
-            if (cat != symbolCategory) {
-                symbolCategory = cat
-                renderPanel(Panel.SYMBOLS)
-            }
-        }
-        body.addView(tabs, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(32),
-        ).apply { bottomMargin = dp(10) })
-        val railItems = symbolItems(symbolCategory).distinct().take(10)
-        val rail = SymbolRailView(context).apply {
-            setSymbols(railItems)
-            onSymbolCommit = { symbol ->
-                feedback()
-                listener.onSymbolSelected(symbol)
-            }
-            onGroupSwipe = { direction ->
-                val current = cats.indexOf(symbolCategory).coerceAtLeast(0)
-                symbolCategory = cats[(current + direction).mod(cats.size)]
-                renderPanel(Panel.SYMBOLS)
-            }
-        }
-        body.addView(rail, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(48),
-        ).apply { bottomMargin = dp(8) })
-        body.addView(LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            addView(button("管理自定义", 12f, true).apply {
-                contentDescription = "管理自定义符号"
-                setOnClickListener {
-                    context.startActivity(Intent(context, SymbolManagerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                }
-            }, LinearLayout.LayoutParams(0, dp(38), 1f).apply { marginEnd = dp(6) })
-            addView(TextView(context).apply {
-                text = "按住滑动 · 松手输入 · 滑出取消"
-                textSize = 11f
-                gravity = Gravity.CENTER_VERTICAL
-            }, LinearLayout.LayoutParams(0, dp(38), 1f))
-        }, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(38),
-        ).apply { bottomMargin = dp(8) })
-        val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        symbolItems(symbolCategory).chunked(6).forEach { chunk ->
-            val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            chunk.forEach { s ->
-                row.addView(
-                    key(s, false, null, 1f, if (s.length > 2) 12f else 17f) {
-                        listener.onSymbolSelected(s)
-                    },
-                    gridCellParams(38, 6, 6),
-                )
-            }
-            grid.addView(row, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(38),
-            ).apply { bottomMargin = dp(6) })
-        }
-        body.addView(
-            panelVerticalScroll(grid, "symbols-scroll"),
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1f,
-            ),
-        )
         expandedPanel.addView(body, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(252),
         ))
+
+        fun renderContent(notifyRebuilt: Boolean) {
+            body.removeAllViews()
+            val cats = listOf("常用", "中文", "英文", "数学", "序号", "单位", "特殊", "编程", "自定义")
+            val tabs = panelChipScroll(cats, symbolCategory) { cat ->
+                if (cat != symbolCategory) {
+                    symbolCategory = cat
+                    renderContent(true)
+                }
+            }
+            body.addView(tabs, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(44),
+            ).apply { bottomMargin = dp(8) })
+            if (symbolCategory == "自定义") {
+                body.addView(button("管理自定义符号", 12f, true).apply {
+                    contentDescription = "管理自定义符号"
+                    isClickable = true
+                    setOnClickListener {
+                        feedback()
+                        context.startActivity(
+                            Intent(context, SymbolManagerActivity::class.java)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    }
+                }, LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    dp(40),
+                ).apply { bottomMargin = dp(8) })
+            }
+            val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+            symbolItems(symbolCategory).chunked(6).forEach { chunk ->
+                val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+                chunk.forEach { s ->
+                    row.addView(
+                        key(s, false, null, 1f, if (s.length > 2) 12f else 17f) {
+                            listener.onSymbolSelected(s)
+                        },
+                        gridCellParams(44, 6, 6),
+                    )
+                }
+                repeat(6 - chunk.size) {
+                    row.addView(View(context), gridCellParams(44, 6, 6))
+                }
+                grid.addView(row, LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    dp(44),
+                ).apply { bottomMargin = dp(6) })
+            }
+            body.addView(
+                panelVerticalScroll(grid, "symbols-scroll"),
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    0,
+                    1f,
+                ),
+            )
+            applyTheme()
+            if (notifyRebuilt) onViewHierarchyRebuilt()
+        }
+
+        renderContent(false)
     }
 
     private fun renderEmoji() {
-        addPanelHead("黄豆脸")
+        addPanelHead("表情")
         val body = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), dp(12), dp(12), dp(12))
             tag = "emoji-panel"
         }
-        val cats = listOf("最近") + ImeData.fluentSmileysByCategory.keys.toList()
-        val tabs = panelChipScroll(cats, emojiCategory) { cat ->
-            emojiCategory = cat
-            renderEmoji()
-        }
-        body.addView(tabs, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(32),
-        ).apply { bottomMargin = dp(10) })
-        val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        val emojiItems = if (emojiCategory == "最近") {
-            ImeData.fluentSmileys.take(40)
-        } else {
-            ImeData.fluentSmileysByCategory[emojiCategory].orEmpty()
-        }
-        emojiItems.chunked(8).forEach { chunk ->
-            val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            chunk.forEach { e ->
-                row.addView(
-                    emojiCell(e),
-                    gridCellParams(34, 8, 4),
-                )
-            }
-            grid.addView(row, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(34),
-            ).apply { bottomMargin = dp(4) })
-        }
-        body.addView(
-            panelVerticalScroll(grid, "emoji-scroll"),
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1f,
-            ),
-        )
         expandedPanel.addView(body, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(252),
         ))
+
+        fun renderContent(notifyRebuilt: Boolean) {
+            body.removeAllViews()
+            val cats = listOf("最近") + ImeData.fluentSmileysByCategory.keys.toList()
+            val tabs = panelChipScroll(cats, emojiCategory) { cat ->
+                if (cat != emojiCategory) {
+                    emojiCategory = cat
+                    renderContent(true)
+                }
+            }
+            body.addView(tabs, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(44),
+            ).apply { bottomMargin = dp(10) })
+            val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+            val emojiItems = if (emojiCategory == "最近") {
+                EmojiRecentRepository.load(context)
+            } else {
+                ImeData.fluentSmileysByCategory[emojiCategory].orEmpty()
+            }
+            if (emojiItems.isEmpty() && emojiCategory == "最近") {
+                grid.addView(TextView(context).apply {
+                    text = "最近使用的表情会显示在这里"
+                    textSize = 12f
+                    gravity = Gravity.CENTER
+                    tag = "panel-note"
+                }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)))
+            }
+            emojiItems.chunked(8).forEach { chunk ->
+                val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+                chunk.forEach { e ->
+                    row.addView(
+                        emojiCell(e),
+                        gridCellParams(44, 8, 4),
+                    )
+                }
+                grid.addView(row, LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    dp(44),
+                ).apply { bottomMargin = dp(4) })
+            }
+            body.addView(
+                panelVerticalScroll(grid, "emoji-scroll"),
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    0,
+                    1f,
+                ),
+            )
+            applyTheme()
+            if (notifyRebuilt) onViewHierarchyRebuilt()
+        }
+
+        renderContent(false)
     }
 
     private fun renderHandwriting() {
@@ -1932,15 +2454,15 @@ open class ImeKeyboardView(
         pad.tag = "handwriting-canvas"
         body.addView(pad, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(145),
+            dp(140),
         ).apply { bottomMargin = dp(7) })
         val actions = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        actions.addView(key("撤销", true, null, 1f, 13f) { pad.undo() }, LinearLayout.LayoutParams(0, dp(38), 1f).apply { marginEnd = dp(6) })
-        actions.addView(key("清空", true, null, 1f, 13f) { pad.clear() }, LinearLayout.LayoutParams(0, dp(38), 1f).apply { marginEnd = dp(6) })
-        actions.addView(key("空格", true, null, 1f, 13f) { listener.onSpace() }, LinearLayout.LayoutParams(0, dp(38), 1f))
+        actions.addView(key("撤销", true, null, 1f, 13f) { pad.undo() }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(6) })
+        actions.addView(key("清空", true, null, 1f, 13f) { pad.clear() }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(6) })
+        actions.addView(key("空格", true, null, 1f, 13f) { listener.onSpace() }, LinearLayout.LayoutParams(0, dp(44), 1f))
         body.addView(actions, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(38),
+            dp(44),
         ))
         expandedPanel.addView(body, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -2021,7 +2543,7 @@ open class ImeKeyboardView(
             }
         }
         controls.addView(langButton, LinearLayout.LayoutParams(0, dp(58), 1f))
-        val micButton = button("🎤", 22f, false).apply {
+        val micButton = button("🎤", 18f, false).apply {
             tag = "voice-mic"
             isEnabled = false
             contentDescription = "语音状态，仅支持长按空格启动"
@@ -2042,11 +2564,13 @@ open class ImeKeyboardView(
         ))
         fun startVoice() {
             if (voiceActive) return
+            val eventGeneration = ++voiceEventGeneration
             recognizedText = ""
             voiceCancelled = false
             cancelPreview = false
             modelPrepared = false
             voiceActive = true
+            voicePending = true
             showInlineVoiceState("正在准备麦克风…")
             micButton.text = "⏹"
             gestureHint.text = "松开空格上屏 · 上滑取消"
@@ -2054,11 +2578,14 @@ open class ImeKeyboardView(
             transcript.text = "正在聆听… 松开空格结束"
             listener.onVoiceSessionStarted(true)
             listener.startVoiceRecognition(languages[voiceLanguageIndex].second, object : VoiceRecognitionEvents {
+                private val rmsQueued = java.util.concurrent.atomic.AtomicBoolean(false)
+                @Volatile private var latestRms = 0f
                 override fun onPartial(text: String) {
                     // AudioRecord inference callbacks arrive from the voice
                     // worker thread; keep view and InputConnection mutations
                     // on the IME main thread.
                     post {
+                        if (eventGeneration != voiceEventGeneration) return@post
                         if (!voiceActive || voiceCancelled) return@post
                         if (cancelPreview) return@post
                         modelPrepared = true
@@ -2071,12 +2598,14 @@ open class ImeKeyboardView(
                 }
                 override fun onFinal(text: String) {
                     post {
+                        if (eventGeneration != voiceEventGeneration) return@post
                         if (voiceCancelled || cancelPreview) return@post
                         if (text.isNotBlank()) recognizedText = text
                         transcript.text = text
                         micButton.text = "🎤"
                         gestureHint.text = "长按空格开始"
                         voiceActive = false
+                        voicePending = false
                         modelStatus.text = "离线识别完成 · 已自动上屏"
                         listener.onVoiceFinal(text)
                         showInlineVoiceState(if (text.isBlank()) "没有识别到语音" else "已上屏")
@@ -2084,27 +2613,35 @@ open class ImeKeyboardView(
                     }
                 }
                 override fun onRms(rms: Float) {
-                    val h = (8 + (rms * 4f).coerceIn(0f, 52f)).toInt().coerceIn(8, 64)
-                    post {
-                        if (!voiceActive || voiceCancelled || cancelPreview) return@post
-                        waves.forEach { it.layoutParams = LinearLayout.LayoutParams(dp(4), h).apply {
-                            marginEnd = dp(5)
-                        } }
-                        waveBar.invalidate()
+                    latestRms = rms
+                    if (!rmsQueued.compareAndSet(false, true)) return
+                    postDelayed({
+                        rmsQueued.set(false)
+                        if (eventGeneration != voiceEventGeneration) return@postDelayed
+                        if (!voiceActive || voiceCancelled || cancelPreview) return@postDelayed
+                        val level = latestRms
+                        val h = dp((8 + (level * 4f).coerceIn(0f, 52f)).toInt())
+                        if (waveBar.isShown) waves.forEach { bar ->
+                            if (bar.layoutParams.height != h) {
+                                bar.layoutParams = bar.layoutParams.apply { height = h }
+                            }
+                        }
                         showInlineVoiceState(
                             if (modelPrepared) "正在聆听…" else "正在录音 · 模型准备中…",
-                            rms = rms,
+                            rms = level,
                         )
-                    }
+                    }, 32L)
                 }
                 override fun onError(message: String) {
                     post {
+                        if (eventGeneration != voiceEventGeneration) return@post
                         if (voiceCancelled) return@post
                         recognizedText = ""
                         transcript.text = message
                         micButton.text = "🎤"
                         gestureHint.text = "长按空格开始"
                         voiceActive = false
+                        voicePending = false
                         modelStatus.text = "语音未完成 · 请检查本地模型和麦克风权限"
                         listener.onVoiceError(message)
                         showInlineVoiceState(message.ifBlank { "语音输入失败" })
@@ -2113,6 +2650,7 @@ open class ImeKeyboardView(
                 }
                 override fun onReady() {
                     post {
+                        if (eventGeneration != voiceEventGeneration) return@post
                         if (voiceCancelled) return@post
                         micButton.text = "⏹"
                         if (voiceActive) {
@@ -2128,6 +2666,7 @@ open class ImeKeyboardView(
                 }
                 override fun onModelReady() {
                     post {
+                        if (eventGeneration != voiceEventGeneration) return@post
                         if (!voiceActive || voiceCancelled || cancelPreview) return@post
                         modelPrepared = true
                         modelStatus.text = "正在识别 · 松开空格结束"
@@ -2147,7 +2686,9 @@ open class ImeKeyboardView(
         }
         fun cancelVoice() {
             if (voiceCancelled) return
+            voiceEventGeneration++
             voiceCancelled = true
+            voicePending = false
             cancelPreview = false
             voiceActive = false
             listener.cancelVoiceRecognition()
@@ -2181,6 +2722,9 @@ open class ImeKeyboardView(
     }
 
     private fun stopVoiceIfActive() {
+        val hadVoice = voicePending || voiceActive || voiceGestureSession
+        voicePending = false
+        voiceEventGeneration++
         listener.cancelVoiceRecognition()
         voiceActive = false
         voiceGestureSession = false
@@ -2188,17 +2732,56 @@ open class ImeKeyboardView(
         spaceVoiceGestureCancel = false
         voiceInlineGeneration++
         hideInlineVoiceState()
-        if (panel == Panel.VOICE) listener.onVoiceCancel()
+        if (hadVoice || panel == Panel.VOICE) listener.onVoiceCancel()
         voiceStartAction = null
         voiceStopAction = null
         voiceCancelAction = null
         voiceCancelPreviewAction = null
     }
 
-    private fun renderClipboard() {
-        expandedPanel.removeAllViews()
+    private fun clipboardHistoryCard(entry: ClipboardEntry): LinearLayout {
+        val card = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(10), dp(12), dp(8))
+            minimumHeight = dp(70)
+            tag = "clip-card"
+        }
+        card.addView(TextView(context).apply {
+            text = entry.text
+            textSize = 13f
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+        }, wrapParams())
+        val meta = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        meta.addView(TextView(context).apply {
+            text = if (entry.pinned) "已置顶" else android.text.format.DateUtils.getRelativeTimeSpanString(
+                entry.timestamp, System.currentTimeMillis(), android.text.format.DateUtils.MINUTE_IN_MILLIS,
+            )
+            textSize = 11f
+        }, weightParams(1f))
+        meta.addView(button(if (entry.pinned) "取消置顶" else "置顶", 10f, true).apply {
+            setOnClickListener {
+                ClipboardHistoryRepository.togglePin(context, entry.text)
+                renderClipboard(reusePanel = true)
+            }
+        }, wrapParams())
+        meta.addView(button("使用", 10f, true).apply {
+            setOnClickListener { listener.onCharacter(entry.text) }
+        }, wrapParams())
+        card.addView(meta, wrapParams())
+        return card
+    }
+
+    private fun renderClipboard(reusePanel: Boolean = false) {
         inlineEditTarget = null
-        addPanelHead("剪贴板")
+        if (!reusePanel || expandedPanel.childCount == 0) {
+            expandedPanel.removeAllViews()
+            addPanelHead("剪贴板")
+        } else {
+            while (expandedPanel.childCount > 1) {
+                expandedPanel.removeViewAt(expandedPanel.childCount - 1)
+            }
+        }
         val body = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(10), dp(10), dp(10), dp(10))
@@ -2206,60 +2789,46 @@ open class ImeKeyboardView(
         }
         val tabs = panelChipScroll(listOf("剪贴板", "常用语"), if (clipboardTab == 0) "剪贴板" else "常用语") { label ->
             clipboardTab = if (label == "剪贴板") 0 else 1
-            renderClipboard()
+            renderClipboard(reusePanel = true)
         }
         body.addView(tabs, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(32),
+            dp(44),
         ).apply { bottomMargin = dp(8) })
         val col = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         if (clipboardTab == 0) {
-            if (!passwordField) ClipboardHistoryRepository.capturePrimary(context)
-            val history = ClipboardHistoryRepository.load(context)
-            if (history.isEmpty()) {
-                col.addView(sectionTitle("最近复制"), wrapParams())
-                col.addView(TextView(context).apply {
-                    text = "暂无剪贴历史；复制文本后重新打开这里即可看到。"
-                    textSize = 13f
-                    setPadding(dp(4), dp(6), dp(4), 0)
-                    tag = "panel-note"
-                }, wrapParams())
-            } else {
-                col.addView(sectionTitle("最近复制"), wrapParams())
-                history.forEach { entry ->
-                    val card = LinearLayout(context).apply {
-                        orientation = LinearLayout.VERTICAL
-                        setPadding(dp(12), dp(10), dp(12), dp(8))
-                        minimumHeight = dp(70)
-                        tag = "clip-card"
-                    }
-                    card.addView(TextView(context).apply {
-                        text = entry.text
-                        textSize = 13f
-                        maxLines = 2
-                        ellipsize = TextUtils.TruncateAt.END
-                    }, wrapParams())
-                    val meta = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-                    meta.addView(TextView(context).apply {
-                        text = if (entry.pinned) "已置顶" else "刚刚"
-                        textSize = 11f
-                    }, weightParams(1f))
-                    meta.addView(button("置顶", 10f, true).apply {
-                        setOnClickListener {
-                            ClipboardHistoryRepository.togglePin(context, entry.text)
-                            renderClipboard()
-                        }
-                    }, wrapParams())
-                    meta.addView(button("使用", 10f, true).apply {
-                        setOnClickListener { listener.onCharacter(entry.text) }
-                    }, wrapParams())
-                    card.addView(meta, wrapParams())
-                    col.addView(card, LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                    ).apply { bottomMargin = dp(7) })
-                }
+            // Reading the system clipboard + parsing the history JSON is disk/I/O
+            // work; do it off the UI thread and render once it returns.
+            col.addView(sectionTitle("最近复制"), wrapParams())
+            val loadingHint = TextView(context).apply {
+                text = "正在读取剪贴板…"
+                textSize = 13f
+                setPadding(dp(4), dp(6), dp(4), 0)
+                tag = "panel-note"
             }
+            col.addView(loadingHint, wrapParams())
+            val gen = ++clipboardLoadGen
+            Thread {
+                if (!passwordField) ClipboardHistoryRepository.capturePrimary(context)
+                val history = ClipboardHistoryRepository.load(context)
+                post {
+                    if (gen != clipboardLoadGen || clipboardTab != 0 || col.parent == null) return@post
+                    (loadingHint.parent as? ViewGroup)?.removeView(loadingHint)
+                    if (history.isEmpty()) {
+                        col.addView(TextView(context).apply {
+                            text = "暂无剪贴历史；复制文本后重新打开这里即可看到。"
+                            textSize = 13f
+                            setPadding(dp(4), dp(6), dp(4), 0)
+                            tag = "panel-note"
+                        }, wrapParams())
+                    } else {
+                        history.forEach { entry -> col.addView(clipboardHistoryCard(entry), LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                        ).apply { bottomMargin = dp(7) }) }
+                    }
+                }
+            }.apply { isDaemon = true }.start()
         } else {
             col.addView(button("新增常用语", 13f, true).apply {
                 tag = "quick-phrase-add"
@@ -2295,7 +2864,7 @@ open class ImeKeyboardView(
                             tag = "phrase-delete:${phrase.id}"
                             setOnClickListener {
                                 QuickPhraseRepository.remove(context, phrase.id)
-                                renderClipboard()
+                                renderClipboard(reusePanel = true)
                             }
                         }, LinearLayout.LayoutParams(dp(48), dp(48)))
                         col.addView(row, LinearLayout.LayoutParams(
@@ -2317,34 +2886,53 @@ open class ImeKeyboardView(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(252),
         ))
+        applyTheme()
+        onViewHierarchyRebuilt()
     }
 
     private fun emojiCell(emoji: String): View {
-        val assetPath = FluentEmojiAssetRepository.pathFor(context, emoji)
-        val view = if (assetPath != null) {
-            ImageView(context).apply {
-                val bitmap = runCatching {
-                    context.assets.open(assetPath).use { BitmapFactory.decodeStream(it) }
-                }.getOrNull()
-                if (bitmap != null) setImageBitmap(bitmap)
+        val cell = FrameLayout(context).apply {
+            tag = "emoji-cell"
+            contentDescription = emoji
+            isClickable = true
+            isFocusable = true
+            background = null
+        }
+        val fallback = TextView(context).apply {
+            text = emoji
+            textSize = 21f
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        cell.addView(fallback, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT,
+        ))
+        FluentEmojiAssetRepository.pathFor(context, emoji)?.let { assetPath ->
+            val image = ImageView(context).apply {
                 scaleType = ImageView.ScaleType.FIT_CENTER
+                visibility = View.INVISIBLE
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                tag = assetPath
             }
-        } else {
-            TextView(context).apply {
-                text = emoji
-                textSize = 21f
-                gravity = Gravity.CENTER
-                includeFontPadding = false
+            cell.addView(image, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            ))
+            requestEmojiBitmap(context, assetPath) { bitmap ->
+                if (image.tag == assetPath) {
+                    image.setImageBitmap(bitmap)
+                    image.visibility = View.VISIBLE
+                    fallback.visibility = View.INVISIBLE
+                }
             }
         }
-        view.contentDescription = emoji
-        view.isClickable = true
-        view.background = null
-        view.setOnClickListener {
+        cell.setOnClickListener {
             feedback()
             listener.onEmojiSelected(emoji)
         }
-        return view
+        return cell
     }
 
     private fun symbolItems(category: String): List<String> = when (category) {
@@ -2402,12 +2990,12 @@ open class ImeKeyboardView(
             .forEach { (label, action) ->
                 quick.addView(
                     key(label, true, null, 1f, 10f) { listener.onTextEdit(action) },
-                    LinearLayout.LayoutParams(0, dp(32), 1f).apply { marginEnd = dp(5) },
+                    LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(5) },
                 )
             }
         body.addView(quick, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(32),
+            dp(44),
         ).apply { bottomMargin = dp(10) })
         val cross = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -2439,12 +3027,24 @@ open class ImeKeyboardView(
         ))
     }
 
-    private fun renderSettings() {
-        addPanelHead("偏好设置")
+    private fun renderSettings(reusePanel: Boolean = false) {
+        val previousScrollY = if (reusePanel && expandedPanel.childCount > 1) {
+            (expandedPanel.getChildAt(1) as? ScrollView)?.scrollY ?: settingsScrollY
+        } else {
+            settingsScrollY
+        }
+        if (!reusePanel || expandedPanel.childCount == 0) {
+            addPanelHead("偏好设置")
+        } else {
+            while (expandedPanel.childCount > 1) {
+                expandedPanel.removeViewAt(expandedPanel.childCount - 1)
+            }
+        }
         val scroll = ScrollView(context).apply {
             isFillViewport = true
             isVerticalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            setOnScrollChangeListener { _, _, scrollY, _, _ -> settingsScrollY = scrollY }
         }
         val content = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -2456,17 +3056,46 @@ open class ImeKeyboardView(
             appearance = ImeAppearance.entries.first { it.label == label }
             setAppearance(appearance)
             listener.onAppearanceChanged(appearance)
-            renderPanel(Panel.SETTINGS)
+            renderSettings(reusePanel = true)
         }, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(32),
+            dp(44),
         ).apply { bottomMargin = dp(12) })
+        content.addView(sectionTitle("强调色"), wrapParams())
+        content.addView(
+            accentColorRow(),
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { bottomMargin = dp(12) },
+        )
+        content.addView(sectionTitle("按键皮肤"), wrapParams())
+        content.addView(
+            settingGroup(
+                settingsSlider("圆角", 0, 24, skinRadius) { v ->
+                    skinRadius = v; listener.onSkinChanged(skinOpacity, skinRadius, skinFontSize, skinPrimaryColor)
+                    applyTheme()
+                },
+                settingsSlider("不透明度", 70, 100, skinOpacity) { v ->
+                    skinOpacity = v; listener.onSkinChanged(skinOpacity, skinRadius, skinFontSize, skinPrimaryColor)
+                    applyTheme()
+                },
+                settingsSlider("按键字号", 14, 22, skinFontSize) { v ->
+                    skinFontSize = v; listener.onSkinChanged(skinOpacity, skinRadius, skinFontSize, skinPrimaryColor)
+                    renderSettings(reusePanel = true)
+                },
+            ),
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { bottomMargin = dp(12) },
+        )
         content.addView(sectionTitle("按键与输入"), wrapParams())
         content.addView(
             settingGroup(
                 settingToggleRow("按键音效", "机械轴敲击反馈"),
                 settingToggleRow("触感震动", "轻微触感反馈"),
-                settingToggleRow("按键气泡", "字母预览"),
+                settingToggleRow("按键气泡", "可选字母预览，默认仅按键变色"),
             ),
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -2486,12 +3115,6 @@ open class ImeKeyboardView(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
             ).apply { bottomMargin = dp(12) },
         )
-        content.addView(TextView(context).apply {
-            text = "当前皮肤：iOS 默认。按键圆角采用原型规范，不单独暴露调节项。"
-            textSize = 12f
-            setPadding(dp(4), dp(10), dp(4), 0)
-            tag = "panel-note"
-        }, wrapParams())
         scroll.addView(content, ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -2501,6 +3124,11 @@ open class ImeKeyboardView(
             0,
             1f,
         ))
+        scroll.post { scroll.scrollTo(0, previousScrollY) }
+        if (reusePanel) {
+            applyTheme()
+            onViewHierarchyRebuilt()
+        }
     }
 
     private fun sectionTitle(textValue: String): TextView = TextView(context).apply {
@@ -2547,14 +3175,17 @@ open class ImeKeyboardView(
         tag = "setting-icon"
     }
 
-    private fun settingToggleRow(label: String, sub: String): LinearLayout =
-        LinearLayout(context).apply {
+    private fun settingToggleRow(label: String, sub: String): LinearLayout {
+        val toggleView = toggle(label)
+        return LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(14), 0, dp(14), 0)
             tag = "setting-row"
             contentDescription = label
-            minimumHeight = dp(54)
+            minimumHeight = dp(56)
+            isClickable = true
+            setOnClickListener { toggleView.performClick() }
             addView(settingIcon(label), LinearLayout.LayoutParams(dp(26), dp(26)).apply {
                 marginEnd = dp(8)
             })
@@ -2573,8 +3204,9 @@ open class ImeKeyboardView(
                     setPadding(0, dp(3), 0, 0)
                 }, wrapParams())
             }, weightParams(1f))
-            addView(toggle(label), wrapParams())
+            addView(toggleView, wrapParams())
         }
+    }
 
     private fun settingNavigationRow(label: String, sub: String, onTap: () -> Unit): LinearLayout =
         LinearLayout(context).apply {
@@ -2606,7 +3238,7 @@ open class ImeKeyboardView(
             }, weightParams(1f))
             addView(TextView(context).apply {
                 text = "›"
-                textSize = 26f
+                textSize = 18f
                 gravity = Gravity.CENTER
                 tag = "setting-chevron"
             }, LinearLayout.LayoutParams(dp(28), dp(44)))
@@ -2641,12 +3273,13 @@ open class ImeKeyboardView(
             ).apply { bottomMargin = dp(14) },
         )
         content.addView(sectionTitle("当前规则"), wrapParams())
-        content.addView(panelChipScroll(
-            listOf("z / zh", "c / ch", "s / sh", "l / n", "f / h"),
-            "z / zh",
-        ) { }, LinearLayout.LayoutParams(
+        content.addView(TextView(context).apply {
+            text = "z / zh · c / ch · s / sh · l / n · en / eng · in / ing"
+            textSize = 13f
+            setPadding(0, dp(6), 0, dp(6))
+        }, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(32),
+            LinearLayout.LayoutParams.WRAP_CONTENT,
         ).apply { bottomMargin = dp(14) })
         content.addView(TextView(context).apply {
             text = "规则由输入法自动参与候选计算，暂不单独修改每一组映射。"
@@ -2687,6 +3320,7 @@ open class ImeKeyboardView(
             tag = "toggle"
             addView(knob)
             setOnClickListener {
+                feedback()
                 val next = !onState(seed)
                 toggleCallback(seed)?.invoke(next)
                 (getChildAt(0)).layoutParams = FrameLayout.LayoutParams(dp(20), dp(20)).apply {
@@ -2700,7 +3334,7 @@ open class ImeKeyboardView(
     private fun onState(seed: String): Boolean = when (seed) {
         "按键音效" -> soundEnabled
         "触感震动" -> hapticEnabled
-        "模糊音纠错" -> fuzzyEnabled
+        "模糊音纠错", "启用模糊音" -> fuzzyEnabled
         "按键气泡" -> popupEnabled
         else -> true
     }
@@ -2708,10 +3342,93 @@ open class ImeKeyboardView(
     private fun toggleCallback(seed: String): ((Boolean) -> Unit)? = when (seed) {
         "按键音效" -> { { soundEnabled = it; listener.onSoundChanged(it) } }
         "触感震动" -> { { hapticEnabled = it; listener.onHapticChanged(it) } }
-        "模糊音纠错" -> { { fuzzyEnabled = it; listener.onFuzzyChanged(it) } }
+        "模糊音纠错", "启用模糊音" -> { { fuzzyEnabled = it; listener.onFuzzyChanged(it) } }
         "按键气泡" -> { { popupEnabled = it; listener.onPopupChanged(it) } }
         else -> null
     }
+
+
+    private fun accentColorRow(): LinearLayout {
+        val current = AccentPalette.normalize(skinPrimaryColor)
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            tag = "setting-group"
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+        }
+        val swatches = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        AccentPalette.presets.forEach { (hex, label) ->
+            val selected = AccentPalette.normalize(hex) == current
+            swatches.addView(
+                View(context).apply {
+                    contentDescription = "强调色$label"
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(AccentPalette.parse(hex))
+                        if (selected) setStroke(dp(2), contrastText(AccentPalette.parse(hex)))
+                    }
+                    isClickable = true
+                    setOnClickListener { applyAccentColor(hex) }
+                },
+                LinearLayout.LayoutParams(dp(28), dp(28)).apply { marginEnd = dp(8) },
+            )
+        }
+        swatches.addView(
+            TextView(context).apply {
+                text = "自定义"
+                textSize = 12f
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                setPadding(dp(10), 0, dp(10), 0)
+                background = rounded(theme.tokens(appearance, isNight(), AccentPalette.parse(skinPrimaryColor)).panelHeadBackground, dp(14))
+                isClickable = true
+                contentDescription = "自定义强调色"
+                setOnClickListener { showCustomAccentDialog() }
+            },
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(28)),
+        )
+        row.addView(swatches, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+        ))
+        row.addView(TextView(context).apply {
+            text = AccentPalette.presets.firstOrNull { AccentPalette.normalize(it.first) == current }?.second ?: current
+            textSize = 12f
+            setPadding(0, dp(8), 0, 0)
+            tag = "panel-note"
+        }, wrapParams())
+        return row
+    }
+
+    private fun applyAccentColor(hex: String) {
+        skinPrimaryColor = AccentPalette.normalize(hex)
+        listener.onSkinChanged(skinOpacity, skinRadius, skinFontSize, skinPrimaryColor)
+        applyTheme()
+        if (panel == Panel.SETTINGS) renderSettings(reusePanel = true)
+    }
+
+    private fun showCustomAccentDialog() {
+        val field = EditText(context).apply {
+            setText(AccentPalette.normalize(skinPrimaryColor).removePrefix("#"))
+            hint = "RRGGBB"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setSingleLine(true)
+            filters = arrayOf(android.text.InputFilter.LengthFilter(6))
+        }
+        android.app.AlertDialog.Builder(context)
+            .setTitle("自定义强调色")
+            .setMessage("输入 6 位十六进制颜色，例如 5B6B7A")
+            .setView(field)
+            .setPositiveButton("应用") { _, _ -> applyAccentColor(field.text.toString()) }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun isNight(): Boolean =
+        (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
 
     private fun settingsSlider(labelText: String, min: Int, max: Int, initial: Int, onChange: (Int) -> Unit): LinearLayout {
         val row = LinearLayout(context).apply {
@@ -2737,7 +3454,7 @@ open class ImeKeyboardView(
     }
 
     private fun renderGaming() {
-        addPanelHead("浮动键盘")
+        addPanelHead("游戏键盘")
         listener.onFloatingKeyboardChanged(floatingKeyboard)
         val macros = listOf("收到！", "集合进攻！", "稳住能赢！", "请求集合！", "保护输出！")
         val hud = LinearLayout(context).apply {
@@ -2753,12 +3470,12 @@ open class ImeKeyboardView(
             tag = "floating-header"
         }
         val dragHandle = TextView(context).apply {
-            text = "⠿  拖动浮动键盘"
+            text = "⠿  拖动键盘"
             textSize = 12f
             gravity = Gravity.CENTER_VERTICAL
             includeFontPadding = false
             tag = "floating-drag-handle"
-            contentDescription = "拖动浮动键盘"
+            contentDescription = "拖动键盘"
             setPadding(dp(4), 0, dp(8), 0)
             isClickable = true
             setOnTouchListener { _, event ->
@@ -2767,7 +3484,7 @@ open class ImeKeyboardView(
                     MotionEvent.ACTION_DOWN -> {
                         lastTouchX = event.rawX
                         lastTouchY = event.rawY
-                        Log.d("OpenIme", "floating-drag-down x=${event.rawX} y=${event.rawY}")
+                        if (debugLogging) Log.d("OpenIme", "floating-drag-down x=${event.rawX} y=${event.rawY}")
                         true
                     }
                     MotionEvent.ACTION_MOVE -> {
@@ -2784,17 +3501,20 @@ open class ImeKeyboardView(
             }
         }
         header.addView(dragHandle, weightParams(1f))
-        header.addView(button(if (floatingKeyboard) "贴底固定" else "恢复浮动", 11f, true).apply {
+        val floatingToggle = button(if (floatingKeyboard) "贴底固定" else "恢复浮动", 11f, true).apply {
             contentDescription = if (floatingKeyboard) "贴底固定" else "恢复浮动"
-            setOnClickListener {
+            setOnClickListener { view ->
                 floatingKeyboard = !floatingKeyboard
                 listener.onFloatingKeyboardChanged(floatingKeyboard)
-                renderPanel(Panel.GAMING)
+                val label = if (floatingKeyboard) "贴底固定" else "恢复浮动"
+                (view as TextView).text = label
+                view.contentDescription = label
             }
-        }, LinearLayout.LayoutParams(dp(82), dp(30)))
+        }
+        header.addView(floatingToggle, LinearLayout.LayoutParams(dp(88), dp(44)))
         hud.addView(header, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(30),
+            dp(44),
         ).apply { bottomMargin = dp(4) })
         val macroRow = HorizontalScrollView(context)
         val macroContent = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
@@ -2809,7 +3529,7 @@ open class ImeKeyboardView(
         macroRow.addView(macroContent, ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         hud.addView(macroRow, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(34),
+            dp(44),
         ))
         listOf("qwertyuiop", "asdfghjkl", "zxcvbnm").forEach { rowText ->
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
@@ -2818,23 +3538,29 @@ open class ImeKeyboardView(
                     key(ch.toString(), false, null, 1f, 13f) { listener.onCharacter(ch.toString()) }.apply {
                         tag = "game-mini"
                     },
-                    LinearLayout.LayoutParams(0, dp(34), 1f).apply { marginEnd = dp(4) },
+                    LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(4) },
                 )
             }
             if (rowText.startsWith("z")) {
+                row.addView(
+                    key("空格", true, null, 1.2f, 11f) { listener.onSpace() }.apply {
+                        tag = "game-mini"
+                    },
+                    LinearLayout.LayoutParams(0, dp(44), 1.2f).apply { marginEnd = dp(4) },
+                )
                 val gameBackspace = backspaceKey().apply { tag = "game-mini" }
-                row.addView(gameBackspace, LinearLayout.LayoutParams(0, dp(34), 1.2f))
+                row.addView(gameBackspace, LinearLayout.LayoutParams(0, dp(44), 1.2f).apply { marginEnd = dp(4) })
                 row.addView(
                     key("发送", true, null, 1.6f, 12f) { listener.onEnter() }.apply {
                         tag = "game-mini"
                     },
-                    LinearLayout.LayoutParams(0, dp(34), 1.6f),
+                    LinearLayout.LayoutParams(0, dp(44), 1.6f),
                 )
             }
             hud.addView(row, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(34),
-            ).apply { bottomMargin = dp(5) })
+                dp(44),
+            ).apply { bottomMargin = dp(2) })
         }
         val stage = FrameLayout(context).apply {
             tag = "floating-stage"
@@ -2909,7 +3635,7 @@ open class ImeKeyboardView(
             if (shiftState == ShiftState.SHIFT_ONCE) {
                 shiftState = ShiftState.LOWERCASE
                 listener.onShiftStateChanged(shiftState)
-                renderModeBody()
+                refreshEnglishShiftPresentation()
             }
         } else {
             listener.onCharacter(base)
@@ -2935,13 +3661,48 @@ open class ImeKeyboardView(
             lastT9Digits = digits
             publishComposition(digits, candidatesForComposition(digits), selection)
         } else if (mode == KeyboardMode.PINYIN_9) {
-            if (lastNineDigits.isEmpty()) {
-                lastNineSegmentPrefix = composition.text
-                    .toString()
-                    .takeIf { it.endsWith(' ') }
-                    .orEmpty()
+            val current = composition.text.toString()
+            val rawStart = composition.selectionStart.takeIf { it >= 0 }?.coerceIn(0, current.length) ?: current.length
+            val rawEnd = composition.selectionEnd.takeIf { it >= 0 }?.coerceIn(0, current.length) ?: rawStart
+            val selStart = minOf(rawStart, rawEnd)
+            val selEnd = maxOf(rawStart, rawEnd)
+
+            val lastSpace = current.lastIndexOf(' ')
+            if (selStart > lastSpace) {
+                val prefix = if (lastSpace >= 0) current.substring(0, lastSpace + 1) else ""
+                val suffix = if (lastSpace >= 0) current.substring(lastSpace + 1) else current
+                val suffixStart = (selStart - prefix.length).coerceIn(0, suffix.length)
+                val suffixEnd = (selEnd - prefix.length).coerceIn(0, suffix.length)
+                val isAtEnd = (selStart == selEnd && selStart == current.length && prefix == lastNineSegmentPrefix && lastNineDigits.isNotEmpty())
+                val suffixDigits = if (isAtEnd) {
+                    lastNineDigits
+                } else if (lastNineDigits.isNotEmpty() && lastNineDigits.length == suffix.length && prefix == lastNineSegmentPrefix) {
+                    lastNineDigits
+                } else {
+                    CandidatePipeline.nineKeyDigitsFor(suffix) ?: lastNineDigits
+                }
+                val insertPos = if (isAtEnd) suffixDigits.length else suffixStart
+                val deleteEnd = if (isAtEnd) suffixDigits.length else suffixEnd
+                val newDigits = (suffixDigits.substring(0, insertPos) + num + suffixDigits.substring(deleteEnd)).take(64)
+                lastNineSegmentPrefix = prefix
+                val newCursor = if (isAtEnd) null else (prefix.length + suffixStart + 1)
+                publishNineKeyDigits(newDigits, cursorPosition = newCursor)
+            } else {
+                val (nextText, newCursor) = replaceCompositionSelection(num)
+                val newLastSpace = nextText.lastIndexOf(' ')
+                val newPrefix = if (newLastSpace >= 0) nextText.substring(0, newLastSpace + 1) else ""
+                val newSuffix = if (newLastSpace >= 0) nextText.substring(newLastSpace + 1) else nextText
+                val newDigits = CandidatePipeline.nineKeyDigitsFor(newSuffix)
+                if (newDigits != null) {
+                    lastNineDigits = newDigits
+                    lastNineSegmentPrefix = newPrefix
+                } else {
+                    lastNineDigits = ""
+                    lastNineSegmentPrefix = nextText
+                }
+                lastNinePinyinPaths = emptyList()
+                publishComposition(nextText, candidatesForComposition(nextText), newCursor)
             }
-            publishNineKeyDigits((lastNineDigits + num).take(64))
         } else {
             listener.onCharacter(num)
         }
@@ -2951,6 +3712,7 @@ open class ImeKeyboardView(
     private fun publishNineKeyDigits(
         digits: String,
         preferredSuffix: String? = null,
+        cursorPosition: Int? = null,
     ) {
         val resolution = requireCandidateProvider().resolveNineKey(
             digits = digits,
@@ -2964,7 +3726,8 @@ open class ImeKeyboardView(
         lastNineDigits = digits
         lastNinePinyinPaths = pinyinPaths
         lastNineCandidates = candidates
-        setCompositionText(preview)
+        val finalCursor = cursorPosition ?: preview.length
+        setCompositionText(preview, finalCursor)
         pinyinBuffer.clear()
         pinyinBuffer.append(preview)
         currentCandidates = candidates
@@ -2976,7 +3739,6 @@ open class ImeKeyboardView(
             pinyinPaths = pinyinPaths,
             candidates = candidates,
         )
-        applyCandidateTheme()
     }
 
     /** Insert an editable syllable boundary without committing the text. */
@@ -3002,16 +3764,19 @@ open class ImeKeyboardView(
         updateTopZone(text.isNotEmpty())
         renderCandidateRow()
         listener.onCompositionChanged(text, candidates)
-        applyCandidateTheme()
     }
 
     /** Keep the editable pre-edit field in sync without re-entering its watcher. */
-    private fun setCompositionText(text: String, selection: Int? = null) {
+    private fun setCompositionText(text: String, selection: Int? = null, selectionEnd: Int? = selection) {
         syncingComposition = true
-        if (composition.text.toString() != text) composition.setText(text)
-        val requested = selection ?: composition.selectionStart.takeIf { it >= 0 } ?: text.length
-        composition.setSelection(requested.coerceIn(0, text.length))
-        syncingComposition = false
+        try {
+            val changed = composition.text.toString() != text
+            if (changed) composition.setText(text)
+            val requested = selection ?: if (changed) text.length else composition.selectionStart.takeIf { it >= 0 } ?: text.length
+            composition.setSelection(requested.coerceIn(0, text.length), (selectionEnd ?: requested).coerceIn(0, text.length))
+        } finally {
+            syncingComposition = false
+        }
     }
 
     /** Recompute candidates after the user edits the visible Pinyin field. */
@@ -3021,8 +3786,17 @@ open class ImeKeyboardView(
         pinyinBuffer.append(text)
         when (mode) {
             KeyboardMode.PINYIN_9 -> {
-                lastNineDigits = ""
-                lastNineSegmentPrefix = ""
+                val lastSpace = text.lastIndexOf(' ')
+                val prefix = if (lastSpace >= 0) text.substring(0, lastSpace + 1) else ""
+                val suffix = if (lastSpace >= 0) text.substring(lastSpace + 1) else text
+                val suffixDigits = CandidatePipeline.nineKeyDigitsFor(suffix)
+                if (suffixDigits != null) {
+                    lastNineDigits = suffixDigits
+                    lastNineSegmentPrefix = prefix
+                } else {
+                    lastNineDigits = ""
+                    lastNineSegmentPrefix = text
+                }
                 lastNinePinyinPaths = emptyList()
             }
             KeyboardMode.ENGLISH_T9 -> lastT9Digits = text
@@ -3033,7 +3807,6 @@ open class ImeKeyboardView(
         updateTopZone(text.isNotEmpty())
         renderCandidateRow()
         listener.onCompositionChanged(text, candidates)
-        applyCandidateTheme()
     }
 
     private fun candidatesForComposition(text: String): List<String> {
@@ -3043,53 +3816,109 @@ open class ImeKeyboardView(
 
     private fun replaceCompositionSelection(insert: String): Pair<String, Int> {
         val current = composition.text.toString()
-        val start = composition.selectionStart.takeIf { it >= 0 }?.coerceIn(0, current.length)
+        val rawStart = composition.selectionStart.takeIf { it >= 0 }?.coerceIn(0, current.length)
             ?: current.length
-        val end = composition.selectionEnd.takeIf { it >= 0 }?.coerceIn(start, current.length)
-            ?: start
+        val rawEnd = composition.selectionEnd.takeIf { it >= 0 }?.coerceIn(0, current.length)
+            ?: rawStart
+        val start = minOf(rawStart, rawEnd)
+        val end = maxOf(rawStart, rawEnd)
         return (current.substring(0, start) + insert + current.substring(end)) to (start + insert.length)
     }
 
     /** Delete at the visible pre-edit cursor; fall back to target-text deletion otherwise. */
     private fun deleteCompositionAtCursor(): Boolean {
-        if (mode == KeyboardMode.PINYIN_9 && lastNineDigits.isNotEmpty()) {
-            val length = composition.text.length
-            val editingInsideVisiblePinyin = composition.hasFocus() &&
-                (composition.selectionStart != length || composition.selectionEnd != length)
-            if (!editingInsideVisiblePinyin) {
-                val nextDigits = lastNineDigits.dropLast(1)
-                if (nextDigits.isNotEmpty()) {
-                    val currentSuffix = composition.text
-                        .toString()
-                        .removePrefix(lastNineSegmentPrefix)
-                    publishNineKeyDigits(nextDigits, currentSuffix.dropLast(1))
+        if (mode == KeyboardMode.PINYIN_9) {
+            val current = composition.text.toString()
+            if (current.isNotEmpty()) {
+                val rawStart = if (composition.hasFocus()) {
+                    composition.selectionStart.takeIf { it >= 0 }?.coerceIn(0, current.length) ?: current.length
                 } else {
-                    lastNineDigits = ""
-                    lastNinePinyinPaths = emptyList()
-                    val prefix = lastNineSegmentPrefix
-                    publishComposition(
-                        prefix,
-                        if (prefix.isEmpty()) emptyList() else candidatesForComposition(prefix),
-                        prefix.length,
-                    )
+                    current.length
                 }
-                return true
+                val rawEnd = if (composition.hasFocus()) {
+                    composition.selectionEnd.takeIf { it >= 0 }?.coerceIn(0, current.length) ?: rawStart
+                } else {
+                    current.length
+                }
+                val start = minOf(rawStart, rawEnd)
+                val end = maxOf(rawStart, rawEnd)
+
+                val lastSpace = current.lastIndexOf(' ')
+                if (start > lastSpace) {
+                    val prefix = if (lastSpace >= 0) current.substring(0, lastSpace + 1) else ""
+                    val suffix = if (lastSpace >= 0) current.substring(lastSpace + 1) else current
+                    val suffixStart = (start - prefix.length).coerceIn(0, suffix.length)
+                    val suffixEnd = (end - prefix.length).coerceIn(0, suffix.length)
+                    val suffixDigits = if (lastNineDigits.isNotEmpty() && lastNineDigits.length == suffix.length && prefix == lastNineSegmentPrefix) {
+                        lastNineDigits
+                    } else {
+                        CandidatePipeline.nineKeyDigitsFor(suffix)
+                    }
+
+                    if (suffixDigits != null && suffixDigits.isNotEmpty()) {
+                        val (nextDigits, newCursor, expectedSuffix) = if (suffixStart == suffixEnd) {
+                            if (suffixStart == 0) {
+                                Triple(null, null, null)
+                            } else {
+                                val deleteIdx = suffixStart - 1
+                                val remDigits = suffixDigits.removeRange(deleteIdx, suffixStart)
+                                val remSuffix = if (suffix.length >= suffixStart) suffix.removeRange(deleteIdx, suffixStart) else null
+                                Triple(remDigits, prefix.length + deleteIdx, remSuffix)
+                            }
+                        } else {
+                            val remDigits = suffixDigits.removeRange(suffixStart, suffixEnd)
+                            val remSuffix = if (suffix.length >= suffixEnd) suffix.removeRange(suffixStart, suffixEnd) else null
+                            Triple(remDigits, prefix.length + suffixStart, remSuffix)
+                        }
+
+                        if (nextDigits != null) {
+                            lastNineSegmentPrefix = prefix
+                            if (nextDigits.isNotEmpty()) {
+                                publishNineKeyDigits(nextDigits, preferredSuffix = expectedSuffix, cursorPosition = newCursor)
+                            } else {
+                                lastNineDigits = ""
+                                lastNinePinyinPaths = emptyList()
+                                publishComposition(
+                                    prefix,
+                                    if (prefix.isEmpty()) emptyList() else candidatesForComposition(prefix),
+                                    prefix.length,
+                                )
+                            }
+                            return true
+                        }
+                    }
+                }
             }
         }
         if (!composition.hasFocus() || composition.text.isEmpty()) return false
         val current = composition.text.toString()
-        val start = composition.selectionStart.coerceIn(0, current.length)
-        val end = composition.selectionEnd.coerceIn(start, current.length)
+        val rawStart = composition.selectionStart.coerceIn(0, current.length)
+        val rawEnd = composition.selectionEnd.coerceIn(0, current.length)
+        val start = minOf(rawStart, rawEnd)
+        val end = maxOf(rawStart, rawEnd)
         val deleteStart = if (start == end) {
             if (start == 0) return true
-            start - 1
+            // Step back by one full Unicode code point, not by one UTF-16 unit.
+            // Otherwise a backspace on an emoji / extension-B Han character
+            // leaves an orphaned high surrogate behind and every later
+            // candidate for this composition is computed from broken text.
+            Character.offsetByCodePoints(current, start, -1).coerceAtLeast(0)
         } else {
             start
         }
         val next = current.removeRange(deleteStart, end)
         if (mode == KeyboardMode.PINYIN_9) {
-            lastNineDigits = ""
-            lastNineSegmentPrefix = ""
+            val lastSpace = next.lastIndexOf(' ')
+            val prefix = if (lastSpace >= 0) next.substring(0, lastSpace + 1) else ""
+            val suffix = if (lastSpace >= 0) next.substring(lastSpace + 1) else next
+            val suffixDigits = CandidatePipeline.nineKeyDigitsFor(suffix)
+            if (suffixDigits != null) {
+                lastNineDigits = suffixDigits
+                lastNineSegmentPrefix = prefix
+            } else {
+                lastNineDigits = ""
+                lastNineSegmentPrefix = next
+            }
             lastNinePinyinPaths = emptyList()
         }
         publishComposition(next, candidatesForComposition(next), deleteStart)
@@ -3103,7 +3932,50 @@ open class ImeKeyboardView(
             ShiftState.CAPS_LOCK -> ShiftState.LOWERCASE
         }
         listener.onShiftStateChanged(shiftState)
-        renderModeBody()
+        refreshEnglishShiftPresentation()
+    }
+
+    /** Update only letter labels and the Shift key; do not rebuild the keyboard tree. */
+    private fun refreshEnglishShiftPresentation() {
+        if (mode != KeyboardMode.ENGLISH_26) return
+        val uppercase = shiftState != ShiftState.LOWERCASE
+        "qwertyuiopasdfghjklzxcvbnm".forEach { ch ->
+            findViewWithTag<ImeKeyView>("key:$ch")?.setMainText(
+                if (uppercase) ch.uppercaseChar().toString() else ch.toString(),
+            )
+        }
+        val shift = findViewWithTag<ImeKeyView>("key-shift")
+            ?: findViewWithTag<ImeKeyView>("key-shift-active")
+            ?: findViewWithTag<ImeKeyView>("key-shift-caps")
+        shift?.apply {
+            tag = when (shiftState) {
+                ShiftState.LOWERCASE -> "key-shift"
+                ShiftState.SHIFT_ONCE -> "key-shift-active"
+                ShiftState.CAPS_LOCK -> "key-shift-caps"
+            }
+            setIcon(if (shiftState == ShiftState.CAPS_LOCK) R.drawable.ic_caps_lock else R.drawable.ic_shift)
+            contentDescription = when (shiftState) {
+                ShiftState.LOWERCASE -> "大写"
+                ShiftState.SHIFT_ONCE -> "大写一次"
+                ShiftState.CAPS_LOCK -> "大写锁定"
+            }
+        }
+        applyShiftTheme(shift)
+    }
+
+    /** Restyle only the Shift key after a label/icon change. */
+    private fun applyShiftTheme(shift: ImeKeyView?) {
+        val target = shift ?: return
+        val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        applyThemeRecursive(target, theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor)))
+    }
+
+    private fun applyAssociationTheme() {
+        if (!::associationRow.isInitialized) return
+        val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        applyThemeRecursive(associationRow, theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor)))
     }
 
     private fun firstCandidateOrComposition(): String =
@@ -3114,14 +3986,37 @@ open class ImeKeyboardView(
         if (soundEnabled) playSoundEffect(SoundEffectConstants.CLICK)
     }
 
+    /** Haptic-only confirmation (no key click sound), e.g. when voice arms. */
+    private fun hapticFeedback() {
+        if (hapticEnabled) performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+    }
+
+    /** Key main-text size is scaled around the 17sp default from the skin font slider. */
+    private fun skinFontScale(): Float = skinFontSize / 17f.coerceAtLeast(1f)
+
     private fun renderExpanded(open: Boolean) {
         if (!open) {
+            candidateExpandBtn.text = "⌄"
+            candidateExpandBtn.contentDescription = "展开更多候选"
             candidateOverlay.visibility = View.GONE
             keyboardBody.visibility = View.VISIBLE
             candidateExpandedOpen = false
+            renderedExpandedCandidates = null
+            renderedExpandedComposition = null
             return
         }
+        val preview = composition.text.toString()
+        if (candidateExpandedOpen && candidateOverlay.visibility == View.VISIBLE &&
+            renderedExpandedCandidates == currentCandidates && renderedExpandedComposition == preview
+        ) return
+        val previousScroll = if (renderedExpandedComposition == preview) {
+            (candidateOverlay.getChildAt(1) as? ScrollView)?.scrollY ?: 0
+        } else 0
+        renderedExpandedCandidates = currentCandidates.toList()
+        renderedExpandedComposition = preview
         candidateExpandedOpen = true
+        candidateExpandBtn.text = "⌃"
+        candidateExpandBtn.contentDescription = "收起候选"
         candidateOverlay.visibility = View.VISIBLE
         candidateOverlay.removeAllViews()
         candidateOverlay.addView(
@@ -3136,14 +4031,19 @@ open class ImeKeyboardView(
         if (currentCandidates.isEmpty()) {
             col.addView(title("暂无候选", small = true), wrapParams())
         } else {
-            currentCandidates.chunked(4).forEach { chunk ->
+            expandedCandidateRows(currentCandidates).forEach { chunk ->
                 val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
                 chunk.forEach { cand ->
                     row.addView(
-                        key(cand, false, null, 1f, 15f) { listener.onCandidateSelected(cand) },
-                        LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(5) },
+                        key(cand, false, null, 1f, 15f) { listener.onCandidateSelected(cand) }.apply {
+                            allowTwoLineLabel()
+                            contentDescription = "候选:$cand"
+                        },
+                        LinearLayout.LayoutParams(0, dp(48), candidateColumnSpan(cand).toFloat()).apply { marginEnd = dp(5) },
                     )
                 }
+                val remaining = 4 - chunk.sumOf(::candidateColumnSpan)
+                if (remaining > 0) row.addView(View(context), LinearLayout.LayoutParams(0, 1, remaining.toFloat()))
                 col.addView(row, matchParams())
             }
         }
@@ -3157,6 +4057,7 @@ open class ImeKeyboardView(
             ),
         )
         applyTheme()
+        if (previousScroll > 0) scroll.post { scroll.scrollTo(0, previousScroll) }
     }
 
     private fun key(
@@ -3173,20 +4074,28 @@ open class ImeKeyboardView(
             text = text,
             secondary = if (func) null else secondary,
             iconRes = iconRes,
-            mainTextSize = mainTextSizeOverride ?: if (func) 15f else 20f,
+            mainTextSize = (mainTextSizeOverride ?: (if (func) 15f else 20f)) * skinFontScale(),
         ).apply {
             tag = "key:$text"
             setTag(MARK_FUNCTION_KEY, func)
             contentDescription = if (text.isNotEmpty()) text else if (iconRes != 0) "功能键" else " "
+            if (!func && secondary != null && !showSecondaryHints) setSecondaryVisible(false)
             minimumHeight = dp(48)
             setOnClickListener {
-                feedback()
+                if (!consumeTouchFeedback()) feedback()
                 onTap()
             }
-            if (popupEnabled) {
+            run {
                 setOnTouchListener { _, event ->
                     when (event.actionMasked) {
-                        MotionEvent.ACTION_DOWN -> if (text.isNotEmpty()) showPopup(this, text)
+                        MotionEvent.ACTION_DOWN -> {
+                            feedback()
+                            isPressed = true
+                            refreshDrawableState()
+                            invalidate()
+                            val activeText = (this as? ImeKeyView)?.currentMainText?.ifEmpty { text } ?: text
+                            if (popupEnabled && !func && activeText.isNotEmpty()) showPopup(this, activeText)
+                        }
                         MotionEvent.ACTION_UP,
                         MotionEvent.ACTION_CANCEL,
                         -> if (keepPopupAfterKeyUp) {
@@ -3208,8 +4117,8 @@ open class ImeKeyboardView(
         tag = "panel-button"
         gravity = Gravity.CENTER
         includeFontPadding = false
-        minHeight = dp(28)
-        minimumHeight = dp(28)
+        minHeight = dp(44)
+        minimumHeight = dp(44)
     }
 
     private fun performBackspaceOnce() {
@@ -3228,6 +4137,7 @@ open class ImeKeyboardView(
         backspaceGestureActive = true
         backspaceClearArmed = false
         backspaceRepeatStarted = false
+        backspaceRepeatSuspended = false
         backspaceStartX = rawX
         backspaceStartY = rawY
         backspaceAnchor = anchor
@@ -3252,8 +4162,14 @@ open class ImeKeyboardView(
         // while waiting for the clear threshold. A slow swipe must not erase
         // characters one by one before it becomes an atomic clear.
         if (upward >= dp(8) && horizontal <= dp(96)) {
+            backspaceRepeatSuspended = true
             backspaceRepeatStartAction?.let(repeatHandler::removeCallbacks)
             repeatHandler.removeCallbacks(repeatAction)
+        } else if (backspaceRepeatSuspended) {
+            backspaceRepeatSuspended = false
+            backspaceRepeatStartAction?.let {
+                repeatHandler.postDelayed(it, if (backspaceRepeatStarted) 60L else ViewConfiguration.getLongPressTimeout().toLong())
+            }
         }
         val shouldArm = if (backspaceClearArmed) {
             upward > dp(16) && horizontal <= dp(120)
@@ -3268,10 +4184,12 @@ open class ImeKeyboardView(
             repeatHandler.removeCallbacks(repeatAction)
             backspaceAnchor?.let { showPopup(it, "清空") }
             repeatHandler.removeCallbacks(popupHideRunnable)
-            Log.d("OpenIme", "backspace-clear-armed dy=$upward dx=$horizontal")
+            // Tactile confirmation that the gesture crossed into "clear all".
+            hapticFeedback()
         } else {
             hidePopup()
-            Log.d("OpenIme", "backspace-clear-disarmed dy=$upward dx=$horizontal")
+            // Matching light tick when sliding back out of the armed clear tier.
+            hapticFeedback()
         }
     }
 
@@ -3286,18 +4204,19 @@ open class ImeKeyboardView(
             isPressed = false
             parent?.requestDisallowInterceptTouchEvent(false)
         }
-        backspaceClearUiAction?.invoke(false)
         backspaceGestureActive = false
+        backspaceClearUiAction?.invoke(false)
         backspaceClearArmed = false
         backspaceRepeatStarted = false
         backspaceAnchor = null
         backspaceClearUiAction = null
+        hidePopup()
         when {
             clearAll -> {
                 // One callback performs one batch clear. Never emulate this by
                 // dispatching hundreds of backspace events.
+                hapticFeedback()
                 listener.onClearAll()
-                repeatHandler.postDelayed(popupHideRunnable, 320L)
             }
             deleteOnce -> {
                 hidePopup()
@@ -3323,12 +4242,14 @@ open class ImeKeyboardView(
             isFocusable = false
             tag = "backspace-clear-hint"
             contentDescription = null
+            visibility = View.INVISIBLE
         }
         addView(clearHint, FrameLayout.LayoutParams(dp(30), dp(14)).apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
             topMargin = dp(2)
         })
         fun setClearHintActive(active: Boolean) {
+            clearHint.visibility = if (backspaceGestureActive) View.VISIBLE else View.INVISIBLE
             if (active) {
                 clearHint.text = "清空"
                 clearHint.setTextColor(Color.WHITE)
@@ -3346,7 +4267,8 @@ open class ImeKeyboardView(
                 MotionEvent.ACTION_DOWN -> {
                     clearHint.alpha = 1f
                     beginBackspaceGesture(view, event.rawX, event.rawY, ::setClearHintActive)
-                    Log.d("OpenIme", "backspace-touch-down x=${event.rawX} y=${event.rawY}")
+                    backspacePointerId = event.getPointerId(event.actionIndex)
+                    if (debugLogging) Log.d("OpenIme", "backspace-touch-down x=${event.rawX} y=${event.rawY}")
                     true
                 }
                 // The keyboard root owns MOVE/UP so the gesture survives even
@@ -3372,20 +4294,23 @@ open class ImeKeyboardView(
         keepPopupAfterKeyUp = false
         val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val t = theme.tokens(appearance, night)
-        val popupWidth = (anchor.width * 1.12f).toInt().coerceIn(dp(40), dp(68))
-        val popupHeight = dp(74)
+        val t = theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor))
+        val popupWidth = (anchor.width * 1.08f).toInt().coerceIn(dp(40), dp(64))
+        val popupHeight = dp(if (char == "清空") 36 else 48)
         val p = TextView(context).apply {
             text = char
-            textSize = if (char == "清空") 17f else 24f
+            textSize = if (char.length > 1) 13f else 16f
+            includeFontPadding = false
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
             gravity = Gravity.CENTER
             setPadding(dp(8), dp(6), dp(8), dp(6))
-            setTextColor(Color.WHITE)
+            setTextColor(if (char == "清空") Color.WHITE else t.keyText)
             background = rounded(
-                if (char == "清空") Color.rgb(211, 47, 47) else t.primary,
-                dp(12),
+                if (char == "清空") Color.rgb(185, 40, 40) else t.keyBackground,
+                dp(10),
             )
-            elevation = dp(4).toFloat()
+            elevation = dp(2).toFloat()
         }
         val anchorLocation = IntArray(2)
         val rootLocation = IntArray(2)
@@ -3412,21 +4337,23 @@ open class ImeKeyboardView(
         keepPopupAfterKeyUp = true
         val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val t = theme.tokens(appearance, night)
+        val t = theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor))
         val row = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             setPadding(dp(5), dp(5), dp(5), dp(5))
-            background = rounded(t.primary, dp(12))
-            elevation = dp(4).toFloat()
+            background = rounded(t.keyBackground, dp(10))
+            elevation = dp(2).toFloat()
             contentDescription = "长按符号选择"
         }
         choices.forEach { symbol ->
             row.addView(TextView(context).apply {
                 text = symbol
-                textSize = 22f
+                textSize = 16f
+                includeFontPadding = false
                 gravity = Gravity.CENTER
-                setTextColor(Color.WHITE)
+                setTextColor(t.keyText)
+                background = statefulRounded(Color.TRANSPARENT, t.keyPressedBackground, dp(8))
                 isClickable = true
                 isFocusable = true
                 contentDescription = "输入$symbol"
@@ -3468,7 +4395,7 @@ open class ImeKeyboardView(
     private fun applyTheme() {
         val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val t = theme.tokens(appearance, night)
+        val t = theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor))
         setBackgroundColor(t.keyboardBackground)
         mainDock.setBackgroundColor(t.expandedBackground)
         keyboardBody.setBackgroundColor(t.keyboardBackground)
@@ -3478,17 +4405,8 @@ open class ImeKeyboardView(
         applyThemeRecursive(this, t)
         composition.setTextColor(t.keySecondaryText)
         candidateExpandBtn.setTextColor(t.keySecondaryText)
+        candidateEmojiBtn.setTextColor(t.keySecondaryText)
         if (voiceInlineActive) applyInlineVoicePalette()
-    }
-
-    private fun applyCandidateTheme() {
-        if (!::candidateRow.isInitialized) return
-        val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-            android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val t = theme.tokens(appearance, night)
-        applyThemeRecursive(candidateRow, t)
-        composition.setTextColor(t.keySecondaryText)
-        candidateExpandBtn.setTextColor(t.keySecondaryText)
     }
 
     private fun applyThemeRecursive(view: View, t: ImeTheme.Tokens) {
@@ -3496,13 +4414,15 @@ open class ImeKeyboardView(
             is ImeKeyView -> {
                 val side = view.getTag(MARK_SIDE_KEY) == true ||
                     (view.parent as? View)?.tag in setOf("pinyin9-actions", "t9-actions", "digits-actions")
-                val function = view.getTag(MARK_FUNCTION_KEY) == true ||
-                    labelIsFunc(view.contentDescription?.toString().orEmpty())
+                val label = view.contentDescription?.toString().orEmpty()
+                // Function styling is driven by the explicit semantic tag set in
+                // key(), never by matching localized label substrings.
+                val function = view.getTag(MARK_FUNCTION_KEY) == true
                 // Numeric glyphs are white grid keys only when they are real
                 // number keys. Function labels such as 123 must stay gray.
                 val white = !side && (
                     view.getTag(MARK_WHITE_KEY) == true ||
-                        (!function && view.contentDescription?.toString()?.matches(Regex("[0-9]+")) == true)
+                        (!function && DIGITS_ONLY.matches(label))
                     )
                 val primary = !side && (view.tag == "tab-active" ||
                     view.tag == "key-shift-caps" ||
@@ -3515,10 +4435,18 @@ open class ImeKeyboardView(
                     function -> t.functionKeyBackground
                     else -> t.keyBackground
                 }
-                view.background = statefulRounded(color, dim(color), dp(skinRadius))
-                view.elevation = dp(1).toFloat()
+                val pressedColor = when {
+                    primary -> dim(color, 0.88f)
+                    side -> dim(t.sideKeyBackground, 0.88f)
+                    function -> dim(t.functionKeyBackground, 0.88f)
+                    else -> t.keyPressedBackground
+                }
+                view.background = statefulRounded(color, pressedColor, dp(skinRadius))
+                // Skin opacity slider fades key backgrounds toward transparency.
+                view.background?.alpha = (skinOpacity.coerceIn(70, 100) * 255 / 100)
+                view.elevation = 0f
                 when {
-                    primary -> view.setColors(Color.WHITE, t.keySecondaryText, Color.WHITE)
+                    primary -> view.setColors(contrastText(t.primary), t.keySecondaryText, contrastText(t.primary))
                     white -> view.setColors(t.lightKeyText, t.lightKeyText, t.lightKeyText)
                     side -> view.setColors(t.sideKeyText, t.sideKeyText, t.sideKeyText)
                     function -> view.setColors(t.functionKeyText, t.functionKeyText, t.functionKeyText)
@@ -3528,23 +4456,32 @@ open class ImeKeyboardView(
             is LinearLayout -> {
                 when (view.tag) {
                     "candidate-first-row" -> view.background = statefulRounded(
-                        t.primary,
-                        dim(t.primary),
+                        t.keyBackground,
+                        t.keyPressedBackground,
                         dp(8),
                     )
+                    "candidate-row" -> view.background = statefulRounded(
+                        Color.TRANSPARENT, t.keyPressedBackground, dp(8),
+                    )
+                    "setting-row" -> if (view.isClickable) {
+                        view.background = statefulRounded(Color.TRANSPARENT, t.keyPressedBackground, dp(10))
+                    }
                     "nine-punct-stack", "digits-symbol-stack" -> view.background = rounded(t.sideKeyBackground, dp(9))
-                    "setting-group" -> view.background = rounded(t.toolCardBackground, dp(14))
+                    "setting-group" -> view.background = rounded(t.toolCardBackground, dp(12))
                     "clip-card" -> view.background = rounded(t.toolCardBackground, dp(10))
                     "gaming-panel" -> view.background = rounded(t.toolCardBackground, dp(12))
                 }
                 if (view.contentDescription != null && view.isClickable && view.tag == null) {
-                    view.background = rounded(t.toolCardBackground, dp(14))
+                    view.background = statefulRounded(t.toolCardBackground, t.keyPressedBackground, dp(10))
                 }
             }
             is ImageView -> {
                 if ((view.parent is LinearLayout && (view.parent as LinearLayout).tag == "toolbar-row") ||
                     hasAncestorTag(view, "tools-panel")) {
                     view.imageTintList = ColorStateList.valueOf(t.keyText)
+                    if (view.isClickable) {
+                        view.background = statefulRounded(Color.TRANSPARENT, t.keyPressedBackground, dp(10))
+                    }
                 }
             }
             is TextView -> {
@@ -3552,31 +4489,26 @@ open class ImeKeyboardView(
                 if (view.parent !is ImeKeyView) view.setTextColor(t.keyText)
                 when {
                     tag == "setting-icon" -> {
-                        val icon = when (view.contentDescription?.toString()) {
-                            "按键音效" -> Color.rgb(0, 102, 235)
-                            "触感震动" -> Color.rgb(147, 51, 234)
-                            "按键气泡" -> Color.rgb(5, 150, 105)
-                            else -> Color.rgb(217, 119, 6)
-                        }
+                        val icon = t.primary
                         view.setTextColor(icon)
-                        val dark = t.keyboardBackground == Color.parseColor("#13151b")
+                        val dark = contrastText(t.keyboardBackground) == Color.WHITE
                         view.background = rounded(
-                            if (dark) Color.argb(48, Color.red(icon), Color.green(icon), Color.blue(icon))
-                            else Color.argb(34, Color.red(icon), Color.green(icon), Color.blue(icon)),
-                            dp(7),
+                            if (dark) Color.argb(42, Color.red(icon), Color.green(icon), Color.blue(icon))
+                            else Color.argb(24, Color.red(icon), Color.green(icon), Color.blue(icon)),
+                            dp(8),
                         )
                     }
                     tag == "backspace-clear-hint" -> {
                         view.setTextColor(t.keySecondaryText)
                     }
                     tag == "candidate-first" -> {
-                        view.setTextColor(Color.WHITE)
+                        view.setTextColor(t.keyText)
                     }
                     tag == "candidate-word" -> {
                         view.setTextColor(t.candidateText)
                     }
                     tag == "tab-active" -> {
-                        view.setTextColor(Color.WHITE)
+                        view.setTextColor(contrastText(t.primary))
                         view.background = statefulRounded(t.primary, dim(t.primary), dp(99))
                     }
                     tag == "panel-tab" -> {
@@ -3616,7 +4548,7 @@ open class ImeKeyboardView(
                         view.setTextColor(t.keySecondaryText)
                     }
                     tag == "voice-mic" -> {
-                        view.setTextColor(Color.WHITE)
+                        view.setTextColor(contrastText(t.primary))
                         view.background = GradientDrawable().apply {
                             shape = GradientDrawable.OVAL
                             setColor(t.primary)
@@ -3630,6 +4562,7 @@ open class ImeKeyboardView(
                 }
             }
             is FrameLayout -> when (view.tag) {
+                "emoji-cell" -> view.background = statefulRounded(Color.TRANSPARENT, t.keyPressedBackground, dp(8))
                 "toggle" -> {
                     val enabled = onState(view.contentDescription?.toString().orEmpty())
                     view.background = rounded(
@@ -3649,28 +4582,6 @@ open class ImeKeyboardView(
         }
     }
 
-    private fun ImeKeyView.mainIsFunc(): Boolean {
-        return labelIsFunc(contentDescription?.toString().orEmpty())
-    }
-
-    private fun labelIsFunc(text: String): Boolean =
-        text.contains("功能键") || text.contains("Backspace") || text.contains("Shift") ||
-            text.contains("⇧") || text.contains("⇪") || text.contains("⌫") ||
-            text.contains("空格") || text.contains("space") || text.contains("确定") ||
-            text.contains("确认") || text.contains("Go") || text.contains("123") ||
-            text.contains("中/英") || text.contains("中英") || text.contains("拼音") ||
-            text.contains("返回") || text.contains("换行") || text.contains("重输") ||
-            text.contains("符号") || text.contains("全拼") || text.contains("T9") ||
-            text.contains("abc") || text.contains("ABC") || text.contains("26键") ||
-            text.contains("手写") || text.contains("语音") || text.contains("短语") ||
-            text.contains("游戏") || text.contains("设置") || text.contains("候选") ||
-            text.contains("模板") || text.contains("粘贴") || text.contains("复制") ||
-            text.contains("剪切") || text.contains("撤销") || text.contains("清空") ||
-            text.contains("全选") || text.contains("上屏") || text.contains("光标") ||
-            text.contains("取消") || text.contains("收起") || text.contains("⌄") ||
-            text.contains("▼") || text.contains("▲") || text.contains("•") ||
-            text.contains("✕")
-
     private fun rounded(color: Int, radius: Int) = GradientDrawable().apply {
         shape = GradientDrawable.RECTANGLE
         setColor(color)
@@ -3688,6 +4599,22 @@ open class ImeKeyboardView(
         (Color.green(color) * factor).toInt().coerceIn(0, 255),
         (Color.blue(color) * factor).toInt().coerceIn(0, 255),
     )
+
+    private fun contrastText(background: Int): Int {
+        fun channel(value: Int): Double {
+            val normalized = value / 255.0
+            return if (normalized <= 0.04045) normalized / 12.92
+            else Math.pow((normalized + 0.055) / 1.055, 2.4)
+        }
+        val luminance =
+            0.2126 * channel(Color.red(background)) +
+                0.7152 * channel(Color.green(background)) +
+                0.0722 * channel(Color.blue(background))
+        val whiteContrast = 1.05 / (luminance + 0.05)
+        val dark = Color.rgb(15, 23, 42)
+        val darkContrast = (luminance + 0.05) / 0.0572
+        return if (whiteContrast >= darkContrast) Color.WHITE else dark
+    }
 
     private fun hasAncestorTag(view: View, tag: String): Boolean {
         var parent = view.parent
@@ -3724,13 +4651,13 @@ open class ImeKeyboardView(
     )
     private fun rowParams(includeBottomGap: Boolean = true) = LinearLayout.LayoutParams(
         LinearLayout.LayoutParams.MATCH_PARENT,
-        dp(48),
+        dp(keyRowHeightDp()),
     ).apply {
         if (includeBottomGap) bottomMargin = dp(6)
     }
     private fun flexKeyParams(
         weight: Float = 1f,
-        heightDp: Int = 48,
+        heightDp: Int = keyRowHeightDp(),
         gapDp: Int = 2,
     ) = LinearLayout.LayoutParams(
         0,

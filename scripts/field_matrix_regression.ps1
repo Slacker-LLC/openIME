@@ -31,10 +31,42 @@ function WaitForIme {
     throw 'IME did not start for test-lab editor'
 }
 
+function FocusField([string]$id) {
+    Start-Sleep -Milliseconds 800
+    $local = Join-Path $env:TEMP 'openime-field-focus.xml'
+    for ($attempt = 0; $attempt -lt 10; $attempt++) {
+        Remove-Item -LiteralPath $local -Force -ErrorAction SilentlyContinue
+        Adb shell rm -f /sdcard/openime-field-focus.xml | Out-Null
+        Adb shell uiautomator dump /sdcard/openime-field-focus.xml | Out-Null
+        Adb pull /sdcard/openime-field-focus.xml $local 2>$null | Out-Null
+        if (-not (Test-Path -LiteralPath $local)) {
+            Start-Sleep -Milliseconds 500
+            continue
+        }
+        try {
+            $raw = Get-Content -Raw -Encoding UTF8 -LiteralPath $local
+            if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                $hierarchy = [xml]$raw
+                $resourceId = "$pkg`:id/$id"
+                $node = $hierarchy.SelectNodes("//node[@resource-id='$resourceId']") | Select-Object -First 1
+                if ($node -and $node.bounds -match '\[(\d+),(\d+)\]\[(\d+),(\d+)\]') {
+                    $x = ([int]$Matches[1] + [int]$Matches[3]) / 2
+                    $y = ([int]$Matches[2] + [int]$Matches[4]) / 2
+                    Adb shell input tap ([int]$x) ([int]$y) | Out-Null
+                    return
+                }
+            }
+        } catch { }
+        Start-Sleep -Milliseconds 500
+    }
+    throw "FocusField failed for $id"
+}
+
 function StartField([string]$id) {
     Adb logcat -c
     Adb shell am force-stop $pkg | Out-Null
     Adb shell am start -n "$pkg/.ImeTestLabActivity" --es focus_id $id | Out-Null
+    FocusField $id
     WaitForIme
 }
 
@@ -56,12 +88,26 @@ function AssertMode([string]$id, [string]$expected) {
 }
 
 function GetVisibleText([string]$id) {
-    Adb shell uiautomator dump /sdcard/openime-field.xml | Out-Null
     $local = Join-Path $env:TEMP 'openime-field.xml'
-    Adb pull /sdcard/openime-field.xml $local | Out-Null
-    $hierarchy = [xml](Get-Content -Raw -Encoding UTF8 -LiteralPath $local)
-    $resourceId = "$pkg`:id/$id"
-    ($hierarchy.SelectNodes('//node[@resource-id="' + $resourceId + '"]') | Select-Object -First 1).text
+    for ($attempt = 0; $attempt -lt 6; $attempt++) {
+        Remove-Item -LiteralPath $local -Force -ErrorAction SilentlyContinue
+        Adb shell rm -f /sdcard/openime-field.xml | Out-Null
+        Adb shell uiautomator dump /sdcard/openime-field.xml | Out-Null
+        Adb pull /sdcard/openime-field.xml $local 2>$null | Out-Null
+        if (Test-Path -LiteralPath $local) {
+            try {
+                $raw = Get-Content -Raw -Encoding UTF8 -LiteralPath $local
+                if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                    $hierarchy = [xml]$raw
+                    $resourceId = "$pkg`:id/$id"
+                    $node = $hierarchy.SelectNodes('//node[@resource-id="' + $resourceId + '"]') | Select-Object -First 1
+                    if ($node) { return $node.text }
+                }
+            } catch { }
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    throw "GetVisibleText failed for $id"
 }
 
 $ime = "$pkg/.LocalVoiceImeService"

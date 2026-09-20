@@ -1,8 +1,11 @@
 package llc.slacker.openime
 
 import android.content.Context
+import android.content.SharedPreferences
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Small private user dictionary for selected Pinyin candidates. It is kept
@@ -14,6 +17,7 @@ import org.json.JSONObject
 object UserPhraseRepository {
     private const val PREFS = "user_phrases"
     private const val KEY = "entries"
+    private const val MAX_ENTRIES = 2000
 
     private data class Entry(
         val code: String,
@@ -23,8 +27,21 @@ object UserPhraseRepository {
     )
 
     private val lock = Any()
-    private var preferences: android.content.SharedPreferences? = null
+    private val persistenceLock = Any()
+    private var preferences: SharedPreferences? = null
     private val entries = LinkedHashMap<String, Entry>()
+
+    /**
+     * Persisting must stay off the IME thread. Unlike the old 500 ms debounce,
+     * an accepted learning event now queues a snapshot immediately so ending an
+     * input session or a fast process reclaim does not create a deliberate loss
+     * window. Serialization and the durable disk write both happen in the
+     * background; records arriving after a snapshot queue the next snapshot.
+     */
+    private val saveExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "user-phrase-save").apply { isDaemon = true }
+    }
+    private val saveScheduled = AtomicBoolean(false)
 
     fun configure(context: Context) {
         synchronized(lock) {
@@ -74,8 +91,59 @@ object UserPhraseRepository {
                 current.frequency = (current.frequency + 1).coerceAtMost(1_000_000)
                 current.lastUsed = System.currentTimeMillis()
             }
-            saveLocked()
+            trimLocked()
+            scheduleSaveLocked()
         }
+    }
+
+    /** Write the latest immutable snapshot synchronously when a lifecycle owner needs durability now. */
+    fun flush() {
+        synchronized(persistenceLock) {
+            val snapshot = synchronized(lock) { persistenceSnapshotLocked() } ?: return
+            writeSnapshot(snapshot.first, snapshot.second, durable = true)
+        }
+    }
+
+    /**
+     * The map used to grow without bound: saveLocked() persisted only the last
+     * 2 000 entries, so memory and disk silently diverged and a long-lived
+     * process kept every phrase it had ever seen.
+     */
+    private fun trimLocked() {
+        if (entries.size <= MAX_ENTRIES) return
+        val keep = entries.entries
+            .sortedWith(
+                compareByDescending<Map.Entry<String, Entry>> { it.value.lastUsed }
+                    .thenByDescending { it.value.frequency },
+            )
+            .take(MAX_ENTRIES)
+            .mapTo(HashSet()) { it.key }
+        entries.keys.retainAll(keep)
+    }
+
+    private fun scheduleSaveLocked() {
+        if (preferences == null) return
+        if (!saveScheduled.compareAndSet(false, true)) return
+        saveExecutor.execute {
+            synchronized(persistenceLock) {
+                val snapshot = synchronized(lock) {
+                    saveScheduled.set(false)
+                    persistenceSnapshotLocked()
+                }
+                if (snapshot != null) {
+                    writeSnapshot(snapshot.first, snapshot.second, durable = true)
+                }
+            }
+        }
+    }
+
+    private fun persistenceSnapshotLocked(): Pair<SharedPreferences, List<Entry>>? {
+        val target = preferences ?: return null
+        val snapshot = entries.values
+            .toList()
+            .takeLast(MAX_ENTRIES)
+            .map { it.copy() }
+        return target to snapshot
     }
 
     /** Recent, repeatedly selected terms that can safely bias local ASR. */
@@ -99,9 +167,11 @@ object UserPhraseRepository {
     }
 
     fun clear() {
-        synchronized(lock) {
-            entries.clear()
-            preferences?.edit()?.remove(KEY)?.apply()
+        synchronized(persistenceLock) {
+            synchronized(lock) {
+                entries.clear()
+                preferences?.edit()?.remove(KEY)?.commit()
+            }
         }
     }
 
@@ -135,10 +205,13 @@ object UserPhraseRepository {
         }
     }
 
-    private fun saveLocked() {
-        val target = preferences ?: return
+    private fun writeSnapshot(
+        target: SharedPreferences,
+        snapshot: List<Entry>,
+        durable: Boolean,
+    ) {
         val array = JSONArray()
-        entries.values.toList().takeLast(2_000).forEach { entry ->
+        snapshot.forEach { entry ->
             array.put(
                 JSONObject()
                     .put("code", entry.code)
@@ -147,7 +220,8 @@ object UserPhraseRepository {
                     .put("lastUsed", entry.lastUsed),
             )
         }
-        target.edit().putString(KEY, array.toString()).apply()
+        val editor = target.edit().putString(KEY, array.toString())
+        if (durable) editor.commit() else editor.apply()
     }
 
     private const val DEFAULT_MINIMUM_FREQUENCY = 3

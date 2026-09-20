@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="quick_phrase_category_editor" type="id" />
+    <item name="quick_phrase_text_editor" type="id" />
+</resources>

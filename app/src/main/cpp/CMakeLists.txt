@@ -49,6 +49,9 @@ set(USE_SYSTEM_MARISA ON CACHE BOOL "" FORCE)
 set(ENABLE_GTEST OFF CACHE BOOL "" FORCE)
 set(ENABLE_BENCHMARK OFF CACHE BOOL "" FORCE)
 set(BUILD_PYTHON OFF CACHE BOOL "" FORCE)
+# OpenCC's legacy FindPythonInterp misses python3-only Linux hosts.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+set(PYTHON_EXECUTABLE "${Python3_EXECUTABLE}" CACHE FILEPATH "Host Python for OpenCC" FORCE)
 add_subdirectory(vendor/OpenCC EXCLUDE_FROM_ALL)
 include(OpenccWorkarounds)
 
@@ -72,6 +75,7 @@ add_subdirectory(vendor/librime)
 target_include_directories(rime-static PRIVATE "${RIME_BUNDLED_INCLUDE}")
 
 add_library(local_rime SHARED local_rime_jni.cc)
+target_link_options(local_rime PRIVATE "-Wl,-z,max-page-size=16384")
 target_include_directories(local_rime PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/vendor/librime/src"
     "${RIME_BUNDLED_INCLUDE}"

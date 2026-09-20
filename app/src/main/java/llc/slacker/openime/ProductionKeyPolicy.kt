@@ -2,7 +2,6 @@ package llc.slacker.openime
 
 /** Pure geometry/timing helpers for production key presentation. */
 internal object ProductionKeyPolicy {
-    const val LEGACY_SPACE_VOICE_TRIGGER_MS = 150L
 
     data class EdgeWeights(
         val leftOuter: Float,
@@ -27,7 +26,10 @@ internal object ProductionKeyPolicy {
         )
     }
 
-    /** Delay still required after the legacy renderer fires at 150 ms. */
-    fun remainingVoiceDelayMs(systemLongPressTimeoutMs: Long): Long =
-        (systemLongPressTimeoutMs - LEGACY_SPACE_VOICE_TRIGGER_MS).coerceAtLeast(0L)
+    /**
+     * The legacy renderer already waits the platform long-press threshold
+     * before forwarding a voice press. V2 adds no extra delay on top of it, so a
+     * long-press gesture is not stretched to roughly twice the threshold.
+     */
+    fun remainingVoiceDelayMs(@Suppress("UNUSED_PARAMETER") systemLongPressTimeoutMs: Long): Long = 0L
 }
