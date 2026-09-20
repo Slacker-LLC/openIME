@@ -25,6 +25,7 @@ import android.view.SoundEffectConstants
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
+import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.EditText
@@ -907,8 +908,7 @@ open class ImeKeyboardView(
         // may restore the IME window to the bottom during that callback.
         listener.onPanelChanged(newPanel)
         renderPanel(newPanel)
-        expandedPanel.alpha = 0.96f
-        expandedPanel.animate().alpha(1f).setDuration(120L).start()
+        animatePanelEntrance()
     }
 
     private fun dismissPanelForModeSwitch() {
@@ -936,8 +936,7 @@ open class ImeKeyboardView(
             panel = panelBackStack.removeAt(panelBackStack.lastIndex)
             listener.onPanelChanged(panel)
             renderPanel(panel)
-            expandedPanel.alpha = 0.96f
-            expandedPanel.animate().alpha(1f).setDuration(120L).start()
+            animatePanelEntrance()
             return true
         }
         stopVoiceIfActive()
@@ -952,6 +951,20 @@ open class ImeKeyboardView(
         mainDock.animate().alpha(1f).setDuration(100L).start()
         listener.onPanelChanged(Panel.NONE)
         return true
+    }
+
+    /** Subtle directional motion keeps panel navigation spatially legible. */
+    private fun animatePanelEntrance() {
+        expandedPanel.animate().cancel()
+        val direction = if (layoutDirection == View.LAYOUT_DIRECTION_RTL) -1f else 1f
+        expandedPanel.translationX = dp(12) * direction.toFloat()
+        expandedPanel.alpha = 0.94f
+        expandedPanel.animate()
+            .translationX(0f)
+            .alpha(1f)
+            .setDuration(160L)
+            .setInterpolator(DecelerateInterpolator(1.5f))
+            .start()
     }
 
     fun renderState(state: ImeState) {
