@@ -350,7 +350,13 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
         super.onStartInputView(attribute, restarting)
         if (keyboardView == null) onCreateInputView()
         if (state.panel != Panel.GAMING) restoreImeWindow()
+        keyboardView?.refreshAuxiliaryContent()
         voiceLifecycle.onStartInputView()
+    }
+
+    /** Re-render panels whose data may have been edited in a full-screen Activity. */
+    internal fun refreshAuxiliaryContentFromActivity() {
+        keyboardView?.refreshAuxiliaryContent()
     }
 
     override fun onFinishInput() {

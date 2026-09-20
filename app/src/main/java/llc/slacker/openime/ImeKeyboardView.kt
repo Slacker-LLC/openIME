@@ -243,6 +243,16 @@ open class ImeKeyboardView(
     // the way back to the keyboard.
     private val panelBackStack = mutableListOf<Panel>()
     fun currentPanel(): Panel = panel
+
+    /** Refresh data owned by auxiliary editor Activities when they return. */
+    internal fun refreshAuxiliaryContent() {
+        when (panel) {
+            Panel.CLIPBOARD -> renderClipboard(reusePanel = true)
+            Panel.SYMBOLS -> if (symbolCategory == "自定义") renderPanel(Panel.SYMBOLS)
+            else -> Unit
+        }
+    }
+
     private var shiftState = ShiftState.LOWERCASE
     private var soundEnabled = true
     private var hapticEnabled = true

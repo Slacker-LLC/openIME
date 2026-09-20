@@ -62,6 +62,7 @@ class QuickPhraseEditActivity : Activity() {
     }
 
     override fun onDestroy() {
+        LocalVoiceImeService.activeInstance?.refreshAuxiliaryContentFromActivity()
         if (Build.VERSION.SDK_INT >= 33) {
             backCallback?.let(onBackInvokedDispatcher::unregisterOnBackInvokedCallback)
             backCallback = null
