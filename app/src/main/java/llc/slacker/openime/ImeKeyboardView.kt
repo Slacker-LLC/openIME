@@ -510,7 +510,20 @@ open class ImeKeyboardView(
         if (!geometryChanged) return
         // Do not yank the user out of an open panel.
         applyDynamicHeights()
-        if (!standalonePanel && currentPanel() == Panel.NONE) renderModeBody()
+        if (standalonePanel) return
+        when {
+            panel == Panel.NONE -> renderModeBody()
+            panel == Panel.VOICE && (voiceActive || voicePending || voiceGestureSession) -> {
+                // Rebuilding the voice panel would replace the closures that
+                // own the active recognition session. Resize its body in place
+                // and let the session continue without a visual reset.
+                (expandedPanel.getChildAt(1)?.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
+                    params.height = dp(panelBodyHeightDp())
+                    expandedPanel.getChildAt(1).layoutParams = params
+                }
+            }
+            else -> renderPanel(panel)
+        }
     }
 
     /** True while any key in this keyboard still owns a press. */

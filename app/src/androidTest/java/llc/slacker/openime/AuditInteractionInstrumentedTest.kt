@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
+import android.content.res.Configuration
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.View
@@ -13,6 +14,7 @@ import android.view.ViewGroup
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -134,6 +136,27 @@ class AuditInteractionInstrumentedTest {
             assertEquals(listOf(true), recorder.fuzzyChanges)
             assertTrue(toggle.performClick())
             assertEquals(listOf(true, false), recorder.fuzzyChanges)
+            true
+        }
+    }
+
+    @Test
+    fun openEmojiPanelRebuildsItsResponsiveGridAfterFontScaleChanges() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            keyboard.showPanel(Panel.EMOJI)
+            val before = keyboard.findViewWithTag<View>("emoji-scroll")
+            assertNotNull("Emoji panel must expose its scroll surface", before)
+            val next = Configuration(keyboard.resources.configuration).apply {
+                fontScale = 1.15f
+            }
+            ImeKeyboardView::class.java.getDeclaredMethod(
+                "onConfigurationChanged",
+                Configuration::class.java,
+            ).apply { isAccessible = true }.invoke(keyboard, next)
+            val after = keyboard.findViewWithTag<View>("emoji-scroll")
+            assertNotNull(after)
+            assertTrue("Font-scale changes must rebuild the open emoji grid", before !== after)
+            assertEquals(Panel.EMOJI, keyboard.currentPanel())
             true
         }
     }
