@@ -352,21 +352,31 @@ open class ImeKeyboardView(
         resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
 
     private fun keyRowHeightDp(): Int {
-        val base = if (isLandscape()) 40 else 48
+        val base = if (isLandscape()) {
+            ImeGeometryTokens.LANDSCAPE_KEY_ROW_HEIGHT_DP
+        } else {
+            ImeGeometryTokens.TOUCH_TARGET_DP
+        }
         val fontGrow = ((resources.configuration.fontScale - 1f).coerceAtLeast(0f) * 12f)
             .toInt().coerceAtMost(12)
         return base + fontGrow
     }
 
     private fun imeHeightDp(): Int {
-        // 64dp top zone + four key rows + three 6dp gaps + 22dp bottom breathing.
-        val derived = 64 + keyRowHeightDp() * 4 + 6 * 3 + 22
+        // Toolbar + four key rows + three shared gaps + bottom breathing.
+        val derived = ImeGeometryTokens.TOOLBAR_HEIGHT_DP +
+            keyRowHeightDp() * 4 + ImeGeometryTokens.KEY_ROW_GAP_DP * 3 + 22
         return maxOf(if (isLandscape()) 258 else 296, derived)
     }
 
-    private fun topZoneHeightDp(): Int = if (topZoneExpanded) 70 else 64
+    private fun topZoneHeightDp(): Int = if (topZoneExpanded) {
+        ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP
+    } else {
+        ImeGeometryTokens.TOOLBAR_HEIGHT_DP
+    }
     private fun keyboardBodyHeightDp(): Int = imeHeightDp() - topZoneHeightDp()
-    private fun panelBodyHeightDp(): Int = (imeHeightDp() - 48).coerceAtLeast(0)
+    private fun panelBodyHeightDp(): Int =
+        (imeHeightDp() - ImeGeometryTokens.TOUCH_TARGET_DP).coerceAtLeast(0)
     private var syncingComposition = false
     private var t9Filter = "T9"
     private var passwordField = false
@@ -632,10 +642,10 @@ open class ImeKeyboardView(
         topZone = LinearLayout(context).apply {
             tag = "ime_toolbar"
             orientation = LinearLayout.VERTICAL
-            minimumHeight = dp(64)
+            minimumHeight = dp(ImeGeometryTokens.TOOLBAR_HEIGHT_DP)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(64),
+                dp(ImeGeometryTokens.TOOLBAR_HEIGHT_DP),
             )
         }
         toolbarRow = LinearLayout(context).apply {
@@ -643,23 +653,35 @@ open class ImeKeyboardView(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(10), 0, dp(10), 0)
-            minimumHeight = dp(64)
+            minimumHeight = dp(ImeGeometryTokens.TOOLBAR_HEIGHT_DP)
         }
         toolbarRow.addView(
             toolbarIcon(R.drawable.ic_grid, "切换键盘", "keyboard-selector") { showPanel(Panel.KEYBOARD_SELECT) },
-            LinearLayout.LayoutParams(dp(48), dp(48)),
+            LinearLayout.LayoutParams(
+                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+            ),
         )
         toolbarRow.addView(
             toolbarIcon(R.drawable.ic_clipboard, "剪贴板", "clipboard-toolbar") { showPanel(Panel.CLIPBOARD) },
-            LinearLayout.LayoutParams(dp(48), dp(48)),
+            LinearLayout.LayoutParams(
+                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+            ),
         )
         toolbarRow.addView(
             toolbarIcon(R.drawable.ic_emoji, "表情", "toolbar") { showPanel(Panel.EMOJI) },
-            LinearLayout.LayoutParams(dp(48), dp(48)),
+            LinearLayout.LayoutParams(
+                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+            ),
         )
         toolbarRow.addView(
             toolbarIcon(R.drawable.ic_symbols, "符号", "toolbar") { showPanel(Panel.SYMBOLS) },
-            LinearLayout.LayoutParams(dp(48), dp(48)),
+            LinearLayout.LayoutParams(
+                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+            ),
         )
         associationRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -672,21 +694,31 @@ open class ImeKeyboardView(
             overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
             addView(
                 associationRow,
-                ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48)),
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+                ),
             )
         }
         toolbarRow.addView(
             associationScroll,
-            LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginStart = dp(4) },
+            LinearLayout.LayoutParams(
+                0,
+                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+                1f,
+            ).apply { marginStart = dp(4) },
         )
         // Keep the overflow action at the far right, as in the reference.
         toolbarRow.addView(
             toolbarIcon(R.drawable.ic_more, "更多", "toolbar") { showPanel(Panel.TOOLS) },
-            LinearLayout.LayoutParams(dp(48), dp(48)),
+            LinearLayout.LayoutParams(
+                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+            ),
         )
         topZone.addView(toolbarRow, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(64),
+            dp(ImeGeometryTokens.TOOLBAR_HEIGHT_DP),
         ))
 
         composeZone = LinearLayout(context).apply {
@@ -740,12 +772,15 @@ open class ImeKeyboardView(
                 candidateRow,
                 ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
-                    dp(48),
+                    dp(ImeGeometryTokens.TOUCH_TARGET_DP),
                 ),
             )
         }
         candField.setPadding(dp(8), 0, dp(8), 0)
-        candField.addView(candScroll, LinearLayout.LayoutParams(0, dp(48), 1f))
+        candField.addView(
+            candScroll,
+            LinearLayout.LayoutParams(0, dp(ImeGeometryTokens.TOUCH_TARGET_DP), 1f),
+        )
         // Persistent emoji shortcut kept visible while composing, so the user can
         // jump straight to the emoji panel without first committing/clearing.
         candidateEmojiBtn = TextView(context).apply {
@@ -764,7 +799,10 @@ open class ImeKeyboardView(
         }
         candField.addView(
             candidateEmojiBtn,
-            LinearLayout.LayoutParams(dp(48), dp(48)),
+            LinearLayout.LayoutParams(
+                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+            ),
         )
         candidateExpandBtn = TextView(context).apply {
             tag = "candidate-expand"
@@ -784,15 +822,18 @@ open class ImeKeyboardView(
         }
         candField.addView(
             candidateExpandBtn,
-            LinearLayout.LayoutParams(dp(48), dp(48)),
+            LinearLayout.LayoutParams(
+                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+            ),
         )
         composeZone.addView(candField, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(48),
+            dp(ImeGeometryTokens.TOUCH_TARGET_DP),
         ))
         topZone.addView(composeZone, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(70),
+            dp(ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP),
         ))
 
         // Long-press voice stays inside the current keyboard. This fixed-height
@@ -1715,7 +1756,7 @@ open class ImeKeyboardView(
         if (chinese) {
             left.addView(punctStack(), LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(156),
+                dp(ImeGeometryTokens.NINE_GRID_HEIGHT_DP),
             ))
         } else {
             val filters = LinearLayout(context).apply {
@@ -1732,7 +1773,7 @@ open class ImeKeyboardView(
                     },
                     LinearLayout.LayoutParams(
                         0,
-                        dp(48),
+                        dp(ImeGeometryTokens.TOUCH_TARGET_DP),
                         1f,
                     ).apply {
                         marginStart = dp(2)
@@ -1742,7 +1783,7 @@ open class ImeKeyboardView(
             }
             left.addView(filters, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(48),
+                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
             ))
         }
         left.addView(
@@ -1750,8 +1791,8 @@ open class ImeKeyboardView(
                 .apply { setTag(MARK_SIDE_KEY, true) },
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(48),
-            ).apply { topMargin = dp(6) },
+                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+            ).apply { topMargin = dp(ImeGeometryTokens.KEY_ROW_GAP_DP) },
         )
         container.addView(left, adaptiveColumnParams(1f))
 
@@ -1760,7 +1801,7 @@ open class ImeKeyboardView(
             nineGrid(chinese).apply { tag = if (chinese) "pinyin9-grid" else "t9-grid" },
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(156),
+                dp(ImeGeometryTokens.NINE_GRID_HEIGHT_DP),
             ),
         )
         val centerBottom = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
@@ -1782,20 +1823,23 @@ open class ImeKeyboardView(
         )
         center.addView(centerBottom, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(48),
-        ).apply { topMargin = dp(6) })
+            dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+        ).apply { topMargin = dp(ImeGeometryTokens.KEY_ROW_GAP_DP) })
         container.addView(center, adaptiveColumnParams(3.7f))
 
         val side = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             tag = if (chinese) "pinyin9-actions" else "t9-actions"
         }
-        side.addView(backspaceKey().apply { setTag(MARK_SIDE_KEY, true) }, sideKeyParams(48, true))
+        side.addView(
+            backspaceKey().apply { setTag(MARK_SIDE_KEY, true) },
+            sideKeyParams(ImeGeometryTokens.TOUCH_TARGET_DP, true),
+        )
         side.addView(
             key("重输", true, null, 1f, 13f) {
                 publishComposition("", emptyList())
             }.apply { setTag(MARK_SIDE_KEY, true) },
-            sideKeyParams(48, true),
+            sideKeyParams(ImeGeometryTokens.TOUCH_TARGET_DP, true),
         )
         side.addView(
             key(enterKeyLabel(!chinese), true, null, 1f, 13f) {
@@ -1804,12 +1848,12 @@ open class ImeKeyboardView(
                 tag = "key-enter"
                 setTag(MARK_SIDE_KEY, true)
             },
-            sideKeyParams(102),
+            sideKeyParams(ImeGeometryTokens.DOUBLE_KEY_HEIGHT_DP),
         )
         container.addView(side, adaptiveColumnParams(1f))
         keyboardBody.addView(container, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(210),
+            dp(ImeGeometryTokens.NINE_BODY_HEIGHT_DP),
         ))
     }
 
@@ -1882,8 +1926,10 @@ open class ImeKeyboardView(
             }
             grid.addView(row, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(48),
-            ).apply { if (rowIndex < 2) bottomMargin = dp(6) })
+                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+            ).apply {
+                if (rowIndex < 2) bottomMargin = dp(ImeGeometryTokens.KEY_ROW_GAP_DP)
+            })
         }
         return grid
     }
@@ -1915,15 +1961,15 @@ open class ImeKeyboardView(
         val left = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         left.addView(symStack, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(156),
+            dp(ImeGeometryTokens.NINE_GRID_HEIGHT_DP),
         ))
         left.addView(
             key("符号", true, null, 1f, 13f) { showPanel(Panel.SYMBOLS) }
                 .apply { setTag(MARK_SIDE_KEY, true) },
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(48),
-            ).apply { topMargin = dp(6) },
+                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+            ).apply { topMargin = dp(ImeGeometryTokens.KEY_ROW_GAP_DP) },
         )
         container.addView(left, adaptiveColumnParams(1f))
 
@@ -1944,13 +1990,15 @@ open class ImeKeyboardView(
             }
             grid.addView(row, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(48),
-            ).apply { if (rowIndex < 2) bottomMargin = dp(6) })
+                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+            ).apply {
+                if (rowIndex < 2) bottomMargin = dp(ImeGeometryTokens.KEY_ROW_GAP_DP)
+            })
         }
         val center = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         center.addView(grid, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(156),
+            dp(ImeGeometryTokens.NINE_GRID_HEIGHT_DP),
         ))
         val centerBottom = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         centerBottom.addView(
@@ -1975,36 +2023,39 @@ open class ImeKeyboardView(
         )
         center.addView(centerBottom, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(48),
-        ).apply { topMargin = dp(6) })
+            dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+        ).apply { topMargin = dp(ImeGeometryTokens.KEY_ROW_GAP_DP) })
         container.addView(center, adaptiveColumnParams(3.7f))
 
         val side = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             tag = "digits-actions"
         }
-        side.addView(backspaceKey().apply { setTag(MARK_SIDE_KEY, true) }, sideKeyParams(48, true))
+        side.addView(
+            backspaceKey().apply { setTag(MARK_SIDE_KEY, true) },
+            sideKeyParams(ImeGeometryTokens.TOUCH_TARGET_DP, true),
+        )
         side.addView(
             key("0", false, null, 1f, 22f) { commitKeyboardCharacter("0") }.apply {
                 tag = "key:0"
                 setTag(MARK_SIDE_KEY, true)
             },
-            sideKeyParams(48, true),
+            sideKeyParams(ImeGeometryTokens.TOUCH_TARGET_DP, true),
         )
         side.addView(
             key("@", true, null, 1f, 15f) { commitKeyboardCharacter("@") }
                 .apply { setTag(MARK_SIDE_KEY, true) },
-            sideKeyParams(48, true),
+            sideKeyParams(ImeGeometryTokens.TOUCH_TARGET_DP, true),
         )
         side.addView(
             key(enterKeyLabel(false, "换行"), true, null, 1f, 13f) { listener.onEnter() }
                 .apply { tag = "key-enter"; setTag(MARK_SIDE_KEY, true) },
-            sideKeyParams(48),
+            sideKeyParams(ImeGeometryTokens.TOUCH_TARGET_DP),
         )
         container.addView(side, adaptiveColumnParams(1f))
         keyboardBody.addView(container, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(210),
+            dp(ImeGeometryTokens.NINE_BODY_HEIGHT_DP),
         ))
     }
 
@@ -5701,11 +5752,11 @@ open class ImeKeyboardView(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(heightDp),
         ).apply {
-            if (includeBottomGap) bottomMargin = dp(6)
+            if (includeBottomGap) bottomMargin = dp(ImeGeometryTokens.KEY_ROW_GAP_DP)
         }
     private fun adaptiveColumnParams(weight: Float) = LinearLayout.LayoutParams(
         0,
-        dp(210),
+        dp(ImeGeometryTokens.NINE_BODY_HEIGHT_DP),
         weight,
     ).apply {
         marginStart = dp(2)

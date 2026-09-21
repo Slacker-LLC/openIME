@@ -19,6 +19,13 @@ internal object ImeGeometryTokens {
 
     const val TOUCH_TARGET_DP = 48
     const val PRIMARY_ROW_HEIGHT_DP = 56
+    const val KEY_ROW_GAP_DP = 6
+    const val LANDSCAPE_KEY_ROW_HEIGHT_DP = 40
+    const val TOOLBAR_HEIGHT_DP = 64
+    const val COMPOSED_TOP_ZONE_HEIGHT_DP = 70
+    const val NINE_GRID_HEIGHT_DP = TOUCH_TARGET_DP * 3 + KEY_ROW_GAP_DP * 2
+    const val NINE_BODY_HEIGHT_DP = NINE_GRID_HEIGHT_DP + KEY_ROW_GAP_DP + TOUCH_TARGET_DP
+    const val DOUBLE_KEY_HEIGHT_DP = TOUCH_TARGET_DP * 2 + KEY_ROW_GAP_DP
 }
 
 /**

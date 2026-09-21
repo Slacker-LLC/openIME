@@ -125,7 +125,7 @@ object SetupUi {
             text = label
             textSize = 15f
             isAllCaps = false
-            minHeight = dp(context, 52)
+            minHeight = dp(context, ImeGeometryTokens.PRIMARY_ROW_HEIGHT_DP)
             background = buttonBackground(context, accent(context), 16f)
             setTextColor(contrastText(accent(context)))
             setOnClickListener {
