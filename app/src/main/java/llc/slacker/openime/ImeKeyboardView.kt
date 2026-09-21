@@ -5577,6 +5577,22 @@ open class ImeKeyboardView(
                     tag == "candidate-word" -> {
                         view.setTextColor(t.candidateText)
                     }
+                    tag == "panel-note" -> {
+                        view.setTextColor(t.keySecondaryText)
+                    }
+                    tag == "panel-error" -> {
+                        val error = t.destructive
+                        view.setTextColor(error)
+                        view.background = rounded(
+                            Color.argb(
+                                28,
+                                Color.red(error),
+                                Color.green(error),
+                                Color.blue(error),
+                            ),
+                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
+                        )
+                    }
                     tag == "tab-active" -> {
                         view.setTextColor(contrastText(t.primary))
                         view.background = statefulRounded(
