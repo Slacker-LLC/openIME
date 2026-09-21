@@ -353,6 +353,24 @@ class InputConnectionGateway(
         sendKeyDownUp(ic, keyCode)
     }
 
+    /** Let the target editor handle vertical cursor movement when supported. */
+    fun moveCursorVertically(direction: Int) {
+        if (isPassword()) return
+        val keyCode = when (direction) {
+            -1 -> KeyEvent.KEYCODE_DPAD_UP
+            1 -> KeyEvent.KEYCODE_DPAD_DOWN
+            else -> return
+        }
+        connection()?.let { sendKeyDownUp(it, keyCode) }
+    }
+
+    /** Use the editor's native undo stack instead of exposing a dead button. */
+    fun undo(): Boolean {
+        if (isPassword()) return false
+        val ic = connection() ?: return false
+        return runCatching { ic.performContextMenuAction(android.R.id.undo) }.getOrDefault(false)
+    }
+
     fun currentSelectionStart(): Int = when (val selection = selectionSnapshot()) {
         is SelectionSnapshot.Absolute -> selection.start
         is SelectionSnapshot.Relative -> selection.cursor
@@ -433,7 +451,6 @@ class InputConnectionGateway(
 
     /** Whether a non-empty text clip is available for the current editor. */
     fun hasClipboardText(): Boolean {
-        if (isPassword()) return false
         val safeContext = context ?: return false
         val cm = safeContext.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return false
         return runCatching {
@@ -452,7 +469,6 @@ class InputConnectionGateway(
     }
 
     fun readClipboard(): String {
-        if (isPassword()) return ""
         val safeContext = context ?: return ""
         val cm = safeContext.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return ""
         return runCatching {
@@ -466,7 +482,6 @@ class InputConnectionGateway(
     }
 
     fun pasteClipboard(onPasted: (ClipData) -> Unit = {}): String {
-        if (isPassword()) return ""
         val safeContext = context ?: return ""
         val cm = safeContext.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return ""
         val clip = runCatching { cm.primaryClip }.getOrNull() ?: return ""
@@ -475,7 +490,6 @@ class InputConnectionGateway(
 
     /** Paste an already-read immutable clipboard snapshot without re-reading the system clip. */
     internal fun pasteClipSnapshot(clip: ClipData, onPasted: (ClipData) -> Unit = {}): String {
-        if (isPassword()) return ""
         val safeContext = context ?: return ""
         val text = runCatching {
             clip.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(safeContext)?.toString().orEmpty()

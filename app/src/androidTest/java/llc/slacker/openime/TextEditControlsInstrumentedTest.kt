@@ -21,7 +21,7 @@ class TextEditControlsInstrumentedTest {
     val rule = ActivityScenarioRule(DebugKeyboardActivity::class.java)
 
     @Test
-    fun unsupportedTextEditControlsAreVisiblyDisabledNotClickable() {
+    fun textEditorExposesUndoAndVerticalCursorControls() {
         lateinit var keyboard: ImeKeyboardViewV2
         rule.scenario.onActivity { activity ->
             val content = activity.findViewById<ViewGroup>(android.R.id.content)
@@ -41,12 +41,9 @@ class TextEditControlsInstrumentedTest {
         rule.scenario.onActivity {
             listOf("撤销", "▲", "▼").forEach { label ->
                 val control = findInteractiveControl(keyboard, label)
-                val labelView = findTextView(keyboard, label)
-                assertNotNull("missing disabled text-edit control $label", control)
-                assertNotNull("missing disabled text-edit label $label", labelView)
-                assertFalse("$label must not remain clickable", control!!.isClickable)
-                assertFalse("$label must expose disabled state", control.isEnabled)
-                assertTrue("$label should look unavailable", labelView!!.alpha < 1f)
+                assertNotNull("missing supported text-edit control $label", control)
+                assertTrue("$label should remain clickable", control!!.isClickable)
+                assertTrue("$label should remain enabled", control.isEnabled)
             }
 
             listOf("全选", "复制", "剪切", "粘贴", "◀", "▶").forEach { label ->

@@ -34,7 +34,10 @@ internal object ImeGeometryTokens {
     const val SWITCH_KNOB_TRAVEL_DP = SWITCH_WIDTH_DP - SWITCH_PADDING_DP * 2 - SWITCH_KNOB_DP
     const val KEY_ROW_GAP_DP = 6
     const val LANDSCAPE_KEY_ROW_HEIGHT_DP = 40
-    const val TOOLBAR_HEIGHT_DP = 64
+    const val FLOATING_LANDSCAPE_WIDTH_DP = 368
+    // The toolbar itself is compact; the top zone still reserves the larger
+    // composed height so typing never moves the keyboard window.
+    const val TOOLBAR_HEIGHT_DP = TOUCH_TARGET_DP
     const val COMPOSED_TOP_ZONE_HEIGHT_DP = 70
 }
 

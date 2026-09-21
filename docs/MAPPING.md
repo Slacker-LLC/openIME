@@ -12,7 +12,7 @@
 | 符号/Emoji/贴纸 | `ImeData.symbols/emojis/stickers` | commit |
 | 手写 | `HandwritingPadView` + `HandwritingProvider` | UI 真，识别引擎未配置并明确提示 |
 | 语音 | `SpeechRecognitionProvider` | 真，部分/最终/RMS/权限/服务错误，不支持方言明确报错 |
-| 剪贴板 | `ClipboardHistoryRepository` + `InputConnectionGateway` | 真 ClipboardManager，密码框不记录 |
+| 剪贴板 | `ClipboardHistoryRepository` + `InputConnectionGateway` | 真 ClipboardManager，密码框可读取并粘贴，密码正文不复制到历史 |
 | 文本编辑 | `InputConnectionGateway` | 真，上下/撤销受目标编辑器限制 |
 | 设置/主题 | `ImeSettingsRepository` + `ImeDesignTokens` | 持久化，五套主题 |
 | Skin DIY | Design Token 已预留 `skinRadius/skinOpacity/skinFontSize/skinPrimaryColor` | 正式 UI 无独立入口，按提示词不强行增加 |

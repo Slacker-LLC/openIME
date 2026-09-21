@@ -8,9 +8,9 @@ import org.junit.Test
 class TextEditControlPolicyTest {
 
     @Test
-    fun onlyKnownNoOpControlsAreUnavailable() {
+    fun onlyPasswordClipboardControlsAreUnavailable() {
         listOf("撤销", "▲", "▼").forEach { label ->
-            assertTrue(label, TextEditControlPolicy.isUnavailableLabel(label))
+            assertFalse(label, TextEditControlPolicy.isUnavailableLabel(label))
         }
         listOf("全选", "复制", "剪切", "粘贴", "◀", "▶").forEach { label ->
             assertFalse(label, TextEditControlPolicy.isUnavailableLabel(label))

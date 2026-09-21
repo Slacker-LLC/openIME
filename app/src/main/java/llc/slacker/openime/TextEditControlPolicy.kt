@@ -1,16 +1,16 @@
 package llc.slacker.openime
 
 /**
- * Controls that the text-edit panel cannot implement reliably across arbitrary
- * target editors. They remain visible as disabled affordances rather than
- * exposing clickable no-ops.
+ * Controls that must remain unavailable for sensitive editors. Cursor movement
+ * and undo are routed to the target editor, so they are no longer dead UI.
  */
 internal object TextEditControlPolicy {
-    private val unavailableLabels = setOf("撤销", "▲", "▼")
-    private val passwordUnavailableLabels = setOf("全选", "复制", "剪切", "粘贴")
+    // Password contents may not leave the editor, but clipboard text remains
+    // a valid input source (for example, a generated password from a vault).
+    private val passwordUnavailableLabels = setOf("全选", "复制", "剪切")
 
     fun isUnavailableLabel(label: String, passwordField: Boolean = false): Boolean =
-        label in unavailableLabels || (passwordField && label in passwordUnavailableLabels)
+        passwordField && label in passwordUnavailableLabels
 
     fun unavailableReason(label: String, passwordField: Boolean = false): String =
         if (passwordField && label in passwordUnavailableLabels) "密码输入中不可用" else "当前编辑器暂不支持"

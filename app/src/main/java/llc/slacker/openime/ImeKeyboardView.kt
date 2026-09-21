@@ -7,8 +7,12 @@ import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.drawable.GradientDrawable
+import android.graphics.Paint
 import android.graphics.drawable.StateListDrawable
+import android.inputmethodservice.InputMethodService
+import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -280,6 +284,9 @@ open class ImeKeyboardView(
     private var shiftState = ShiftState.LOWERCASE
     private var soundEnabled = true
     private var hapticEnabled = true
+    private val audioManager by lazy {
+        context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+    }
     private var popupEnabled = false
     private var fuzzyEnabled = false
     private var skinRadius = ImeSettingsRepository.loadSkinRadius(context)
@@ -345,9 +352,12 @@ open class ImeKeyboardView(
             repeatHandler.postDelayed(this, 72L)
         }
     }
-    // Gaming opens docked by default; the in-panel "恢复浮动" toggle opts into
-    // the floating drag surface instead of forcing it on entry.
-    private var floatingKeyboard = false
+    // Floating mode changes only the IME window bounds. The keyboard surface
+    // itself remains the same normal keyboard used in portrait mode.
+    private var floatingWindowMode = false
+    private var floatingDragActive = false
+    private var floatingDragLastX = 0f
+    private var floatingDragLastY = 0f
     private var popupView: View? = null
     private var keepPopupAfterKeyUp = false
     private val popupHideRunnable = Runnable { hidePopup() }
@@ -416,6 +426,7 @@ open class ImeKeyboardView(
     private lateinit var voiceInlineZone: LinearLayout
     private lateinit var voiceInlineIcon: ImageView
     private lateinit var voiceInlineStatus: TextView
+    private lateinit var floatingDragHandle: View
     private val voiceInlineWaves = mutableListOf<View>()
     private val keyboardBody = LinearLayout(context)
     private val expandedPanel = LinearLayout(context)
@@ -429,6 +440,9 @@ open class ImeKeyboardView(
 
     init {
         tag = "ime_root"
+        // Some IME windows inherit the host's disabled sound-effect flag.
+        // Keep the view channel enabled; the preference still gates feedback().
+        isSoundEffectsEnabled = true
         val rootHeight = if (standalonePanel) {
             FrameLayout.LayoutParams.MATCH_PARENT
         } else {
@@ -446,6 +460,7 @@ open class ImeKeyboardView(
         mainDock = LinearLayout(context).apply {
             tag = "main-dock"
             orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 dockHeight,
@@ -481,6 +496,21 @@ open class ImeKeyboardView(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT,
             ),
+        )
+        floatingDragHandle = FloatingDragHandleView(context).apply {
+            tag = "floating-drag-handle"
+            contentDescription = "拖动浮动键盘"
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            visibility = View.GONE
+            isClickable = true
+            setOnTouchListener { _, event -> handleFloatingDragTouch(event) }
+        }
+        keyboardHost.addView(
+            floatingDragHandle,
+            FrameLayout.LayoutParams(dp(48), dp(24)).apply {
+                gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                bottomMargin = dp(4)
+            },
         )
 
         buildTopZone()
@@ -521,6 +551,32 @@ open class ImeKeyboardView(
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
         super.onSizeChanged(width, height, oldWidth, oldHeight)
         updateResponsiveGeometry(width)
+    }
+
+    private fun handleFloatingDragTouch(event: MotionEvent): Boolean {
+        if (!floatingWindowMode || panel != Panel.NONE) return false
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                floatingDragLastX = event.rawX
+                floatingDragLastY = event.rawY
+                floatingDragActive = true
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (!floatingDragActive) return true
+                val deltaX = event.rawX - floatingDragLastX
+                val deltaY = event.rawY - floatingDragLastY
+                floatingDragLastX = event.rawX
+                floatingDragLastY = event.rawY
+                listener.onFloatingKeyboardDragged(deltaX, deltaY)
+                return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                floatingDragActive = false
+                return true
+            }
+        }
+        return true
     }
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
@@ -631,6 +687,30 @@ open class ImeKeyboardView(
      */
     private fun updateResponsiveGeometry(measuredWidthPx: Int) {
         if (measuredWidthPx <= 0) return
+        if (floatingWindowMode) {
+            // A configuration pass can briefly report the physical display
+            // width before WindowManager applies the floating window bounds.
+            // Keep the normal keyboard's content inset local to its window.
+            contentInsetPx = dp(5)
+            keyboardBody.setPadding(contentInsetPx, dp(6), contentInsetPx, dp(16))
+            keyboardBody.findViewWithTag<View>("key-row-secondary")?.let { row ->
+                // The portrait layout narrows this row to 90% of the full
+                // display for optical centering. A floating window can be
+                // narrower than the display, so that cached width would clip
+                // the first and last keys. Let the row fill its local window.
+                (row.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+                    params.width = LinearLayout.LayoutParams.MATCH_PARENT
+                    params.gravity = Gravity.NO_GRAVITY
+                    row.layoutParams = params
+                }
+            }
+            expandedPanel.setPadding(contentInsetPx, 0, contentInsetPx, 0)
+            candidateOverlay.setPadding(contentInsetPx, 0, contentInsetPx, 0)
+            toolbarRow.setPadding(contentInsetPx + dp(10), 0, contentInsetPx + dp(10), 0)
+            composition.setPadding(contentInsetPx + dp(14), dp(3), contentInsetPx + dp(14), 0)
+            requestLayout()
+            return
+        }
         val minimumInset = dp(5)
         val maxWidth = dp(maxContentWidthDp)
         contentInsetPx = maxOf(minimumInset, (measuredWidthPx - maxWidth) / 2)
@@ -661,6 +741,7 @@ open class ImeKeyboardView(
         topZone = LinearLayout(context).apply {
             tag = "ime_toolbar"
             orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
             minimumHeight = dp(ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -672,7 +753,7 @@ open class ImeKeyboardView(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(10), 0, dp(10), 0)
-            minimumHeight = dp(ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP)
+            minimumHeight = dp(ImeGeometryTokens.TOOLBAR_HEIGHT_DP)
         }
         toolbarRow.addView(
             toolbarIcon(R.drawable.ic_grid, "切换键盘", "keyboard-selector") { showPanel(Panel.KEYBOARD_SELECT) },
@@ -727,6 +808,13 @@ open class ImeKeyboardView(
                 1f,
             ).apply { marginStart = dp(4) },
         )
+        toolbarRow.addView(
+            toolbarIcon(R.drawable.ic_keyboard_hide, "收起键盘", "keyboard-hide") { hideKeyboard() },
+            LinearLayout.LayoutParams(
+                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+            ),
+        )
         // Keep the overflow action at the far right, as in the reference.
         toolbarRow.addView(
             toolbarIcon(R.drawable.ic_more, "更多", "toolbar") { showPanel(Panel.TOOLS) },
@@ -737,7 +825,7 @@ open class ImeKeyboardView(
         )
         topZone.addView(toolbarRow, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP),
+            dp(ImeGeometryTokens.TOOLBAR_HEIGHT_DP),
         ))
 
         composeZone = LinearLayout(context).apply {
@@ -847,6 +935,13 @@ open class ImeKeyboardView(
                 dp(ImeGeometryTokens.TOUCH_TARGET_DP),
             ),
         )
+        candidateField.addView(
+            toolbarIcon(R.drawable.ic_keyboard_hide, "收起键盘", "keyboard-hide-composing") { hideKeyboard() },
+            LinearLayout.LayoutParams(
+                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+            ),
+        )
         composeZone.addView(candidateField, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(ImeGeometryTokens.TOUCH_TARGET_DP),
@@ -941,6 +1036,47 @@ open class ImeKeyboardView(
             setOnClickListener { feedback(); onTap() }
         }
 
+    private inner class FloatingDragHandleView(context: Context) : View(context) {
+        private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.GRAY
+            style = Paint.Style.FILL
+        }
+
+        fun setDotColor(color: Int) {
+            dotPaint.color = color
+            invalidate()
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val radius = dp(2)
+            val gapX = dp(7)
+            val gapY = dp(7)
+            val startX = width / 2f - gapX
+            val startY = height / 2f - gapY / 2f
+            for (row in 0..1) {
+                for (column in 0..2) {
+                    canvas.drawCircle(
+                        startX + column * gapX,
+                        startY + row * gapY,
+                        radius.toFloat(),
+                        dotPaint,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun hideKeyboard() {
+        val service = context as? InputMethodService
+        if (service != null) {
+            service.requestHideSelf(0)
+        } else {
+            val manager = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
+            manager?.hideSoftInputFromWindow(windowToken, 0)
+        }
+    }
+
     fun cycleMode() {
         val next = when (mode) {
             KeyboardMode.PINYIN_26, KeyboardMode.PINYIN_9 -> KeyboardMode.ENGLISH_26
@@ -1000,7 +1136,11 @@ open class ImeKeyboardView(
 
     fun showPanel(newPanel: Panel) {
         if (newPanel == Panel.NONE || newPanel == Panel.CANDIDATE_EXPANDED) return
-        if (passwordField && newPanel in setOf(Panel.CLIPBOARD, Panel.VOICE)) return
+        if (passwordField && newPanel == Panel.VOICE) return
+        if (newPanel == Panel.GAMING) {
+            enableFloatingKeyboard()
+            return
+        }
         hidePopup()
         if (panel == Panel.VOICE && newPanel != Panel.VOICE) stopVoiceIfActive()
         if (panel != Panel.NONE && panel != newPanel) panelBackStack += panel
@@ -1013,6 +1153,58 @@ open class ImeKeyboardView(
         listener.onPanelChanged(newPanel)
         renderPanel(newPanel)
         animatePanelEntrance()
+    }
+
+    /** Enable floating window bounds without changing the keyboard surface. */
+    fun enableFloatingKeyboardForLandscape() {
+        enableFloatingKeyboard()
+    }
+
+    /** Return to the normal IME window when an automatic landscape session ends. */
+    fun disableFloatingKeyboardForPortrait() {
+        floatingWindowMode = false
+        listener.onFloatingKeyboardChanged(false)
+    }
+
+    /** Enter floating mode from the tools page without replacing the keyboard. */
+    private fun enableFloatingKeyboard() {
+        hidePopup()
+        if (panel != Panel.NONE) {
+            stopVoiceIfActive()
+            panelBackStack.clear()
+            panel = Panel.NONE
+            expandedPanel.animate().cancel()
+            expandedPanel.visibility = View.GONE
+            mainDock.visibility = View.VISIBLE
+            keyboardBody.visibility = View.VISIBLE
+            candidateOverlay.visibility = View.GONE
+            listener.onPanelChanged(Panel.NONE)
+        }
+        floatingWindowMode = true
+        listener.onFloatingKeyboardChanged(true)
+    }
+
+    /** Keep content geometry local when the service changes the window bounds. */
+    fun setFloatingWindowMode(enabled: Boolean) {
+        floatingWindowMode = enabled
+        if (enabled) {
+            contentInsetPx = dp(5)
+            keyboardBody.setPadding(contentInsetPx, dp(6), contentInsetPx, dp(16))
+            expandedPanel.setPadding(contentInsetPx, 0, contentInsetPx, 0)
+            candidateOverlay.setPadding(contentInsetPx, 0, contentInsetPx, 0)
+            toolbarRow.setPadding(contentInsetPx + dp(10), 0, contentInsetPx + dp(10), 0)
+            composition.setPadding(contentInsetPx + dp(14), dp(3), contentInsetPx + dp(14), 0)
+            floatingDragHandle.visibility = View.VISIBLE
+            applyFloatingChromeTheme()
+            requestLayout()
+        } else {
+            floatingDragHandle.visibility = View.GONE
+            toolbarRow.visibility = if (voiceInlineActive || composeZone.visibility == View.VISIBLE) {
+                View.GONE
+            } else {
+                View.VISIBLE
+            }
+        }
     }
 
     private fun dismissPanelForModeSwitch() {
@@ -1080,9 +1272,7 @@ open class ImeKeyboardView(
             if (!voiceAllowed && (voiceGestureSession || voiceActive || voicePending)) {
                 cancelVoiceForManualInput()
             }
-            if (passwordField && panel == Panel.CLIPBOARD) {
-                dismissPanelForModeSwitch()
-            } else if (panel == Panel.TOOLS) {
+            if (panel == Panel.TOOLS) {
                 renderPanel(Panel.TOOLS)
             } else if (panel == Panel.TEXT_EDITOR) {
                 // The same IME view can survive an editor switch. Rebuild the
@@ -1125,19 +1315,15 @@ open class ImeKeyboardView(
         syncCandidateExpandControl()
     }
 
-    /** Sensitive editors must not expose clipboard history as an interaction. */
+    /** Keep the clipboard entry available in every editor, including passwords. */
     private fun syncSensitiveToolbar() {
         val clipboardButton = toolbarRow.findViewWithTag<View>("clipboard-toolbar") ?: return
-        val blocked = passwordField
-        clipboardButton.isEnabled = !blocked
-        clipboardButton.alpha = if (blocked) 0.38f else 1f
-        clipboardButton.contentDescription = if (blocked) {
-            "剪贴板（密码输入中不可用）"
-        } else {
-            "剪贴板"
-        }
+        clipboardButton.isEnabled = true
+        clipboardButton.isClickable = true
+        clipboardButton.alpha = 1f
+        clipboardButton.contentDescription = "剪贴板"
         if (Build.VERSION.SDK_INT >= 30) {
-            clipboardButton.stateDescription = if (blocked) "不可用" else "可用"
+            clipboardButton.stateDescription = "可用"
         }
     }
 
@@ -2382,7 +2568,6 @@ open class ImeKeyboardView(
             Panel.TEXT_EDITOR -> renderTextEditor()
             Panel.SETTINGS -> renderSettings()
             Panel.FUZZY_SETTINGS -> renderFuzzySettings()
-            Panel.GAMING -> renderGaming()
             else -> closePanelToKeyboard()
         }
         applyTheme()
@@ -2458,7 +2643,7 @@ open class ImeKeyboardView(
         Panel.TEXT_EDITOR -> "文本编辑"
         Panel.SETTINGS -> "设置"
         Panel.FUZZY_SETTINGS -> "模糊音纠错"
-        Panel.GAMING -> "游戏键盘"
+        Panel.GAMING -> "浮动键盘"
         Panel.NONE, Panel.CANDIDATE_EXPANDED -> "键盘"
     }
 
@@ -2635,9 +2820,9 @@ open class ImeKeyboardView(
             ToolEntry("符号", Panel.SYMBOLS, R.drawable.ic_symbols),
             ToolEntry("切换键盘", Panel.KEYBOARD_SELECT, R.drawable.ic_grid),
             ToolEntry("文本编辑", Panel.TEXT_EDITOR, R.drawable.ic_keyboard),
-            ToolEntry("游戏键盘", Panel.GAMING, R.drawable.ic_game),
+            ToolEntry("浮动键盘", Panel.GAMING, R.drawable.ic_game),
             ToolEntry("设置", Panel.SETTINGS, R.drawable.ic_settings),
-        ).filter { it.enabled && !(passwordField && it.target == Panel.CLIPBOARD) }
+        ).filter { it.enabled }
         cards.chunked(4).forEach { chunk ->
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             chunk.forEach { entry ->
@@ -3384,7 +3569,7 @@ open class ImeKeyboardView(
             val gen = ++clipboardLoadGen
             Thread {
                 val historyResult = runCatching {
-                    if (!passwordField) ClipboardHistoryRepository.capturePrimary(context)
+                    ClipboardHistoryRepository.capturePrimary(context)
                     ClipboardHistoryRepository.load(context)
                 }
                 post {
@@ -3796,7 +3981,7 @@ open class ImeKeyboardView(
                 }
                 val policyUnavailable = TextEditControlPolicy.isUnavailableLabel(label, passwordField)
                 val dynamicReason = when {
-                    passwordField && label in setOf("全选", "复制", "剪切", "粘贴") -> "密码输入中不可用"
+                    passwordField && label in setOf("全选", "复制", "剪切") -> "密码输入中不可用"
                     label in setOf("复制", "剪切") && !selectionAvailable -> "请先选择文本"
                     label == "粘贴" && !clipboardAvailable -> "剪贴板暂无文本"
                     else -> null
@@ -4428,176 +4613,6 @@ open class ImeKeyboardView(
         return row
     }
 
-    private fun renderGaming() {
-        addPanelHead("游戏键盘")
-        listener.onFloatingKeyboardChanged(floatingKeyboard)
-        val macros = listOf("收到！", "集合进攻！", "稳住能赢！", "请求集合！", "保护输出！")
-        val hud = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            tag = "gaming-panel"
-            setPadding(dp(12), dp(2), dp(12), dp(2))
-        }
-        var lastTouchX = 0f
-        var lastTouchY = 0f
-        val header = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            tag = "floating-header"
-        }
-        var floatingToggle: TextView? = null
-        val dragHandle = TextView(context).apply {
-            text = "⠿  拖动键盘"
-            textSize = 12f
-            gravity = Gravity.CENTER_VERTICAL
-            includeFontPadding = false
-            tag = "floating-drag-handle"
-            contentDescription = "拖动键盘"
-            minHeight = dp(48)
-            minimumHeight = dp(48)
-            setPadding(dp(4), 0, dp(8), 0)
-            isClickable = true
-            isFocusable = true
-            setOnClickListener {
-                if (floatingKeyboard) floatingToggle?.performClick()
-            }
-            setOnTouchListener { _, event ->
-                if (!floatingKeyboard) return@setOnTouchListener false
-                when (event.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> {
-                        lastTouchX = event.rawX
-                        lastTouchY = event.rawY
-                        if (debugLogging) Log.d("OpenIme", "floating-drag-down x=${event.rawX} y=${event.rawY}")
-                        true
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        val deltaX = event.rawX - lastTouchX
-                        val deltaY = event.rawY - lastTouchY
-                        lastTouchX = event.rawX
-                        lastTouchY = event.rawY
-                        listener.onFloatingKeyboardDragged(deltaX, deltaY)
-                        true
-                    }
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> true
-                    else -> false
-                }
-            }
-        }
-        fun refreshDragHandleState() {
-            dragHandle.isEnabled = floatingKeyboard
-            dragHandle.isClickable = floatingKeyboard
-            dragHandle.isFocusable = floatingKeyboard
-            dragHandle.alpha = if (floatingKeyboard) 1f else 0.52f
-            dragHandle.contentDescription = if (floatingKeyboard) {
-                "拖动键盘，点击切换浮动状态"
-            } else {
-                "拖动键盘（恢复浮动后可用）"
-            }
-            if (Build.VERSION.SDK_INT >= 30) {
-                dragHandle.stateDescription = if (floatingKeyboard) {
-                    "当前可拖动，点击可贴底固定"
-                } else {
-                    "当前不可用"
-                }
-            }
-        }
-        refreshDragHandleState()
-        header.addView(dragHandle, weightParams(1f))
-        val toggle = button(if (floatingKeyboard) "贴底固定" else "恢复浮动", 11f, true).apply {
-            tag = "floating-toggle"
-            contentDescription = if (floatingKeyboard) "贴底固定" else "恢复浮动"
-            if (Build.VERSION.SDK_INT >= 30) {
-                stateDescription = if (floatingKeyboard) "当前为浮动模式" else "当前为贴底模式"
-            }
-            setOnClickListener { view ->
-                feedback()
-                floatingKeyboard = !floatingKeyboard
-                listener.onFloatingKeyboardChanged(floatingKeyboard)
-                val label = if (floatingKeyboard) "贴底固定" else "恢复浮动"
-                (view as TextView).text = label
-                view.contentDescription = label
-                if (Build.VERSION.SDK_INT >= 30) {
-                    view.stateDescription = if (floatingKeyboard) "当前为浮动模式" else "当前为贴底模式"
-                }
-                refreshDragHandleState()
-            }
-        }
-        floatingToggle = toggle
-        header.addView(toggle, LinearLayout.LayoutParams(dp(88), dp(48)))
-        hud.addView(header, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(48),
-        ).apply { bottomMargin = dp(2) })
-        val macroRow = HorizontalScrollView(context)
-        val macroContent = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        macros.forEach { m ->
-            macroContent.addView(
-                key(m, true, null, 1f, 11f) { listener.onCharacter(m) }.apply {
-                    tag = "game-mini"
-                },
-                wrapParams(),
-            )
-        }
-        macroRow.addView(macroContent, ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        hud.addView(macroRow, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(48),
-        ))
-        listOf("qwertyuiop", "asdfghjkl", "zxcvbnm").forEachIndexed { rowIndex, rowText ->
-            val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            rowText.forEach { ch ->
-                row.addView(
-                    key(ch.toString(), false, null, 1f, 13f) { listener.onCharacter(ch.toString()) }.apply {
-                        tag = "game-mini"
-                    },
-                    LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(4) },
-                )
-            }
-            if (rowText.startsWith("z")) {
-                row.addView(
-                    key("空格", true, null, 1.2f, 11f) { listener.onSpace() }.apply {
-                        tag = "game-mini"
-                    },
-                    LinearLayout.LayoutParams(0, dp(48), 1.2f).apply { marginEnd = dp(4) },
-                )
-                val gameBackspace = backspaceKey().apply { tag = "game-mini" }
-                row.addView(gameBackspace, LinearLayout.LayoutParams(0, dp(48), 1.2f).apply { marginEnd = dp(4) })
-                row.addView(
-                    key("发送", true, null, 1.6f, 12f) { listener.onEnter() }.apply {
-                        tag = "game-mini"
-                    },
-                    LinearLayout.LayoutParams(0, dp(48), 1.6f),
-                )
-            }
-            hud.addView(row, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(48),
-            ).apply { bottomMargin = if (rowIndex < 2) dp(1) else 0 })
-        }
-        val stage = FrameLayout(context).apply {
-            tag = "floating-stage"
-            clipChildren = false
-        }
-        val cardWidth = minOf(
-            dp(360),
-            (width - contentInsetPx * 2 - dp(8)).coerceAtLeast(dp(1)),
-        )
-        stage.addView(hud, FrameLayout.LayoutParams(
-            cardWidth,
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-        ).apply {
-            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            topMargin = dp(8)
-        })
-        expandedPanel.addView(
-            stage,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1f,
-            ),
-        )
-    }
-
     /** Route the keyboard's own keys into an inline quick-phrase editor. */
     fun insertIntoInlineEditor(text: String): Boolean {
         val target = inlineEditTarget?.takeIf { it.hasFocus() } ?: return false
@@ -4994,7 +5009,19 @@ open class ImeKeyboardView(
 
     protected fun feedback() {
         if (hapticEnabled) performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-        if (soundEnabled) playSoundEffect(SoundEffectConstants.CLICK)
+        if (soundEnabled) {
+            // View effects can be disabled by an IME host window even when the
+            // app preference is on. Use the system keypress channel directly;
+            // the view channel remains the fallback for standalone previews.
+            runCatching {
+                if (audioManager != null) {
+                    audioManager?.playSoundEffect(AudioManager.FX_KEYPRESS_STANDARD)
+                } else {
+                    isSoundEffectsEnabled = true
+                    playSoundEffect(SoundEffectConstants.CLICK)
+                }
+            }
+        }
     }
 
     /** Haptic-only confirmation (no key click sound), e.g. when voice arms. */
@@ -5492,6 +5519,7 @@ open class ImeKeyboardView(
         composition.setTextColor(t.keySecondaryText)
         candidateExpandBtn.setTextColor(t.keySecondaryText)
         candidateEmojiBtn.setTextColor(t.keySecondaryText)
+        applyFloatingChromeTheme(t)
         if (voiceInlineActive) applyInlineVoicePalette()
     }
 
@@ -5500,6 +5528,20 @@ open class ImeKeyboardView(
         val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
         applyThemeRecursive(target, theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor)))
+    }
+
+    private fun applyFloatingChromeTheme(tokens: ImeTheme.Tokens? = null) {
+        if (!::floatingDragHandle.isInitialized) return
+        val night = isNight()
+        val t = tokens ?: theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor))
+        (floatingDragHandle as? FloatingDragHandleView)?.setDotColor(t.border)
+        if (floatingWindowMode) {
+            mainDock.background = rounded(t.keyboardBackground, dp(ImeGeometryTokens.CARD_RADIUS_DP))
+            mainDock.clipToOutline = true
+        } else {
+            mainDock.setBackgroundColor(t.expandedBackground)
+            mainDock.clipToOutline = false
+        }
     }
 
     private fun applyThemeRecursive(view: View, t: ImeTheme.Tokens) {
@@ -5574,7 +5616,7 @@ open class ImeKeyboardView(
                         t.sideKeyBackground,
                         dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
                     )
-                    "setting-group", "gaming-panel" -> view.background = rounded(
+                    "setting-group" -> view.background = rounded(
                         t.toolCardBackground,
                         dp(ImeGeometryTokens.CARD_RADIUS_DP),
                     )
@@ -5695,7 +5737,6 @@ open class ImeKeyboardView(
                     }
                     tag == "panel-button" ||
                         tag == "clipboard-refresh" ||
-                        tag == "floating-toggle" ||
                         tag?.startsWith("clip-pin:") == true ||
                         tag?.startsWith("clip-use:") == true ||
                         tag?.startsWith("phrase-edit:") == true ||

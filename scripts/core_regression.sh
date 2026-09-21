@@ -36,6 +36,20 @@ mkdir -p "$TMP_DIR"
 say() { printf '%s\n' "$*"; }
 adb_do() { "$ADB" -s "$SERIAL" "$@"; }
 
+wait_for_default_ime() {
+  local target="$1" current attempt
+  for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    current="$(adb_do shell settings get secure default_input_method | tr -d '\r')"
+    if [[ "$current" == "$target" ]]; then
+      return 0
+    fi
+    adb_do shell ime set --user 0 "$target" >/dev/null 2>&1 || true
+    sleep 0.25
+  done
+  say "FAIL default IME not selected: expected=$target actual=$current" >&2
+  return 1
+}
+
 node_field() {
   # node_field <xml-file> <resource-id> <attribute>
   python3 - "$1" "$2" "$3" <<'PY'
@@ -139,6 +153,7 @@ adb_do shell settings put --user 0 secure enabled_input_methods "$PKG/.LocalVoic
 adb_do shell settings put --user 0 secure default_input_method "$PKG/.LocalVoiceImeService" >/dev/null 2>&1
 adb_do shell ime enable --user 0 "$PKG/.LocalVoiceImeService" >/dev/null 2>&1
 adb_do shell ime set --user 0 "$PKG/.LocalVoiceImeService" >/dev/null 2>&1
+wait_for_default_ime "$PKG/.LocalVoiceImeService" || exit 1
 sleep 1
 
 start_real
