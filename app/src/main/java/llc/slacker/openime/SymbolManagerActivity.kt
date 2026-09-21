@@ -188,7 +188,7 @@ class SymbolManagerActivity : Activity() {
         fun refreshSaveState() {
             val valid = symbolEdit.text.toString().isNotBlank()
             save.isEnabled = valid
-            save.alpha = if (valid) 1f else 0.55f
+            save.alpha = 1f
             save.contentDescription = if (valid) {
                 "保存符号"
             } else {

@@ -2,6 +2,7 @@ package llc.slacker.openime
 
 import android.app.AlertDialog
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
@@ -58,7 +59,10 @@ object SetupUi {
             )
             addState(
                 intArrayOf(-android.R.attr.state_enabled),
-                rounded(dim(color, 0.55f), dp(context, radiusDp.toInt()).toFloat()),
+                rounded(
+                    context.getColor(R.color.setup_muted),
+                    dp(context, radiusDp.toInt()).toFloat(),
+                ),
             )
             addState(
                 intArrayOf(),
@@ -135,7 +139,19 @@ object SetupUi {
                 accent(context),
                 ImeGeometryTokens.CONTROL_RADIUS_DP.toFloat(),
             )
-            setTextColor(contrastText(accent(context)))
+            val accent = accent(context)
+            setTextColor(
+                ColorStateList(
+                    arrayOf(
+                        intArrayOf(-android.R.attr.state_enabled),
+                        intArrayOf(),
+                    ),
+                    intArrayOf(
+                        context.getColor(R.color.setup_muted_text),
+                        contrastText(accent),
+                    ),
+                ),
+            )
             setOnClickListener {
                 performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
                 onClick()

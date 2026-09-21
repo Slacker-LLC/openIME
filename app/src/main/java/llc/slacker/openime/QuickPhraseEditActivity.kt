@@ -158,7 +158,7 @@ class QuickPhraseEditActivity : Activity() {
         fun refreshSaveState() {
             val valid = phraseEdit.text.toString().isNotBlank()
             save.isEnabled = valid
-            save.alpha = if (valid) 1f else 0.55f
+            save.alpha = 1f
             save.contentDescription = if (valid) {
                 "保存"
             } else {
