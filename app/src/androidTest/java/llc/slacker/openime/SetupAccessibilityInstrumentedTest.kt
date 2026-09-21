@@ -30,6 +30,9 @@ class SetupAccessibilityInstrumentedTest {
                 assertTrue("Setup card must be clickable", card.isClickable)
                 assertTrue("Setup card must be focusable", card.isFocusable)
                 assertNotNull("Setup card must describe its current action", card.contentDescription)
+                if (android.os.Build.VERSION.SDK_INT >= 30) {
+                    assertNotNull("Setup card must expose its current state", card.stateDescription)
+                }
                 for (index in 0 until card.childCount) {
                     assertEquals(
                         "Setup card visuals must not create duplicate nodes",

@@ -140,6 +140,10 @@ class MainActivity : Activity() {
         findViewById<View>(R.id.voice_permission).contentDescription = getString(
             if (microphoneGranted) R.string.voice_permission_ready else R.string.voice_permission_enable,
         )
+        if (Build.VERSION.SDK_INT >= 30) {
+            findViewById<View>(R.id.voice_permission).stateDescription =
+                if (microphoneGranted) "已授权" else "未授权，可选"
+        }
         val ready = enabled && selected
         findViewById<View>(R.id.open_app_settings).apply {
             isEnabled = ready
@@ -148,6 +152,9 @@ class MainActivity : Activity() {
             contentDescription = getString(
                 if (ready) R.string.open_app_settings else R.string.setup_need_switch,
             )
+            if (Build.VERSION.SDK_INT >= 30) {
+                stateDescription = if (ready) "可用" else "需先完成输入法设置"
+            }
         }
     }
 
@@ -224,6 +231,13 @@ class MainActivity : Activity() {
             done -> doneText
             active -> activeText
             else -> "$activeText，完成上一步后可用"
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            row.stateDescription = when {
+                done -> "已完成，可再次打开"
+                active -> "当前步骤"
+                else -> "暂不可用"
+            }
         }
     }
 
