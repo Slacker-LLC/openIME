@@ -1631,6 +1631,37 @@ open class ImeKeyboardView(
         onViewHierarchyRebuilt()
         renderedMode = mode
         syncSensitiveVoice()
+        syncModeAccessibility()
+    }
+
+    /**
+     * The compact "中/英" glyph is intentionally stable, but its action is
+     * not: Chinese goes to English 26-key, English returns to the user's
+     * preferred Chinese layout, and the digits page returns to text. Keep that
+     * context available to TalkBack and hardware-keyboard focus without making
+     * the visual key wider or adding another persistent label.
+     */
+    private fun syncModeAccessibility() {
+        val modeKey = findViewWithTag<View>("key:mode") ?: return
+        val target = when (mode) {
+            KeyboardMode.PINYIN_26, KeyboardMode.PINYIN_9 -> "英文 26 键"
+            KeyboardMode.ENGLISH_26 -> if (preferredChineseMode == KeyboardMode.PINYIN_9) "中文九键" else "中文 26 键"
+            KeyboardMode.DIGITS -> "文字键盘"
+            KeyboardMode.ENGLISH_T9 -> "中文键盘"
+        }
+        modeKey.contentDescription = when (mode) {
+            KeyboardMode.DIGITS -> "返回文字键盘"
+            else -> "中英切换，点击切换到$target"
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            modeKey.stateDescription = when (mode) {
+                KeyboardMode.PINYIN_26 -> "当前中文 26 键"
+                KeyboardMode.PINYIN_9 -> "当前中文九键"
+                KeyboardMode.ENGLISH_26 -> "当前英文 26 键"
+                KeyboardMode.DIGITS -> "当前数字键盘"
+                KeyboardMode.ENGLISH_T9 -> "当前英文九键"
+            }
+        }
     }
 
     private fun renderPinyin26() {
