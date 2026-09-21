@@ -71,7 +71,7 @@ object SetupUi {
         }
     }
 
-    /** Secondary pill used by setup actions; its focus ring follows the accent. */
+    /** Secondary rounded-rectangle control used by setup actions. */
     fun mutedPillBackground(context: Context): StateListDrawable {
         val surface = context.getColor(R.color.setup_muted)
         val pressed = context.getColor(R.color.setup_muted_pressed)

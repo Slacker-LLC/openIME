@@ -1,11 +1,14 @@
 package llc.slacker.openime
 
+import android.media.AudioManager
+import android.os.Build
 import android.view.inputmethod.InputConnection
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.lang.reflect.Proxy
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -27,6 +30,34 @@ class ManualVoiceOwnershipInstrumentedTest {
 
     @Test fun inactiveVoiceDoesNotClearOrdinaryEditorComposition() {
         verifyManualEdits(voiceComposing = false)
+    }
+
+    @Test fun voiceMediaMuteRestoresTheOriginalMediaState() {
+        val audio = context.getSystemService(AudioManager::class.java)
+            ?: error("AudioManager unavailable on the emulator")
+        val originalVolume = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
+        val originalMuted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            audio.isStreamMute(AudioManager.STREAM_MUSIC)
+        } else {
+            false
+        }
+        val controller = VoiceMediaMuteController(context)
+        try {
+            assertTrue("Voice start must mute media immediately", controller.mute())
+            val mutedNow = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                audio.isStreamMute(AudioManager.STREAM_MUSIC)
+            } else {
+                audio.getStreamVolume(AudioManager.STREAM_MUSIC) == 0
+            }
+            assertTrue("Media must be silent while voice is active", mutedNow)
+            assertTrue("Repeated voice-start callbacks must be idempotent", controller.mute())
+        } finally {
+            controller.restore()
+        }
+        assertEquals(originalVolume, audio.getStreamVolume(AudioManager.STREAM_MUSIC))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            assertEquals(originalMuted, audio.isStreamMute(AudioManager.STREAM_MUSIC))
+        }
     }
 
     private fun verifyManualEdits(voiceComposing: Boolean) {

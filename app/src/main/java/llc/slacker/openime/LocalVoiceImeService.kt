@@ -64,6 +64,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
     private var voiceComposing = false
     private var voiceAutoCommitOnFinal = true
     private var pendingVoiceCorrection: PendingVoiceCorrection? = null
+    private val voiceMediaMute by lazy { VoiceMediaMuteController(this) }
     private val candidateExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "ime-candidates").apply { isDaemon = true }
     }
@@ -386,6 +387,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
     override fun onFinishInput() {
         invalidateCandidateQueries()
         finalizeVoiceCorrectionIfNeeded()
+        voiceMediaMute.restore()
         // shutdown() cancels an active voice session and its callback clears
         // voiceComposing. Check ownership afterwards so we never cancel twice.
         keyboardView?.shutdown()
@@ -400,6 +402,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
+        voiceMediaMute.restore()
         keyboardView?.shutdown()
         keyboardView = null
         if (::voiceLifecycle.isInitialized) voiceLifecycle.onFinishInputView()
@@ -450,6 +453,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
         mainHandler.removeCallbacksAndMessages(null)
         candidateExecutor.shutdownNow()
         invalidateCandidateQueries()
+        voiceMediaMute.restore()
         // The keyboard view owns a Handler with pending key-repeat callbacks
         // and holds this service as its listener. Releasing it here keeps the
         // view tree (and its Context reference) from outliving the service.
@@ -727,21 +731,29 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
     }
 
     override fun onVoiceToggle() {
+        if (state.passwordField) return
+        voiceMediaMute.mute()
         keyboardView?.toggleVoiceFromSpace()
     }
 
     override fun onVoicePressChanged(pressed: Boolean) {
         if (pressed) {
+            if (state.passwordField) return
+            // Mute before model startup is posted so media cannot leak through
+            // during the preparation window shown to the user.
+            voiceMediaMute.mute()
             commitPendingComposition()
             finalizeVoiceCorrectionIfNeeded()
             voiceAutoCommitOnFinal = true
             keyboardView?.startVoiceFromSpace()
         } else {
             keyboardView?.stopVoiceFromSpace()
+            voiceMediaMute.restore()
         }
     }
 
     override fun onVoiceSessionStarted(autoCommitOnFinal: Boolean) {
+        voiceMediaMute.mute()
         voiceAutoCommitOnFinal = autoCommitOnFinal
     }
 
@@ -761,10 +773,14 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
     }
 
     override fun stopVoiceRecognition() {
+        // Covers both the normal touch-release callback and accessibility's
+        // direct stop path, which can bypass onVoicePressChanged(false).
+        voiceMediaMute.restore()
         if (::voiceLifecycle.isInitialized) voiceLifecycle.stop()
     }
 
     override fun cancelVoiceRecognition() {
+        voiceMediaMute.restore()
         if (::voiceLifecycle.isInitialized) voiceLifecycle.cancel()
     }
 
@@ -783,6 +799,9 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
     }
 
     override fun onVoiceFinal(text: String) {
+        // The backend only emits a final after capture has stopped. This is a
+        // safety net for release paths that race with the final callback.
+        voiceMediaMute.restore()
         val plan = VoiceFinalPolicy.resolve(
             passwordField = state.passwordField,
             hadPartialComposition = voiceComposing,
@@ -807,6 +826,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
     }
 
     override fun onVoiceError(message: String) {
+        voiceMediaMute.restore()
         if (voiceComposing) gateway.cancelComposing()
         voiceComposing = false
         state = state.copy(
@@ -818,6 +838,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
     }
 
     override fun onVoiceCommit() {
+        voiceMediaMute.restore()
         if (!state.passwordField && voiceComposing) gateway.finishComposing()
         voiceComposing = false
         state = state.copy(
@@ -830,6 +851,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
     }
 
     override fun onVoiceCancel() {
+        voiceMediaMute.restore()
         if (!state.passwordField && voiceComposing) gateway.cancelComposing()
         voiceComposing = false
         state = state.copy(

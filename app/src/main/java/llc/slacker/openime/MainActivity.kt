@@ -223,7 +223,10 @@ class MainActivity : Activity() {
             if (active) accent else if (done) getColor(R.color.setup_ready) else accent,
         )
         if (active) {
-            mark.background = oval(contrastText(accent))
+            mark.background = rounded(
+                contrastText(accent),
+                ImeGeometryTokens.BADGE_RADIUS_DP.toFloat(),
+            )
         } else if (done) {
             mark.setBackgroundResource(R.drawable.bg_setup_mark_done)
         } else {
@@ -285,11 +288,6 @@ class MainActivity : Activity() {
         setColor(color)
         cornerRadius = radiusDp * resources.displayMetrics.density
         strokeColor?.let { setStroke(resources.displayMetrics.density.toInt().coerceAtLeast(1), it) }
-    }
-
-    private fun oval(color: Int): GradientDrawable = GradientDrawable().apply {
-        shape = GradientDrawable.OVAL
-        setColor(color)
     }
 
     private fun dim(color: Int, factor: Float): Int = Color.rgb(

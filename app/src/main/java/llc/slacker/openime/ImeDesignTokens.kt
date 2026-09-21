@@ -5,23 +5,33 @@ import android.graphics.Color
 /**
  * Shared geometry vocabulary for the native surfaces.
  *
- * These values are semantic rather than one universal radius: keys need a
- * tighter silhouette, cards need a calmer container edge, and pills are
- * intentionally fully rounded. Keeping the scale here prevents each panel
- * from inventing another near-identical corner radius.
+ * Ordinary interactive surfaces use rounded rectangles. The few remaining
+ * exceptions are semantic shapes: color swatches and switch knobs are dots,
+ * while switches and waveform bars are capsules. Keeping the scale here
+ * prevents each panel from inventing another near-identical radius or size.
  */
 internal object ImeGeometryTokens {
     const val KEY_RADIUS_DP = 8
     const val CONTROL_RADIUS_DP = 12
     const val CARD_RADIUS_DP = 16
-    const val BADGE_RADIUS_DP = 6
-    const val SETUP_PILL_RADIUS_DP = 28
+    const val BADGE_RADIUS_DP = 8
+    // Kept as a compatibility name for setup callers; setup actions are no
+    // longer full pills and use the same radius as every other control.
+    const val SETUP_PILL_RADIUS_DP = CONTROL_RADIUS_DP
     const val PILL_RADIUS_DP = 99
-    const val DIALOG_RADIUS_DP = 24
+    const val DIALOG_RADIUS_DP = CARD_RADIUS_DP
 
     const val TOUCH_TARGET_DP = 48
     const val FIELD_HEIGHT_DP = 56
     const val PRIMARY_ROW_HEIGHT_DP = 56
+    const val SETTING_ROW_HEIGHT_DP = 56
+    const val TOOL_CARD_HEIGHT_DP = 64
+    const val VOICE_CONTROL_HEIGHT_DP = TOUCH_TARGET_DP
+    const val SWITCH_WIDTH_DP = 48
+    const val SWITCH_HEIGHT_DP = 28
+    const val SWITCH_KNOB_DP = 20
+    const val SWITCH_PADDING_DP = 4
+    const val SWITCH_KNOB_TRAVEL_DP = SWITCH_WIDTH_DP - SWITCH_PADDING_DP * 2 - SWITCH_KNOB_DP
     const val KEY_ROW_GAP_DP = 6
     const val LANDSCAPE_KEY_ROW_HEIGHT_DP = 40
     const val TOOLBAR_HEIGHT_DP = 64

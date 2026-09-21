@@ -11,6 +11,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
+import android.widget.ScrollView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -439,6 +440,61 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun nineKeyAndDigitSymbolRailsScrollAndIncludeCustomSymbols() {
+        val context = androidx.test.platform.app.InstrumentationRegistry
+            .getInstrumentation()
+            .targetContext
+        val custom = CustomSymbolRepository.upsert(context, 0L, "测试", "⌘")
+            ?: error("Unable to create the custom symbol fixture")
+        try {
+            withKeyboard { harness, _, keyboard ->
+                harness.awaitMain {
+                    keyboard.setMode(KeyboardMode.PINYIN_9, notifyListener = false)
+                    true
+                }
+                harness.awaitMain {
+                    val rail = keyboard.findViewWithTag<View>("nine-punct-stack")
+                    if (rail !is ScrollView) return@awaitMain null
+                    assertTrue("Nine-key symbols must advertise vertical scrolling", rail.contentDescription.toString().contains("上下滑动"))
+                    assertNotNull("Custom symbols must appear in the nine-key rail", keyboard.findViewWithTag<View>("punct:⌘"))
+                    true
+                }
+                harness.awaitMain {
+                    keyboard.setMode(KeyboardMode.DIGITS, notifyListener = false)
+                    true
+                }
+                harness.awaitMain {
+                    val rail = keyboard.findViewWithTag<View>("digits-symbol-scroll")
+                    if (rail !is ScrollView) return@awaitMain null
+                    assertTrue("Digit symbols must advertise vertical scrolling", rail.contentDescription.toString().contains("上下滑动"))
+                    assertNotNull("Custom symbols must appear in the digit rail", keyboard.findViewWithTag<View>("digit-symbol:⌘"))
+                    true
+                }
+            }
+        } finally {
+            CustomSymbolRepository.remove(context, custom.id)
+        }
+    }
+
+    @Test
+    fun composingKeepsKeyboardGeometryStableAndEnglishUsesOneLine() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            val topZone = keyboard.findViewWithTag<View>("ime_toolbar")
+            val keyboardHost = keyboard.findViewWithTag<View>("keyboard-host")
+            val topBefore = topZone.layoutParams.height
+            val bodyBefore = keyboardHost.layoutParams.height
+            keyboard.setMode(KeyboardMode.ENGLISH_26, notifyListener = false)
+            keyboard.renderState(ImeState(composition = "open", candidates = listOf("open", "openime")))
+            assertEquals("Typing must not change the reserved top-zone height", topBefore, topZone.layoutParams.height)
+            assertEquals("Typing must not shrink the keyboard body", bodyBefore, keyboardHost.layoutParams.height)
+            assertEquals(View.GONE, keyboard.findViewWithTag<View>("pinyin-composition-editor").visibility)
+            assertEquals(View.VISIBLE, keyboard.findViewWithTag<View>("candidate-field").visibility)
+            assertEquals("open", keyboard.findViewWithTag<View>("candidate-first").let { (it as android.widget.TextView).text })
+            true
+        }
+    }
+
+    @Test
     fun settingToggleUsesOneFocusableStatefulRow() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.showPanel(Panel.FUZZY_SETTINGS)
@@ -449,6 +505,10 @@ class AuditInteractionInstrumentedTest {
             assertTrue("Settings row must be keyboard-focusable", row.isFocusable)
             assertTrue("Settings row must expose its current state", row.contentDescription.toString().contains("已关闭"))
             assertTrue("The visual switch must not create a duplicate accessibility node", toggle.importantForAccessibility == View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS)
+            assertTrue(
+                "Visual switch track minimum must be wider than tall",
+                toggle.minimumWidth > toggle.minimumHeight,
+            )
             assertTrue("Setting icon must remain decorative", icon.importantForAccessibility == View.IMPORTANT_FOR_ACCESSIBILITY_NO)
             val offColor = (toggle.background as GradientDrawable).color?.defaultColor
             assertTrue(row.performClick())

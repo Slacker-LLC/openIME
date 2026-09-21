@@ -21,8 +21,10 @@ import android.widget.TextView
  * decoration, notably the dedicated phone-keypad literals.
  */
 internal object NineKeySymbolRailDecorator {
-    private const val LEGACY_TAG = "nine-punct-stack"
-    private const val CONTENT_TAG = "nine-symbol-scroll-content"
+    private const val NINE_RAIL_TAG = "nine-punct-stack"
+    private const val DIGITS_RAIL_TAG = "digits-symbol-scroll"
+    private const val NINE_CONTENT_TAG = "nine-symbol-scroll-content"
+    private const val DIGITS_CONTENT_TAG = "digits-symbol-scroll-content"
     private const val FILTER_TAG = "nine-pinyin-path-filter"
     private const val CELL_HEIGHT_DP = 48
     private const val WATCHER_TAG = 0x1F000081
@@ -34,15 +36,53 @@ internal object NineKeySymbolRailDecorator {
     ) {
         decoratePhoneKeypad(root, onCommit, onFeedback)
 
-        val tagged = root.findViewWithTag<View>(LEGACY_TAG) ?: return
+        decorateRail(
+            root = root,
+            sourceTag = NINE_RAIL_TAG,
+            railTag = NINE_RAIL_TAG,
+            contentTag = NINE_CONTENT_TAG,
+            symbols = commonSymbols(root.context),
+            onCommit = onCommit,
+            onFeedback = onFeedback,
+        )
+        decorateRail(
+            root = root,
+            sourceTag = "digits-symbol-stack",
+            railTag = DIGITS_RAIL_TAG,
+            contentTag = DIGITS_CONTENT_TAG,
+            symbols = digitSymbols(root.context),
+            onCommit = onCommit,
+            onFeedback = onFeedback,
+        )
+
+        installFilterWatcher(root, onFeedback)
+        refreshPinyinFilters(root, onFeedback)
+        (root as? ImeKeyboardView)?.applyThemeToSubtree(root)
+    }
+
+    private fun decorateRail(
+        root: View,
+        sourceTag: String,
+        railTag: String,
+        contentTag: String,
+        symbols: List<String>,
+        onCommit: (String) -> Unit,
+        onFeedback: () -> Unit,
+    ) {
+        val tagged = root.findViewWithTag<View>(railTag)
+            ?: root.findViewWithTag<View>(sourceTag)
+            ?: return
         val scroll = when (tagged) {
             is ScrollView -> tagged
-            is LinearLayout -> wrapLegacyStack(tagged)
+            is LinearLayout -> wrapLegacyStack(tagged, railTag, contentTag)
             else -> return
         }
         val content = scroll.getChildAt(0) as? LinearLayout ?: return
-        val symbols = commonSymbols()
-        val filter = content.findViewWithTag<TextView>(FILTER_TAG)
+        val filter = if (railTag == NINE_RAIL_TAG) {
+            content.findViewWithTag<TextView>(FILTER_TAG)
+        } else {
+            null
+        }
         val offset = if (filter != null) 1 else 0
         val alreadyDecorated = tagged is ScrollView &&
             content.childCount == symbols.size + offset &&
@@ -65,15 +105,18 @@ internal object NineKeySymbolRailDecorator {
             }
             symbols.forEachIndexed { index, symbol ->
                 content.addView(
-                    symbolCell(content.context, symbol, inheritedTextColor, onCommit, onFeedback),
+                    symbolCell(
+                        context = content.context,
+                        symbol = symbol,
+                        inheritedTextColor = inheritedTextColor,
+                        tagPrefix = if (railTag == DIGITS_RAIL_TAG) "digit-symbol:" else "punct:",
+                        onCommit = onCommit,
+                        onFeedback = onFeedback,
+                    ),
                     cellParams(content.context, withGap = index < symbols.lastIndex),
                 )
             }
         }
-
-        installFilterWatcher(root, onFeedback)
-        refreshPinyinFilters(root, onFeedback)
-        (root as? ImeKeyboardView)?.applyThemeToSubtree(root)
     }
 
     /**
@@ -92,7 +135,9 @@ internal object NineKeySymbolRailDecorator {
         if (kind != EditorInfoAdapter.EditorKind.PHONE) return
         if (root.findViewWithTag<View>("digits-layout") == null) return
 
-        (root.findViewWithTag<View>("digits-symbol-stack")?.parent as? View)?.visibility = View.GONE
+        val symbolContent = root.findViewWithTag<View>("digits-symbol-stack")
+            ?: root.findViewWithTag<View>(DIGITS_CONTENT_TAG)
+        (symbolContent?.parent as? View)?.visibility = View.GONE
 
         PhoneKeypadPolicy.literalByTag.forEach { (tag, literal) ->
             val key = root.findViewWithTag<ImeKeyView>(tag) ?: return@forEach
@@ -132,7 +177,7 @@ internal object NineKeySymbolRailDecorator {
     }
 
     private fun refreshPinyinFilters(root: View, onFeedback: () -> Unit) {
-        val scroll = root.findViewWithTag<ScrollView>(LEGACY_TAG) ?: return
+        val scroll = root.findViewWithTag<ScrollView>(NINE_RAIL_TAG) ?: return
         val content = scroll.getChildAt(0) as? LinearLayout ?: return
         if (root.findViewWithTag<View>("pinyin9-layout") == null) {
             content.findViewWithTag<View>(FILTER_TAG)?.let(content::removeView)
@@ -183,7 +228,7 @@ internal object NineKeySymbolRailDecorator {
         onFeedback: () -> Unit = {},
         onSelect: (String) -> Unit,
     ) {
-        val scroll = root.findViewWithTag<ScrollView>(LEGACY_TAG) ?: return
+        val scroll = root.findViewWithTag<ScrollView>(NINE_RAIL_TAG) ?: return
         val content = scroll.getChildAt(0) as? LinearLayout ?: return
         val choices = filters
             .asSequence()
@@ -235,7 +280,7 @@ internal object NineKeySymbolRailDecorator {
         if (scroll.scrollY != 0) scroll.post { scroll.scrollTo(0, 0) }
     }
 
-    private fun commonSymbols(): List<String> = ImeData.symbols["常用"]
+    private fun commonSymbols(context: Context): List<String> = customSymbols(context) + ImeData.symbols["常用"]
         .orEmpty()
         .asSequence()
         .filter { it.isNotBlank() }
@@ -243,13 +288,28 @@ internal object NineKeySymbolRailDecorator {
         .toList()
         .ifEmpty { listOf("，", "。", "？", "！") }
 
-    private fun wrapLegacyStack(stack: LinearLayout): ScrollView {
+    private fun digitSymbols(context: Context): List<String> = customSymbols(context) +
+        listOf("%", "+", "−", "＊") + ImeData.symbols["常用"].orEmpty()
+            .asSequence()
+            .filter { it.isNotBlank() }
+            .toList()
+        .distinct()
+
+    private fun customSymbols(context: Context): List<String> = CustomSymbolRepository.load(context)
+        .map { it.symbol }
+        .filter { it.isNotBlank() }
+
+    private fun wrapLegacyStack(
+        stack: LinearLayout,
+        railTag: String,
+        contentTag: String,
+    ): ScrollView {
         val parent = stack.parent as? ViewGroup ?: return ScrollView(stack.context)
         val index = parent.indexOfChild(stack)
         val slotParams = stack.layoutParams
         val legacyBackground = stack.background
 
-        stack.tag = CONTENT_TAG
+        stack.tag = contentTag
         stack.background = null
         stack.layoutParams = ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -257,12 +317,16 @@ internal object NineKeySymbolRailDecorator {
         )
 
         val scroll = ScrollView(stack.context).apply {
-            tag = LEGACY_TAG
+            tag = railTag
             background = legacyBackground
             isVerticalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
             clipToPadding = false
-            contentDescription = "九键常用符号，上下滑动查看更多"
+            contentDescription = if (railTag == NINE_RAIL_TAG) {
+                "九键常用符号，上下滑动查看更多"
+            } else {
+                "数字键盘符号，上下滑动查看更多"
+            }
         }
 
         parent.removeViewAt(index)
@@ -281,16 +345,18 @@ internal object NineKeySymbolRailDecorator {
         context: Context,
         symbol: String,
         inheritedTextColor: Int?,
+        tagPrefix: String,
         onCommit: (String) -> Unit,
         onFeedback: () -> Unit,
     ): TextView = TextView(context).apply {
         text = symbol
-        textSize = 17f
+        textSize = if (symbol.length > 2) 12f else 17f
         gravity = Gravity.CENTER
-        tag = "punct:$symbol"
+        tag = "$tagPrefix$symbol"
         contentDescription = symbol
         isClickable = true
         isFocusable = true
+        maxLines = 2
         minimumHeight = dp(context, CELL_HEIGHT_DP)
         inheritedTextColor?.let(::setTextColor)
         setOnClickListener {

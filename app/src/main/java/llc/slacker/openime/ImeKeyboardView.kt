@@ -267,6 +267,14 @@ open class ImeKeyboardView(
             Panel.SYMBOLS -> if (symbolCategory == "自定义") renderPanel(Panel.SYMBOLS)
             else -> Unit
         }
+        if (panel == Panel.NONE && mode in setOf(
+                KeyboardMode.PINYIN_9,
+                KeyboardMode.ENGLISH_T9,
+                KeyboardMode.DIGITS,
+            )
+        ) {
+            onViewHierarchyRebuilt()
+        }
     }
 
     private var shiftState = ShiftState.LOWERCASE
@@ -345,7 +353,6 @@ open class ImeKeyboardView(
     private val popupHideRunnable = Runnable { hidePopup() }
     private var contentInsetPx = dp(5)
     private var systemBottomInsetPx = 0
-    private var topZoneExpanded = false
     private val maxContentWidthDp = 600
     // Portrait keeps the historical 296dp total. Landscape uses a compact
     // keyboard, and key rows grow with the system font scale so sp labels are
@@ -374,17 +381,17 @@ open class ImeKeyboardView(
         keyRowHeightDp() * 2 + ImeGeometryTokens.KEY_ROW_GAP_DP
 
     private fun imeHeightDp(): Int {
+        // Reserve the composed top-zone height even while idle. If this uses
+        // the smaller toolbar height until the first keypress, the IME window
+        // relayouts and the whole keyboard appears to jump down while typing.
         // Toolbar + four key rows + three shared gaps + bottom breathing.
-        val derived = ImeGeometryTokens.TOOLBAR_HEIGHT_DP +
+        val derived = ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP +
             keyRowHeightDp() * 4 + ImeGeometryTokens.KEY_ROW_GAP_DP * 3 + 22
-        return maxOf(if (isLandscape()) 258 else 296, derived)
+        return maxOf(if (isLandscape()) 264 else 302, derived)
     }
 
-    private fun topZoneHeightDp(): Int = if (topZoneExpanded) {
-        ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP
-    } else {
-        ImeGeometryTokens.TOOLBAR_HEIGHT_DP
-    }
+    /** The top zone is reserved at its composed height in every state. */
+    private fun topZoneHeightDp(): Int = ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP
     private fun keyboardBodyHeightDp(): Int = imeHeightDp() - topZoneHeightDp()
     private fun panelBodyHeightDp(): Int =
         (imeHeightDp() - ImeGeometryTokens.TOUCH_TARGET_DP).coerceAtLeast(0)
@@ -401,6 +408,7 @@ open class ImeKeyboardView(
     private lateinit var toolbarRow: LinearLayout
     private lateinit var composeZone: LinearLayout
     private lateinit var composition: EditText
+    private lateinit var candidateField: LinearLayout
     private lateinit var candidateRow: LinearLayout
     private lateinit var associationRow: LinearLayout
     private lateinit var candidateExpandBtn: TextView
@@ -630,7 +638,7 @@ open class ImeKeyboardView(
             contentInsetPx,
             dp(6),
             contentInsetPx,
-            dp(if (topZoneExpanded) 10 else 16),
+            dp(16),
         )
         keyboardBody.findViewWithTag<View>("key-row-secondary")?.let { row ->
             val rowWidth = ((measuredWidthPx - contentInsetPx * 2) * 0.9f).toInt()
@@ -648,15 +656,15 @@ open class ImeKeyboardView(
         requestLayout()
     }
 
-    /** Idle top zone is 64dp; composing expands to 70dp for a 48dp candidate target. */
+    /** Keep the top zone at one height so composing never relayouts the keyboard. */
     private fun buildTopZone() {
         topZone = LinearLayout(context).apply {
             tag = "ime_toolbar"
             orientation = LinearLayout.VERTICAL
-            minimumHeight = dp(ImeGeometryTokens.TOOLBAR_HEIGHT_DP)
+            minimumHeight = dp(ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(ImeGeometryTokens.TOOLBAR_HEIGHT_DP),
+                dp(ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP),
             )
         }
         toolbarRow = LinearLayout(context).apply {
@@ -664,7 +672,7 @@ open class ImeKeyboardView(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(10), 0, dp(10), 0)
-            minimumHeight = dp(ImeGeometryTokens.TOOLBAR_HEIGHT_DP)
+            minimumHeight = dp(ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP)
         }
         toolbarRow.addView(
             toolbarIcon(R.drawable.ic_grid, "切换键盘", "keyboard-selector") { showPanel(Panel.KEYBOARD_SELECT) },
@@ -729,7 +737,7 @@ open class ImeKeyboardView(
         )
         topZone.addView(toolbarRow, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(ImeGeometryTokens.TOOLBAR_HEIGHT_DP),
+            dp(ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP),
         ))
 
         composeZone = LinearLayout(context).apply {
@@ -767,9 +775,10 @@ open class ImeKeyboardView(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(22),
         ))
-        val candField = LinearLayout(context).apply {
+        candidateField = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            tag = "candidate-field"
         }
         candidateRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -787,8 +796,8 @@ open class ImeKeyboardView(
                 ),
             )
         }
-        candField.setPadding(dp(8), 0, dp(8), 0)
-        candField.addView(
+        candidateField.setPadding(dp(8), 0, dp(8), 0)
+        candidateField.addView(
             candScroll,
             LinearLayout.LayoutParams(0, dp(ImeGeometryTokens.TOUCH_TARGET_DP), 1f),
         )
@@ -808,7 +817,7 @@ open class ImeKeyboardView(
                 showPanel(Panel.EMOJI)
             }
         }
-        candField.addView(
+        candidateField.addView(
             candidateEmojiBtn,
             LinearLayout.LayoutParams(
                 dp(ImeGeometryTokens.TOUCH_TARGET_DP),
@@ -831,14 +840,14 @@ open class ImeKeyboardView(
                 listener.onCandidateExpanded(open)
             }
         }
-        candField.addView(
+        candidateField.addView(
             candidateExpandBtn,
             LinearLayout.LayoutParams(
                 dp(ImeGeometryTokens.TOUCH_TARGET_DP),
                 dp(ImeGeometryTokens.TOUCH_TARGET_DP),
             ),
         )
-        composeZone.addView(candField, LinearLayout.LayoutParams(
+        composeZone.addView(candidateField, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(ImeGeometryTokens.TOUCH_TARGET_DP),
         ))
@@ -1400,7 +1409,6 @@ open class ImeKeyboardView(
     }
 
     private fun updateTopZone(composing: Boolean) {
-        topZoneExpanded = composing && !voiceInlineActive
         val topHeight = dp(topZoneHeightDp())
         topZone.minimumHeight = topHeight
         (topZone.layoutParams as? LinearLayout.LayoutParams)?.let {
@@ -1420,7 +1428,7 @@ open class ImeKeyboardView(
             contentInsetPx,
             dp(6),
             contentInsetPx,
-            dp(if (topZoneExpanded) 10 else 16),
+            dp(16),
         )
         if (voiceInlineActive) {
             toolbarRow.visibility = View.GONE
@@ -1431,6 +1439,15 @@ open class ImeKeyboardView(
         voiceInlineZone.visibility = View.GONE
         toolbarRow.visibility = if (composing) View.GONE else View.VISIBLE
         composeZone.visibility = if (composing) View.VISIBLE else View.GONE
+        // Chinese composition uses two semantic lines (pinyin + candidates).
+        // English composition is already the final text stream, so only keep
+        // the single candidate strip and never show a second pinyin editor.
+        composition.visibility = if (composing && mode != KeyboardMode.ENGLISH_26) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+        candidateField.visibility = if (composing) View.VISIBLE else View.GONE
     }
 
     private fun conciseVoiceError(message: String): String = when {
@@ -2633,15 +2650,15 @@ open class ImeKeyboardView(
                 }
                 row.addView(
                     toolEntryView,
-                    LinearLayout.LayoutParams(0, dp(66), 1f).apply { marginEnd = dp(8) },
+                    LinearLayout.LayoutParams(0, dp(ImeGeometryTokens.TOOL_CARD_HEIGHT_DP), 1f).apply { marginEnd = dp(8) },
                 )
             }
             repeat(4 - chunk.size) {
-                row.addView(View(context), LinearLayout.LayoutParams(0, dp(66), 1f).apply { marginEnd = dp(8) })
+                row.addView(View(context), LinearLayout.LayoutParams(0, dp(ImeGeometryTokens.TOOL_CARD_HEIGHT_DP), 1f).apply { marginEnd = dp(8) })
             }
             grid.addView(row, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(66),
+                dp(ImeGeometryTokens.TOOL_CARD_HEIGHT_DP),
             ).apply { bottomMargin = dp(8) })
         }
         body.addView(grid, matchParams())
@@ -3039,19 +3056,25 @@ open class ImeKeyboardView(
             }
         }
         refreshLanguageControl()
-        controls.addView(langButton, LinearLayout.LayoutParams(0, dp(58), 1f))
+        controls.addView(langButton, LinearLayout.LayoutParams(0, dp(ImeGeometryTokens.VOICE_CONTROL_HEIGHT_DP), 1f))
         val micButton = button("🎤", 18f, false).apply {
             tag = "voice-mic"
             isEnabled = false
             contentDescription = "语音状态，当前未开始，仅支持长按空格启动"
         }
-        controls.addView(micButton, LinearLayout.LayoutParams(dp(58), dp(58)))
+        controls.addView(
+            micButton,
+            LinearLayout.LayoutParams(
+                dp(ImeGeometryTokens.VOICE_CONTROL_HEIGHT_DP),
+                dp(ImeGeometryTokens.VOICE_CONTROL_HEIGHT_DP),
+            ),
+        )
         val gestureHint = button("长按空格开始", 13f, true).apply {
             tag = "voice-gesture-hint"
             isEnabled = false
             contentDescription = "长按空格开始语音，松开自动上屏，上滑取消"
         }
-        controls.addView(gestureHint, LinearLayout.LayoutParams(0, dp(58), 1f))
+        controls.addView(gestureHint, LinearLayout.LayoutParams(0, dp(ImeGeometryTokens.VOICE_CONTROL_HEIGHT_DP), 1f))
         fun setMicState(icon: String, description: String) {
             micButton.text = icon
             micButton.contentDescription = description
@@ -3062,7 +3085,7 @@ open class ImeKeyboardView(
         }
         body.addView(controls, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(58),
+            dp(ImeGeometryTokens.VOICE_CONTROL_HEIGHT_DP),
         ))
         expandedPanel.addView(body, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -4001,7 +4024,7 @@ open class ImeKeyboardView(
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(14), 0, dp(14), 0)
             tag = "setting-row"
-            minimumHeight = dp(56)
+            minimumHeight = dp(ImeGeometryTokens.SETTING_ROW_HEIGHT_DP)
             isClickable = true
             isFocusable = true
             setOnClickListener { toggleView.performClick() }
@@ -4037,7 +4060,7 @@ open class ImeKeyboardView(
             setPadding(dp(14), 0, dp(14), 0)
             tag = "setting-row"
             contentDescription = "$label，$sub，点击进入"
-            minimumHeight = dp(60)
+            minimumHeight = dp(ImeGeometryTokens.SETTING_ROW_HEIGHT_DP)
             isClickable = true
             isFocusable = true
             setOnClickListener { feedback(); onTap() }
@@ -4132,16 +4155,24 @@ open class ImeKeyboardView(
         }
         val isOn = onState(seed)
         val knob = View(context).apply {
-            layoutParams = FrameLayout.LayoutParams(dp(20), dp(20)).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                dp(ImeGeometryTokens.SWITCH_KNOB_DP),
+                dp(ImeGeometryTokens.SWITCH_KNOB_DP),
+            ).apply {
                 gravity = Gravity.START or Gravity.CENTER_VERTICAL
             }
             background = rounded(Color.WHITE, dp(ImeGeometryTokens.PILL_RADIUS_DP))
-            translationX = if (isOn) dp(22).toFloat() else 0f
+            translationX = if (isOn) dp(ImeGeometryTokens.SWITCH_KNOB_TRAVEL_DP).toFloat() else 0f
         }
         return FrameLayout(context).apply {
-            setPadding(dp(3), dp(3), dp(3), dp(3))
-            minimumWidth = dp(48)
-            minimumHeight = dp(48)
+            setPadding(
+                dp(ImeGeometryTokens.SWITCH_PADDING_DP),
+                dp(ImeGeometryTokens.SWITCH_PADDING_DP),
+                dp(ImeGeometryTokens.SWITCH_PADDING_DP),
+                dp(ImeGeometryTokens.SWITCH_PADDING_DP),
+            )
+            minimumWidth = dp(ImeGeometryTokens.SWITCH_WIDTH_DP)
+            minimumHeight = dp(ImeGeometryTokens.SWITCH_HEIGHT_DP)
             tag = "toggle"
             isClickable = true
             isFocusable = true
@@ -4160,13 +4191,18 @@ open class ImeKeyboardView(
                 updateAccessibilityState(next)
                 onChanged(next)
                 val knobView = getChildAt(0)
-                knobView.layoutParams = FrameLayout.LayoutParams(dp(20), dp(20)).apply {
+                knobView.layoutParams = FrameLayout.LayoutParams(
+                    dp(ImeGeometryTokens.SWITCH_KNOB_DP),
+                    dp(ImeGeometryTokens.SWITCH_KNOB_DP),
+                ).apply {
                     gravity = Gravity.START or Gravity.CENTER_VERTICAL
                 }
                 knobView.animate()
                     .cancel()
                 knobView.animate()
-                    .translationX(if (next) dp(22).toFloat() else 0f)
+                    .translationX(
+                        if (next) dp(ImeGeometryTokens.SWITCH_KNOB_TRAVEL_DP).toFloat() else 0f,
+                    )
                     .setDuration(160L)
                     .setInterpolator(DecelerateInterpolator(1.5f))
                     .start()
@@ -4348,7 +4384,7 @@ open class ImeKeyboardView(
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(10), dp(4), dp(10), dp(4))
             tag = "setting-row"
-            minimumHeight = dp(64)
+            minimumHeight = dp(ImeGeometryTokens.SETTING_ROW_HEIGHT_DP)
         }
         row.addView(TextView(context).apply { text = labelText; textSize = 13f }, weightParams(1f))
         val valueView = TextView(context).apply {
@@ -5533,7 +5569,8 @@ open class ImeKeyboardView(
                             dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
                         )
                     }
-                    "nine-punct-stack", "digits-symbol-stack" -> view.background = rounded(
+                    "nine-punct-stack", "nine-symbol-scroll-content",
+                    "digits-symbol-stack", "digits-symbol-scroll-content", "digits-symbol-scroll" -> view.background = rounded(
                         t.sideKeyBackground,
                         dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
                     )
@@ -5637,7 +5674,7 @@ open class ImeKeyboardView(
                         view.background = statefulRounded(
                             t.primary,
                             dim(t.primary),
-                            dp(ImeGeometryTokens.PILL_RADIUS_DP),
+                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
                         )
                     }
                     tag == "panel-tab" -> {
@@ -5645,7 +5682,7 @@ open class ImeKeyboardView(
                         view.background = statefulRounded(
                             t.panelHeadBackground,
                             dim(t.panelHeadBackground),
-                            dp(ImeGeometryTokens.PILL_RADIUS_DP),
+                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
                         )
                     }
                     tag == "quick-phrase-add" -> {
@@ -5686,7 +5723,8 @@ open class ImeKeyboardView(
                             dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
                         )
                     }
-                    tag?.startsWith("punct:") == true -> {
+                    tag?.startsWith("punct:") == true ||
+                        tag?.startsWith("digit-symbol:") == true -> {
                         view.setTextColor(t.keyText)
                         view.background = statefulRounded(
                             Color.TRANSPARENT,
@@ -5764,14 +5802,17 @@ open class ImeKeyboardView(
                     }
                     tag == "voice-mic" -> {
                         view.setTextColor(contrastText(t.primary))
-                        view.background = GradientDrawable().apply {
-                            shape = GradientDrawable.OVAL
-                            setColor(t.primary)
-                        }
+                        view.background = statefulRounded(
+                            t.primary,
+                            dim(t.primary, 0.88f),
+                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
+                        )
                     }
                     view.parent is LinearLayout &&
                         ((view.parent as LinearLayout).tag == "nine-punct-stack" ||
-                            (view.parent as LinearLayout).tag == "digits-symbol-stack") -> {
+                            (view.parent as LinearLayout).tag == "nine-symbol-scroll-content" ||
+                            (view.parent as LinearLayout).tag == "digits-symbol-stack" ||
+                            (view.parent as LinearLayout).tag == "digits-symbol-scroll-content") -> {
                         view.setTextColor(t.sideKeyText)
                     }
                 }
