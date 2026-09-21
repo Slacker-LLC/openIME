@@ -82,6 +82,12 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
     }
 
     override fun onDestroy() {
+        if (::keyboardView.isInitialized) {
+            // The settings screen owns a real keyboard renderer. Release its
+            // handlers, animations and popup callbacks before the Activity
+            // context becomes unreachable after rotation or back navigation.
+            keyboardView.shutdown()
+        }
         if (Build.VERSION.SDK_INT >= 33) {
             backCallback?.let(onBackInvokedDispatcher::unregisterOnBackInvokedCallback)
             backCallback = null
