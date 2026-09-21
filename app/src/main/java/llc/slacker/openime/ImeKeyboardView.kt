@@ -889,7 +889,7 @@ open class ImeKeyboardView(
         repeat(6) { index ->
             val bar = View(context).apply {
                 tag = "voice-inline-wave-$index"
-                background = rounded(Color.WHITE, dp(99))
+                background = rounded(Color.WHITE, dp(ImeGeometryTokens.PILL_RADIUS_DP))
             }
             voiceInlineWaves += bar
             inlineWave.addView(
@@ -1484,7 +1484,9 @@ open class ImeKeyboardView(
         val foregroundColor = contrastText(backgroundColor)
         voiceInlineIcon.imageTintList = ColorStateList.valueOf(foregroundColor)
         voiceInlineStatus.setTextColor(foregroundColor)
-        voiceInlineWaves.forEach { it.background = rounded(foregroundColor, dp(99)) }
+        voiceInlineWaves.forEach {
+            it.background = rounded(foregroundColor, dp(ImeGeometryTokens.PILL_RADIUS_DP))
+        }
     }
 
     private fun hideInlineVoiceState() {
@@ -4100,7 +4102,7 @@ open class ImeKeyboardView(
             layoutParams = FrameLayout.LayoutParams(dp(20), dp(20)).apply {
                 gravity = Gravity.START or Gravity.CENTER_VERTICAL
             }
-            background = rounded(Color.WHITE, dp(99))
+            background = rounded(Color.WHITE, dp(ImeGeometryTokens.PILL_RADIUS_DP))
             translationX = if (isOn) dp(22).toFloat() else 0f
         }
         return FrameLayout(context).apply {
@@ -5258,7 +5260,7 @@ open class ImeKeyboardView(
                 ).destructive
                 clearHint.text = "清空"
                 clearHint.setTextColor(contrastText(destructive))
-                clearHint.background = rounded(destructive, dp(5))
+                clearHint.background = rounded(destructive, dp(ImeGeometryTokens.BADGE_RADIUS_DP))
                 clearHint.alpha = 1f
             } else {
                 val secondary = theme.tokens(
@@ -5364,7 +5366,11 @@ open class ImeKeyboardView(
                 includeFontPadding = false
                 gravity = Gravity.CENTER
                 setTextColor(t.keyText)
-                background = statefulRounded(Color.TRANSPARENT, t.keyPressedBackground, dp(8))
+                background = statefulRounded(
+                    Color.TRANSPARENT,
+                    t.keyPressedBackground,
+                    dp(ImeGeometryTokens.KEY_RADIUS_DP),
+                )
                 isClickable = true
                 isFocusable = true
                 contentDescription = "输入$symbol"

@@ -14,6 +14,7 @@ internal object ImeGeometryTokens {
     const val KEY_RADIUS_DP = 8
     const val CONTROL_RADIUS_DP = 12
     const val CARD_RADIUS_DP = 16
+    const val BADGE_RADIUS_DP = 6
     const val SETUP_PILL_RADIUS_DP = 28
     const val PILL_RADIUS_DP = 99
     const val DIALOG_RADIUS_DP = 24
