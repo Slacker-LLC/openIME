@@ -68,7 +68,7 @@ object SetupUi {
         val surface = context.getColor(R.color.setup_muted)
         val pressed = context.getColor(R.color.setup_muted_pressed)
         val accent = accent(context)
-        val radius = dp(context, 28).toFloat()
+        val radius = dp(context, ImeGeometryTokens.SETUP_PILL_RADIUS_DP).toFloat()
         return StateListDrawable().apply {
             addState(
                 intArrayOf(android.R.attr.state_enabled, android.R.attr.state_pressed),
@@ -138,7 +138,7 @@ object SetupUi {
         val surface = context.getColor(R.color.setup_surface)
         val line = context.getColor(R.color.setup_input_line)
         val accent = accent(context)
-        val radius = dp(context, 16).toFloat()
+        val radius = dp(context, ImeGeometryTokens.CARD_RADIUS_DP).toFloat()
         fun field(fill: Int, stroke: Int) = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             setColor(fill)
@@ -154,7 +154,7 @@ object SetupUi {
     /** Transparent focus ring for inputs placed on an already styled surface. */
     fun focusRingBackground(context: Context): StateListDrawable {
         val accent = accent(context)
-        val radius = dp(context, 14).toFloat()
+        val radius = dp(context, ImeGeometryTokens.CARD_RADIUS_DP).toFloat()
         fun ring(stroke: Int?): GradientDrawable = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             setColor(Color.TRANSPARENT)

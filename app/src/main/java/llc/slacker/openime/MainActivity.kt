@@ -251,9 +251,15 @@ class MainActivity : Activity() {
     private fun primaryPill(color: Int): StateListDrawable {
         val pressed = dim(color, 0.86f)
         return StateListDrawable().apply {
-            addState(intArrayOf(android.R.attr.state_pressed), rounded(pressed, 28f))
-            addState(intArrayOf(android.R.attr.state_focused), rounded(color, 28f, contrastText(color)))
-            addState(intArrayOf(), rounded(color, 28f))
+            addState(
+                intArrayOf(android.R.attr.state_pressed),
+                rounded(pressed, ImeGeometryTokens.SETUP_PILL_RADIUS_DP.toFloat()),
+            )
+            addState(
+                intArrayOf(android.R.attr.state_focused),
+                rounded(color, ImeGeometryTokens.SETUP_PILL_RADIUS_DP.toFloat(), contrastText(color)),
+            )
+            addState(intArrayOf(), rounded(color, ImeGeometryTokens.SETUP_PILL_RADIUS_DP.toFloat()))
         }
     }
 
@@ -262,9 +268,15 @@ class MainActivity : Activity() {
         val tint = blend(surface, accent, 0.10f)
         val pressed = blend(surface, accent, 0.16f)
         return StateListDrawable().apply {
-            addState(intArrayOf(android.R.attr.state_pressed), rounded(pressed, 28f))
-            addState(intArrayOf(android.R.attr.state_focused), rounded(tint, 28f, accent))
-            addState(intArrayOf(), rounded(tint, 28f))
+            addState(
+                intArrayOf(android.R.attr.state_pressed),
+                rounded(pressed, ImeGeometryTokens.SETUP_PILL_RADIUS_DP.toFloat()),
+            )
+            addState(
+                intArrayOf(android.R.attr.state_focused),
+                rounded(tint, ImeGeometryTokens.SETUP_PILL_RADIUS_DP.toFloat(), accent),
+            )
+            addState(intArrayOf(), rounded(tint, ImeGeometryTokens.SETUP_PILL_RADIUS_DP.toFloat()))
         }
     }
 

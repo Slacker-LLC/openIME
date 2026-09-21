@@ -3,6 +3,25 @@ package llc.slacker.openime
 import android.graphics.Color
 
 /**
+ * Shared geometry vocabulary for the native surfaces.
+ *
+ * These values are semantic rather than one universal radius: keys need a
+ * tighter silhouette, cards need a calmer container edge, and pills are
+ * intentionally fully rounded. Keeping the scale here prevents each panel
+ * from inventing another near-identical corner radius.
+ */
+internal object ImeGeometryTokens {
+    const val KEY_RADIUS_DP = 8
+    const val CONTROL_RADIUS_DP = 12
+    const val CARD_RADIUS_DP = 16
+    const val SETUP_PILL_RADIUS_DP = 28
+    const val PILL_RADIUS_DP = 99
+
+    const val TOUCH_TARGET_DP = 48
+    const val PRIMARY_ROW_HEIGHT_DP = 56
+}
+
+/**
  * Native design tokens for the bundled IME renderer.
  *
  * The supplied dual-theme prototype is the visual source of truth for the
