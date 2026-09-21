@@ -1477,7 +1477,10 @@ open class ImeKeyboardView(
         val backgroundColor = if (voiceInlineCancel) tokens.destructive else tokens.primary
         if (inlineVoicePaletteColor == backgroundColor) return
         inlineVoicePaletteColor = backgroundColor
-        voiceInlineZone.background = rounded(backgroundColor, dp(13))
+        voiceInlineZone.background = rounded(
+            backgroundColor,
+            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
+        )
         val foregroundColor = contrastText(backgroundColor)
         voiceInlineIcon.imageTintList = ColorStateList.valueOf(foregroundColor)
         voiceInlineStatus.setTextColor(foregroundColor)
@@ -5285,7 +5288,7 @@ open class ImeKeyboardView(
             setTextColor(if (char == "清空") contrastText(popupBackground) else t.keyText)
             background = rounded(
                 popupBackground,
-                dp(10),
+                dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
             )
             elevation = dp(2).toFloat()
         }
@@ -5319,7 +5322,7 @@ open class ImeKeyboardView(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             setPadding(dp(5), dp(5), dp(5), dp(5))
-            background = rounded(t.keyBackground, dp(10))
+            background = rounded(t.keyBackground, dp(ImeGeometryTokens.CONTROL_RADIUS_DP))
             elevation = dp(2).toFloat()
             contentDescription = "长按符号选择"
         }
