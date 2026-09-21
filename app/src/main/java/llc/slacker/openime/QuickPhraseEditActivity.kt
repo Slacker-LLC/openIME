@@ -196,15 +196,15 @@ class QuickPhraseEditActivity : Activity() {
         }
         val actions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            addView(save, LinearLayout.LayoutParams(0, dp(52), 1f).apply { marginEnd = dp(8) })
-            addView(cancel, LinearLayout.LayoutParams(0, dp(52), 1f))
+            addView(save, LinearLayout.LayoutParams(0, dp(ImeGeometryTokens.PRIMARY_ROW_HEIGHT_DP), 1f).apply { marginEnd = dp(8) })
+            addView(cancel, LinearLayout.LayoutParams(0, dp(ImeGeometryTokens.PRIMARY_ROW_HEIGHT_DP), 1f))
         }
         val form = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(16), dp(16), dp(16))
             background = SetupUi.rounded(
                 getColor(R.color.setup_surface),
-                dp(20).toFloat(),
+                dp(ImeGeometryTokens.CARD_RADIUS_DP).toFloat(),
                 getColor(R.color.setup_input_line),
             )
             addView(fieldLabel("分类（可选）", R.id.quick_phrase_category_editor), LinearLayout.LayoutParams(
@@ -213,7 +213,7 @@ class QuickPhraseEditActivity : Activity() {
             ))
             addView(categoryEdit, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(58),
+                dp(ImeGeometryTokens.FIELD_HEIGHT_DP),
             ).apply { bottomMargin = dp(14) })
             addView(fieldLabel("常用语内容", R.id.quick_phrase_text_editor), LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -234,7 +234,7 @@ class QuickPhraseEditActivity : Activity() {
             ))
             addView(actions, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(52),
+                dp(ImeGeometryTokens.PRIMARY_ROW_HEIGHT_DP),
             ))
         }
         val content = LinearLayout(this).apply {

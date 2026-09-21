@@ -37,7 +37,11 @@ object SetupUi {
             if (strokeColor != null) setStroke(1, strokeColor)
         }
 
-    fun buttonBackground(context: Context, color: Int, radiusDp: Float = 18f): StateListDrawable {
+    fun buttonBackground(
+        context: Context,
+        color: Int,
+        radiusDp: Float = ImeGeometryTokens.CONTROL_RADIUS_DP.toFloat(),
+    ): StateListDrawable {
         val pressed = dim(color, 0.86f)
         return StateListDrawable().apply {
             addState(
@@ -106,7 +110,7 @@ object SetupUi {
     private fun outlineButtonBackground(context: Context): StateListDrawable {
         val surface = context.getColor(R.color.setup_surface)
         val line = context.getColor(R.color.setup_input_line)
-        val radius = dp(context, 18).toFloat()
+        val radius = dp(context, ImeGeometryTokens.CONTROL_RADIUS_DP).toFloat()
         return StateListDrawable().apply {
             addState(
                 intArrayOf(android.R.attr.state_pressed),
@@ -126,7 +130,11 @@ object SetupUi {
             textSize = 15f
             isAllCaps = false
             minHeight = dp(context, ImeGeometryTokens.PRIMARY_ROW_HEIGHT_DP)
-            background = buttonBackground(context, accent(context), 16f)
+            background = buttonBackground(
+                context,
+                accent(context),
+                ImeGeometryTokens.CONTROL_RADIUS_DP.toFloat(),
+            )
             setTextColor(contrastText(accent(context)))
             setOnClickListener {
                 performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
@@ -208,7 +216,7 @@ object SetupUi {
         dialog.window?.setBackgroundDrawable(
             rounded(
                 context.getColor(R.color.setup_surface),
-                dp(context, 24).toFloat(),
+                dp(context, ImeGeometryTokens.DIALOG_RADIUS_DP).toFloat(),
             ),
         )
     }

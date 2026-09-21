@@ -137,7 +137,7 @@ class SymbolManagerActivity : Activity() {
             setText(draftGroup)
         }
         SetupUi.styleInput(this, groupEdit)
-        content.addView(groupEdit, fullHeight(56).apply { bottomMargin = dp(10) })
+        content.addView(groupEdit, fullHeight(ImeGeometryTokens.FIELD_HEIGHT_DP).apply { bottomMargin = dp(10) })
         content.addView(fieldLabel("符号或自定义文本", R.id.custom_symbol_text_editor), fullWrap().apply { bottomMargin = dp(2) })
         symbolEdit = EditText(this).apply {
             id = R.id.custom_symbol_text_editor
@@ -148,7 +148,7 @@ class SymbolManagerActivity : Activity() {
             setText(draftSymbol)
         }
         SetupUi.styleInput(this, symbolEdit)
-        content.addView(symbolEdit, fullHeight(58).apply { bottomMargin = dp(12) })
+        content.addView(symbolEdit, fullHeight(ImeGeometryTokens.FIELD_HEIGHT_DP).apply { bottomMargin = dp(12) })
         val save = SetupUi.primaryButton(this, "保存符号") {
             if (symbolEdit.text.isNullOrBlank()) {
                 symbolEdit.error = "请输入符号或自定义文本"
@@ -205,7 +205,7 @@ class SymbolManagerActivity : Activity() {
             override fun afterTextChanged(s: Editable?) = Unit
         })
         refreshSaveState()
-        content.addView(save, fullHeight(52).apply { bottomMargin = dp(20) })
+        content.addView(save, fullHeight(ImeGeometryTokens.PRIMARY_ROW_HEIGHT_DP).apply { bottomMargin = dp(20) })
         content.addView(TextView(this).apply {
             text = "已保存符号"
             textSize = 16f
@@ -241,7 +241,7 @@ class SymbolManagerActivity : Activity() {
         }
         content.addView(SetupUi.primaryButton(this, "完成") {
             requestClose()
-        }, fullHeight(52).apply { topMargin = dp(12) })
+        }, fullHeight(ImeGeometryTokens.PRIMARY_ROW_HEIGHT_DP).apply { topMargin = dp(12) })
         val scroll = ScrollView(this).apply {
             setBackgroundColor(getColor(R.color.setup_page_bg))
             isFillViewport = true
@@ -274,7 +274,7 @@ class SymbolManagerActivity : Activity() {
         setPadding(dp(16), dp(14), dp(12), dp(10))
         background = SetupUi.rounded(
             getColor(R.color.setup_surface),
-            dp(18).toFloat(),
+            dp(ImeGeometryTokens.CARD_RADIUS_DP).toFloat(),
             getColor(R.color.setup_input_line),
         )
         addView(TextView(this@SymbolManagerActivity).apply {
