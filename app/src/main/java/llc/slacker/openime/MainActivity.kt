@@ -197,14 +197,21 @@ class MainActivity : Activity() {
         // A completed setup step remains an action: users may need to revisit
         // the system picker or input-method settings after initial setup.
         row.isEnabled = true
-        if (active) row.background = primaryPill(accent) else row.background = SetupUi.mutedPillBackground(this)
+        row.background = when {
+            active -> primaryPill(accent)
+            done -> completedPill(accent)
+            else -> SetupUi.mutedPillBackground(this)
+        }
         label.text = if (done) doneText else activeText
         label.setTextColor(
             if (active) contrastText(accent) else getColor(
                 if (done) R.color.setup_body else R.color.setup_title,
             ),
         )
-        mark.text = markText
+        // A completed step is easier to scan as a result than as an old
+        // step number. Keep the number for the current step so the flow still
+        // reads as 1 -> 2 while the completed state reads as a check.
+        mark.text = if (done) "✓" else markText
         mark.setBackgroundResource(
             when {
                 active -> R.drawable.bg_setup_mark_active
@@ -226,7 +233,7 @@ class MainActivity : Activity() {
             if (active) contrastText(accent) else getColor(R.color.setup_body),
         )
         chevron?.visibility = if (done) View.GONE else View.VISIBLE
-        row.alpha = if (done) 0.86f else 1f
+        row.alpha = 1f
         row.contentDescription = when {
             done -> doneText
             active -> activeText
@@ -250,6 +257,17 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun completedPill(accent: Int): StateListDrawable {
+        val surface = getColor(R.color.setup_muted)
+        val tint = blend(surface, accent, 0.10f)
+        val pressed = blend(surface, accent, 0.16f)
+        return StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_pressed), rounded(pressed, 28f))
+            addState(intArrayOf(android.R.attr.state_focused), rounded(tint, 28f, accent))
+            addState(intArrayOf(), rounded(tint, 28f))
+        }
+    }
+
     private fun rounded(color: Int, radiusDp: Float, strokeColor: Int? = null): GradientDrawable = GradientDrawable().apply {
         shape = GradientDrawable.RECTANGLE
         setColor(color)
@@ -267,6 +285,15 @@ class MainActivity : Activity() {
         (Color.green(color) * factor).toInt().coerceIn(0, 255),
         (Color.blue(color) * factor).toInt().coerceIn(0, 255),
     )
+
+    private fun blend(base: Int, tint: Int, amount: Float): Int {
+        val ratio = amount.coerceIn(0f, 1f)
+        return Color.rgb(
+            (Color.red(base) * (1f - ratio) + Color.red(tint) * ratio).toInt(),
+            (Color.green(base) * (1f - ratio) + Color.green(tint) * ratio).toInt(),
+            (Color.blue(base) * (1f - ratio) + Color.blue(tint) * ratio).toInt(),
+        )
+    }
 
     private fun contrastText(background: Int): Int {
         return ImeContrastPolicy.contrastText(background)
