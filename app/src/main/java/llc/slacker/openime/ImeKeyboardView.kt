@@ -318,6 +318,7 @@ open class ImeKeyboardView(
     private var spaceVoicePointerId = -1
     private var voiceInlineActive = false
     private var voiceInlineCancel = false
+    private var voiceInlineError = false
     private var voiceInlineGeneration = 0L
     private var voiceInlineHasLiveRms = false
     private var voiceInlinePulseFrame = 0
@@ -1308,6 +1309,7 @@ open class ImeKeyboardView(
         pendingRowRebuild = false
         voiceInlineActive = false
         voiceInlineCancel = false
+        voiceInlineError = false
         hidePopup()
     }
 
@@ -1429,13 +1431,21 @@ open class ImeKeyboardView(
         composeZone.visibility = if (composing) View.VISIBLE else View.GONE
     }
 
+    private fun conciseVoiceError(message: String): String = when {
+        message.contains("模型") -> "语音不可用 · 请检查本地模型"
+        message.contains("麦克风") || message.contains("权限") -> "语音不可用 · 请检查麦克风权限"
+        else -> "语音失败 · 长按空格重试"
+    }
+
     private fun showInlineVoiceState(
         message: String,
         cancelling: Boolean = false,
+        error: Boolean = false,
         rms: Float? = null,
     ) {
         voiceInlineActive = true
         voiceInlineCancel = cancelling
+        voiceInlineError = error
         if (voiceInlineStatus.text.toString() != message) {
             voiceInlineStatus.text = message
             voiceInlineZone.contentDescription = message
@@ -1474,7 +1484,11 @@ open class ImeKeyboardView(
         val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
         val tokens = theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor))
-        val backgroundColor = if (voiceInlineCancel) tokens.destructive else tokens.primary
+        val backgroundColor = if (voiceInlineCancel || voiceInlineError) {
+            tokens.destructive
+        } else {
+            tokens.primary
+        }
         if (inlineVoicePaletteColor == backgroundColor) return
         inlineVoicePaletteColor = backgroundColor
         voiceInlineZone.background = rounded(
@@ -1493,6 +1507,7 @@ open class ImeKeyboardView(
         stopInlineVoicePulse()
         voiceInlineActive = false
         voiceInlineCancel = false
+        voiceInlineError = false
         if (::voiceInlineZone.isInitialized) voiceInlineZone.visibility = View.GONE
         updateTopZone(composition.text?.isNotEmpty() == true)
     }
@@ -3137,7 +3152,10 @@ open class ImeKeyboardView(
                         refreshLanguageControl()
                         modelStatus.text = "语音未完成 · 请检查本地模型和麦克风权限"
                         listener.onVoiceError(message)
-                        showInlineVoiceState(message.ifBlank { "语音输入失败" })
+                        showInlineVoiceState(
+                            conciseVoiceError(message.ifBlank { "语音输入失败" }),
+                            error = true,
+                        )
                         hideInlineVoiceStateLater(1_500L)
                     }
                 }
