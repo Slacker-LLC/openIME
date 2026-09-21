@@ -5593,9 +5593,21 @@ open class ImeKeyboardView(
                             dp(ImeGeometryTokens.PILL_RADIUS_DP),
                         )
                     }
+                    tag == "quick-phrase-add" -> {
+                        view.setTextColor(contrastText(t.primary))
+                        view.background = statefulRounded(
+                            t.primary,
+                            dim(t.primary),
+                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
+                        )
+                    }
                     tag == "panel-button" ||
+                        tag == "clipboard-refresh" ||
+                        tag == "floating-toggle" ||
                         tag?.startsWith("clip-pin:") == true ||
-                        tag?.startsWith("clip-use:") == true -> {
+                        tag?.startsWith("clip-use:") == true ||
+                        tag?.startsWith("phrase-edit:") == true ||
+                        tag?.startsWith("phrase-delete:") == true -> {
                         view.setTextColor(t.keyText)
                         view.background = statefulRounded(
                             t.panelHeadBackground,
