@@ -4961,12 +4961,22 @@ open class ImeKeyboardView(
                             allowTwoLineLabel()
                             contentDescription = "候选:$cand"
                         },
-                        LinearLayout.LayoutParams(0, dp(48), candidateColumnSpan(cand).toFloat()).apply { marginEnd = dp(5) },
+                        LinearLayout.LayoutParams(
+                            0,
+                            dp(keyRowHeightDp()),
+                            candidateColumnSpan(cand).toFloat(),
+                        ).apply { marginEnd = dp(5) },
                     )
                 }
                 val remaining = 4 - chunk.sumOf(::candidateColumnSpan)
                 if (remaining > 0) row.addView(View(context), LinearLayout.LayoutParams(0, 1, remaining.toFloat()))
-                col.addView(row, matchParams())
+                col.addView(
+                    row,
+                    LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        dp(keyRowHeightDp()),
+                    ),
+                )
             }
         }
         scroll.addView(col, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
