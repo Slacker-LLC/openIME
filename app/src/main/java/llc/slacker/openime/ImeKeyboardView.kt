@@ -1253,7 +1253,8 @@ open class ImeKeyboardView(
     internal fun findTestTarget(query: String): View? {
         findViewWithTag<View>(query)?.let { return it }
         fun deep(view: View): View? {
-            if (view.isClickable && view.contentDescription?.toString() == query) return view
+            val description = view.contentDescription?.toString()
+            if (view.isClickable && (description == query || description?.substringBefore('，') == query)) return view
             if (view is ViewGroup) {
                 for (i in 0 until view.childCount) {
                     deep(view.getChildAt(i))?.let { return it }
@@ -2166,12 +2167,25 @@ open class ImeKeyboardView(
         if (!voiceAllowed) return
         prepareVoiceController()
         voiceGestureSession = true
+        lockVoiceLanguageForGesture()
         voiceInlineGeneration++
         showInlineVoiceState("正在准备麦克风…")
         startInlineVoicePulse()
         // Let the in-place state row draw before model/session startup begins.
         post {
             if (voiceGestureSession) voiceStartAction?.invoke()
+        }
+    }
+
+    /** Lock language selection as soon as a voice gesture starts, before model startup is posted. */
+    private fun lockVoiceLanguageForGesture() {
+        val language = expandedPanel.findViewWithTag<View>("voice-language") ?: return
+        language.isEnabled = false
+        language.isClickable = false
+        language.alpha = 0.52f
+        language.contentDescription = "语音语言：${if (voiceLanguageIndex == 0) "普通话" else "英文"}，识别进行中不可切换"
+        if (Build.VERSION.SDK_INT >= 30) {
+            language.stateDescription = "当前${if (voiceLanguageIndex == 0) "普通话" else "英文"}，识别进行中不可切换"
         }
     }
 
@@ -2880,7 +2894,7 @@ open class ImeKeyboardView(
         }
         fun refreshLanguageControl() {
             val selectedLanguage = languages[voiceLanguageIndex].first
-            val locked = voiceActive || voicePending
+            val locked = voiceGestureSession || voiceActive || voicePending
             langButton.isEnabled = !locked
             langButton.isClickable = !locked
             langButton.alpha = if (locked) 0.52f else 1f
@@ -3333,10 +3347,15 @@ open class ImeKeyboardView(
                 1f,
             ),
         )
+        // Keep history management reachable while the clipboard is loading or
+        // already empty. Rebuilding the async content must not make the
+        // destructive-action entry point disappear for a frame.
+        if (clipboardTab == 0) addClipboardRetentionControls(body)
         expandedPanel.addView(body, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(panelBodyHeightDp()),
         ))
+        expandedPanel.post { requestLayout() }
         applyTheme()
         onViewHierarchyRebuilt()
     }
@@ -3573,12 +3592,17 @@ open class ImeKeyboardView(
     /** Keep controls that cannot be implemented for arbitrary editors visibly unavailable. */
     private fun applyTextEditControlAvailability(root: View) {
         fun visit(view: View) {
-            if (view is TextView && TextEditControlPolicy.isUnavailableLabel(view.text.toString(), passwordField)) {
-                val reason = TextEditControlPolicy.unavailableReason(view.text.toString(), passwordField)
+            val label = when (view) {
+                is ImeKeyView -> view.contentDescription?.toString().orEmpty()
+                is TextView -> view.text.toString()
+                else -> ""
+            }
+            if (label.isNotEmpty() && TextEditControlPolicy.isUnavailableLabel(label, passwordField)) {
+                val reason = TextEditControlPolicy.unavailableReason(label, passwordField)
                 view.isEnabled = false
                 view.isClickable = false
                 view.alpha = 0.38f
-                view.contentDescription = view.text.toString()
+                view.contentDescription = label
                 if (Build.VERSION.SDK_INT >= 30) view.stateDescription = reason
             }
             if (view is ViewGroup) {
@@ -3599,8 +3623,12 @@ open class ImeKeyboardView(
             val action = (view.tag as? String)
                 ?.takeIf { it.startsWith("textedit-action:") }
                 ?.substringAfter(':')
-            if (action != null && view is TextView) {
-                val label = view.text.toString()
+            if (action != null && (view is ImeKeyView || view is TextView)) {
+                val label = when (view) {
+                    is ImeKeyView -> view.contentDescription?.toString().orEmpty()
+                    is TextView -> view.text.toString()
+                    else -> ""
+                }
                 val policyUnavailable = TextEditControlPolicy.isUnavailableLabel(label, passwordField)
                 val dynamicReason = when {
                     passwordField && label in setOf("全选", "复制", "剪切", "粘贴") -> "密码输入中不可用"

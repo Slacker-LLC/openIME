@@ -193,12 +193,8 @@ class MainActivity : Activity() {
         if (active) row.background = primaryPill(accent) else row.background = SetupUi.mutedPillBackground(this)
         label.text = if (done) doneText else activeText
         label.setTextColor(
-            getColor(
-                when {
-                    active -> contrastText(accent)
-                    done -> R.color.setup_body
-                    else -> R.color.setup_title
-                },
+            if (active) contrastText(accent) else getColor(
+                if (done) R.color.setup_body else R.color.setup_title,
             ),
         )
         mark.text = markText

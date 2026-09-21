@@ -196,7 +196,7 @@ class AuditInteractionInstrumentedTest {
             val back = keyboard.findViewWithTag<View>("key-panel-back")
             assertTrue("Panel back must be keyboard-focusable", back.isFocusable)
             assertTrue("Panel back must keep a 48dp target", back.minimumHeight >= keyboard.resources.displayMetrics.density * 48f)
-            val button = keyboard.findViewWithTag<View>("panel-button")
+            val button = keyboard.findViewWithTag<View>("floating-toggle")
             assertTrue("Panel actions must be keyboard-focusable", button.isFocusable)
             assertTrue("Panel actions must keep a 48dp target", button.minimumHeight >= keyboard.resources.displayMetrics.density * 48f)
             true
@@ -230,7 +230,7 @@ class AuditInteractionInstrumentedTest {
             keyboard.showPanel(Panel.SETTINGS)
             val custom = keyboard.findViewWithTag<View>("accent-custom")
             assertTrue(custom.contentDescription.toString().contains("已选中"))
-            assertEquals(Color.parseColor("#123456"), (custom.background as GradientDrawable).color?.defaultColor)
+            assertEquals(Color.parseColor("#123456"), ((custom.background as StateListDrawable).current as GradientDrawable).color?.defaultColor)
             true
         }
     }
@@ -248,12 +248,12 @@ class AuditInteractionInstrumentedTest {
                 opacity = 92,
                 radius = 14,
                 fontSize = 19,
-                primaryColor = "#00C2D7",
+                primaryColor = "#123456",
             )
             keyboard.showPanel(Panel.SETTINGS)
             assertEquals(
-                Color.parseColor("#00C2D7"),
-                (keyboard.findViewWithTag<View>("accent-custom").background as GradientDrawable).color?.defaultColor,
+                Color.parseColor("#123456"),
+                ((keyboard.findViewWithTag<View>("accent-custom").background as StateListDrawable).current as GradientDrawable).color?.defaultColor,
             )
             keyboard.showPanel(Panel.FUZZY_SETTINGS)
             assertTrue(
