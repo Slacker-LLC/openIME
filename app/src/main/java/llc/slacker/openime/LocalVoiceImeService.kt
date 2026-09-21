@@ -185,19 +185,45 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
         fuzzy = fuzzy,
     )
 
+    private fun createKeyboardView(): ImeKeyboardViewV2 {
+        return ImeKeyboardViewV2(this, this).also { view ->
+            view.setMode(state.keyboardMode, notifyListener = false)
+            view.setTheme(state.theme)
+            view.setAppearance(state.appearance)
+            view.setSettings(
+                state.soundEnabled,
+                state.hapticEnabled,
+                state.popupEnabled,
+                state.fuzzyPinyinEnabled,
+            )
+            view.renderState(state)
+        }
+    }
+
     override fun onCreateInputView(): View {
-        keyboardView = ImeKeyboardViewV2(this, this)
-        keyboardView?.setMode(state.keyboardMode, notifyListener = false)
-        keyboardView?.setTheme(state.theme)
-        keyboardView?.setAppearance(state.appearance)
-        keyboardView?.setSettings(
-            state.soundEnabled,
-            state.hapticEnabled,
-            state.popupEnabled,
-            state.fuzzyPinyinEnabled,
-        )
-        keyboardView?.renderState(state)
+        keyboardView = createKeyboardView()
         return keyboardView!!
+    }
+
+    override fun onEvaluateInputViewShown(): Boolean {
+        // The emulator and some Chromebooks expose a hardware keyboard, so
+        // InputMethodService's default policy suppresses the on-screen view
+        // even after the user explicitly taps a text field. openIME is a
+        // touch-first keyboard like Gboard: the explicit focus gesture should
+        // always be able to open the visual keyboard, while the Back action
+        // still lets the user dismiss it.
+        super.onEvaluateInputViewShown()
+        return true
+    }
+
+    private fun ensureInputViewAfterFinish() {
+        if (keyboardView != null) return
+        // InputMethodService keeps the old view instance after
+        // onFinishInputView(). Replacing the framework-owned view here is
+        // required when the user switches away from openIME and back; merely
+        // assigning a new field would leave the old, shut-down renderer on
+        // screen and the IME window would report no drawable surface.
+        setInputView(createKeyboardView().also { keyboardView = it })
     }
 
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
@@ -346,7 +372,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
 
     override fun onStartInputView(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(attribute, restarting)
-        if (keyboardView == null) onCreateInputView()
+        ensureInputViewAfterFinish()
         if (state.panel != Panel.GAMING) restoreImeWindow()
         keyboardView?.refreshAuxiliaryContent()
         voiceLifecycle.onStartInputView()
@@ -375,6 +401,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
 
     override fun onFinishInputView(finishingInput: Boolean) {
         keyboardView?.shutdown()
+        keyboardView = null
         if (::voiceLifecycle.isInitialized) voiceLifecycle.onFinishInputView()
         super.onFinishInputView(finishingInput)
     }
