@@ -305,6 +305,7 @@ open class ImeKeyboardView(
     private var settingsScrollY = 0
     private var voiceActive = false
     private var voicePending = false
+    private var voiceStopRequested = false
     private var voiceAllowed = true
     private var inlineVoicePaletteColor: Int? = null
     private var voiceStartAction: (() -> Unit)? = null
@@ -1310,6 +1311,7 @@ open class ImeKeyboardView(
         voiceInlineActive = false
         voiceInlineCancel = false
         voiceInlineError = false
+        voiceStopRequested = false
         hidePopup()
     }
 
@@ -2327,6 +2329,7 @@ open class ImeKeyboardView(
         voicePending = false
         voiceGestureSession = false
         voiceActive = false
+        voiceStopRequested = false
         spaceVoiceGestureActive = false
         spaceVoiceGestureCancel = false
         voiceInlineGeneration++
@@ -3074,6 +3077,7 @@ open class ImeKeyboardView(
             modelPrepared = false
             voiceActive = true
             voicePending = true
+            voiceStopRequested = false
             refreshLanguageControl()
             showInlineVoiceState("正在准备麦克风…")
             setMicState("⏹", "语音输入进行中，松开空格结束，上滑取消")
@@ -3095,10 +3099,17 @@ open class ImeKeyboardView(
                         modelPrepared = true
                         if (text.isNotBlank()) recognizedText = text
                         transcript.text = text
-                        modelStatus.text = "正在聆听 · 松开空格结束"
-                        setMicState("⏹", "语音输入进行中，松开空格结束，上滑取消")
-                        setGestureHint("松开空格上屏 · 上滑取消", "松开空格结束语音并自动上屏，上滑取消")
-                        showInlineVoiceState(text.ifBlank { "正在聆听…" })
+                        if (voiceStopRequested) {
+                            modelStatus.text = "正在整理识别结果…"
+                            setMicState("⏹", "正在整理语音识别结果，请稍候")
+                            setGestureHint("整理识别结果…", "正在整理语音识别结果，请稍候")
+                            showInlineVoiceState("正在识别…")
+                        } else {
+                            modelStatus.text = "正在聆听 · 松开空格结束"
+                            setMicState("⏹", "语音输入进行中，松开空格结束，上滑取消")
+                            setGestureHint("松开空格上屏 · 上滑取消", "松开空格结束语音并自动上屏，上滑取消")
+                            showInlineVoiceState(text.ifBlank { "正在聆听…" })
+                        }
                         listener.onVoicePartial(text)
                     }
                 }
@@ -3112,6 +3123,7 @@ open class ImeKeyboardView(
                         setGestureHint("长按空格开始", "长按空格开始语音，松开自动上屏，上滑取消")
                         voiceActive = false
                         voicePending = false
+                        voiceStopRequested = false
                         refreshLanguageControl()
                         modelStatus.text = "离线识别完成 · 已自动上屏"
                         listener.onVoiceFinal(text)
@@ -3125,7 +3137,7 @@ open class ImeKeyboardView(
                     postDelayed({
                         rmsQueued.set(false)
                         if (eventGeneration != voiceEventGeneration) return@postDelayed
-                        if (!voiceActive || voiceCancelled || cancelPreview) return@postDelayed
+                        if (!voiceActive || voiceStopRequested || voiceCancelled || cancelPreview) return@postDelayed
                         val level = latestRms
                         val h = dp((8 + (level * 4f).coerceIn(0f, 52f)).toInt())
                         if (waveBar.isShown) waves.forEach { bar ->
@@ -3149,6 +3161,7 @@ open class ImeKeyboardView(
                         setGestureHint("长按空格开始", "长按空格重新开始语音，松开自动上屏，上滑取消")
                         voiceActive = false
                         voicePending = false
+                        voiceStopRequested = false
                         refreshLanguageControl()
                         modelStatus.text = "语音未完成 · 请检查本地模型和麦克风权限"
                         listener.onVoiceError(message)
@@ -3163,7 +3176,7 @@ open class ImeKeyboardView(
                     post {
                         if (eventGeneration != voiceEventGeneration) return@post
                         if (voiceCancelled) return@post
-                        if (voiceActive) {
+                        if (voiceActive && !voiceStopRequested) {
                             setMicState("⏹", "语音输入进行中，松开空格结束，上滑取消")
                             setGestureHint("松开空格上屏 · 上滑取消", "松开空格结束语音并自动上屏，上滑取消")
                             modelStatus.text = "正在录音 · 本地模型准备中"
@@ -3179,7 +3192,7 @@ open class ImeKeyboardView(
                 override fun onModelReady() {
                     post {
                         if (eventGeneration != voiceEventGeneration) return@post
-                        if (!voiceActive || voiceCancelled || cancelPreview) return@post
+                        if (!voiceActive || voiceStopRequested || voiceCancelled || cancelPreview) return@post
                         modelPrepared = true
                         setMicState("⏹", "语音输入进行中，松开空格结束，上滑取消")
                         setGestureHint("松开空格上屏 · 上滑取消", "松开空格结束语音并自动上屏，上滑取消")
@@ -3190,11 +3203,11 @@ open class ImeKeyboardView(
             })
         }
         fun stopVoice() {
-            if (!voiceActive) return
+            if (!voiceActive || voiceStopRequested) return
             listener.stopVoiceRecognition()
             setMicState("🎤", "正在整理语音识别结果，请稍候")
             setGestureHint("整理识别结果…", "正在整理语音识别结果，请稍候")
-            voiceActive = false
+            voiceStopRequested = true
             refreshLanguageControl()
             modelStatus.text = "正在整理识别结果…"
             showInlineVoiceState("正在识别…")
@@ -3206,6 +3219,7 @@ open class ImeKeyboardView(
             voicePending = false
             cancelPreview = false
             voiceActive = false
+            voiceStopRequested = false
             refreshLanguageControl()
             listener.cancelVoiceRecognition()
             recognizedText = ""
@@ -3244,6 +3258,7 @@ open class ImeKeyboardView(
     private fun stopVoiceIfActive() {
         val hadVoice = voicePending || voiceActive || voiceGestureSession
         voicePending = false
+        voiceStopRequested = false
         voiceEventGeneration++
         listener.cancelVoiceRecognition()
         voiceActive = false

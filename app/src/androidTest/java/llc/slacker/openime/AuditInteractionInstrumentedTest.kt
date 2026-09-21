@@ -27,6 +27,7 @@ class AuditInteractionInstrumentedTest {
     private class Recorder {
         lateinit var keyboard: ImeKeyboardViewV2
         var events: VoiceRecognitionEvents? = null
+        val partials = mutableListOf<String>()
         val finals = mutableListOf<String>()
         val fuzzyChanges = mutableListOf<Boolean>()
         var starts = 0
@@ -48,6 +49,7 @@ class AuditInteractionInstrumentedTest {
                 }
                 "stopVoiceRecognition" -> { stops++; null }
                 "cancelVoiceRecognition" -> { cancels++; null }
+                "onVoicePartial" -> { partials.add(args!![0] as String); null }
                 "onVoiceFinal" -> { finals.add(args!![0] as String); null }
                 "onVoiceToggle" -> { keyboard.startVoiceFromSpace(); null }
                 "onVoicePressChanged" -> {
@@ -120,6 +122,23 @@ class AuditInteractionInstrumentedTest {
             assertEquals("Second long-click must stop recording", 1, recorder.stops)
             assertEquals("Long-click must not insert a space", 0, recorder.spaces)
             assertEquals("Second long-click must not start another session", 1, recorder.starts)
+            true
+        }
+    }
+
+    @Test
+    fun releaseKeepsLateVoiceCallbacksUntilFinalResult() = withKeyboard { harness, recorder, keyboard ->
+        harness.awaitMain { keyboard.startVoiceFromSpace(); true }
+        harness.awaitMain { if (recorder.events != null) true else null }
+        harness.awaitMain {
+            keyboard.stopVoiceFromSpace()
+            recorder.events!!.onPartial("松手后的尾帧")
+            recorder.events!!.onFinal("松手后的最终结果")
+            true
+        }
+        harness.awaitMain {
+            assertEquals("松手后的尾帧必须在释放后仍能进入最终识别流程", listOf("松手后的尾帧"), recorder.partials)
+            assertEquals(listOf("松手后的最终结果"), recorder.finals)
             true
         }
     }
