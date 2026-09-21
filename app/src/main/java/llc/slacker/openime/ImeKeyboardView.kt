@@ -5508,8 +5508,13 @@ open class ImeKeyboardView(
                     tag == "panel-title" -> {
                         view.setTextColor(t.keyText)
                     }
-                    tag == "candidate-expand" -> {
+                    tag == "candidate-emoji" || tag == "candidate-expand" -> {
                         view.setTextColor(t.keySecondaryText)
+                        view.background = statefulRounded(
+                            t.panelHeadBackground,
+                            dim(t.panelHeadBackground),
+                            dp(8),
+                        )
                     }
                     tag == "voice-transcript" -> {
                         view.setTextColor(t.keyText)

@@ -323,6 +323,19 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun candidateShortcutsExposePressedAndKeyboardFocusFeedback() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            val emoji = keyboard.findViewWithTag<View>("candidate-emoji")
+            val expand = keyboard.findViewWithTag<View>("candidate-expand")
+            assertTrue("Candidate emoji shortcut must expose a stateful background", emoji.background is StateListDrawable)
+            assertTrue("Candidate overflow shortcut must expose a stateful background", expand.background is StateListDrawable)
+            assertTrue("Candidate emoji shortcut must be focusable", emoji.isFocusable)
+            assertTrue("Candidate overflow shortcut must be focusable", expand.isFocusable)
+            true
+        }
+    }
+
+    @Test
     fun toolbarActionsAreFocusableAndUseLocalizedLabels() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             val emoji = keyboard.findTestTarget("表情")
