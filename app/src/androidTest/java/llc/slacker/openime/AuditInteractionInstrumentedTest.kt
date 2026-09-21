@@ -388,6 +388,7 @@ class AuditInteractionInstrumentedTest {
             keyboard.showPanel(Panel.TOOLS)
             val card = keyboard.findViewWithTag<View>("tool:表情")
             assertTrue("Tool card must be keyboard-focusable", card.isFocusable)
+            assertTrue("Tool card must expose pressed and focus feedback", card.background is StateListDrawable)
             assertEquals("表情", card.contentDescription)
             val label = (card as ViewGroup).getChildAt(1)
             assertTrue(

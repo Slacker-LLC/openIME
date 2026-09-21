@@ -5388,6 +5388,13 @@ open class ImeKeyboardView(
                     "clip-card" -> view.background = rounded(t.toolCardBackground, dp(10))
                     "gaming-panel" -> view.background = rounded(t.toolCardBackground, dp(12))
                     "panel-head" -> view.background = rounded(t.panelHeadBackground, dp(14))
+                    else -> if ((view.tag as? String)?.startsWith("tool:") == true && view.isClickable) {
+                        view.background = statefulRounded(
+                            t.toolCardBackground,
+                            t.keyPressedBackground,
+                            dp(10),
+                        )
+                    }
                 }
                 if (view.contentDescription != null && view.isClickable && view.tag == null) {
                     view.background = statefulRounded(t.toolCardBackground, t.keyPressedBackground, dp(10))
