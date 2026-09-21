@@ -5003,6 +5003,7 @@ open class ImeKeyboardView(
             secondary = if (func) null else secondary,
             iconRes = iconRes,
             mainTextSize = mainTextSizeOverride ?: (if (func) 15f else 20f),
+            fitMainText = func || text.length > 2,
         ).apply {
             tag = "key:$text"
             setTag(MARK_FUNCTION_KEY, func)

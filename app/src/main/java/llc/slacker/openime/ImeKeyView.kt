@@ -4,6 +4,7 @@ import android.content.res.ColorStateList
 import android.content.Context
 import android.graphics.Color
 import android.text.TextUtils
+import android.util.TypedValue
 import android.view.View
 import android.view.MotionEvent
 import android.view.Gravity
@@ -26,6 +27,7 @@ class ImeKeyView(
     secondary: String? = null,
     iconRes: Int = 0,
     mainTextSize: Float = 17f,
+    fitMainText: Boolean = false,
 ) : FrameLayout(context) {
 
     private val density = resources.displayMetrics.density
@@ -102,7 +104,20 @@ class ImeKeyView(
                 isAllCaps = false
                 includeFontPadding = false
                 maxLines = 1
-                ellipsize = TextUtils.TruncateAt.END
+                if (fitMainText) {
+                    // Function labels must remain readable at large system font
+                    // scales. Shrink within a controlled range instead of
+                    // replacing the action with an ellipsis such as “中/…”.
+                    setAutoSizeTextTypeUniformWithConfiguration(
+                        (mainTextSize * 0.68f).toInt().coerceAtLeast(10),
+                        mainTextSize.toInt().coerceAtLeast(12),
+                        1,
+                        TypedValue.COMPLEX_UNIT_SP,
+                    )
+                    ellipsize = null
+                } else {
+                    ellipsize = TextUtils.TruncateAt.END
+                }
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                 isDuplicateParentStateEnabled = true
             }
