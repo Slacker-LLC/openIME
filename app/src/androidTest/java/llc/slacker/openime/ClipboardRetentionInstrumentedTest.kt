@@ -13,6 +13,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -190,6 +191,10 @@ class ClipboardRetentionInstrumentedTest {
                 ),
             )
             keyboard.showPanel(Panel.CLIPBOARD)
+            assertNull(
+                "Retention actions must wait until clipboard history has loaded",
+                findTextView(keyboard, "清空全部"),
+            )
         }
 
         var card: View? = null
