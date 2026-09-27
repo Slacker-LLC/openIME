@@ -207,7 +207,7 @@ internal class VoicePanelView(
         }
     }
 
-    private companion object {
+    companion object {
         val LANGUAGES = listOf(
             "普通话" to "zh-CN",
             "英文" to "en-US",

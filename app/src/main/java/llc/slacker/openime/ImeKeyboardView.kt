@@ -196,11 +196,9 @@ open class ImeKeyboardView(
         onArmFeedback = ::hapticFeedback,
         onVoiceStart = { listener.onVoicePressChanged(true) },
         onVoiceStop = { listener.onVoicePressChanged(false) },
-        onVoiceCancel = {
-            voiceCancelAction?.invoke() ?: cancelVoiceGesture()
-        },
+        onVoiceCancel = ::cancelVoiceGesture,
         onCancelPreviewChanged = { cancelling ->
-            voiceCancelPreviewAction?.invoke(cancelling)
+            voicePanelController.setCancelPreview(cancelling)
         },
     )
     // Whether long-press alternate glyphs are shown as small corner hints.
@@ -304,18 +302,9 @@ open class ImeKeyboardView(
     private var lastNinePinyinPaths = emptyList<String>()
     private var currentCandidates = emptyList<String>()
     private var currentItems: List<String>? = null
-    private var voiceEventGeneration = 0L
-    private var voiceLanguageIndex = 0
     private var toolPage = 0
-    private var voiceActive = false
-    private var voicePending = false
-    private var voiceStopRequested = false
     private var voiceAllowed = true
     private var inlineVoicePaletteColor: Int? = null
-    private var voiceStartAction: (() -> Unit)? = null
-    private var voiceStopAction: (() -> Unit)? = null
-    private var voiceCancelAction: (() -> Unit)? = null
-    private var voiceCancelPreviewAction: ((Boolean) -> Unit)? = null
     private var voiceGestureSession = false
     private var voiceInlineActive = false
     private var voiceInlineCancel = false
@@ -510,6 +499,28 @@ open class ImeKeyboardView(
             onFeedback = ::feedback,
             applyTheme = ::applyTheme,
             onHierarchyRebuilt = ::onViewHierarchyRebuilt,
+        )
+    }
+    private val voicePanelController: VoicePanelController by lazy {
+        VoicePanelController(
+            context = context,
+            expandedPanel = expandedPanel,
+            toPx = ::dp,
+            panelBodyHeightPx = { dp(panelBodyHeightDp()) },
+            createHeader = ::panelHead,
+            createButton = ::button,
+            listener = listener,
+            isGestureSessionActive = { voiceGestureSession },
+            onInlineState = { message, cancelling, error, rms ->
+                showInlineVoiceState(
+                    message = message,
+                    cancelling = cancelling,
+                    error = error,
+                    rms = rms,
+                )
+            },
+            onHideInlineLater = ::hideInlineVoiceStateLater,
+            onFeedback = ::feedback,
         )
     }
     private val settingsPanelController: SettingsPanelController by lazy {
@@ -758,7 +769,6 @@ open class ImeKeyboardView(
             ),
         )
         renderModeBody()
-        prepareVoiceController()
         applyTheme()
 
         setOnApplyWindowInsetsListener { _, insets ->
@@ -806,7 +816,7 @@ open class ImeKeyboardView(
         if (standalonePanel) return
         when {
             panel == Panel.NONE -> renderModeBody()
-            panel == Panel.VOICE && (voiceActive || voicePending || voiceGestureSession) -> {
+            panel == Panel.VOICE && (voicePanelController.active || voicePanelController.pending || voiceGestureSession) -> {
                 // Rebuilding the voice panel would replace the closures that
                 // own the active recognition session. Resize its body in place
                 // and let the session continue without a visual reset.
@@ -1246,7 +1256,7 @@ open class ImeKeyboardView(
         passwordField = state.passwordField
         voiceAllowed = !passwordField
         if (passwordStateChanged) {
-            if (!voiceAllowed && (voiceGestureSession || voiceActive || voicePending)) {
+            if (!voiceAllowed && (voiceGestureSession || voicePanelController.active || voicePanelController.pending)) {
                 cancelVoiceForManualInput()
             }
             if (passwordField && panel == Panel.CLIPBOARD) {
@@ -1494,11 +1504,10 @@ open class ImeKeyboardView(
         voiceInlineActive = false
         voiceInlineCancel = false
         voiceInlineError = false
-        voiceStopRequested = false
         hidePopup()
     }
 
-    internal fun isVoiceActive(): Boolean = voiceActive
+    internal fun isVoiceActive(): Boolean = voicePanelController.active
 
     internal fun findTestTarget(query: String): View? {
         findViewWithTag<View>(query)?.let { return it }
@@ -1617,12 +1626,6 @@ open class ImeKeyboardView(
         )
     }
 
-    private fun conciseVoiceError(message: String): String = when {
-        message.contains("模型") -> "语音不可用 · 请检查本地模型"
-        message.contains("麦克风") || message.contains("权限") -> "语音不可用 · 请检查麦克风权限"
-        else -> "语音失败 · 长按空格重试"
-    }
-
     private fun showInlineVoiceState(
         message: String,
         cancelling: Boolean = false,
@@ -1700,7 +1703,7 @@ open class ImeKeyboardView(
     private fun hideInlineVoiceStateLater(delayMs: Long) {
         val generation = voiceInlineGeneration
         postDelayed({
-            if (generation == voiceInlineGeneration && !voiceActive) hideInlineVoiceState()
+            if (generation == voiceInlineGeneration && !voicePanelController.active) hideInlineVoiceState()
         }, delayMs)
     }
 
@@ -1900,8 +1903,8 @@ open class ImeKeyboardView(
             if (spaceVoiceGestureController.trackingTouch) return@setOnLongClickListener true
             // Accessibility actions do not deliver a touch DOWN/UP sequence.
             when {
-                voiceActive -> stopVoiceFromSpace()
-                voicePending -> cancelVoiceForManualInput()
+                voicePanelController.active -> stopVoiceFromSpace()
+                voicePanelController.pending -> cancelVoiceForManualInput()
                 else -> listener.onVoiceToggle()
             }
             true
@@ -1932,22 +1935,15 @@ open class ImeKeyboardView(
     /** Starts recording after the combined space key crosses the long-press threshold. */
     fun startVoiceFromSpace() {
         if (!voiceAllowed) return
-        prepareVoiceController()
         voiceGestureSession = true
-        lockVoiceLanguageForGesture()
+        voicePanelController.lockLanguageForGesture()
         voiceInlineGeneration++
         showInlineVoiceState("正在准备麦克风…")
         startInlineVoicePulse()
         // Let the in-place state row draw before model/session startup begins.
         post {
-            if (voiceGestureSession) voiceStartAction?.invoke()
+            if (voiceGestureSession) voicePanelController.start()
         }
-    }
-
-    /** Lock language selection as soon as a voice gesture starts, before model startup is posted. */
-    private fun lockVoiceLanguageForGesture() {
-        expandedPanel.findViewWithTag<VoicePanelView>("voice-panel")
-            ?.refreshLanguageControl(locked = true)
     }
 
     /** Ends recording when the combined space key is released. */
@@ -1956,28 +1952,27 @@ open class ImeKeyboardView(
         voiceGestureSession = false
         stopInlineVoicePulse()
         showInlineVoiceState("正在识别…")
-        voiceStopAction?.invoke()
-        // Keep progress visible until a terminal callback or explicit cancel.
+        voicePanelController.stop()
     }
 
     private fun cancelVoiceGesture() {
-        voicePending = false
         voiceGestureSession = false
-        voiceActive = false
-        voiceStopRequested = false
         spaceVoiceGestureController.reset()
         voiceInlineGeneration++
         stopInlineVoicePulse()
-        showInlineVoiceState("已取消")
-        hideInlineVoiceStateLater(260L)
-        listener.cancelVoiceRecognition()
-        listener.onVoiceCancel()
+        voicePanelController.cancel()
     }
 
     /** Revoke recognition ownership before the editor accepts manual input. */
     fun cancelVoiceForManualInput() {
-        if (!voicePending && !voiceActive && !voiceGestureSession) return
-        voiceCancelAction?.invoke() ?: cancelVoiceGesture()
+        if (
+            !voicePanelController.pending &&
+            !voicePanelController.active &&
+            !voiceGestureSession
+        ) {
+            return
+        }
+        cancelVoiceGesture()
         hideInlineVoiceState()
     }
 
@@ -1988,13 +1983,14 @@ open class ImeKeyboardView(
         expandedPanel.removeAllViews()
         expandedPanel.visibility = View.VISIBLE
         candidateBarController.resetExpandedState()
+        voicePanelController.detachView()
         when (panel) {
             Panel.TOOLS -> panelRenderer.renderTools()
             Panel.KEYBOARD_SELECT -> panelRenderer.renderKeyboardSelect()
             Panel.SYMBOLS -> panelRenderer.renderSymbols()
             Panel.EMOJI -> panelRenderer.renderEmoji()
             Panel.HANDWRITING -> panelRenderer.renderHandwriting()
-            Panel.VOICE -> renderVoice()
+            Panel.VOICE -> voicePanelController.render()
             Panel.CLIPBOARD -> renderClipboard()
             Panel.TEXT_EDITOR -> textEditorPanelController.render()
             Panel.SETTINGS -> settingsPanelController.renderSettings()
@@ -2012,16 +2008,6 @@ open class ImeKeyboardView(
             val entryPoint = expandedPanel.findViewWithTag<View>("key-panel-back") ?: return@post
             if (entryPoint.isShown && entryPoint.isFocusable) entryPoint.requestFocus()
         }
-    }
-
-    /** Build the voice controller while it remains hidden, so a space gesture does not relayout the IME. */
-    private fun prepareVoiceController() {
-        if (voiceStartAction != null) return
-        expandedPanel.removeAllViews()
-        expandedPanel.visibility = View.GONE
-        renderVoice()
-        expandedPanel.visibility = View.GONE
-        applyTheme()
     }
 
     private fun panelHead(name: String): LinearLayout {
@@ -2084,233 +2070,19 @@ open class ImeKeyboardView(
         ))
     }
 
-    private fun renderVoice() {
-        addPanelHead("语音输入")
-        var recognizedText = ""
-        var voiceCancelled = false
-        var cancelPreview = false
-        var modelPrepared = false
-        val voiceView = VoicePanelView(
-            context = context,
-            toPx = ::dp,
-            initialModelState = listener.voiceModelState(),
-            initialLanguageIndex = voiceLanguageIndex,
-            createButton = ::button,
-            onFeedback = ::feedback,
-            onLanguageChanged = { index ->
-                voiceLanguageIndex = index
-            },
-        )
-        voiceView.refreshLanguageControl(
-            locked = voiceGestureSession || voiceActive || voicePending,
-        )
-        expandedPanel.addView(
-            voiceView,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(panelBodyHeightDp()),
-            ),
-        )
-        fun startVoice() {
-            if (voiceActive) return
-            val eventGeneration = ++voiceEventGeneration
-            recognizedText = ""
-            voiceCancelled = false
-            cancelPreview = false
-            modelPrepared = false
-            voiceActive = true
-            voicePending = true
-            voiceStopRequested = false
-            voiceView.refreshLanguageControl(voiceGestureSession || voiceActive || voicePending)
-            showInlineVoiceState("正在准备麦克风…")
-            voiceView.setMicState("⏹", "语音输入进行中，松开空格结束，上滑取消")
-            voiceView.setGestureHint("松开空格上屏 · 上滑取消", "松开空格结束语音并自动上屏，上滑取消")
-            voiceView.modelStatus.text = "正在使用离线模型 · 音频不出设备"
-            voiceView.transcript.text = "正在聆听… 松开空格结束"
-            listener.onVoiceSessionStarted(true)
-            listener.startVoiceRecognition(voiceView.selectedLanguageCode(), object : VoiceRecognitionEvents {
-                private val rmsQueued = java.util.concurrent.atomic.AtomicBoolean(false)
-                @Volatile private var latestRms = 0f
-                override fun onPartial(text: String) {
-                    // AudioRecord inference callbacks arrive from the voice
-                    // worker thread; keep view and InputConnection mutations
-                    // on the IME main thread.
-                    post {
-                        if (eventGeneration != voiceEventGeneration) return@post
-                        if (!voiceActive || voiceCancelled) return@post
-                        if (cancelPreview) return@post
-                        modelPrepared = true
-                        if (text.isNotBlank()) recognizedText = text
-                        voiceView.transcript.text = text
-                        if (voiceStopRequested) {
-                            voiceView.modelStatus.text = "正在整理识别结果…"
-                            voiceView.setMicState("⏹", "正在整理语音识别结果，请稍候")
-                            voiceView.setGestureHint("整理识别结果…", "正在整理语音识别结果，请稍候")
-                            showInlineVoiceState("正在识别…")
-                        } else {
-                            voiceView.modelStatus.text = "正在聆听 · 松开空格结束"
-                            voiceView.setMicState("⏹", "语音输入进行中，松开空格结束，上滑取消")
-                            voiceView.setGestureHint("松开空格上屏 · 上滑取消", "松开空格结束语音并自动上屏，上滑取消")
-                            showInlineVoiceState(text.ifBlank { "正在聆听…" })
-                        }
-                        listener.onVoicePartial(text)
-                    }
-                }
-                override fun onFinal(text: String) {
-                    post {
-                        if (eventGeneration != voiceEventGeneration) return@post
-                        if (voiceCancelled || cancelPreview) return@post
-                        if (text.isNotBlank()) recognizedText = text
-                        voiceView.transcript.text = text
-                        voiceView.setMicState("🎤", "语音状态，已完成识别，仅支持长按空格启动")
-                        voiceView.setGestureHint("长按空格开始", "长按空格开始语音，松开自动上屏，上滑取消")
-                        voiceActive = false
-                        voicePending = false
-                        voiceStopRequested = false
-                        voiceView.refreshLanguageControl(voiceGestureSession || voiceActive || voicePending)
-                        voiceView.modelStatus.text = "离线识别完成 · 已自动上屏"
-                        listener.onVoiceFinal(text)
-                        showInlineVoiceState(if (text.isBlank()) "没有识别到语音" else "已上屏")
-                        hideInlineVoiceStateLater(if (text.isBlank()) 900L else 280L)
-                    }
-                }
-                override fun onRms(rms: Float) {
-                    latestRms = rms
-                    if (!rmsQueued.compareAndSet(false, true)) return
-                    postDelayed({
-                        rmsQueued.set(false)
-                        if (eventGeneration != voiceEventGeneration) return@postDelayed
-                        if (!voiceActive || voiceStopRequested || voiceCancelled || cancelPreview) return@postDelayed
-                        val level = latestRms
-                        voiceView.updateWaveformHeight(
-                            dp((8 + (level * 4f).coerceIn(0f, 52f)).toInt()),
-                        )
-                        showInlineVoiceState(
-                            if (modelPrepared) "正在聆听…" else "正在录音 · 模型准备中…",
-                            rms = level,
-                        )
-                    }, 32L)
-                }
-                override fun onError(message: String) {
-                    post {
-                        if (eventGeneration != voiceEventGeneration) return@post
-                        if (voiceCancelled) return@post
-                        recognizedText = ""
-                        voiceView.transcript.text = message
-                        voiceView.setMicState("🎤", "语音状态，识别失败，仅支持长按空格重试")
-                        voiceView.setGestureHint("长按空格开始", "长按空格重新开始语音，松开自动上屏，上滑取消")
-                        voiceActive = false
-                        voicePending = false
-                        voiceStopRequested = false
-                        voiceView.refreshLanguageControl(voiceGestureSession || voiceActive || voicePending)
-                        voiceView.modelStatus.text = "语音未完成 · 请检查本地模型和麦克风权限"
-                        listener.onVoiceError(message)
-                        showInlineVoiceState(
-                            conciseVoiceError(message.ifBlank { "语音输入失败" }),
-                            error = true,
-                        )
-                        hideInlineVoiceStateLater(1_500L)
-                    }
-                }
-                override fun onReady() {
-                    post {
-                        if (eventGeneration != voiceEventGeneration) return@post
-                        if (voiceCancelled) return@post
-                        if (voiceActive && !voiceStopRequested) {
-                            voiceView.setMicState("⏹", "语音输入进行中，松开空格结束，上滑取消")
-                            voiceView.setGestureHint("松开空格上屏 · 上滑取消", "松开空格结束语音并自动上屏，上滑取消")
-                            voiceView.modelStatus.text = "正在录音 · 本地模型准备中"
-                            showInlineVoiceState("正在录音 · 模型准备中…")
-                        } else {
-                            voiceView.setMicState("⏹", "正在整理语音识别结果，请稍候")
-                            voiceView.setGestureHint("整理识别结果…", "正在整理语音识别结果，请稍候")
-                            voiceView.modelStatus.text = "正在整理识别结果…"
-                            showInlineVoiceState("正在识别…")
-                        }
-                    }
-                }
-                override fun onModelReady() {
-                    post {
-                        if (eventGeneration != voiceEventGeneration) return@post
-                        if (!voiceActive || voiceStopRequested || voiceCancelled || cancelPreview) return@post
-                        modelPrepared = true
-                        voiceView.setMicState("⏹", "语音输入进行中，松开空格结束，上滑取消")
-                        voiceView.setGestureHint("松开空格上屏 · 上滑取消", "松开空格结束语音并自动上屏，上滑取消")
-                        voiceView.modelStatus.text = "正在识别 · 松开空格结束"
-                        showInlineVoiceState("正在聆听…")
-                    }
-                }
-            })
-        }
-        fun stopVoice() {
-            if (!voiceActive || voiceStopRequested) return
-            listener.stopVoiceRecognition()
-            voiceView.setMicState("🎤", "正在整理语音识别结果，请稍候")
-            voiceView.setGestureHint("整理识别结果…", "正在整理语音识别结果，请稍候")
-            voiceStopRequested = true
-            voiceView.refreshLanguageControl(voiceGestureSession || voiceActive || voicePending)
-            voiceView.modelStatus.text = "正在整理识别结果…"
-            showInlineVoiceState("正在识别…")
-        }
-        fun cancelVoice() {
-            if (voiceCancelled) return
-            voiceEventGeneration++
-            voiceCancelled = true
-            voicePending = false
-            cancelPreview = false
-            voiceActive = false
-            voiceStopRequested = false
-            voiceView.refreshLanguageControl(voiceGestureSession || voiceActive || voicePending)
-            listener.cancelVoiceRecognition()
-            recognizedText = ""
-            voiceView.setMicState("🎤", "语音状态，已取消，仅支持长按空格启动")
-            voiceView.setGestureHint("长按空格开始", "长按空格开始语音，松开自动上屏，上滑取消")
-            listener.onVoiceCancel()
-            voiceView.transcript.text = "已取消语音输入"
-            voiceView.modelStatus.text = "语音已取消 · 音频未保存"
-            showInlineVoiceState("已取消")
-            hideInlineVoiceStateLater(260L)
-        }
-        voiceStartAction = { startVoice() }
-        voiceStopAction = { stopVoice() }
-        voiceCancelAction = {
-            voiceGestureSession = false
-            cancelVoice()
-        }
-        voiceCancelPreviewAction = { cancelling ->
-            cancelPreview = cancelling
-            if (cancelling) {
-                voiceView.setMicState("⏹", "取消语音输入中，松开将丢弃本次语音")
-                voiceView.setGestureHint("上滑取消 · 松开丢弃", "继续上滑取消语音，松开将丢弃本次语音")
-                voiceView.transcript.text = "上滑取消 · 松开丢弃本次语音"
-                voiceView.modelStatus.text = "取消状态 · 松开将丢弃"
-                showInlineVoiceState("松开取消", cancelling = true)
-            } else {
-                voiceView.setMicState("⏹", "语音输入进行中，松开空格结束，上滑取消")
-                voiceView.setGestureHint("松开空格上屏 · 上滑取消", "松开空格结束语音并自动上屏，上滑取消")
-                voiceView.transcript.text = recognizedText.ifBlank { "正在聆听… 松开空格结束" }
-                voiceView.modelStatus.text = "正在聆听 · 松开空格结束"
-                showInlineVoiceState(recognizedText.ifBlank { "正在聆听…" })
-            }
-        }
-    }
-
     private fun stopVoiceIfActive() {
-        val hadVoice = voicePending || voiceActive || voiceGestureSession
-        voicePending = false
-        voiceStopRequested = false
-        voiceEventGeneration++
-        listener.cancelVoiceRecognition()
-        voiceActive = false
+        val hadVoice =
+            voicePanelController.active ||
+                voicePanelController.pending ||
+                voiceGestureSession
         voiceGestureSession = false
+        voicePanelController.resetAndCancel()
         spaceVoiceGestureController.reset()
         voiceInlineGeneration++
         hideInlineVoiceState()
-        if (hadVoice || panel == Panel.VOICE) listener.onVoiceCancel()
-        voiceStartAction = null
-        voiceStopAction = null
-        voiceCancelAction = null
-        voiceCancelPreviewAction = null
+        if (hadVoice || panel == Panel.VOICE) {
+            listener.onVoiceCancel()
+        }
     }
 
     protected fun renderClipboard(reusePanel: Boolean = false) {
