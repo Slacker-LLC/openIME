@@ -38,7 +38,6 @@ enum class ImeAppearance(val label: String) {
 
 data class ImeState(
     val keyboardMode: KeyboardMode = KeyboardMode.PINYIN_26,
-    val previousKeyboardMode: KeyboardMode = KeyboardMode.PINYIN_26,
     val panel: Panel = Panel.NONE,
     val composition: String = "",
     val candidates: List<String> = emptyList(),
@@ -64,14 +63,7 @@ data class ImeState(
     val skinRadius: Int = 8,
     val skinFontSize: Int = 17,
     val skinPrimaryColor: String = AccentPalette.DEFAULT,
-) {
-    fun withMode(mode: KeyboardMode): ImeState = copy(
-        previousKeyboardMode = keyboardMode,
-        keyboardMode = mode,
-        composition = "",
-        candidates = emptyList(),
-    )
-}
+)
 
 data class VoiceUiState(
     val listening: Boolean = false,
