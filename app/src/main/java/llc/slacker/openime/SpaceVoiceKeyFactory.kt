@@ -18,8 +18,15 @@ internal class SpaceVoiceKeyFactory(
         label: String,
         white: Boolean,
         onTap: () -> Unit,
-    ): ImeKeyView =
-        createBaseKey(label, onTap).apply {
+    ): ImeKeyView {
+        var suppressNextTap = false
+        return createBaseKey(label) {
+            if (suppressNextTap) {
+                suppressNextTap = false
+            } else {
+                onTap()
+            }
+        }.apply {
             tag = "key-space"
             contentDescription = "$label，点击空格，长按语音输入"
 
@@ -43,6 +50,7 @@ internal class SpaceVoiceKeyFactory(
             setOnTouchListener { view, event ->
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
+                        suppressNextTap = false
                         onFeedback()
                         gestureController.begin(
                             anchor = view,
@@ -51,9 +59,35 @@ internal class SpaceVoiceKeyFactory(
                         )
                         false
                     }
-                    MotionEvent.ACTION_MOVE ->
-                        gestureController.move(event.rawY)
-
+                    MotionEvent.ACTION_MOVE -> {
+                        val index = event.findPointerIndex(gestureController.pointerId)
+                        if (index < 0) {
+                            val wasTracking = gestureController.trackingTouch
+                            gestureController.finish(cancelled = true)
+                            if (wasTracking) suppressNextTap = true
+                            wasTracking
+                        } else {
+                            val pointerY = event.rawY + event.getY(index) - event.y
+                            gestureController.move(pointerY)
+                        }
+                    }
+                    MotionEvent.ACTION_POINTER_UP -> {
+                        if (
+                            event.getPointerId(event.actionIndex) !=
+                            gestureController.pointerId
+                        ) {
+                            false
+                        } else {
+                            val wasTracking = gestureController.trackingTouch
+                            val consumed = gestureController.finish(cancelled = false)
+                            // View's click state follows the whole MotionEvent
+                            // stream, not our owner pointer. If the owner lifts
+                            // while another finger remains down, suppress the
+                            // eventual ACTION_UP click from that other finger.
+                            if (wasTracking) suppressNextTap = true
+                            consumed || wasTracking
+                        }
+                    }
                     MotionEvent.ACTION_UP,
                     MotionEvent.ACTION_CANCEL,
                     -> {
@@ -66,4 +100,5 @@ internal class SpaceVoiceKeyFactory(
                 }
             }
         }
+    }
 }
