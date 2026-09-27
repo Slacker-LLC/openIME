@@ -2416,9 +2416,6 @@ open class ImeKeyboardView(
         themeApplier.apply(associationRow, theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor)))
     }
 
-    private fun firstCandidateOrComposition(): String =
-        currentCandidates.firstOrNull() ?: composition.text.toString()
-
     protected fun feedback() {
         if (hapticEnabled) performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
         if (soundEnabled) {
@@ -2589,10 +2586,6 @@ open class ImeKeyboardView(
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
-    private fun wrapParams() = LinearLayout.LayoutParams(
-        LinearLayout.LayoutParams.WRAP_CONTENT,
-        LinearLayout.LayoutParams.WRAP_CONTENT,
-    )
     private fun gridCellParams(
         heightDp: Int,
         columns: Int,
@@ -2611,11 +2604,5 @@ open class ImeKeyboardView(
             LinearLayout.LayoutParams(0, dp(heightDp), 1f).apply { marginEnd = gap }
         }
     }
-    private fun weightParams(weight: Float) = LinearLayout.LayoutParams(
-        0,
-        LinearLayout.LayoutParams.WRAP_CONTENT,
-        weight,
-    ).apply {
-        marginEnd = dp(3)
-    }
+
 }
