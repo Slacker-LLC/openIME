@@ -3,11 +3,9 @@ package llc.slacker.openime
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.os.SystemClock
 import android.os.PersistableBundle
 import android.view.View
 import android.view.ViewGroup
-import android.view.accessibility.AccessibilityNodeInfo
 import android.view.inputmethod.BaseInputConnection
 import android.widget.TextView
 import androidx.test.ext.junit.rules.ActivityScenarioRule
@@ -102,11 +100,12 @@ class ClipboardRetentionInstrumentedTest {
                 ClipboardHistoryRepository.load(activity).map { it.text },
             )
         }
-        assertTrue(
-            "The confirmation dialog must expose a clear action",
-            clickAccessibilityText("清空全部"),
-        )
         rule.scenario.onActivity { activity ->
+            val confirm = keyboard.findViewWithTag<View>("clipboard-clear-confirm")
+            assertNotNull("Inline confirmation must expose a clear action", confirm)
+            assertTrue("Inline confirmation must be keyboard-focusable", confirm!!.isFocusable)
+            assertTrue(confirm.contentDescription.toString().contains("确认清空全部剪贴历史"))
+            assertTrue(confirm.performClick())
             assertEquals(emptyList<ClipboardEntry>(), ClipboardHistoryRepository.load(activity))
         }
 
@@ -207,29 +206,6 @@ class ClipboardRetentionInstrumentedTest {
             for (index in 0 until root.childCount) {
                 findTextView(root.getChildAt(index), label)?.let { return it }
             }
-        }
-        return null
-    }
-
-    private fun clickAccessibilityText(label: String): Boolean {
-        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
-        repeat(20) {
-            findAccessibilityNode(automation.rootInActiveWindow, label)?.let { node ->
-                return node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            }
-            SystemClock.sleep(50)
-        }
-        return false
-    }
-
-    private fun findAccessibilityNode(
-        node: AccessibilityNodeInfo?,
-        label: String,
-    ): AccessibilityNodeInfo? {
-        if (node == null) return null
-        if (node.text?.toString() == label || node.contentDescription?.toString() == label) return node
-        for (index in 0 until node.childCount) {
-            findAccessibilityNode(node.getChild(index), label)?.let { return it }
         }
         return null
     }
