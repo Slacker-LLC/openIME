@@ -472,10 +472,7 @@ open class ImeKeyboardView(
     private val toolbarRow: LinearLayout get() = topZone.toolbarRow
     private val composeZone: LinearLayout get() = topZone.composeZone
     private val composition: EditText get() = topZone.composition
-    private val candidateField: LinearLayout get() = topZone.candidateField
     private val associationRow: LinearLayout get() = topZone.associationRow
-    private val candidateExpandBtn: TextView get() = topZone.candidateExpandButton
-    private val candidateEmojiBtn: TextView get() = topZone.candidateEmojiButton
     private val voiceInlineZone: LinearLayout get() = topZone.voiceInlineZone
     private val voiceInlineIcon: ImageView get() = topZone.voiceInlineIcon
     private val voiceInlineStatus: TextView get() = topZone.voiceInlineStatus
@@ -665,12 +662,6 @@ open class ImeKeyboardView(
             onSpace = listener::onSpace,
             onEnter = listener::onEnter,
         )
-    }
-    private var nineTapKey = ""
-    private var nineTapIndex = 0
-    private val nineTapReset = Runnable {
-        nineTapKey = ""
-        nineTapIndex = 0
     }
 
     init {
@@ -1120,8 +1111,6 @@ open class ImeKeyboardView(
             }
         }
         if (panel != Panel.NONE) dismissPanelForModeSwitch()
-        repeatHandler.removeCallbacks(nineTapReset)
-        nineTapReset.run()
         val layoutChanged = mode != newMode
         mode = newMode
         panelRenderer.syncSymbolCategoryForMode(newMode)
@@ -2834,8 +2823,8 @@ open class ImeKeyboardView(
         candidateOverlay.setBackgroundColor(t.expandedBackground)
         themeApplier.apply(this, t)
         composition.setTextColor(t.keySecondaryText)
-        candidateExpandBtn.setTextColor(t.keySecondaryText)
-        candidateEmojiBtn.setTextColor(t.keySecondaryText)
+        topZone.candidateExpandButton.setTextColor(t.keySecondaryText)
+        topZone.candidateEmojiButton.setTextColor(t.keySecondaryText)
         applyFloatingChromeTheme(t)
         if (voiceInlineActive) applyInlineVoicePalette()
     }
