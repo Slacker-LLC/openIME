@@ -694,7 +694,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     override fun onVoiceToggle() {
         if (state.passwordField) return
         voiceMediaMute.mute()
-        keyboardView?.toggleVoiceFromSpace()
+        keyboardView?.startVoiceFromSpace()
     }
 
     override fun onVoicePressChanged(pressed: Boolean) {
