@@ -3,7 +3,6 @@ package llc.slacker.openime
 import android.content.Context
 import android.view.Gravity
 import android.view.MotionEvent
-import android.view.View
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
