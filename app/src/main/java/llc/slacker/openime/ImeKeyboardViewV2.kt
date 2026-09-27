@@ -12,7 +12,6 @@ import android.view.WindowInsets
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.EditText
 import android.widget.LinearLayout
-import kotlin.math.abs
 
 /**
  * Production wrapper around the legacy renderer. Business state still lives in
@@ -31,16 +30,11 @@ class ImeKeyboardViewV2 private constructor(
 
     /**
      * Production presentation sync is gated because onMeasure runs frequently.
-     * Space geometry and Enter labeling depend on the current hierarchy/editor;
-     * do not rescan the tree when neither changed.
+     * Enter labeling depends on the current hierarchy/editor; do not rescan
+     * the tree when neither changed.
      */
     private var presentationDirty = true
     private var lastSyncedImeOptions: Int? = null
-
-    /** Force the next measure pass to resynchronize key presentation. */
-    fun invalidatePresentation() {
-        presentationDirty = true
-    }
 
     init {
         adapter.afterModeChanged = {
@@ -231,49 +225,7 @@ class ImeKeyboardViewV2 private constructor(
         if (!presentationDirty && imeOptions == lastSyncedImeOptions) return
         presentationDirty = false
         lastSyncedImeOptions = imeOptions
-        normalizeSpaceRowGeometry()
         syncEnterKeyPresentation()
-    }
-
-    /**
-     * The old renderer centered each key's label but gave the left/right
-     * function groups different total weights. Balance only the two outside
-     * keys so the middle space key remains visually centered without changing
-     * its touch target width.
-     */
-    private fun normalizeSpaceRowGeometry() {
-        val space = findViewWithTag<View>("key-space") ?: return
-        val row = space.parent as? LinearLayout ?: return
-        val spaceIndex = row.indexOfChild(space)
-        if (spaceIndex <= 0 || spaceIndex >= row.childCount - 1) return
-        if (spaceIndex * 2 != row.childCount - 1) return
-
-        fun paramsAt(index: Int): LinearLayout.LayoutParams? =
-            row.getChildAt(index).layoutParams as? LinearLayout.LayoutParams
-
-        val leftParams = (0 until spaceIndex).mapNotNull(::paramsAt)
-        val rightParams = (spaceIndex + 1 until row.childCount).mapNotNull(::paramsAt)
-        if (leftParams.size != spaceIndex || rightParams.size != row.childCount - spaceIndex - 1) return
-        val leftTotal = leftParams.sumOf { it.weight.toDouble() }.toFloat()
-        val rightTotal = rightParams.sumOf { it.weight.toDouble() }.toFloat()
-        if (abs(leftTotal - rightTotal) < 0.001f) return
-
-        val leftOuter = paramsAt(0) ?: return
-        val rightOuter = paramsAt(row.childCount - 1) ?: return
-        val balanced = ProductionKeyPolicy.balancedOuterWeights(
-            leftTotal = leftTotal,
-            rightTotal = rightTotal,
-            leftOuter = leftOuter.weight,
-            rightOuter = rightOuter.weight,
-        )
-        if (abs(leftOuter.weight - balanced.leftOuter) >= 0.001f) {
-            leftOuter.weight = balanced.leftOuter
-            row.getChildAt(0).layoutParams = leftOuter
-        }
-        if (abs(rightOuter.weight - balanced.rightOuter) >= 0.001f) {
-            rightOuter.weight = balanced.rightOuter
-            row.getChildAt(row.childCount - 1).layoutParams = rightOuter
-        }
     }
 
     /** Keep every visible Enter key honest about what onEnter() will dispatch. */
