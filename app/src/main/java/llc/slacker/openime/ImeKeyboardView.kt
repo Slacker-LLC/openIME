@@ -2444,11 +2444,6 @@ open class ImeKeyboardView(
         }
     }
 
-    /** Compatibility entry for older test hosts; the production gesture is long-press space. */
-    fun toggleVoiceFromSpace() {
-        startVoiceFromSpace()
-    }
-
     /** Starts recording after the combined space key crosses the long-press threshold. */
     fun startVoiceFromSpace() {
         if (!voiceAllowed) return
