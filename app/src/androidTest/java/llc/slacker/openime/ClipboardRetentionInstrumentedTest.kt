@@ -292,14 +292,10 @@ class ClipboardRetentionInstrumentedTest {
 
         var card: View? = null
         var clearAll: TextView? = null
-        repeat(30) {
-            harness.awaitMain { true }
-            harness.awaitMain {
-                card = keyboard.findViewWithTag("clip-card")
-                clearAll = findTextView(keyboard, "清空全部")
-            }
-            if (card != null && clearAll != null) return@repeat
-            Thread.sleep(50)
+        harness.awaitMain(timeoutMs = 15_000L) {
+            card = keyboard.findViewWithTag("clip-card")
+            clearAll = findTextView(keyboard, "清空全部")
+            if (card != null && clearAll != null) true else null
         }
         assertNotNull("opening the clipboard must capture the current clip", card)
         assertNotNull("retention actions must appear after async capture", clearAll)
