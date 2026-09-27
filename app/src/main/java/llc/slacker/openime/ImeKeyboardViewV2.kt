@@ -4,12 +4,9 @@ import android.content.Context
 import android.inputmethodservice.InputMethodService
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
-import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.accessibility.AccessibilityNodeInfo
@@ -99,13 +96,6 @@ class ImeKeyboardViewV2 private constructor(
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        // The legacy space implementation reports only pressed=true/false to
-        // the listener. Preserve whether the release was a cancellation so the
-        // adapter can recover a sub-long-press hold as a normal space only on a
-        // real ACTION_UP, never on ACTION_CANCEL.
-        if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
-            adapter.releaseWasCancel = true
-        }
         val handled = super.dispatchTouchEvent(event)
         if (event.actionMasked == MotionEvent.ACTION_UP) {
             repairEarlierNineKeySegmentIfNeeded()
@@ -222,11 +212,6 @@ class ImeKeyboardViewV2 private constructor(
     override fun onDetachedFromWindow() {
         shutdown()
         super.onDetachedFromWindow()
-    }
-
-    override fun shutdown() {
-        adapter.shutdown()
-        super.shutdown()
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -415,11 +400,6 @@ class ImeKeyboardViewV2 private constructor(
     private class Adapter(private val delegate: Listener) : ImeKeyboardView.Listener {
         var afterModeChanged: ((KeyboardMode) -> Unit)? = null
         var afterPanelChanged: ((Panel) -> Unit)? = null
-        var releaseWasCancel: Boolean = false
-
-        private val voiceHandler = Handler(Looper.getMainLooper())
-        private var pendingVoiceStart: Runnable? = null
-        private var voiceStartForwarded = false
 
         override fun onModeChanged(mode: KeyboardMode) {
             delegate.onModeChanged(mode)
@@ -437,74 +417,20 @@ class ImeKeyboardViewV2 private constructor(
         override fun onFloatingKeyboardDragged(deltaX: Float, deltaY: Float) =
             delegate.onFloatingKeyboardDragged(deltaX, deltaY)
         override fun onVoiceToggle() = delegate.onVoiceToggle()
-        override fun onVoicePressChanged(pressed: Boolean) {
-            if (pressed) {
-                if (voiceStartForwarded || pendingVoiceStart != null) return
-                releaseWasCancel = false
-                val start = Runnable {
-                    pendingVoiceStart = null
-                    if (!releaseWasCancel) {
-                        voiceStartForwarded = true
-                        delegate.onVoicePressChanged(true)
-                    }
-                }
-                pendingVoiceStart = start
-                voiceHandler.postDelayed(
-                    start,
-                    ProductionKeyPolicy.remainingVoiceDelayMs(
-                        ViewConfiguration.getLongPressTimeout().toLong(),
-                    ),
-                )
-                return
-            }
-
-            val pending = pendingVoiceStart
-            if (pending != null) {
-                voiceHandler.removeCallbacks(pending)
-                pendingVoiceStart = null
-                // The legacy renderer has already consumed this release because
-                // it crossed the long-press threshold. Recover it as the normal
-                // space action unless Android cancelled the gesture.
-                if (!releaseWasCancel) delegate.onSpace()
-                releaseWasCancel = false
-                return
-            }
-            if (voiceStartForwarded) {
-                voiceStartForwarded = false
-                if (releaseWasCancel) {
-                    delegate.cancelVoiceRecognition()
-                    delegate.onVoiceCancel()
-                } else {
-                    delegate.onVoicePressChanged(false)
-                }
-                releaseWasCancel = false
-            }
-        }
+        override fun onVoicePressChanged(pressed: Boolean) =
+            delegate.onVoicePressChanged(pressed)
         override fun onVoiceSessionStarted(autoCommitOnFinal: Boolean) =
             delegate.onVoiceSessionStarted(autoCommitOnFinal)
         override fun onVoicePartial(text: String) = delegate.onVoicePartial(text)
         override fun onVoiceFinal(text: String) = delegate.onVoiceFinal(text)
         override fun onVoiceError(message: String) = delegate.onVoiceError(message)
         override fun onVoiceCommit() = delegate.onVoiceCommit()
-        override fun onVoiceCancel() {
-            cancelPendingVoiceStart()
-            delegate.onVoiceCancel()
-        }
+        override fun onVoiceCancel() = delegate.onVoiceCancel()
         override fun voiceModelState() = delegate.voiceModelState()
         override fun startVoiceRecognition(languageTag: String, events: VoiceRecognitionEvents) =
             delegate.startVoiceRecognition(languageTag, events)
         override fun stopVoiceRecognition() = delegate.stopVoiceRecognition()
-        override fun cancelVoiceRecognition() {
-            cancelPendingVoiceStart()
-            delegate.cancelVoiceRecognition()
-        }
-
-        private fun cancelPendingVoiceStart() {
-            pendingVoiceStart?.let { voiceHandler.removeCallbacks(it) }
-            pendingVoiceStart = null
-            voiceStartForwarded = false
-            releaseWasCancel = false
-        }
+        override fun cancelVoiceRecognition() = delegate.cancelVoiceRecognition()
         override fun onEnter() = delegate.onEnter()
         override fun onCompositionChanged(composition: String, candidates: List<String>) =
             delegate.onCompositionChanged(composition, candidates)
@@ -531,17 +457,5 @@ class ImeKeyboardViewV2 private constructor(
         override fun onSkinChanged(opacity: Int, radius: Int, fontSize: Int, primaryColor: String) =
             delegate.onSkinChanged(opacity, radius, fontSize, primaryColor)
 
-        /**
-         * A pending voice-start runnable survives for the long-press delay. If
-         * the editor goes away first it would still fire and begin recording,
-         * writing partial recognition into whichever InputConnection became
-         * current in the meantime.
-         */
-        fun shutdown() {
-            pendingVoiceStart?.let { voiceHandler.removeCallbacks(it) }
-            pendingVoiceStart = null
-            voiceStartForwarded = false
-            releaseWasCancel = false
-        }
     }
 }
