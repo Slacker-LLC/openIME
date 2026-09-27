@@ -1655,12 +1655,6 @@ open class ImeKeyboardView(
         return fallback ?: if (english) "Go" else "确定"
     }
 
-    private fun rowHost(): LinearLayout = LinearLayout(context).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER
-        layoutParams = rowParams()
-    }
-
     private fun renderPinyin9() {
         pinyin9Renderer.render(enterLabel = enterKeyLabel(false))
     }
@@ -4766,8 +4760,7 @@ open class ImeKeyboardView(
                             dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
                         )
                     }
-                    "nine-punct-stack", "nine-symbol-scroll-content",
-                    "digits-symbol-stack", "digits-symbol-scroll-content", "digits-symbol-scroll" -> view.background = ImeDrawableFactory.rounded(
+                    "nine-symbol-scroll-content", "digits-symbol-scroll-content" -> view.background = ImeDrawableFactory.rounded(
                         t.sideKeyBackground,
                         dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
                     )
@@ -4797,6 +4790,16 @@ open class ImeKeyboardView(
                         t.keyPressedBackground,
                         dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
                     )
+                }
+            }
+            is ScrollView -> {
+                when (view.tag) {
+                    "nine-punct-stack", "digits-symbol-scroll" -> {
+                        view.background = ImeDrawableFactory.rounded(
+                            t.sideKeyBackground,
+                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
+                        )
+                    }
                 }
             }
             is ImageView -> {
@@ -5005,9 +5008,7 @@ open class ImeKeyboardView(
                         )
                     }
                     view.parent is LinearLayout &&
-                        ((view.parent as LinearLayout).tag == "nine-punct-stack" ||
-                            (view.parent as LinearLayout).tag == "nine-symbol-scroll-content" ||
-                            (view.parent as LinearLayout).tag == "digits-symbol-stack" ||
+                        ((view.parent as LinearLayout).tag == "nine-symbol-scroll-content" ||
                             (view.parent as LinearLayout).tag == "digits-symbol-scroll-content") -> {
                         view.setTextColor(t.sideKeyText)
                     }
@@ -5092,21 +5093,6 @@ open class ImeKeyboardView(
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
-    private fun sideKeyParams(heightDp: Int, includeBottomGap: Boolean = false) =
-        LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(heightDp),
-        ).apply {
-            if (includeBottomGap) bottomMargin = dp(ImeGeometryTokens.KEY_ROW_GAP_DP)
-        }
-    private fun adaptiveColumnParams(weight: Float) = LinearLayout.LayoutParams(
-        0,
-        dp(nineBodyHeightDp()),
-        weight,
-    ).apply {
-        marginStart = dp(2)
-        marginEnd = dp(2)
-    }
     private fun matchParams() = LinearLayout.LayoutParams(
         LinearLayout.LayoutParams.MATCH_PARENT,
         LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -5115,24 +5101,6 @@ open class ImeKeyboardView(
         LinearLayout.LayoutParams.WRAP_CONTENT,
         LinearLayout.LayoutParams.WRAP_CONTENT,
     )
-    private fun rowParams(includeBottomGap: Boolean = true) = LinearLayout.LayoutParams(
-        LinearLayout.LayoutParams.MATCH_PARENT,
-        dp(keyRowHeightDp()),
-    ).apply {
-        if (includeBottomGap) bottomMargin = dp(6)
-    }
-    private fun flexKeyParams(
-        weight: Float = 1f,
-        heightDp: Int = keyRowHeightDp(),
-        gapDp: Int = 2,
-    ) = LinearLayout.LayoutParams(
-        0,
-        dp(heightDp),
-        weight,
-    ).apply {
-        marginStart = dp(gapDp)
-        marginEnd = dp(gapDp)
-    }
     private fun gridCellParams(
         heightDp: Int,
         columns: Int,
