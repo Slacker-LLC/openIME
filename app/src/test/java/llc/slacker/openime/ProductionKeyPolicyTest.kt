@@ -7,17 +7,15 @@ import org.junit.Test
 class ProductionKeyPolicyTest {
     @Test
     fun balancesTwentySixKeyBottomRowAroundSpace() {
-        val balanced = ProductionKeyPolicy.balancedOuterWeights(
-            leftTotal = 1.30f + 0.95f,
-            rightTotal = 1.05f + 1.80f,
-            leftOuter = 1.30f,
-            rightOuter = 1.80f,
-        )
-        val left = balanced.leftOuter + 0.95f
-        val right = 1.05f + balanced.rightOuter
+        val weights = ProductionKeyPolicy.twentySixKeyBottomRowWeights()
+        val left = weights.leftOuter + weights.leftInner
+        val right = weights.rightInner + weights.rightOuter
         assertEquals(left, right, 0.0001f)
-        assertEquals(1.60f, balanced.leftOuter, 0.0001f)
-        assertEquals(1.50f, balanced.rightOuter, 0.0001f)
+        assertEquals(1.60f, weights.leftOuter, 0.0001f)
+        assertEquals(0.95f, weights.leftInner, 0.0001f)
+        assertEquals(3.40f, weights.space, 0.0001f)
+        assertEquals(1.05f, weights.rightInner, 0.0001f)
+        assertEquals(1.50f, weights.rightOuter, 0.0001f)
     }
 
     @Test

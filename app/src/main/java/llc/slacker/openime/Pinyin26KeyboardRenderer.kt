@@ -65,21 +65,12 @@ internal class Pinyin26KeyboardRenderer(
             keyboardBody.addView(row, rowParams())
         }
 
-        val outerLeft = 1.3f
-        val innerLeft = 0.95f
-        val innerRight = 1.05f
-        val outerRight = 1.8f
-        val balanced = ProductionKeyPolicy.balancedOuterWeights(
-            leftTotal = outerLeft + innerLeft,
-            rightTotal = innerRight + outerRight,
-            leftOuter = outerLeft,
-            rightOuter = outerRight,
-        )
+        val weights = ProductionKeyPolicy.twentySixKeyBottomRowWeights()
 
         val bottom = rowHost()
         bottom.addView(
             createKey("123", true, null, 15f, 0, onDigits),
-            flexKeyParams(balanced.leftOuter),
+            flexKeyParams(weights.leftOuter),
         )
         val punctuation = if (english) "." else "，"
         bottom.addView(
@@ -90,23 +81,23 @@ internal class Pinyin26KeyboardRenderer(
                 15f,
                 0,
             ) { onCommitCharacter(punctuation) },
-            flexKeyParams(innerLeft),
+            flexKeyParams(weights.leftInner),
         )
         bottom.addView(
             createSpaceVoiceKey(if (english) "space" else "空格", onSpace),
-            flexKeyParams(3.4f),
+            flexKeyParams(weights.space),
         )
         bottom.addView(
             createKey("中/英", true, null, 14f, 0, onModeSwitch).apply {
                 tag = "key:mode"
             },
-            flexKeyParams(innerRight),
+            flexKeyParams(weights.rightInner),
         )
         bottom.addView(
             createKey(enterLabel, true, null, 15f, 0, onEnter).apply {
                 tag = "key-enter"
             },
-            flexKeyParams(balanced.rightOuter),
+            flexKeyParams(weights.rightOuter),
         )
         keyboardBody.addView(bottom, rowParams(includeBottomGap = false))
     }
