@@ -311,10 +311,7 @@ open class ImeKeyboardView(
     private var lastNinePinyinPaths = emptyList<String>()
     private var currentCandidates = emptyList<String>()
     private var currentItems: List<String>? = null
-    private var candidateExpandedOpen = false
     private var voiceEventGeneration = 0L
-    private var renderedExpandedCandidates: List<String>? = null
-    private var renderedExpandedComposition: String? = null
     private var clipboardTab = 0
     // Guards async clipboard loads so a stale background result can't render over a newer panel.
     private var clipboardLoadGen = 0
@@ -919,8 +916,13 @@ open class ImeKeyboardView(
             onHideKeyboard = ::hideKeyboard,
             onTools = { showPanel(Panel.TOOLS) },
             onExpandCandidates = {
-                val open = candidateOverlay.visibility == View.GONE
-                renderExpanded(open)
+                val open = !candidateBarController.expandedOpen
+                candidateBarController.renderExpanded(
+                    open = open,
+                    candidates = currentCandidates,
+                    compositionPreview = composition.text.toString(),
+                )
+                updateTopZone(composition.text?.isNotEmpty() == true)
                 listener.onCandidateExpanded(open)
             },
         )
@@ -929,7 +931,21 @@ open class ImeKeyboardView(
             row = topZone.candidateRow,
             scroll = topZone.candidateScroll,
             expandButton = topZone.candidateExpandButton,
+            overlay = candidateOverlay,
+            keyboardBody = keyboardBody,
             toPx = ::dp,
+            keyRowHeightPx = { dp(keyRowHeightDp()) },
+            createHeader = { panelHead("候选字词") },
+            createExpandedCandidate = { candidate ->
+                key(candidate, false, null, 1f, 15f) {
+                    listener.onCandidateSelected(candidate)
+                }.apply {
+                    allowTwoLineLabel()
+                    contentDescription = "候选:$candidate"
+                }
+            },
+            createEmptyLabel = { title("暂无候选", small = true) },
+            applyTheme = ::applyTheme,
             tokens = {
                 theme.tokens(
                     appearance,
@@ -949,7 +965,6 @@ open class ImeKeyboardView(
             ),
         )
         candidateBarController.syncExpandControl(
-            expandedOpen = candidateExpandedOpen,
             hasCandidates = currentCandidates.isNotEmpty(),
         )
     }
@@ -1116,8 +1131,13 @@ open class ImeKeyboardView(
     }
 
     fun closePanelToKeyboard(): Boolean {
-        if (candidateExpandedOpen) {
-            renderExpanded(false)
+        if (candidateBarController.expandedOpen) {
+            candidateBarController.renderExpanded(
+                open = false,
+                candidates = currentCandidates,
+                compositionPreview = composition.text.toString(),
+            )
+            updateTopZone(composition.text?.isNotEmpty() == true)
             listener.onCandidateExpanded(false)
             return true
         }
@@ -1198,15 +1218,23 @@ open class ImeKeyboardView(
             lastNineCandidates = emptyList()
             lastNineSegmentPrefix = ""
             lastNinePinyinPaths = emptyList()
-            if (candidateExpandedOpen) {
-                renderExpanded(false)
+            if (candidateBarController.expandedOpen) {
+                candidateBarController.renderExpanded(
+                    open = false,
+                    candidates = currentCandidates,
+                    compositionPreview = composition.text.toString(),
+                )
                 listener.onCandidateExpanded(false)
             }
         } else {
             pinyinBuffer.setLength(0)
             pinyinBuffer.append(state.composition)
-            if (candidateExpandedOpen) {
-                renderExpanded(true)
+            if (candidateBarController.expandedOpen) {
+                candidateBarController.renderExpanded(
+                    open = true,
+                    candidates = currentCandidates,
+                    compositionPreview = composition.text.toString(),
+                )
             }
         }
         updateTopZone(state.composition.isNotEmpty())
@@ -1216,7 +1244,6 @@ open class ImeKeyboardView(
             showCompositionWhenEmpty = composeZone.visibility == View.VISIBLE,
         )
         candidateBarController.syncExpandControl(
-            expandedOpen = candidateExpandedOpen,
             hasCandidates = currentCandidates.isNotEmpty(),
         )
         syncEnterKeyPresentation(state.editorInfo?.imeOptions)
@@ -1517,13 +1544,13 @@ open class ImeKeyboardView(
         )
         val state = when {
             voiceInlineActive -> ImeTopZoneState.VOICE_INLINE
-            candidateExpandedOpen -> ImeTopZoneState.CANDIDATE_EXPANDED
+            candidateBarController.expandedOpen -> ImeTopZoneState.CANDIDATE_EXPANDED
             composing -> ImeTopZoneState.COMPOSING
             else -> ImeTopZoneState.IDLE
         }
         topZone.renderState(
             state = state,
-            showCompositionEditor = (composing || candidateExpandedOpen) &&
+            showCompositionEditor = (composing || candidateBarController.expandedOpen) &&
                 mode != KeyboardMode.ENGLISH_26,
         )
     }
@@ -1631,7 +1658,7 @@ open class ImeKeyboardView(
         keyboardBody.visibility = View.VISIBLE
         expandedPanel.visibility = View.GONE
         candidateOverlay.visibility = View.GONE
-        candidateExpandedOpen = false
+        candidateBarController.resetExpandedState()
         when (mode) {
             KeyboardMode.PINYIN_26 -> renderPinyin26()
             KeyboardMode.ENGLISH_26 -> renderEnglish26()
@@ -1904,7 +1931,7 @@ open class ImeKeyboardView(
         keyboardBody.visibility = View.GONE
         expandedPanel.removeAllViews()
         expandedPanel.visibility = View.VISIBLE
-        candidateExpandedOpen = false
+        candidateBarController.resetExpandedState()
         when (panel) {
             Panel.TOOLS -> panelRenderer.renderTools()
             Panel.KEYBOARD_SELECT -> panelRenderer.renderKeyboardSelect()
@@ -3771,107 +3798,6 @@ open class ImeKeyboardView(
 
     /** Key main-text size is scaled around the 17sp default from the skin font slider. */
     private fun skinFontScale(): Float = skinFontSize / 17f.coerceAtLeast(1f)
-
-    private fun renderExpanded(open: Boolean) {
-        if (!open) {
-            candidateExpandBtn.text = "⌄"
-            candidateExpandBtn.contentDescription = "展开更多候选"
-            candidateOverlay.animate().cancel()
-            keyboardBody.animate().cancel()
-            candidateOverlay.visibility = View.GONE
-            candidateOverlay.alpha = 1f
-            candidateOverlay.translationY = 0f
-            keyboardBody.visibility = View.VISIBLE
-            keyboardBody.alpha = 0.96f
-            keyboardBody.animate()
-                .alpha(1f)
-                .setDuration(120L)
-                .setInterpolator(DecelerateInterpolator(1.5f))
-                .start()
-            candidateExpandedOpen = false
-            renderedExpandedCandidates = null
-            renderedExpandedComposition = null
-            candidateBarController.syncExpandControl(
-            expandedOpen = candidateExpandedOpen,
-            hasCandidates = currentCandidates.isNotEmpty(),
-        )
-            return
-        }
-        val preview = composition.text.toString()
-        if (candidateExpandedOpen && candidateOverlay.visibility == View.VISIBLE &&
-            renderedExpandedCandidates == currentCandidates && renderedExpandedComposition == preview
-        ) return
-        val previousScroll = if (renderedExpandedComposition == preview) {
-            (candidateOverlay.getChildAt(1) as? ScrollView)?.scrollY ?: 0
-        } else 0
-        renderedExpandedCandidates = currentCandidates.toList()
-        renderedExpandedComposition = preview
-        candidateExpandedOpen = true
-        candidateExpandBtn.text = "⌃"
-        candidateExpandBtn.contentDescription = "收起候选"
-        if (Build.VERSION.SDK_INT >= 30) candidateExpandBtn.stateDescription = "已展开"
-        keyboardBody.visibility = View.GONE
-        keyboardBody.alpha = 1f
-        candidateOverlay.visibility = View.VISIBLE
-        candidateOverlay.alpha = 0f
-        candidateOverlay.translationY = dp(8).toFloat()
-        candidateOverlay.removeAllViews()
-        candidateOverlay.addView(
-            panelHead("候选字词"),
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(48),
-            ),
-        )
-        val scroll = ScrollView(context)
-        val col = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        if (currentCandidates.isEmpty()) {
-            col.addView(title("暂无候选", small = true), wrapParams())
-        } else {
-            expandedCandidateRows(currentCandidates).forEach { chunk ->
-                val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-                chunk.forEach { cand ->
-                    row.addView(
-                        key(cand, false, null, 1f, 15f) { listener.onCandidateSelected(cand) }.apply {
-                            allowTwoLineLabel()
-                            contentDescription = "候选:$cand"
-                        },
-                        LinearLayout.LayoutParams(
-                            0,
-                            dp(keyRowHeightDp()),
-                            candidateColumnSpan(cand).toFloat(),
-                        ).apply { marginEnd = dp(5) },
-                    )
-                }
-                val remaining = 4 - chunk.sumOf(::candidateColumnSpan)
-                if (remaining > 0) row.addView(View(context), LinearLayout.LayoutParams(0, 1, remaining.toFloat()))
-                col.addView(
-                    row,
-                    LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        dp(keyRowHeightDp()),
-                    ),
-                )
-            }
-        }
-        scroll.addView(col, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        candidateOverlay.addView(
-            scroll,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1f,
-            ),
-        )
-        applyTheme()
-        if (previousScroll > 0) scroll.post { scroll.scrollTo(0, previousScroll) }
-        candidateOverlay.animate()
-            .alpha(1f)
-            .translationY(0f)
-            .setDuration(160L)
-            .setInterpolator(DecelerateInterpolator(1.5f))
-            .start()
-    }
 
     private fun key(
         text: String,

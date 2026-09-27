@@ -4,15 +4,19 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
+import android.os.Build
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
+import android.view.animation.DecelerateInterpolator
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 
 /**
- * Owns candidate-strip presentation only: diff/reuse, scroll preservation,
- * item binding, click routing, and the expand affordance state.
+ * Owns candidate presentation: strip diff/reuse, scroll preservation,
+ * expanded candidate overlay, item binding, and expand affordance state.
  *
  * Candidate querying, generation identity, and composition ownership stay in
  * the existing candidate pipeline and host.
@@ -22,7 +26,14 @@ internal class CandidateBarController(
     private val row: LinearLayout,
     private val scroll: HorizontalScrollView,
     private val expandButton: TextView,
+    private val overlay: LinearLayout,
+    private val keyboardBody: LinearLayout,
     private val toPx: (Int) -> Int,
+    private val keyRowHeightPx: () -> Int,
+    private val createHeader: () -> LinearLayout,
+    private val createExpandedCandidate: (String) -> ImeKeyView,
+    private val createEmptyLabel: () -> TextView,
+    private val applyTheme: () -> Unit,
     private val tokens: () -> ImeTheme.Tokens,
     private val statefulBackground: (Int, Int, Int) -> Drawable,
     private val onFeedback: () -> Unit,
@@ -30,6 +41,11 @@ internal class CandidateBarController(
 ) {
     private var renderedCandidates: List<String>? = null
     private var renderedComposition: String? = null
+    private var renderedExpandedCandidates: List<String>? = null
+    private var renderedExpandedComposition: String? = null
+
+    var expandedOpen: Boolean = false
+        private set
 
     fun render(
         candidates: List<String>,
@@ -96,7 +112,6 @@ internal class CandidateBarController(
     }
 
     fun syncExpandControl(
-        expandedOpen: Boolean,
         hasCandidates: Boolean,
     ) {
         val canExpandOrClose = expandedOpen || hasCandidates
@@ -110,6 +125,150 @@ internal class CandidateBarController(
         } else if (android.os.Build.VERSION.SDK_INT >= 30) {
             expandButton.stateDescription = if (expandedOpen) "已展开" else "可展开"
         }
+    }
+
+    fun renderExpanded(
+        open: Boolean,
+        candidates: List<String>,
+        compositionPreview: String,
+    ) {
+        if (!open) {
+            expandButton.text = "⌄"
+            expandButton.contentDescription = "展开更多候选"
+            overlay.animate().cancel()
+            keyboardBody.animate().cancel()
+            overlay.visibility = View.GONE
+            overlay.alpha = 1f
+            overlay.translationY = 0f
+            keyboardBody.visibility = View.VISIBLE
+            keyboardBody.alpha = 0.96f
+            keyboardBody.animate()
+                .alpha(1f)
+                .setDuration(120L)
+                .setInterpolator(DecelerateInterpolator(1.5f))
+                .start()
+            expandedOpen = false
+            renderedExpandedCandidates = null
+            renderedExpandedComposition = null
+            syncExpandControl(candidates.isNotEmpty())
+            return
+        }
+
+        if (
+            expandedOpen &&
+            overlay.visibility == View.VISIBLE &&
+            renderedExpandedCandidates == candidates &&
+            renderedExpandedComposition == compositionPreview
+        ) {
+            return
+        }
+
+        val previousScroll = if (renderedExpandedComposition == compositionPreview) {
+            (overlay.getChildAt(1) as? ScrollView)?.scrollY ?: 0
+        } else {
+            0
+        }
+
+        renderedExpandedCandidates = candidates.toList()
+        renderedExpandedComposition = compositionPreview
+        expandedOpen = true
+        expandButton.text = "⌃"
+        expandButton.contentDescription = "收起候选"
+        if (Build.VERSION.SDK_INT >= 30) {
+            expandButton.stateDescription = "已展开"
+        }
+
+        keyboardBody.visibility = View.GONE
+        keyboardBody.alpha = 1f
+        overlay.visibility = View.VISIBLE
+        overlay.alpha = 0f
+        overlay.translationY = toPx(8).toFloat()
+        overlay.removeAllViews()
+        overlay.addView(
+            createHeader(),
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                toPx(48),
+            ),
+        )
+
+        val scroll = ScrollView(context)
+        val column = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        if (candidates.isEmpty()) {
+            column.addView(
+                createEmptyLabel(),
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+        } else {
+            expandedCandidateRows(candidates).forEach { chunk ->
+                val rowView = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                }
+                chunk.forEach { candidate ->
+                    rowView.addView(
+                        createExpandedCandidate(candidate),
+                        LinearLayout.LayoutParams(
+                            0,
+                            keyRowHeightPx(),
+                            candidateColumnSpan(candidate).toFloat(),
+                        ).apply { marginEnd = toPx(5) },
+                    )
+                }
+                val remaining = 4 - chunk.sumOf(::candidateColumnSpan)
+                if (remaining > 0) {
+                    rowView.addView(
+                        View(context),
+                        LinearLayout.LayoutParams(0, 1, remaining.toFloat()),
+                    )
+                }
+                column.addView(
+                    rowView,
+                    LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        keyRowHeightPx(),
+                    ),
+                )
+            }
+        }
+        scroll.addView(
+            column,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ),
+        )
+        overlay.addView(
+            scroll,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f,
+            ),
+        )
+
+        applyTheme()
+        if (previousScroll > 0) {
+            scroll.post { scroll.scrollTo(0, previousScroll) }
+        }
+        overlay.animate()
+            .alpha(1f)
+            .translationY(0f)
+            .setDuration(160L)
+            .setInterpolator(DecelerateInterpolator(1.5f))
+            .start()
+    }
+
+    fun resetExpandedState() {
+        expandedOpen = false
+        renderedExpandedCandidates = null
+        renderedExpandedComposition = null
+        expandButton.text = "⌄"
+        expandButton.contentDescription = "展开更多候选"
     }
 
     private fun createItem(index: Int, candidate: String): LinearLayout =
