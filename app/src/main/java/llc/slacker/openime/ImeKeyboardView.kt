@@ -407,20 +407,20 @@ open class ImeKeyboardView(
 
     private lateinit var mainDock: LinearLayout
     private lateinit var keyboardHost: FrameLayout
-    private lateinit var topZone: LinearLayout
-    private lateinit var toolbarRow: LinearLayout
-    private lateinit var composeZone: LinearLayout
-    private lateinit var composition: EditText
-    private lateinit var candidateField: LinearLayout
+    private lateinit var topZone: ImeTopZone
     private lateinit var candidateBarController: CandidateBarController
-    private lateinit var associationRow: LinearLayout
-    private lateinit var candidateExpandBtn: TextView
-    private lateinit var candidateEmojiBtn: TextView
-    private lateinit var voiceInlineZone: LinearLayout
-    private lateinit var voiceInlineIcon: ImageView
-    private lateinit var voiceInlineStatus: TextView
+    private val toolbarRow: LinearLayout get() = topZone.toolbarRow
+    private val composeZone: LinearLayout get() = topZone.composeZone
+    private val composition: EditText get() = topZone.composition
+    private val candidateField: LinearLayout get() = topZone.candidateField
+    private val associationRow: LinearLayout get() = topZone.associationRow
+    private val candidateExpandBtn: TextView get() = topZone.candidateExpandButton
+    private val candidateEmojiBtn: TextView get() = topZone.candidateEmojiButton
+    private val voiceInlineZone: LinearLayout get() = topZone.voiceInlineZone
+    private val voiceInlineIcon: ImageView get() = topZone.voiceInlineIcon
+    private val voiceInlineStatus: TextView get() = topZone.voiceInlineStatus
+    private val voiceInlineWaves: List<View> get() = topZone.voiceInlineWaves
     private lateinit var floatingDragHandle: View
-    private val voiceInlineWaves = mutableListOf<View>()
     private val keyboardBody = LinearLayout(context)
     private val expandedPanel = LinearLayout(context)
     private val candidateOverlay = LinearLayout(context)
@@ -721,8 +721,7 @@ open class ImeKeyboardView(
             }
             expandedPanel.setPadding(contentInsetPx, 0, contentInsetPx, 0)
             candidateOverlay.setPadding(contentInsetPx, 0, contentInsetPx, 0)
-            toolbarRow.setPadding(contentInsetPx + dp(10), 0, contentInsetPx + dp(10), 0)
-            composition.setPadding(contentInsetPx + dp(14), dp(3), contentInsetPx + dp(14), 0)
+            topZone.setContentInset(contentInsetPx)
             requestLayout()
             return
         }
@@ -746,220 +745,35 @@ open class ImeKeyboardView(
         }
         expandedPanel.setPadding(contentInsetPx, 0, contentInsetPx, 0)
         candidateOverlay.setPadding(contentInsetPx, 0, contentInsetPx, 0)
-        toolbarRow.setPadding(contentInsetPx + dp(10), 0, contentInsetPx + dp(10), 0)
-        composition.setPadding(contentInsetPx + dp(14), dp(3), contentInsetPx + dp(14), 0)
+        topZone.setContentInset(contentInsetPx)
         requestLayout()
     }
 
     /** Keep the top zone at one height so composing never relayouts the keyboard. */
     private fun buildTopZone() {
-        topZone = LinearLayout(context).apply {
-            tag = "ime_toolbar"
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_VERTICAL
-            minimumHeight = dp(ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP),
-            )
-        }
-        toolbarRow = LinearLayout(context).apply {
-            tag = "toolbar-row"
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(10), 0, dp(10), 0)
-            minimumHeight = dp(ImeGeometryTokens.TOOLBAR_HEIGHT_DP)
-        }
-        toolbarRow.addView(
-            toolbarIcon(R.drawable.ic_grid, "切换键盘", "keyboard-selector") { showPanel(Panel.KEYBOARD_SELECT) },
-            LinearLayout.LayoutParams(
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-            ),
-        )
-        toolbarRow.addView(
-            toolbarIcon(R.drawable.ic_clipboard, "剪贴板", "clipboard-toolbar") { showPanel(Panel.CLIPBOARD) },
-            LinearLayout.LayoutParams(
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-            ),
-        )
-        toolbarRow.addView(
-            toolbarIcon(R.drawable.ic_emoji, "表情", "toolbar") { showPanel(Panel.EMOJI) },
-            LinearLayout.LayoutParams(
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-            ),
-        )
-        toolbarRow.addView(
-            toolbarIcon(R.drawable.ic_symbols, "符号", "toolbar") { showPanel(Panel.SYMBOLS) },
-            LinearLayout.LayoutParams(
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-            ),
-        )
-        associationRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            tag = "association-row"
-        }
-        val associationScroll = HorizontalScrollView(context).apply {
-            tag = "association-scroll"
-            isHorizontalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
-            addView(
-                associationRow,
-                ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-                ),
-            )
-        }
-        toolbarRow.addView(
-            associationScroll,
-            LinearLayout.LayoutParams(
-                0,
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-                1f,
-            ).apply { marginStart = dp(4) },
-        )
-        toolbarRow.addView(
-            toolbarIcon(R.drawable.ic_keyboard_hide, "收起键盘", "keyboard-hide") { hideKeyboard() },
-            LinearLayout.LayoutParams(
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-            ),
-        )
-        // Keep the overflow action at the far right, as in the reference.
-        toolbarRow.addView(
-            toolbarIcon(R.drawable.ic_more, "更多", "toolbar") { showPanel(Panel.TOOLS) },
-            LinearLayout.LayoutParams(
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-            ),
-        )
-        topZone.addView(toolbarRow, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(ImeGeometryTokens.TOOLBAR_HEIGHT_DP),
-        ))
-
-        composeZone = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            visibility = View.GONE
-            tag = "compose-zone"
-        }
-        composition = EditText(context).apply {
-            tag = "pinyin-composition-editor"
-            contentDescription = "可编辑拼音预编辑"
-            textSize = 13f
-            gravity = Gravity.CENTER_VERTICAL or Gravity.START
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-            setSingleLine(true)
-            maxLines = 1
-            setHorizontallyScrolling(true)
-            isFocusable = true
-            isFocusableInTouchMode = true
-            isCursorVisible = true
-            showSoftInputOnFocus = false
-            setSelectAllOnFocus(false)
-            background = null
-            includeFontPadding = false
-            setPadding(dp(14), dp(3), dp(14), 0)
-            minimumHeight = dp(22)
-            addTextChangedListener(object : TextWatcher {
-                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
-                override fun afterTextChanged(s: Editable?) {
-                    if (!syncingComposition) onCompositionEdited(s?.toString().orEmpty())
-                }
-            })
-        }
-        composeZone.addView(composition, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(22),
-        ))
-        candidateField = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            tag = "candidate-field"
-        }
-        val candidateRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        val candScroll = HorizontalScrollView(context).apply {
-            isHorizontalScrollBarEnabled = false
-            addView(
-                candidateRow,
-                ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-                ),
-            )
-        }
-        candidateField.setPadding(dp(8), 0, dp(8), 0)
-        candidateField.addView(
-            candScroll,
-            LinearLayout.LayoutParams(0, dp(ImeGeometryTokens.TOUCH_TARGET_DP), 1f),
-        )
-        // Persistent emoji shortcut kept visible while composing, so the user can
-        // jump straight to the emoji panel without first committing/clearing.
-        candidateEmojiBtn = TextView(context).apply {
-            tag = "candidate-emoji"
-            text = "☺"
-            textSize = 17f
-            gravity = Gravity.CENTER
-            contentDescription = "表情"
-            setPadding(dp(7), 0, dp(7), 0)
-            isClickable = true
-            isFocusable = true
-            setOnClickListener {
-                feedback()
-                showPanel(Panel.EMOJI)
-            }
-        }
-        candidateField.addView(
-            candidateEmojiBtn,
-            LinearLayout.LayoutParams(
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-            ),
-        )
-        candidateExpandBtn = TextView(context).apply {
-            tag = "candidate-expand"
-            text = "⌄"
-            textSize = 15f
-            gravity = Gravity.CENTER
-            contentDescription = "展开更多候选"
-            setPadding(dp(7), 0, dp(7), 0)
-            isClickable = true
-            isFocusable = true
-            setOnClickListener {
-                feedback()
+        topZone = ImeTopZone(
+            context = context,
+            toPx = ::dp,
+            onFeedback = ::feedback,
+            isCompositionSyncing = { syncingComposition },
+            onCompositionEdited = ::onCompositionEdited,
+            onKeyboardSelect = { showPanel(Panel.KEYBOARD_SELECT) },
+            onClipboard = { showPanel(Panel.CLIPBOARD) },
+            onEmoji = { showPanel(Panel.EMOJI) },
+            onSymbols = { showPanel(Panel.SYMBOLS) },
+            onHideKeyboard = ::hideKeyboard,
+            onTools = { showPanel(Panel.TOOLS) },
+            onExpandCandidates = {
                 val open = candidateOverlay.visibility == View.GONE
                 renderExpanded(open)
                 listener.onCandidateExpanded(open)
-            }
-        }
-        candidateField.addView(
-            candidateExpandBtn,
-            LinearLayout.LayoutParams(
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-            ),
-        )
-        candidateField.addView(
-            toolbarIcon(R.drawable.ic_keyboard_hide, "收起键盘", "keyboard-hide-composing") { hideKeyboard() },
-            LinearLayout.LayoutParams(
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-            ),
+            },
         )
         candidateBarController = CandidateBarController(
             context = context,
-            row = candidateRow,
-            scroll = candScroll,
-            expandButton = candidateExpandBtn,
+            row = topZone.candidateRow,
+            scroll = topZone.candidateScroll,
+            expandButton = topZone.candidateExpandButton,
             toPx = ::dp,
             tokens = {
                 theme.tokens(
@@ -972,102 +786,18 @@ open class ImeKeyboardView(
             onFeedback = ::feedback,
             onCandidateSelected = listener::onCandidateSelected,
         )
-        composeZone.addView(candidateField, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-        ))
-        topZone.addView(composeZone, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP),
-        ))
-
-        // Long-press voice stays inside the current keyboard. This fixed-height
-        // row replaces the toolbar in-place, so recording never opens another
-        // panel or changes the IME height while the finger is held down.
-        voiceInlineZone = LinearLayout(context).apply {
-            tag = "voice-inline-zone"
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            visibility = View.GONE
-            setPadding(dp(12), 0, dp(12), 0)
-        }
-        voiceInlineIcon = ImageView(context).apply {
-            tag = "voice-inline-icon"
-            contentDescription = null
-            setImageResource(R.drawable.ic_mic)
-            imageTintList = ColorStateList.valueOf(Color.WHITE)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-        }
-        voiceInlineZone.addView(
-            voiceInlineIcon,
-            LinearLayout.LayoutParams(dp(22), dp(22)).apply { marginEnd = dp(9) },
+        mainDock.addView(
+            topZone,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(64),
+            ),
         )
-        voiceInlineStatus = TextView(context).apply {
-            tag = "voice-inline-status"
-            text = "正在聆听…"
-            textSize = 14f
-            setTextColor(Color.WHITE)
-            includeFontPadding = false
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-            gravity = Gravity.CENTER_VERTICAL
-            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
-        }
-        voiceInlineZone.addView(
-            voiceInlineStatus,
-            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f),
-        )
-        val inlineWave = LinearLayout(context).apply {
-            tag = "voice-inline-waveform"
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-        }
-        repeat(6) { index ->
-            val bar = View(context).apply {
-                tag = "voice-inline-wave-$index"
-                background = ImeDrawableFactory.rounded(Color.WHITE, dp(ImeGeometryTokens.PILL_RADIUS_DP))
-            }
-            voiceInlineWaves += bar
-            inlineWave.addView(
-                bar,
-                LinearLayout.LayoutParams(dp(3), dp(if (index % 2 == 0) 10 else 16)).apply {
-                    if (index > 0) marginStart = dp(3)
-                },
-            )
-        }
-        voiceInlineZone.addView(
-            inlineWave,
-            LinearLayout.LayoutParams(dp(42), LinearLayout.LayoutParams.MATCH_PARENT),
-        )
-        topZone.addView(
-            voiceInlineZone,
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)).apply {
-                setMargins(dp(8), dp(8), dp(8), dp(8))
-            },
-        )
-        mainDock.addView(topZone, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(64),
-        ))
         candidateBarController.syncExpandControl(
             expandedOpen = candidateExpandedOpen,
             hasCandidates = currentCandidates.isNotEmpty(),
         )
     }
-
-    private fun toolbarIcon(iconRes: Int, desc: String, tagValue: String, onTap: () -> Unit): ImageView =
-        ImageView(context).apply {
-            contentDescription = desc
-            tag = tagValue
-            minimumWidth = dp(48)
-            minimumHeight = dp(48)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setImageResource(iconRes)
-            isClickable = true
-            isFocusable = true
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
-            setOnClickListener { feedback(); onTap() }
-        }
 
     private inner class FloatingDragHandleView(context: Context) : View(context) {
         private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -1209,17 +939,12 @@ open class ImeKeyboardView(
             keyboardBody.setPadding(contentInsetPx, dp(6), contentInsetPx, dp(16))
             expandedPanel.setPadding(contentInsetPx, 0, contentInsetPx, 0)
             candidateOverlay.setPadding(contentInsetPx, 0, contentInsetPx, 0)
-            toolbarRow.setPadding(contentInsetPx + dp(10), 0, contentInsetPx + dp(10), 0)
-            composition.setPadding(contentInsetPx + dp(14), dp(3), contentInsetPx + dp(14), 0)
+            topZone.setContentInset(contentInsetPx)
             floatingDragHandle.visibility = View.VISIBLE
         } else {
             floatingDragController.reset()
             floatingDragHandle.visibility = View.GONE
-            toolbarRow.visibility = if (voiceInlineActive || composeZone.visibility == View.VISIBLE) {
-                View.GONE
-            } else {
-                View.VISIBLE
-            }
+            updateTopZone(composition.text?.isNotEmpty() == true)
             if (width > 0) updateResponsiveGeometry(width)
         }
         applyFloatingChromeTheme()
@@ -1413,7 +1138,7 @@ open class ImeKeyboardView(
     }
 
     fun clearAssociationCandidates() {
-        if (::associationRow.isInitialized) associationRow.removeAllViews()
+        if (::topZone.isInitialized) associationRow.removeAllViews()
     }
 
     fun setTheme(newTheme: ImeTheme) {
@@ -1639,24 +1364,17 @@ open class ImeKeyboardView(
             contentInsetPx,
             dp(16),
         )
-        if (voiceInlineActive) {
-            toolbarRow.visibility = View.GONE
-            composeZone.visibility = View.GONE
-            voiceInlineZone.visibility = View.VISIBLE
-            return
+        val state = when {
+            voiceInlineActive -> ImeTopZoneState.VOICE_INLINE
+            candidateExpandedOpen -> ImeTopZoneState.CANDIDATE_EXPANDED
+            composing -> ImeTopZoneState.COMPOSING
+            else -> ImeTopZoneState.IDLE
         }
-        voiceInlineZone.visibility = View.GONE
-        toolbarRow.visibility = if (composing) View.GONE else View.VISIBLE
-        composeZone.visibility = if (composing) View.VISIBLE else View.GONE
-        // Chinese composition uses two semantic lines (pinyin + candidates).
-        // English composition is already the final text stream, so only keep
-        // the single candidate strip and never show a second pinyin editor.
-        composition.visibility = if (composing && mode != KeyboardMode.ENGLISH_26) {
-            View.VISIBLE
-        } else {
-            View.GONE
-        }
-        candidateField.visibility = if (composing) View.VISIBLE else View.GONE
+        topZone.renderState(
+            state = state,
+            showCompositionEditor = (composing || candidateExpandedOpen) &&
+                mode != KeyboardMode.ENGLISH_26,
+        )
     }
 
     private fun conciseVoiceError(message: String): String = when {
@@ -1708,7 +1426,7 @@ open class ImeKeyboardView(
     }
 
     private fun applyInlineVoicePalette() {
-        if (!::voiceInlineZone.isInitialized) return
+        if (!::topZone.isInitialized) return
         val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
         val tokens = theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor))
@@ -1736,7 +1454,6 @@ open class ImeKeyboardView(
         voiceInlineActive = false
         voiceInlineCancel = false
         voiceInlineError = false
-        if (::voiceInlineZone.isInitialized) voiceInlineZone.visibility = View.GONE
         updateTopZone(composition.text?.isNotEmpty() == true)
     }
 
@@ -4866,7 +4583,7 @@ open class ImeKeyboardView(
     }
 
     private fun applyAssociationTheme() {
-        if (!::associationRow.isInitialized) return
+        if (!::topZone.isInitialized) return
         val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
         applyThemeRecursive(associationRow, theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor)))
