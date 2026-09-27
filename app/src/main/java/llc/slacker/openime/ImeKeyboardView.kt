@@ -449,6 +449,7 @@ open class ImeKeyboardView(
             markSideKey = { key -> key.setTag(MARK_SIDE_KEY, true) },
             markWhiteKey = { key -> key.setTag(MARK_WHITE_KEY, true) },
             onCommitCharacter = ::commitKeyboardCharacter,
+            onFeedback = ::feedback,
             onShowSymbols = { showPanel(Panel.SYMBOLS) },
             onReturnToText = { setMode(lastTextMode) },
             onSpace = listener::onSpace,

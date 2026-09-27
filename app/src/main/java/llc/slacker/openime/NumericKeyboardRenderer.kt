@@ -29,6 +29,7 @@ internal class NumericKeyboardRenderer(
     private val markSideKey: (ImeKeyView) -> Unit,
     private val markWhiteKey: (ImeKeyView) -> Unit,
     private val onCommitCharacter: (String) -> Unit,
+    private val onFeedback: () -> Unit,
     private val onShowSymbols: () -> Unit,
     private val onReturnToText: () -> Unit,
     private val onSpace: () -> Unit,
@@ -41,6 +42,8 @@ internal class NumericKeyboardRenderer(
         enterLabel: String,
     ) {
         val phone = editorKind == EditorInfoAdapter.EditorKind.PHONE
+        fun literal(tag: String, fallback: String): String =
+            if (phone) PhoneKeypadPolicy.literalByTag[tag] ?: fallback else fallback
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             tag = "digits-layout"
@@ -55,7 +58,7 @@ internal class NumericKeyboardRenderer(
             symbols = digitSymbols(),
             tagPrefix = "digit-symbol:",
             onCommit = onCommitCharacter,
-            onFeedback = {},
+            onFeedback = onFeedback,
         ).also {
             symbolRail = it
             if (phone) it.visibility = View.GONE
@@ -126,7 +129,8 @@ internal class NumericKeyboardRenderer(
         )
         centerBottom.addView(
             if (phone) {
-                createKey("*", true, 14f) { onCommitCharacter("*") }.apply {
+                val value = literal("key-space", "*")
+                createKey(value, true, 14f) { onCommitCharacter(value) }.apply {
                     tag = "key-space"
                     markWhiteKey(this)
                 }
@@ -138,8 +142,8 @@ internal class NumericKeyboardRenderer(
             flexKeyParams(),
         )
         centerBottom.addView(
-            createKey(if (phone) "+" else ".", false, 22f) {
-                onCommitCharacter(if (phone) "+" else ".")
+            createKey(literal("key:.", "."), false, 22f) {
+                onCommitCharacter(literal("key:.", "."))
             }.apply {
                 tag = "key:."
                 markWhiteKey(this)
@@ -171,8 +175,8 @@ internal class NumericKeyboardRenderer(
             sideKeyParams(includeBottomGap = true),
         )
         side.addView(
-            createKey(if (phone) "#" else "@", true, 15f) {
-                onCommitCharacter(if (phone) "#" else "@")
+            createKey(literal("key:@", "@"), true, 15f) {
+                onCommitCharacter(literal("key:@", "@"))
             }.apply {
                 tag = "key:@"
                 markSideKey(this)
@@ -204,7 +208,7 @@ internal class NumericKeyboardRenderer(
             symbols = digitSymbols(),
             tagPrefix = "digit-symbol:",
             onCommit = onCommitCharacter,
-            onFeedback = {},
+            onFeedback = onFeedback,
         )
     }
 
