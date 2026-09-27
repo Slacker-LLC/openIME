@@ -1,23 +1,36 @@
-# Web 原型 → Android 映射（最终版）
+# Android 能力映射
 
-| 原型模块 | Android 实现 | 真实能力 |
+本文只记录当前 Android 产品的真实实现，不再维护已删除的 Web 原型映射。
+
+| 能力 | 当前实现 | 状态 |
 |---|---|---|
-| 26 键中文/英文 | `ImeKeyboardView.renderPinyin26/English26` | 真实 composition/commit，Shift/Caps 状态机 |
-| 九键中文 | `renderPinyin9` + `CandidateEngine.get9KeyCandidates` | 真实拼音候选 |
-| 数字键盘 | `renderDigits` | commit |
-| Toolbar | 单行紧凑 TextView + 矢量图标 `res/drawable/ic_*.xml` | 真实点击；主题着色 |
-| Root UI | `MainDock/Toolbar/Candidate/KeyboardHost` + `PanelOverlay` + `CandidateOverlay` | 面板替换主键盘；候选展开覆盖键盘主体 |
-| Key 组件 | `ImeKeyView.kt` | 主字符居中、secondary 右上、图标/按压状态 |
-| 候选栏/展开 | `renderCandidateRow/renderExpanded` | InputConnection |
-| 符号/Emoji/贴纸 | `ImeData.symbols/emojis/stickers` | commit |
-| 手写 | `HandwritingPadView` + `HandwritingProvider` | UI 真，识别引擎未配置并明确提示 |
-| 语音 | `SpeechRecognitionProvider` | 真，部分/最终/RMS/权限/服务错误，不支持方言明确报错 |
-| 剪贴板 | `ClipboardHistoryRepository` + `InputConnectionGateway` | 真 ClipboardManager，密码框可读取并粘贴，密码正文不复制到历史 |
-| 文本编辑 | `InputConnectionGateway` | 真，上下/撤销受目标编辑器限制 |
-| 设置/主题 | `ImeSettingsRepository` + `ImeDesignTokens` | 持久化，五套主题 |
-| Skin DIY | Design Token 已预留 `skinRadius/skinOpacity/skinFontSize/skinPrimaryColor` | 正式 UI 无独立入口，按提示词不强行增加 |
-| AI Writer | 未接入 | 当前项目无现成 Agent/API 架构，按提示词不擅自引入模型/联网 |
-| Long Press/Popup | `showPopup`/`setOnLongClickListener` | 真实 |
+| 中文 26 键 | `ImeKeyboardView` + `CandidatePipeline` + Rime | 生产可用 |
+| 中文 9 键 | `ImeKeyboardView` + `NineKeyLocalDecoder` + Rime | 生产可用；无 0、无英文九键 |
+| 英文 26 键 | `CandidatePipeline` / `CandidateEngine` | 生产可用 |
+| 数字/电话/小数 | `EditorInfoAdapter` + numeric renderer | 生产可用 |
+| 候选栏/展开 | `ImeKeyboardView` + `CandidateSnapshot` | 生产可用 |
+| 按键组件 | `ImeKeyView` | 主/副标签、图标、按压反馈 |
+| 长按 Popup | `KeyPopupController` | 定位、边缘限制、入场动画 |
+| 符号 | `ImeData.symbols` + `CustomSymbolRepository` | 生产可用 |
+| Emoji | `ImeData` + `EmojiRecentRepository` + Fluent assets | 当前正式 UI 仍以表情类为主，待扩展完整分类 |
+| 剪贴板 | `ClipboardHistoryRepository` + `InputConnectionGateway` | 普通编辑器可用；密码编辑器不暴露持久历史/粘贴入口 |
+| 常用语 | `QuickPhraseRepository` / `QuickPhraseEditActivity` | 生产可用 |
+| 文本编辑 | `InputConnectionGateway` | 生产可用，能力随目标 EditorInfo/选区变化 |
+| 语音 | `VoiceModelLifecycleManager` + sherpa-onnx | 本地语音；150ms 长按空格 |
+| 手写 | `HandwritingPadView` + `UnavailableHandwritingProvider` | 只有笔迹 UI，识别引擎未接入，正式入口隐藏 |
+| 浮动键盘 | `LocalVoiceImeService` WindowManager + `ImeKeyboardView` | Docked/Floating Window Mode |
+| 设置 | `ImeSettingsRepository` + 键盘内/Activity 设置 UI | 持久化 |
+| Rime | `RimeEngine` → `RimeNative` → librime/OpenCC | 中文生产权威候选 |
+| 编辑器副作用 | `InputConnectionGateway` | 唯一 commit/delete/selection/clipboard 边界 |
 
-> 当前产品不提供英文九键。源码中残留的兼容枚举或候选方法不构成 UI 入口，后续可在
-> 不影响旧设置迁移的版本中删除。
+## 明确不存在的产品状态
+
+- 不提供英文九键。
+- Floating 不是 Panel。
+- 手写识别尚未上线。
+- 项目无 AI Writer/联网模型功能。
+- 已删除的 Web `ui-suite` 不再是源码或数据的 source of truth。
+
+## 当前临时架构
+
+`ImeKeyboardViewV2` 是旧 renderer 上的生产兼容 wrapper，仍在使用，但属于待清理结构，不应继续往 V2 添加新业务能力。新 UI 抽取优先从 `ImeKeyboardView` 中机械迁移到具体组件/controller，最终删除 V2。
