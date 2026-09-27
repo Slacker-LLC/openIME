@@ -232,7 +232,11 @@ internal class VoicePanelController(
             override fun onFinal(text: String) {
                 expandedPanel.post {
                     if (generation != eventGeneration) return@post
-                    if (cancelled || cancelPreview) return@post
+                    if (!active || cancelled || cancelPreview) return@post
+                    // Final is terminal for this session. Invalidate before
+                    // notifying the host so duplicate/late backend callbacks
+                    // cannot commit twice or resurrect the finished UI.
+                    eventGeneration++
                     if (text.isNotBlank()) recognizedText = text
                     setTranscript(text)
                     setMicState("🎤", "语音状态，已完成识别，仅支持长按空格启动")
@@ -293,7 +297,10 @@ internal class VoicePanelController(
 
             override fun onError(message: String) {
                 expandedPanel.post {
-                    if (generation != eventGeneration || cancelled) return@post
+                    if (generation != eventGeneration || !active || cancelled) return@post
+                    // Errors are terminal too; reject a late final/ready/RMS
+                    // from the failed backend session.
+                    eventGeneration++
                     recognizedText = ""
                     setTranscript(message)
                     setMicState("🎤", "语音状态，识别失败，仅支持长按空格重试")
