@@ -220,6 +220,33 @@ open class ImeKeyboardView(
             voicePanelController.setCancelPreview(cancelling)
         },
     )
+    private val spaceVoiceKeyFactory: SpaceVoiceKeyFactory by lazy {
+        SpaceVoiceKeyFactory(
+            gestureController = spaceVoiceGestureController,
+            createBaseKey = { label, onTap ->
+                key(
+                    text = label,
+                    func = true,
+                    secondary = null,
+                    mainTextSizeOverride = 14f,
+                    iconRes = R.drawable.ic_mic,
+                    onTap = {
+                        if (!insertIntoInlineEditor(" ")) onTap()
+                    },
+                )
+            },
+            canStartVoice = { voiceAllowed },
+            markWhiteKey = { key -> key.setTag(MARK_WHITE_KEY, true) },
+            onFeedback = ::feedback,
+            onAccessibilityLongPress = {
+                when {
+                    voicePanelController.active -> stopVoiceFromSpace()
+                    voicePanelController.pending -> cancelVoiceForManualInput()
+                    else -> listener.onVoiceToggle()
+                }
+            },
+        )
+    }
     // Whether long-press alternate glyphs are shown as small corner hints.
     private var showSecondaryHints = true
     // Touch-coordinate trace logs are debug-only; they must never spam logcat
@@ -1767,53 +1794,12 @@ open class ImeKeyboardView(
         label: String = "空格",
         white: Boolean = false,
         onTap: () -> Unit,
-    ): ImeKeyView = key(
-        label,
-        true,
-        null,
-        1f,
-        14f,
-        iconRes = R.drawable.ic_mic,
-        onTap = { if (!insertIntoInlineEditor(" ")) onTap() },
-    ).apply {
-        tag = "key-space"
-        contentDescription = "$label，点击空格，长按语音输入"
-        setOnLongClickListener {
-            if (!voiceAllowed) return@setOnLongClickListener true
-            // A physical touch is timed by SpaceVoiceGestureController. Android
-            // may dispatch the View long-click callback at the same configured
-            // timeout, so consume it here to avoid starting voice twice.
-            if (spaceVoiceGestureController.trackingTouch) return@setOnLongClickListener true
-            // Accessibility actions do not deliver a touch DOWN/UP sequence.
-            when {
-                voicePanelController.active -> stopVoiceFromSpace()
-                voicePanelController.pending -> cancelVoiceForManualInput()
-                else -> listener.onVoiceToggle()
-            }
-            true
-        }
-        if (white) setTag(MARK_WHITE_KEY, true)
-        setOnTouchListener { view, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    feedback()
-                    spaceVoiceGestureController.begin(
-                        anchor = view,
-                        pointerId = event.getPointerId(event.actionIndex),
-                        rawY = event.rawY,
-                    )
-                    false
-                }
-                MotionEvent.ACTION_MOVE -> spaceVoiceGestureController.move(event.rawY)
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    spaceVoiceGestureController.finish(
-                        cancelled = event.actionMasked == MotionEvent.ACTION_CANCEL,
-                    )
-                }
-                else -> false
-            }
-        }
-    }
+    ): ImeKeyView =
+        spaceVoiceKeyFactory.build(
+            label = label,
+            white = white,
+            onTap = onTap,
+        )
 
     /** Starts recording after the combined space key crosses the long-press threshold. */
     fun startVoiceFromSpace() {
