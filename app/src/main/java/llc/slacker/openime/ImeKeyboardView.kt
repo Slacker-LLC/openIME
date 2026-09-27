@@ -356,10 +356,11 @@ open class ImeKeyboardView(
     // Floating mode changes only the IME window bounds. The keyboard surface
     // itself remains the same normal keyboard used in portrait mode.
     private var floatingWindowMode = false
-    private var floatingDragActive = false
-    private var floatingDragMoved = false
-    private var floatingDragLastX = 0f
-    private var floatingDragLastY = 0f
+    private val floatingDragController = FloatingDragController(
+        toPx = ::dp,
+        onDragBy = listener::onFloatingKeyboardDragged,
+        onDock = { floatingDragHandle.performClick() },
+    )
     private var contentInsetPx = dp(5)
     private var navigationBottomInsetPx = 0
     private val keyPopupController = KeyPopupController(
@@ -567,40 +568,7 @@ open class ImeKeyboardView(
 
     private fun handleFloatingDragTouch(event: MotionEvent): Boolean {
         if (!floatingWindowMode || panel != Panel.NONE) return false
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                floatingDragLastX = event.rawX
-                floatingDragLastY = event.rawY
-                floatingDragActive = true
-                floatingDragMoved = false
-                return true
-            }
-            MotionEvent.ACTION_MOVE -> {
-                if (!floatingDragActive) return true
-                val deltaX = event.rawX - floatingDragLastX
-                val deltaY = event.rawY - floatingDragLastY
-                if (kotlin.math.abs(deltaX) + kotlin.math.abs(deltaY) >= dp(3)) {
-                    floatingDragMoved = true
-                }
-                floatingDragLastX = event.rawX
-                floatingDragLastY = event.rawY
-                listener.onFloatingKeyboardDragged(deltaX, deltaY)
-                return true
-            }
-            MotionEvent.ACTION_UP -> {
-                val shouldDock = floatingDragActive && !floatingDragMoved
-                floatingDragActive = false
-                floatingDragMoved = false
-                if (shouldDock) floatingDragHandle.performClick()
-                return true
-            }
-            MotionEvent.ACTION_CANCEL -> {
-                floatingDragActive = false
-                floatingDragMoved = false
-                return true
-            }
-        }
-        return true
+        return floatingDragController.onTouch(event)
     }
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
@@ -1229,8 +1197,7 @@ open class ImeKeyboardView(
             composition.setPadding(contentInsetPx + dp(14), dp(3), contentInsetPx + dp(14), 0)
             floatingDragHandle.visibility = View.VISIBLE
         } else {
-            floatingDragActive = false
-            floatingDragMoved = false
+            floatingDragController.reset()
             floatingDragHandle.visibility = View.GONE
             toolbarRow.visibility = if (voiceInlineActive || composeZone.visibility == View.VISIBLE) {
                 View.GONE
@@ -1548,6 +1515,7 @@ open class ImeKeyboardView(
         removeCallbacks(null)
         backspaceGestureController.shutdown()
         spaceVoiceGestureController.shutdown()
+        floatingDragController.reset()
         pendingRowRebuild = false
         voiceInlineActive = false
         voiceInlineCancel = false
