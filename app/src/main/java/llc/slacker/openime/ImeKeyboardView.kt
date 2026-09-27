@@ -357,10 +357,24 @@ open class ImeKeyboardView(
     private var floatingDragMoved = false
     private var floatingDragLastX = 0f
     private var floatingDragLastY = 0f
-    private var popupView: View? = null
-    private var keepPopupAfterKeyUp = false
-    private val popupHideRunnable = Runnable { hidePopup() }
     private var contentInsetPx = dp(5)
+    private val keyPopupController = KeyPopupController(
+        host = this,
+        dp = ::dp,
+        contentInsetPx = { contentInsetPx },
+        tokens = {
+            theme.tokens(
+                appearance,
+                isNight(),
+                AccentPalette.parse(skinPrimaryColor),
+            )
+        },
+        rounded = { color, radius -> rounded(color, radius) },
+        statefulRounded = { normal, pressed, radius -> statefulRounded(normal, pressed, radius) },
+        contrastText = ::contrastText,
+        feedback = ::feedback,
+        onSymbolSelected = listener::onCharacter,
+    )
     private var systemBottomInsetPx = 0
     private val maxContentWidthDp = 600
     // Portrait keeps the historical 296dp total. Landscape uses a compact
@@ -2306,10 +2320,7 @@ open class ImeKeyboardView(
      */
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-            popupView?.let { popup ->
-                if (event.x < popup.left || event.x >= popup.right ||
-                    event.y < popup.top || event.y >= popup.bottom) hidePopup()
-            }
+            keyPopupController.hideIfOutside(event.x, event.y)
         }
         val handled = super.dispatchTouchEvent(event)
         if (backspaceGestureActive) {
@@ -5165,9 +5176,7 @@ open class ImeKeyboardView(
                         }
                         MotionEvent.ACTION_UP,
                         MotionEvent.ACTION_CANCEL,
-                        -> if (keepPopupAfterKeyUp) {
-                            keepPopupAfterKeyUp = false
-                        } else {
+                        -> if (!keyPopupController.consumeKeepAfterKeyUp()) {
                             hidePopup()
                         }
                     }
@@ -5256,7 +5265,6 @@ open class ImeKeyboardView(
             backspaceRepeatStartAction?.let(repeatHandler::removeCallbacks)
             repeatHandler.removeCallbacks(repeatAction)
             backspaceAnchor?.let { showPopup(it, "清空") }
-            repeatHandler.removeCallbacks(popupHideRunnable)
             // Tactile confirmation that the gesture crossed into "clear all".
             hapticFeedback()
         } else {
@@ -5392,134 +5400,17 @@ open class ImeKeyboardView(
         setPadding(0, 0, 0, dp(4))
     }
 
-    @SuppressLint("ClickableViewAccessibility")
     private fun showPopup(anchor: View, char: String) {
-        hidePopup()
-        keepPopupAfterKeyUp = false
-        val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-            android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val t = theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor))
-        val popupWidth = (anchor.width * 1.08f).toInt().coerceIn(dp(40), dp(64))
-        val popupHeight = dp(if (char == "清空") 36 else 48)
-        val p = TextView(context).apply {
-            text = char
-            textSize = if (char.length > 1) 13f else 16f
-            includeFontPadding = false
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-            gravity = Gravity.CENTER
-            setPadding(dp(8), dp(6), dp(8), dp(6))
-            val popupBackground = if (char == "清空") t.destructive else t.keyBackground
-            setTextColor(if (char == "清空") contrastText(popupBackground) else t.keyText)
-            background = rounded(
-                popupBackground,
-                dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-            )
-            elevation = dp(2).toFloat()
-        }
-        val anchorLocation = IntArray(2)
-        val rootLocation = IntArray(2)
-        anchor.getLocationOnScreen(anchorLocation)
-        getLocationOnScreen(rootLocation)
-        val anchorLeft = anchorLocation[0] - rootLocation[0]
-        val anchorTop = anchorLocation[1] - rootLocation[1]
-        val centeredLeft = anchorLeft + (anchor.width - popupWidth) / 2
-        val maxLeft = (width - popupWidth - contentInsetPx).coerceAtLeast(contentInsetPx)
-        val left = centeredLeft.coerceIn(contentInsetPx, maxLeft)
-        val top = (anchorTop - popupHeight - dp(8)).coerceAtLeast(dp(4))
-        addView(p, LayoutParams(popupWidth, popupHeight).apply {
-            gravity = Gravity.TOP or Gravity.START
-            leftMargin = left
-            topMargin = top
-        })
-        popupView = p
-        animatePopupIn(p, popupWidth, popupHeight)
+        keyPopupController.show(anchor, char)
     }
 
     /** Horizontal long-press selector for symbols that share one key. */
-    @SuppressLint("ClickableViewAccessibility")
     private fun showChoicePopup(anchor: View, choices: List<String>) {
-        hidePopup()
-        keepPopupAfterKeyUp = true
-        val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-            android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val t = theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor))
-        val row = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(dp(5), dp(5), dp(5), dp(5))
-            background = rounded(t.keyBackground, dp(ImeGeometryTokens.CONTROL_RADIUS_DP))
-            elevation = dp(2).toFloat()
-            contentDescription = "长按符号选择"
-        }
-        choices.forEach { symbol ->
-            row.addView(TextView(context).apply {
-                text = symbol
-                textSize = 16f
-                includeFontPadding = false
-                gravity = Gravity.CENTER
-                setTextColor(t.keyText)
-                background = statefulRounded(
-                    Color.TRANSPARENT,
-                    t.keyPressedBackground,
-                    dp(ImeGeometryTokens.KEY_RADIUS_DP),
-                )
-                isClickable = true
-                isFocusable = true
-                contentDescription = "输入$symbol"
-                setPadding(dp(11), 0, dp(11), 0)
-                setOnClickListener {
-                    hidePopup()
-                    feedback()
-                    listener.onCharacter(symbol)
-                }
-            }, LinearLayout.LayoutParams(dp(48), dp(48)))
-        }
-        val anchorLocation = IntArray(2)
-        val rootLocation = IntArray(2)
-        anchor.getLocationOnScreen(anchorLocation)
-        getLocationOnScreen(rootLocation)
-        val popupWidth = dp(48 * choices.size + 10)
-        val popupHeight = dp(58)
-        val anchorLeft = anchorLocation[0] - rootLocation[0]
-        val anchorTop = anchorLocation[1] - rootLocation[1]
-        val centeredLeft = anchorLeft + (anchor.width - popupWidth) / 2
-        val maxLeft = (width - popupWidth - contentInsetPx).coerceAtLeast(contentInsetPx)
-        val left = centeredLeft.coerceIn(contentInsetPx, maxLeft)
-        val top = (anchorTop - popupHeight - dp(8)).coerceAtLeast(dp(4))
-        addView(row, LayoutParams(popupWidth, popupHeight).apply {
-            gravity = Gravity.TOP or Gravity.START
-            leftMargin = left
-            topMargin = top
-        })
-        popupView = row
-        animatePopupIn(row, popupWidth, popupHeight)
-    }
-
-    private fun animatePopupIn(view: View, popupWidth: Int, popupHeight: Int) {
-        view.animate().cancel()
-        view.pivotX = popupWidth / 2f
-        view.pivotY = popupHeight.toFloat()
-        view.scaleX = 0.88f
-        view.scaleY = 0.88f
-        view.alpha = 0f
-        view.animate()
-            .scaleX(1f)
-            .scaleY(1f)
-            .alpha(1f)
-            .setDuration(80L)
-            .setInterpolator(DecelerateInterpolator(1.5f))
-            .start()
+        keyPopupController.showChoices(anchor, choices)
     }
 
     private fun hidePopup() {
-        repeatHandler.removeCallbacks(popupHideRunnable)
-        popupView?.let {
-            it.animate().cancel()
-            removeView(it)
-        }
-        popupView = null
-        keepPopupAfterKeyUp = false
+        keyPopupController.hide()
     }
 
     protected fun applyTheme() {
