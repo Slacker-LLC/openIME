@@ -16,7 +16,7 @@ class ImeStateTest {
     @Test
     fun modeSwitchClearsComposition() {
         val a = ImeState(composition = "ni", candidates = listOf("你"))
-        val b = a.withMode(KeyboardMode.ENGLISH_T9)
+        val b = a.withMode(KeyboardMode.PINYIN_9)
         assertEquals("", b.composition)
         assertEquals(emptyList<String>(), b.candidates)
     }
