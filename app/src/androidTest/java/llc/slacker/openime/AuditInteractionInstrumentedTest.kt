@@ -785,6 +785,71 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun backspaceTapDeletesExactlyOnceAndCancelDeletesNothing() = withKeyboard { harness, recorder, keyboard ->
+        harness.awaitMain {
+            val owner = keyPoint(keyboard, "key-backspace")
+            var downTime = SystemClock.uptimeMillis()
+            pointers(keyboard, downTime, MotionEvent.ACTION_DOWN, listOf(owner))
+            pointers(keyboard, downTime, MotionEvent.ACTION_UP, listOf(owner))
+            assertEquals("Backspace tap must delete exactly once", 1, recorder.backspaces)
+
+            downTime = SystemClock.uptimeMillis()
+            pointers(keyboard, downTime, MotionEvent.ACTION_DOWN, listOf(owner))
+            pointers(keyboard, downTime, MotionEvent.ACTION_CANCEL, listOf(owner))
+            assertEquals("Cancelled backspace must not delete", 1, recorder.backspaces)
+            true
+        }
+        SystemClock.sleep(ViewConfiguration.getLongPressTimeout().toLong() + 100L)
+        harness.awaitMain {
+            assertEquals("Cancelled backspace must not leave repeat callbacks", 1, recorder.backspaces)
+            assertEquals(0, recorder.clears)
+            true
+        }
+    }
+
+    @Test
+    fun backspaceClearCommitsOnceAndCanBeDisarmedBeforeRelease() = withKeyboard { harness, recorder, keyboard ->
+        harness.awaitMain {
+            val owner = keyPoint(keyboard, "key-backspace")
+            var downTime = SystemClock.uptimeMillis()
+            val clearPoint = owner.copy(y = owner.y - 44f * keyboard.resources.displayMetrics.density)
+
+            pointers(keyboard, downTime, MotionEvent.ACTION_DOWN, listOf(owner))
+            pointers(keyboard, downTime, MotionEvent.ACTION_MOVE, listOf(clearPoint))
+            pointers(keyboard, downTime, MotionEvent.ACTION_UP, listOf(clearPoint))
+            assertEquals("Armed clear gesture must clear exactly once", 1, recorder.clears)
+            assertEquals("Clear gesture must not also delete one character", 0, recorder.backspaces)
+
+            downTime = SystemClock.uptimeMillis()
+            pointers(keyboard, downTime, MotionEvent.ACTION_DOWN, listOf(owner))
+            pointers(keyboard, downTime, MotionEvent.ACTION_MOVE, listOf(clearPoint))
+            pointers(keyboard, downTime, MotionEvent.ACTION_MOVE, listOf(owner))
+            pointers(keyboard, downTime, MotionEvent.ACTION_UP, listOf(owner))
+            assertEquals("Returning below hysteresis must disarm clear", 1, recorder.clears)
+            assertEquals("Disarmed gesture falls back to one backspace", 1, recorder.backspaces)
+            true
+        }
+    }
+
+    @Test
+    fun backspaceLargeHorizontalDriftCannotArmClearAll() = withKeyboard { harness, recorder, keyboard ->
+        harness.awaitMain {
+            val owner = keyPoint(keyboard, "key-backspace")
+            val downTime = SystemClock.uptimeMillis()
+            val escaped = owner.copy(
+                x = owner.x + 132f * keyboard.resources.displayMetrics.density,
+                y = owner.y - 44f * keyboard.resources.displayMetrics.density,
+            )
+            pointers(keyboard, downTime, MotionEvent.ACTION_DOWN, listOf(owner))
+            pointers(keyboard, downTime, MotionEvent.ACTION_MOVE, listOf(escaped))
+            pointers(keyboard, downTime, MotionEvent.ACTION_UP, listOf(escaped))
+            assertEquals("Horizontal escape must not trigger clear-all", 0, recorder.clears)
+            assertEquals(1, recorder.backspaces)
+            true
+        }
+    }
+
+    @Test
     fun backspaceRepeatResumesAfterUpwardDriftReturnsBelowEightDp() = withKeyboard { harness, recorder, keyboard ->
         lateinit var owner: Finger
         var downTime = 0L
