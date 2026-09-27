@@ -834,7 +834,10 @@ open class ImeKeyboardView(
             }
             return false
         }
-        return walk(this)
+        // Space owns a physical touch stream through its touch listener. Some
+        // Android versions clear View.isPressed while that stream is still
+        // active, so a pending row rebuild must also respect the gesture owner.
+        return spaceVoiceGestureController.trackingTouch || walk(this)
     }
 
     override fun onAttachedToWindow() {
