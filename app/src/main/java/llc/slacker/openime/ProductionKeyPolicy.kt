@@ -27,9 +27,4 @@ internal object ProductionKeyPolicy {
         )
     }
 
-    /**
-     * The renderer owns the 150 ms product threshold. V2 must not add another
-     * delay after the renderer has already armed the voice gesture.
-     */
-    fun remainingVoiceDelayMs(@Suppress("UNUSED_PARAMETER") systemLongPressTimeoutMs: Long): Long = 0L
 }
