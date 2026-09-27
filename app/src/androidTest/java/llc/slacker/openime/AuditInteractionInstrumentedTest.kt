@@ -685,6 +685,80 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun spaceOwnerPointerUpBeforeLongPressCancelsPendingArmWithoutGhostSpace() = withKeyboard { harness, recorder, keyboard ->
+        lateinit var owner: Finger
+        lateinit var other: Finger
+        var downTime = 0L
+        harness.awaitMain {
+            owner = keyPoint(keyboard, "key-space").copy(id = 7)
+            other = owner.copy(id = 11, x = owner.x - 4f)
+            downTime = SystemClock.uptimeMillis()
+            pointers(keyboard, downTime, MotionEvent.ACTION_DOWN, listOf(owner))
+            pointers(
+                keyboard,
+                downTime,
+                pointerAction(MotionEvent.ACTION_POINTER_DOWN, 1),
+                listOf(owner, other),
+            )
+            pointers(
+                keyboard,
+                downTime,
+                pointerAction(MotionEvent.ACTION_POINTER_UP, 0),
+                listOf(owner, other),
+            )
+            true
+        }
+
+        SystemClock.sleep(ViewConfiguration.getLongPressTimeout().toLong() + 150L)
+
+        harness.awaitMain {
+            pointers(keyboard, downTime, MotionEvent.ACTION_UP, listOf(other))
+            assertEquals("Lifted owner must cancel the pending voice arm", 0, recorder.starts)
+            assertEquals("The remaining finger must not synthesize a space click", 0, recorder.spaces)
+            assertEquals(0, recorder.stops)
+            true
+        }
+    }
+
+    @Test
+    fun activeSpaceVoiceOwnerPointerUpStopsOnceWithoutGhostSpace() = withKeyboard { harness, recorder, keyboard ->
+        lateinit var owner: Finger
+        lateinit var other: Finger
+        var downTime = 0L
+        harness.awaitMain {
+            owner = keyPoint(keyboard, "key-space").copy(id = 7)
+            other = owner.copy(id = 11, x = owner.x - 4f)
+            downTime = SystemClock.uptimeMillis()
+            pointers(keyboard, downTime, MotionEvent.ACTION_DOWN, listOf(owner))
+            pointers(
+                keyboard,
+                downTime,
+                pointerAction(MotionEvent.ACTION_POINTER_DOWN, 1),
+                listOf(owner, other),
+            )
+            true
+        }
+
+        SystemClock.sleep(ViewConfiguration.getLongPressTimeout().toLong() + 100L)
+        harness.awaitMain(timeoutMs = 2_000L) { if (recorder.starts == 1) true else null }
+
+        harness.awaitMain {
+            pointers(
+                keyboard,
+                downTime,
+                pointerAction(MotionEvent.ACTION_POINTER_UP, 0),
+                listOf(owner, other),
+            )
+            assertEquals("Owner release must stop voice exactly once", 1, recorder.stops)
+            assertEquals(0, recorder.spaces)
+            pointers(keyboard, downTime, MotionEvent.ACTION_UP, listOf(other))
+            assertEquals("Remaining finger release must not insert a space", 0, recorder.spaces)
+            assertEquals("Remaining finger release must not stop voice twice", 1, recorder.stops)
+            true
+        }
+    }
+
+    @Test
     fun rebuildWhileSpaceIsHeldDoesNotSwallowTheSpace() = withKeyboard { harness, recorder, keyboard ->
         var downTime = 0L
         harness.awaitMain {
