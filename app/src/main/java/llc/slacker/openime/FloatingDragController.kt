@@ -46,12 +46,6 @@ internal class FloatingDragController(
                 onDragBy(deltaX, deltaY)
             }
 
-            MotionEvent.ACTION_POINTER_UP -> {
-                if (active && event.getPointerId(event.actionIndex) == pointerId) {
-                    finish(dockIfTap = true)
-                }
-            }
-
             MotionEvent.ACTION_UP -> finish(dockIfTap = true)
             MotionEvent.ACTION_CANCEL -> finish(dockIfTap = false)
         }
