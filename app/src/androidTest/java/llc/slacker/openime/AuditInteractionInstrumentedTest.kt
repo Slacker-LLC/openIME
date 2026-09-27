@@ -782,6 +782,37 @@ class AuditInteractionInstrumentedTest {
         }
     }
 
+    @Test
+    fun keyPopupUsesSharedProductGeometry() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            keyboard.setSettings(sound = false, haptic = false, popup = true)
+            keyboard.setMode(KeyboardMode.DIGITS, notifyListener = false)
+            true
+        }
+        harness.awaitMain {
+            val key = keyboard.findViewWithTag<View>("key:5") ?: return@awaitMain null
+            if (key.width == 0) return@awaitMain null
+            val baseline = keyboard.childCount
+            touch(key, MotionEvent.ACTION_DOWN)
+            try {
+                assertEquals(baseline + 1, keyboard.childCount)
+                val popup = keyboard.getChildAt(keyboard.childCount - 1)
+                val expectedHeight = (
+                    ImeGeometryTokens.KEY_POPUP_HEIGHT_DP *
+                        keyboard.resources.displayMetrics.density
+                    ).toInt()
+                assertEquals("Key popup height must use the shared product token", expectedHeight, popup.layoutParams.height)
+                assertTrue(
+                    "Wide keys must not produce a preview narrower than the source key",
+                    popup.layoutParams.width >= key.width,
+                )
+            } finally {
+                touch(key, MotionEvent.ACTION_CANCEL)
+            }
+            true
+        }
+    }
+
     private fun touch(view: View, action: Int) {
         val now = SystemClock.uptimeMillis()
         val event = MotionEvent.obtain(now, now, action, view.width / 2f, view.height / 2f, 0)
