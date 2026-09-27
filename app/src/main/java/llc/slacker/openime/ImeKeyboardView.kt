@@ -253,18 +253,11 @@ open class ImeKeyboardView(
     fun currentPanel(): Panel = panel
 
     /** Persist the standalone settings panel's viewport across Activity recreation. */
-    internal fun settingsScrollPosition(): Int {
-        return (expandedPanel.findViewWithTag<ScrollView>("settings-scroll")?.scrollY ?: settingsScrollY)
-            .coerceAtLeast(0)
-    }
+    internal fun settingsScrollPosition(): Int =
+        settingsPanelController.scrollPosition()
 
     internal fun restoreSettingsScrollPosition(scrollY: Int) {
-        settingsScrollY = scrollY.coerceAtLeast(0)
-        expandedPanel.findViewWithTag<ScrollView>("settings-scroll")?.let { scroll ->
-            scroll.post {
-                scroll.scrollTo(0, settingsScrollY)
-            }
-        }
+        settingsPanelController.restoreScrollPosition(scrollY)
     }
 
     /** Refresh data owned by auxiliary editor Activities when they return. */
@@ -314,7 +307,6 @@ open class ImeKeyboardView(
     private var voiceEventGeneration = 0L
     private var voiceLanguageIndex = 0
     private var toolPage = 0
-    private var settingsScrollY = 0
     private var voiceActive = false
     private var voicePending = false
     private var voiceStopRequested = false
@@ -515,6 +507,49 @@ open class ImeKeyboardView(
             onSymbolSelected = listener::onSymbolSelected,
             onCharacter = listener::onCharacter,
             onSpace = listener::onSpace,
+            onFeedback = ::feedback,
+            applyTheme = ::applyTheme,
+            onHierarchyRebuilt = ::onViewHierarchyRebuilt,
+        )
+    }
+    private val settingsPanelController: SettingsPanelController by lazy {
+        SettingsPanelController(
+            context = context,
+            expandedPanel = expandedPanel,
+            toPx = ::dp,
+            createHeader = ::panelHead,
+            createSectionTitle = ::sectionTitle,
+            createChipScroll = panelRenderer::panelChipScroll,
+            currentTheme = { theme },
+            currentAppearance = { appearance },
+            currentSound = { soundEnabled },
+            currentHaptic = { hapticEnabled },
+            currentPopup = { popupEnabled },
+            currentFuzzy = { fuzzyEnabled },
+            currentSkinOpacity = { skinOpacity },
+            currentSkinRadius = { skinRadius },
+            currentSkinFontSize = { skinFontSize },
+            currentSkinColor = { skinPrimaryColor },
+            onThemeSelected = ::setTheme,
+            onAppearanceSelected = { selected ->
+                setAppearance(selected)
+                listener.onAppearanceChanged(selected)
+            },
+            onToggleChanged = ::updateSettingToggle,
+            onSkinChanged = { opacity, radius, fontSize, color ->
+                skinOpacity = opacity
+                skinRadius = radius
+                skinFontSize = fontSize
+                skinPrimaryColor = AccentPalette.normalize(color)
+                listener.onSkinChanged(
+                    skinOpacity,
+                    skinRadius,
+                    skinFontSize,
+                    skinPrimaryColor,
+                )
+                applyTheme()
+            },
+            onShowFuzzySettings = { showPanel(Panel.FUZZY_SETTINGS) },
             onFeedback = ::feedback,
             applyTheme = ::applyTheme,
             onHierarchyRebuilt = ::onViewHierarchyRebuilt,
@@ -1968,8 +2003,8 @@ open class ImeKeyboardView(
             Panel.VOICE -> renderVoice()
             Panel.CLIPBOARD -> renderClipboard()
             Panel.TEXT_EDITOR -> textEditorPanelController.render()
-            Panel.SETTINGS -> renderSettings()
-            Panel.FUZZY_SETTINGS -> renderFuzzySettings()
+            Panel.SETTINGS -> settingsPanelController.renderSettings()
+            Panel.FUZZY_SETTINGS -> settingsPanelController.renderFuzzySettings()
             else -> closePanelToKeyboard()
         }
         applyTheme()
@@ -2472,389 +2507,12 @@ open class ImeKeyboardView(
         )
     }
 
-    private fun renderSettings(reusePanel: Boolean = false) {
-        val previousFocusKey = if (reusePanel) semanticFocusKey(expandedPanel.findFocus()) else null
-        val previousScrollY = if (reusePanel && expandedPanel.childCount > 1) {
-            (expandedPanel.getChildAt(1) as? ScrollView)?.scrollY ?: settingsScrollY
-        } else {
-            settingsScrollY
-        }
-        if (!reusePanel || expandedPanel.childCount == 0) {
-            addPanelHead("偏好设置")
-        } else {
-            while (expandedPanel.childCount > 1) {
-                expandedPanel.removeViewAt(expandedPanel.childCount - 1)
-            }
-        }
-        val scroll = ScrollView(context).apply {
-            tag = "settings-scroll"
-            isFillViewport = true
-            isVerticalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
-            setOnScrollChangeListener { _, _, scrollY, _, _ -> settingsScrollY = scrollY }
-        }
-        val content = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(12), dp(12), dp(18))
-            tag = "settings-panel"
-        }
-        content.addView(sectionTitle("键盘主题"), wrapParams())
-        content.addView(panelRenderer.panelChipScroll(ImeTheme.entries.map { it.label }, theme.label) { label ->
-            ImeTheme.entries.firstOrNull { it.label == label }?.let { selectedTheme ->
-                setTheme(selectedTheme)
-                renderSettings(reusePanel = true)
-            }
-        }, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(48),
-        ).apply { bottomMargin = dp(12) })
-        content.addView(sectionTitle("外观"), wrapParams())
-        content.addView(panelRenderer.panelChipScroll(ImeAppearance.entries.map { it.label }, appearance.label) { label ->
-            appearance = ImeAppearance.entries.first { it.label == label }
-            setAppearance(appearance)
-            listener.onAppearanceChanged(appearance)
-            renderSettings(reusePanel = true)
-        }, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(48),
-        ).apply { bottomMargin = dp(12) })
-        content.addView(sectionTitle("强调色"), wrapParams())
-        content.addView(
-            accentColorRow(),
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { bottomMargin = dp(12) },
-        )
-        content.addView(sectionTitle("按键皮肤"), wrapParams())
-        content.addView(
-            settingGroup(
-                settingsSlider("圆角", 0, 24, skinRadius) { v ->
-                    skinRadius = v; listener.onSkinChanged(skinOpacity, skinRadius, skinFontSize, skinPrimaryColor)
-                    applyTheme()
-                },
-                settingsSlider("不透明度", 70, 100, skinOpacity) { v ->
-                    skinOpacity = v; listener.onSkinChanged(skinOpacity, skinRadius, skinFontSize, skinPrimaryColor)
-                    applyTheme()
-                },
-                settingsSlider("按键字号", 14, 22, skinFontSize) { v ->
-                    skinFontSize = v; listener.onSkinChanged(skinOpacity, skinRadius, skinFontSize, skinPrimaryColor)
-                    applyTheme()
-                },
-            ),
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { bottomMargin = dp(12) },
-        )
-        content.addView(sectionTitle("按键与输入"), wrapParams())
-        content.addView(
-            settingGroup(
-                settingToggleRow("按键音效", "机械轴敲击反馈"),
-                settingToggleRow("触感震动", "轻微触感反馈"),
-                settingToggleRow("按键气泡", "可选字母预览，默认仅按键变色"),
-            ),
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { bottomMargin = dp(12) },
-        )
-        content.addView(sectionTitle("智能输入"), wrapParams())
-        content.addView(
-            settingGroup(
-                settingNavigationRow(
-                    "模糊音与智能纠错",
-                    "进入后配置 z/zh、c/ch、s/sh 等规则",
-                ) { showPanel(Panel.FUZZY_SETTINGS) },
-            ),
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { bottomMargin = dp(12) },
-        )
-        scroll.addView(content, ViewGroup.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-        ))
-        expandedPanel.addView(scroll, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            0,
-            1f,
-        ))
-        scroll.post {
-            scroll.scrollTo(0, previousScrollY)
-            previousFocusKey?.let { key -> findSemanticFocusTarget(expandedPanel, key)?.requestFocus() }
-        }
-        if (reusePanel) {
-            applyTheme()
-            onViewHierarchyRebuilt()
-        }
-    }
-
-    private fun semanticFocusKey(view: View?): String? {
-        val description = view?.contentDescription?.toString()
-            ?.substringBefore('，')
-            ?.takeIf { it.isNotBlank() }
-        return description ?: (view?.tag as? String)?.takeIf { it.isNotBlank() }
-    }
-
-    private fun findSemanticFocusTarget(root: View, key: String): View? {
-        if (semanticFocusKey(root) == key && root.isFocusable) return root
-        if (root is ViewGroup) {
-            for (index in 0 until root.childCount) {
-                findSemanticFocusTarget(root.getChildAt(index), key)?.let { return it }
-            }
-        }
-        return null
-    }
-
     private fun sectionTitle(textValue: String): TextView = TextView(context).apply {
         text = textValue
         textSize = 12f
         includeFontPadding = false
         setPadding(dp(4), dp(2), 0, dp(8))
         tag = "panel-section-title"
-    }
-
-    private fun settingGroup(vararg rows: View): LinearLayout = LinearLayout(context).apply {
-        orientation = LinearLayout.VERTICAL
-        tag = "setting-group"
-        rows.forEachIndexed { index, row ->
-            if (index > 0) {
-                addView(View(context).apply { tag = "setting-divider" }, LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    dp(1),
-                ).apply {
-                    marginStart = dp(44)
-                    marginEnd = dp(12)
-                })
-            }
-            addView(row, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                if (row is TextView) dp(54) else LinearLayout.LayoutParams.WRAP_CONTENT,
-            ))
-        }
-    }
-
-    private fun settingIcon(label: String): ImageView = ImageView(context).apply {
-        setImageResource(
-            when (label) {
-                "按键音效" -> R.drawable.ic_volume
-                "触感震动" -> R.drawable.ic_vibration
-                "按键气泡" -> R.drawable.ic_bubble
-                "模糊音与智能纠错", "启用模糊音" -> R.drawable.ic_tune
-                else -> R.drawable.ic_tune
-            },
-        )
-        scaleType = ImageView.ScaleType.CENTER
-        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-        tag = "setting-icon"
-    }
-
-    private fun settingToggleRow(label: String, sub: String): LinearLayout {
-        val row = LinearLayout(context)
-        fun updateRowAccessibility(enabled: Boolean) {
-            row.contentDescription = "$label，$sub，${if (enabled) "已开启" else "已关闭"}"
-            if (Build.VERSION.SDK_INT >= 30) {
-                row.stateDescription = if (enabled) "已开启" else "已关闭"
-            }
-        }
-        val toggleView = toggle(label, ::updateRowAccessibility).apply {
-            // The row is the single accessibility/control target. Keep the
-            // visual switch touchable, but do not expose a duplicate node.
-            isFocusable = false
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
-        }
-        row.apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), 0, dp(14), 0)
-            tag = "setting-row"
-            minimumHeight = dp(ImeGeometryTokens.SETTING_ROW_HEIGHT_DP)
-            isClickable = true
-            isFocusable = true
-            setOnClickListener { toggleView.performClick() }
-            addView(settingIcon(label), LinearLayout.LayoutParams(dp(26), dp(26)).apply {
-                marginEnd = dp(8)
-            })
-            addView(LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER_VERTICAL
-                addView(TextView(context).apply {
-                    text = label
-                    textSize = 14f
-                    includeFontPadding = false
-                }, wrapParams())
-                addView(TextView(context).apply {
-                    text = sub
-                    textSize = 11f
-                    includeFontPadding = false
-                    setPadding(0, dp(3), 0, 0)
-                }, wrapParams())
-                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            }, weightParams(1f))
-            addView(toggleView, wrapParams())
-        }
-        updateRowAccessibility(onState(label))
-        return row
-    }
-
-    private fun settingNavigationRow(label: String, sub: String, onTap: () -> Unit): LinearLayout =
-        LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), 0, dp(14), 0)
-            tag = "setting-row"
-            contentDescription = "$label，$sub，点击进入"
-            minimumHeight = dp(ImeGeometryTokens.SETTING_ROW_HEIGHT_DP)
-            isClickable = true
-            isFocusable = true
-            setOnClickListener { feedback(); onTap() }
-            addView(settingIcon(label), LinearLayout.LayoutParams(dp(26), dp(26)).apply {
-                marginEnd = dp(8)
-            })
-            addView(LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER_VERTICAL
-                addView(TextView(context).apply {
-                    text = label
-                    textSize = 14f
-                    includeFontPadding = false
-                }, wrapParams())
-                addView(TextView(context).apply {
-                    text = sub
-                    textSize = 11f
-                    includeFontPadding = false
-                    setPadding(0, dp(3), 0, 0)
-                }, wrapParams())
-                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            }, weightParams(1f))
-            addView(TextView(context).apply {
-                text = "›"
-                textSize = 18f
-                gravity = Gravity.CENTER
-                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                tag = "setting-chevron"
-            }, LinearLayout.LayoutParams(dp(28), dp(44)))
-        }
-
-    private fun renderFuzzySettings() {
-        addPanelHead("模糊音纠错")
-        val scroll = ScrollView(context).apply {
-            isFillViewport = true
-            isVerticalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
-        }
-        val content = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(12), dp(12), dp(18))
-            tag = "fuzzy-settings-panel"
-        }
-        content.addView(TextView(context).apply {
-            text = "用于处理常见的近音输入。开启后，候选会同时尝试相近声母，不会改变用户已经输入的拼音。"
-            textSize = 13f
-            setLineSpacing(0f, 1.15f)
-            tag = "panel-note"
-        }, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(54),
-        ).apply { bottomMargin = dp(10) })
-        content.addView(
-            settingGroup(settingToggleRow("启用模糊音", "z/zh · c/ch · s/sh · l/n")),
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { bottomMargin = dp(14) },
-        )
-        content.addView(sectionTitle("当前规则"), wrapParams())
-        content.addView(TextView(context).apply {
-            text = "z / zh · c / ch · s / sh · l / n · en / eng · in / ing"
-            textSize = 13f
-            setPadding(0, dp(6), 0, dp(6))
-        }, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-        ).apply { bottomMargin = dp(14) })
-        content.addView(TextView(context).apply {
-            text = "规则由输入法自动参与候选计算，暂不单独修改每一组映射。"
-            textSize = 12f
-            tag = "panel-note"
-        }, wrapParams())
-        scroll.addView(content, ViewGroup.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-        ))
-        expandedPanel.addView(scroll, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            0,
-            1f,
-        ))
-    }
-
-    private fun toggle(seed: String, onChanged: (Boolean) -> Unit = {}): View {
-        val on = when (seed) {
-            "按键音效" -> soundEnabled
-            "触感震动" -> hapticEnabled
-            "模糊音纠错" -> fuzzyEnabled
-            "按键气泡" -> popupEnabled
-            else -> true
-        }
-        val isOn = onState(seed)
-        val knob = View(context).apply {
-            layoutParams = FrameLayout.LayoutParams(
-                dp(ImeGeometryTokens.SWITCH_KNOB_DP),
-                dp(ImeGeometryTokens.SWITCH_KNOB_DP),
-            ).apply {
-                gravity = Gravity.START or Gravity.CENTER_VERTICAL
-            }
-            background = ImeDrawableFactory.rounded(Color.WHITE, dp(ImeGeometryTokens.PILL_RADIUS_DP))
-            translationX = if (isOn) dp(ImeGeometryTokens.SWITCH_KNOB_TRAVEL_DP).toFloat() else 0f
-        }
-        return FrameLayout(context).apply {
-            setPadding(
-                dp(ImeGeometryTokens.SWITCH_PADDING_DP),
-                dp(ImeGeometryTokens.SWITCH_PADDING_DP),
-                dp(ImeGeometryTokens.SWITCH_PADDING_DP),
-                dp(ImeGeometryTokens.SWITCH_PADDING_DP),
-            )
-            minimumWidth = dp(ImeGeometryTokens.SWITCH_WIDTH_DP)
-            minimumHeight = dp(ImeGeometryTokens.SWITCH_HEIGHT_DP)
-            tag = "toggle"
-            isClickable = true
-            isFocusable = true
-            fun updateAccessibilityState(enabled: Boolean) {
-                contentDescription = "$seed，${if (enabled) "已开启" else "已关闭"}"
-                if (android.os.Build.VERSION.SDK_INT >= 30) {
-                    stateDescription = if (enabled) "已开启" else "已关闭"
-                }
-            }
-            updateAccessibilityState(isOn)
-            addView(knob)
-            setOnClickListener {
-                feedback()
-                val next = !onState(seed)
-                toggleCallback(seed)?.invoke(next)
-                updateAccessibilityState(next)
-                onChanged(next)
-                val knobView = getChildAt(0)
-                knobView.layoutParams = FrameLayout.LayoutParams(
-                    dp(ImeGeometryTokens.SWITCH_KNOB_DP),
-                    dp(ImeGeometryTokens.SWITCH_KNOB_DP),
-                ).apply {
-                    gravity = Gravity.START or Gravity.CENTER_VERTICAL
-                }
-                knobView.animate()
-                    .cancel()
-                knobView.animate()
-                    .translationX(
-                        if (next) dp(ImeGeometryTokens.SWITCH_KNOB_TRAVEL_DP).toFloat() else 0f,
-                    )
-                    .setDuration(160L)
-                    .setInterpolator(DecelerateInterpolator(1.5f))
-                    .start()
-                applyTheme()
-            }
-        }
     }
 
     private fun onState(seed: String): Boolean = when (seed) {
@@ -2865,214 +2523,30 @@ open class ImeKeyboardView(
         else -> true
     }
 
-    private fun toggleCallback(seed: String): ((Boolean) -> Unit)? = when (seed) {
-        "按键音效" -> { { soundEnabled = it; listener.onSoundChanged(it) } }
-        "触感震动" -> { { hapticEnabled = it; listener.onHapticChanged(it) } }
-        "模糊音纠错", "启用模糊音" -> { { fuzzyEnabled = it; listener.onFuzzyChanged(it) } }
-        "按键气泡" -> { { popupEnabled = it; listener.onPopupChanged(it) } }
-        else -> null
-    }
-
-
-    private fun accentColorRow(): LinearLayout {
-        val current = AccentPalette.normalize(skinPrimaryColor)
-        val row = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            tag = "setting-group"
-            setPadding(dp(12), dp(12), dp(12), dp(12))
-        }
-        val swatchGrid = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-        }
-        AccentPalette.presets.chunked(6).forEach { presetRow ->
-            val swatchRow = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
+    private fun updateSettingToggle(seed: String, enabled: Boolean) {
+        when (seed) {
+            "按键音效" -> {
+                soundEnabled = enabled
+                listener.onSoundChanged(enabled)
             }
-            presetRow.forEach { (hex, label) ->
-                val selected = AccentPalette.normalize(hex) == current
-                swatchRow.addView(
-                    FrameLayout(context).apply {
-                        tag = "accent-swatch"
-                        contentDescription = "强调色$label，${if (selected) "已选中" else "未选中"}"
-                        if (Build.VERSION.SDK_INT >= 30) {
-                            stateDescription = if (selected) "已选中" else "未选中"
-                        }
-                        isClickable = true
-                        isFocusable = true
-                        addView(View(context).apply {
-                            background = GradientDrawable().apply {
-                                shape = GradientDrawable.OVAL
-                                setColor(AccentPalette.parse(hex))
-                                if (selected) setStroke(dp(2), ImeDrawableFactory.contrastText(AccentPalette.parse(hex)))
-                            }
-                        }, FrameLayout.LayoutParams(dp(28), dp(28)).apply {
-                            gravity = Gravity.CENTER
-                        })
-                        if (selected) {
-                            addView(TextView(context).apply {
-                                text = "✓"
-                                textSize = 13f
-                                gravity = Gravity.CENTER
-                                includeFontPadding = false
-                                tag = "accent-selected-mark:$hex"
-                                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                            }, FrameLayout.LayoutParams(dp(28), dp(28)).apply {
-                                gravity = Gravity.CENTER
-                            })
-                        }
-                        setOnClickListener { feedback(); applyAccentColor(hex) }
-                    },
-                    LinearLayout.LayoutParams(dp(48), dp(48)),
-                )
+            "触感震动" -> {
+                hapticEnabled = enabled
+                listener.onHapticChanged(enabled)
             }
-            swatchGrid.addView(swatchRow, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                dp(48),
-            ))
-        }
-        row.addView(swatchGrid, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(144),
-        ))
-        val customSelected = AccentPalette.presets.none { AccentPalette.normalize(it.first) == current }
-        row.addView(TextView(context).apply {
-            text = if (customSelected) "自定义 · $current" else "自定义颜色"
-            textSize = 12f
-            gravity = Gravity.CENTER
-            includeFontPadding = false
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-            setPadding(dp(10), 0, dp(10), 0)
-            tag = "accent-custom"
-            minHeight = dp(48)
-            minimumHeight = dp(48)
-            isClickable = true
-            isFocusable = true
-            contentDescription = "自定义强调色，${if (customSelected) "已选中" else "未选中"}"
-            if (Build.VERSION.SDK_INT >= 30) stateDescription = if (customSelected) "已选中" else "未选中"
-            setOnClickListener { feedback(); showCustomAccentDialog() }
-        }, LinearLayout.LayoutParams(dp(132), dp(48)).apply {
-            topMargin = dp(6)
-        })
-        row.addView(TextView(context).apply {
-            text = AccentPalette.presets.firstOrNull { AccentPalette.normalize(it.first) == current }?.second ?: current
-            textSize = 12f
-            setPadding(0, dp(8), 0, 0)
-            tag = "panel-note"
-        }, wrapParams())
-        return row
-    }
-
-    private fun applyAccentColor(hex: String) {
-        skinPrimaryColor = AccentPalette.normalize(hex)
-        listener.onSkinChanged(skinOpacity, skinRadius, skinFontSize, skinPrimaryColor)
-        applyTheme()
-        if (panel == Panel.SETTINGS) renderSettings(reusePanel = true)
-    }
-
-    private fun showCustomAccentDialog() {
-        val field = EditText(context).apply {
-            setText(AccentPalette.normalize(skinPrimaryColor).removePrefix("#"))
-            hint = "RRGGBB"
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE
-            setSingleLine(true)
-            setSelectAllOnFocus(true)
-            filters = arrayOf(android.text.InputFilter.LengthFilter(6))
-        }
-        val dialog = android.app.AlertDialog.Builder(context)
-            .setTitle("自定义强调色")
-            .setMessage("输入 6 位十六进制颜色，例如 5B6B7A")
-            .setView(field)
-            .setPositiveButton("应用", null)
-            .setNegativeButton("取消", null)
-            .create()
-        dialog.setOnShowListener {
-            SetupUi.styleDialog(dialog, context)
-            val accent = AccentPalette.parse(skinPrimaryColor)
-            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setTextColor(accent)
-            dialog.getButton(android.content.DialogInterface.BUTTON_NEGATIVE).setTextColor(accent)
-            field.backgroundTintList = ColorStateList.valueOf(accent)
-            SetupUi.styleCursor(context, field)
-            field.setOnEditorActionListener { _, actionId, _ ->
-                if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
-                    dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick()
-                    true
-                } else {
-                    false
-                }
+            "模糊音纠错", "启用模糊音" -> {
+                fuzzyEnabled = enabled
+                listener.onFuzzyChanged(enabled)
             }
-            field.requestFocus()
-            field.selectAll()
-            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setOnClickListener {
-                val value = field.text.toString().trim().removePrefix("#")
-                if (!value.matches(Regex("[0-9a-fA-F]{6}"))) {
-                    field.error = "请输入 6 位十六进制颜色"
-                    field.requestFocus()
-                    return@setOnClickListener
-                }
-                applyAccentColor("#$value")
-                dialog.dismiss()
+            "按键气泡" -> {
+                popupEnabled = enabled
+                listener.onPopupChanged(enabled)
             }
         }
-        dialog.show()
     }
 
     private fun isNight(): Boolean =
         (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
-
-    private fun settingsSlider(labelText: String, min: Int, max: Int, initial: Int, onChange: (Int) -> Unit): LinearLayout {
-        val row = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(10), dp(4), dp(10), dp(4))
-            tag = "setting-row"
-            minimumHeight = dp(ImeGeometryTokens.SETTING_ROW_HEIGHT_DP)
-        }
-        row.addView(TextView(context).apply { text = labelText; textSize = 13f }, weightParams(1f))
-        val valueView = TextView(context).apply {
-            textSize = 12f
-            gravity = Gravity.CENTER
-            includeFontPadding = false
-            minWidth = dp(48)
-            contentDescription = "$labelText 当前值"
-        }
-        val suffix = when (labelText) {
-            "圆角" -> " dp"
-            "不透明度" -> "%"
-            "按键字号" -> " sp"
-            else -> ""
-        }
-        val seekBar = SeekBar(context).apply {
-            this.min = min
-            this.max = max
-            progress = initial.coerceIn(min, max)
-            minimumHeight = dp(48)
-            isFocusable = true
-            tag = "settings-slider:$labelText"
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
-                    val description = "$labelText，$progress$suffix"
-                    valueView.text = "$progress$suffix"
-                    contentDescription = description
-                    if (Build.VERSION.SDK_INT >= 30) stateDescription = description
-                    if (fromUser) onChange(progress)
-                }
-                override fun onStartTrackingTouch(seekBar: SeekBar) {}
-                override fun onStopTrackingTouch(seekBar: SeekBar) {}
-            })
-        }
-        row.addView(seekBar, weightParams(2f))
-        row.addView(valueView, LinearLayout.LayoutParams(dp(48), dp(48)))
-        val initialDescription = "$labelText，${seekBar.progress}$suffix"
-        valueView.text = "${seekBar.progress}$suffix"
-        seekBar.contentDescription = initialDescription
-        if (Build.VERSION.SDK_INT >= 30) seekBar.stateDescription = initialDescription
-        return row
-    }
 
     /** Route the keyboard's own keys into an inline quick-phrase editor. */
     fun insertIntoInlineEditor(text: String): Boolean {
