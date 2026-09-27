@@ -29,6 +29,7 @@ import android.view.SoundEffectConstants
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
+import android.view.WindowInsets
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
@@ -297,7 +298,9 @@ open class ImeKeyboardView(
     private var skinFontSize = ImeSettingsRepository.loadSkinFont(context)
     private var skinPrimaryColor = ImeSettingsRepository.loadSkinColor(context)
 
-    protected open fun onViewHierarchyRebuilt() = Unit
+    protected open fun onViewHierarchyRebuilt() {
+        nineKeySegmentRepairController.onHierarchyRebuilt()
+    }
 
     private val pinyinBuffer = StringBuilder()
     private var lastNineDigits = ""
@@ -362,6 +365,7 @@ open class ImeKeyboardView(
     private var floatingDragLastX = 0f
     private var floatingDragLastY = 0f
     private var contentInsetPx = dp(5)
+    private var navigationBottomInsetPx = 0
     private val keyPopupController = KeyPopupController(
         host = this,
         dp = ::dp,
@@ -378,6 +382,12 @@ open class ImeKeyboardView(
         contrastText = ::contrastText,
         feedback = ::feedback,
         onSymbolSelected = listener::onCharacter,
+    )
+    private val nineKeySegmentRepairController = NineKeySegmentRepairController(
+        context = context,
+        host = this,
+        listener = listener,
+        feedback = ::feedback,
     )
     private var systemBottomInsetPx = 0
     private val maxContentWidthDp = 600
@@ -428,6 +438,20 @@ open class ImeKeyboardView(
 
     init {
         tag = "ime_root"
+        setOnApplyWindowInsetsListener { _, insets ->
+            val reported = if (Build.VERSION.SDK_INT >= 30) {
+                insets.getInsets(WindowInsets.Type.navigationBars()).bottom
+            } else {
+                @Suppress("DEPRECATION")
+                insets.systemWindowInsetBottom
+            }
+            val next = ImeBottomInsetPolicy.clampInset(reported, dp(32))
+            if (next != navigationBottomInsetPx) {
+                navigationBottomInsetPx = next
+                requestLayout()
+            }
+            insets
+        }
         // Some IME windows inherit the host's disabled sound-effect flag.
         // Keep the view channel enabled; the preference still gates feedback().
         isSoundEffectsEnabled = true
@@ -633,6 +657,16 @@ open class ImeKeyboardView(
         return walk(this)
     }
 
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        requestApplyInsets()
+    }
+
+    override fun onDetachedFromWindow() {
+        shutdown()
+        super.onDetachedFromWindow()
+    }
+
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         if (standalonePanel) {
             super.onMeasure(widthMeasureSpec, heightMeasureSpec)
@@ -641,15 +675,26 @@ open class ImeKeyboardView(
         val desiredHeight = dp(imeHeightDp())
         val mode = MeasureSpec.getMode(heightMeasureSpec)
         val size = MeasureSpec.getSize(heightMeasureSpec)
-        val measuredHeight = when {
+        val baseHeight = when {
             mode == MeasureSpec.AT_MOST -> minOf(desiredHeight, size)
             mode == MeasureSpec.EXACTLY && size < desiredHeight -> size
             else -> desiredHeight
         }
         super.onMeasure(
             widthMeasureSpec,
-            MeasureSpec.makeMeasureSpec(measuredHeight, MeasureSpec.EXACTLY),
+            MeasureSpec.makeMeasureSpec(baseHeight, MeasureSpec.EXACTLY),
         )
+        if (navigationBottomInsetPx > 0) {
+            val targetHeight = ImeBottomInsetPolicy.measuredHeight(
+                baseHeightPx = measuredHeight,
+                bottomInsetPx = navigationBottomInsetPx,
+                measureMode = mode,
+                measureSizePx = size,
+            )
+            if (targetHeight != measuredHeight) {
+                setMeasuredDimension(measuredWidth, targetHeight)
+            }
+        }
     }
 
     /**
@@ -2357,6 +2402,9 @@ open class ImeKeyboardView(
                     }
                 }
             }
+        }
+        if (event.actionMasked == MotionEvent.ACTION_UP) {
+            nineKeySegmentRepairController.repairIfNeeded()
         }
         return handled
     }
