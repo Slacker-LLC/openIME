@@ -22,7 +22,6 @@ enum class Panel {
     TEXT_EDITOR,
     SETTINGS,
     FUZZY_SETTINGS,
-    GAMING,
     CANDIDATE_EXPANDED,
 }
 
