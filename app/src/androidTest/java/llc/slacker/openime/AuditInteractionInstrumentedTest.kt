@@ -61,6 +61,10 @@ class AuditInteractionInstrumentedTest {
                 "onSpace" -> { spaces++; null }
                 "onBackspace" -> { backspaces++; null }
                 "onClearAll" -> { clears++; null }
+                "onFloatingKeyboardChanged" -> {
+                    keyboard.setFloatingWindowMode(args!![0] as Boolean)
+                    null
+                }
                 "onFuzzyChanged" -> { fuzzyChanges.add(args!![0] as Boolean); null }
                 else -> null
             }
@@ -235,33 +239,36 @@ class AuditInteractionInstrumentedTest {
     @Test
     fun panelButtonsAreFocusableAndKeepTouchFeedbackTarget() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
-            keyboard.showPanel(Panel.GAMING)
+            keyboard.showPanel(Panel.TOOLS)
             val back = keyboard.findViewWithTag<View>("key-panel-back")
             assertTrue("Panel back must be keyboard-focusable", back.isFocusable)
             assertTrue("Panel back must keep a 48dp target", back.minimumHeight >= keyboard.resources.displayMetrics.density * 48f)
-            val button = keyboard.findViewWithTag<View>("floating-toggle")
-            assertTrue("Panel actions must be keyboard-focusable", button.isFocusable)
-            assertTrue("Panel actions must keep a 48dp target", button.minimumHeight >= keyboard.resources.displayMetrics.density * 48f)
+            val floatingEntry = keyboard.findViewWithTag<View>("tool:浮动键盘")
+            assertNotNull("Tools must expose the floating keyboard action", floatingEntry)
+            assertTrue("Tool actions must be keyboard-focusable", floatingEntry!!.isFocusable)
+            assertTrue("Tool actions must keep a 48dp target", floatingEntry.minimumHeight >= keyboard.resources.displayMetrics.density * 48f)
             true
         }
     }
 
     @Test
-    fun gamingFloatingControlsExposeTheirCurrentAvailability() = withKeyboard { harness, _, keyboard ->
+    fun floatingWindowActionExposesDragAndDockSemantics() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
-            keyboard.showPanel(Panel.GAMING)
+            keyboard.showPanel(Panel.TOOLS)
+            val floatingEntry = keyboard.findViewWithTag<View>("tool:浮动键盘")
+            assertNotNull("Tools must expose the floating keyboard action", floatingEntry)
+            assertTrue(floatingEntry!!.performClick())
+
             val dragHandle = keyboard.findViewWithTag<View>("floating-drag-handle")
-            val toggle = keyboard.findViewWithTag<View>("floating-toggle")
-            assertFalse("Docked keyboard must not expose a dead drag action", dragHandle.isEnabled)
-            assertTrue(dragHandle.contentDescription.toString().contains("浮动键盘未启用"))
-            assertTrue(toggle.contentDescription.toString().contains("启用浮动"))
-            toggle.performClick()
+            assertEquals("Floating action must return to the keyboard surface", Panel.NONE, keyboard.currentPanel())
+            assertEquals(View.VISIBLE, dragHandle.visibility)
             assertTrue("Floating mode must enable drag", dragHandle.isEnabled)
-            assertTrue(dragHandle.isFocusable)
+            assertTrue("Floating drag handle must be focusable", dragHandle.isFocusable)
             assertTrue(dragHandle.contentDescription.toString().contains("点击贴底显示"))
-            assertTrue(toggle.contentDescription.toString().contains("贴底显示"))
-            assertTrue("Keyboard activation must have a useful drag-handle action", dragHandle.performClick())
-            assertFalse("Drag-handle activation must dock the keyboard", dragHandle.isEnabled)
+
+            assertTrue("Floating handle must expose an explicit dock action", dragHandle.performClick())
+            assertEquals(View.GONE, dragHandle.visibility)
+            assertFalse("Docked keyboard must not expose a dead drag action", dragHandle.isEnabled)
             true
         }
     }
