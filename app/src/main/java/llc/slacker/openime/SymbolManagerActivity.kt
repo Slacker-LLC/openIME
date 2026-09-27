@@ -107,8 +107,8 @@ class SymbolManagerActivity : Activity() {
                 setImageResource(R.drawable.ic_arrow_back)
                 imageTintList = ColorStateList.valueOf(accent)
                 contentDescription = "返回"
-                setMinimumWidth(dp(48))
-                setMinimumHeight(dp(48))
+                setMinimumWidth(dp(ImeGeometryTokens.TOUCH_TARGET_DP))
+                setMinimumHeight(dp(ImeGeometryTokens.TOUCH_TARGET_DP))
                 isClickable = true
                 isFocusable = true
                 applySelectableBackground(this)
@@ -116,7 +116,7 @@ class SymbolManagerActivity : Activity() {
                     it.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                     requestClose()
                 }
-            }, LinearLayout.LayoutParams(dp(48), dp(56)))
+            }, LinearLayout.LayoutParams(dp(ImeGeometryTokens.TOUCH_TARGET_DP), dp(56)))
             addView(title, LinearLayout.LayoutParams(0, dp(56), 1f))
         }
         content.addView(header, fullHeight(56).apply { bottomMargin = dp(8) })
@@ -297,7 +297,7 @@ class SymbolManagerActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
         }
         fun action(label: String, onClick: () -> Unit) {
-            actions.addView(smallButton(label, onClick), LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+            actions.addView(smallButton(label, onClick), LinearLayout.LayoutParams(0, dp(ImeGeometryTokens.TOUCH_TARGET_DP), 1f).apply {
                 marginEnd = dp(4)
             })
         }
