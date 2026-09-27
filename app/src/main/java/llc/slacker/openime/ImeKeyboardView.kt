@@ -1105,6 +1105,9 @@ open class ImeKeyboardView(
     fun showPanel(newPanel: Panel) {
         if (newPanel == Panel.NONE || newPanel == Panel.CANDIDATE_EXPANDED) return
         if (passwordField && newPanel in setOf(Panel.CLIPBOARD, Panel.VOICE)) return
+        if (panel == Panel.CLIPBOARD && newPanel != Panel.CLIPBOARD) {
+            clipboardPanelController.invalidatePendingLoad()
+        }
         hidePopup()
         if (
             newPanel != Panel.VOICE &&
@@ -1132,6 +1135,7 @@ open class ImeKeyboardView(
     private fun enableFloatingKeyboard() {
         hidePopup()
         if (panel != Panel.NONE) {
+            if (panel == Panel.CLIPBOARD) clipboardPanelController.invalidatePendingLoad()
             stopVoiceIfActive()
             panelBackStack.clear()
             panel = Panel.NONE
@@ -1165,6 +1169,7 @@ open class ImeKeyboardView(
 
     private fun dismissPanelForModeSwitch() {
         if (panel == Panel.NONE) return
+        if (panel == Panel.CLIPBOARD) clipboardPanelController.invalidatePendingLoad()
         stopVoiceIfActive()
         panelBackStack.clear()
         panel = Panel.NONE
@@ -1188,6 +1193,7 @@ open class ImeKeyboardView(
             return true
         }
         if (panel == Panel.NONE) return false
+        if (panel == Panel.CLIPBOARD) clipboardPanelController.invalidatePendingLoad()
         if (panelBackStack.isNotEmpty()) {
             stopVoiceIfActive()
             panel = panelBackStack.removeAt(panelBackStack.lastIndex)
@@ -1464,6 +1470,7 @@ open class ImeKeyboardView(
     }
 
     open fun shutdown() {
+        if (panel == Panel.CLIPBOARD) clipboardPanelController.invalidatePendingLoad()
         stopVoiceIfActive()
         // Drop every pending callback, not just the repeat one. A surviving
         // backspace/voice runnable fires after the editor changed and would
