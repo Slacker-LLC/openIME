@@ -306,19 +306,11 @@ class ImeKeyboardViewV2 private constructor(
         val service = context as? InputMethodService ?: return
         val imeOptions = service.currentInputEditorInfo?.imeOptions ?: return
         val label = enterKeyPresentationFor(imeOptions).label
-        val enterLabels = setOf(
-            "发送", "搜索", "前往", "下一项", "上一项", "完成", "换行", "回车", "确定", "Go",
-        )
 
         fun visit(view: View) {
-            if (view is ImeKeyView) {
-                val standardEnter = view.tag == "key-enter"
-                val gamingEnter = view.tag == "game-mini" &&
-                    view.contentDescription?.toString() in enterLabels
-                if (standardEnter || gamingEnter) {
-                    view.setMainText(label)
-                    view.contentDescription = label
-                }
+            if (view is ImeKeyView && view.tag == "key-enter") {
+                view.setMainText(label)
+                view.contentDescription = label
             }
             if (view is ViewGroup) {
                 for (index in 0 until view.childCount) visit(view.getChildAt(index))
