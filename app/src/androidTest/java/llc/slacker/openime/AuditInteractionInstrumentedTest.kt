@@ -14,6 +14,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.widget.ScrollView
+import android.widget.TextView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -201,6 +202,45 @@ class AuditInteractionInstrumentedTest {
         harness.awaitMain {
             assertEquals("松手后的尾帧必须在释放后仍能进入最终识别流程", listOf("松手后的尾帧"), recorder.partials)
             assertEquals(listOf("松手后的最终结果"), recorder.finals)
+            true
+        }
+    }
+
+    @Test
+    fun finalVoiceCallbackInvalidatesDuplicateAndLateCallbacks() = withKeyboard { harness, recorder, keyboard ->
+        lateinit var events: VoiceRecognitionEvents
+        harness.awaitMain {
+            keyboard.showPanel(Panel.VOICE)
+            keyboard.startVoiceFromSpace()
+            true
+        }
+        harness.awaitMain(timeoutMs = 2_000L) {
+            recorder.events?.let {
+                events = it
+                true
+            }
+        }
+        harness.awaitMain {
+            keyboard.stopVoiceFromSpace()
+            events.onFinal("唯一最终结果")
+            events.onFinal("重复最终结果")
+            events.onError("迟到错误")
+            events.onReady()
+            true
+        }
+        harness.awaitMain {
+            if (recorder.finals.size != 1) return@awaitMain null
+            val status = keyboard.findViewWithTag<TextView>("voice-model-status")
+            assertEquals(
+                "Terminal final must commit exactly once",
+                listOf("唯一最终结果"),
+                recorder.finals,
+            )
+            assertTrue(
+                "Late callbacks must not resurrect recognition UI after final",
+                status.text.toString().contains("完成"),
+            )
+            assertFalse(keyboard.isVoiceActive())
             true
         }
     }
@@ -731,6 +771,7 @@ class AuditInteractionInstrumentedTest {
 
     @Test
     fun voiceErrorReleasesGestureLockAndAllowsRetry() = withKeyboard { harness, recorder, keyboard ->
+        lateinit var failedEvents: VoiceRecognitionEvents
         harness.awaitMain {
             keyboard.showPanel(Panel.VOICE)
             keyboard.startVoiceFromSpace()
@@ -738,9 +779,14 @@ class AuditInteractionInstrumentedTest {
             assertFalse("Voice language must lock while recognition is starting", language.isEnabled)
             true
         }
-        harness.awaitMain(timeoutMs = 2_000L) { if (recorder.events != null) true else null }
+        harness.awaitMain(timeoutMs = 2_000L) {
+            recorder.events?.let {
+                failedEvents = it
+                true
+            }
+        }
         harness.awaitMain {
-            recorder.events!!.onError("麦克风权限不可用")
+            failedEvents.onError("麦克风权限不可用")
             true
         }
         harness.awaitMain {
@@ -749,9 +795,14 @@ class AuditInteractionInstrumentedTest {
             assertFalse("Terminal error must clear active voice state", keyboard.isVoiceActive())
             assertTrue("Terminal error must release the gesture-owned language lock", language.isEnabled)
             assertTrue("Language selection must work again after error", language.performClick())
+            failedEvents.onFinal("错误后的迟到结果")
             true
         }
         harness.awaitMain {
+            assertTrue(
+                "A terminal error must reject a late final from the failed session",
+                recorder.finals.isEmpty(),
+            )
             keyboard.startVoiceFromSpace()
             true
         }
