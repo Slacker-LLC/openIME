@@ -1621,6 +1621,7 @@ open class ImeKeyboardView(
         expandedPanel.visibility = View.GONE
         candidateOverlay.visibility = View.GONE
         candidateBarController.resetExpandedState()
+        candidateBarController.syncExpandControl(currentCandidates.isNotEmpty())
         when (mode) {
             KeyboardMode.PINYIN_26 -> renderPinyin26()
             KeyboardMode.ENGLISH_26 -> renderEnglish26()
