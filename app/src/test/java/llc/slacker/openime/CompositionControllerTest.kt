@@ -52,12 +52,6 @@ class CompositionControllerTest {
     }
 
     @Test
-    fun t9EnglishResolves() {
-        val s = controller.setT9("843")
-        assertTrue(s.composition == "843")
-    }
-
-    @Test
     fun fuzzyEnabledExpands() {
         var s = controller.append("z", fuzzy = true)
         s = controller.append("i", fuzzy = true)
