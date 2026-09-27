@@ -41,6 +41,14 @@ internal object ImeGeometryTokens {
     const val COMPOSED_TOP_ZONE_HEIGHT_DP = 70
 }
 
+/** Shared motion timing for native IME surfaces. */
+internal object ImeMotionTokens {
+    const val POPUP_ENTER_MS = 80L
+    const val SURFACE_FADE_MS = 100L
+    const val CANDIDATE_COLLAPSE_MS = 120L
+    const val STANDARD_TRANSITION_MS = 160L
+}
+
 /**
  * Native design tokens for the bundled IME renderer.
  *

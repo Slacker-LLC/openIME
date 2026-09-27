@@ -525,7 +525,7 @@ internal class SettingsPanelController(
                             0f
                         },
                     )
-                    .setDuration(160L)
+                    .setDuration(ImeMotionTokens.STANDARD_TRANSITION_MS)
                     .setInterpolator(DecelerateInterpolator(1.5f))
                     .start()
                 applyTheme()

@@ -144,7 +144,7 @@ internal class CandidateBarController(
             keyboardBody.alpha = 0.96f
             keyboardBody.animate()
                 .alpha(1f)
-                .setDuration(120L)
+                .setDuration(ImeMotionTokens.CANDIDATE_COLLAPSE_MS)
                 .setInterpolator(DecelerateInterpolator(1.5f))
                 .start()
             expandedOpen = false
@@ -258,7 +258,7 @@ internal class CandidateBarController(
         overlay.animate()
             .alpha(1f)
             .translationY(0f)
-            .setDuration(160L)
+            .setDuration(ImeMotionTokens.STANDARD_TRANSITION_MS)
             .setInterpolator(DecelerateInterpolator(1.5f))
             .start()
     }

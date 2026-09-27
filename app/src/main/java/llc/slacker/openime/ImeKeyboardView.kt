@@ -1079,7 +1079,7 @@ open class ImeKeyboardView(
             keyboardBody.animate().cancel()
             keyboardBody.alpha = 0.96f
             renderModeBody()
-            keyboardBody.animate().alpha(1f).setDuration(100L).start()
+            keyboardBody.animate().alpha(1f).setDuration(ImeMotionTokens.SURFACE_FADE_MS).start()
         }
         if (notifyListener) listener.onModeChanged(newMode)
     }
@@ -1174,7 +1174,7 @@ open class ImeKeyboardView(
         keyboardBody.visibility = View.VISIBLE
         candidateOverlay.visibility = View.GONE
         mainDock.alpha = 0.96f
-        mainDock.animate().alpha(1f).setDuration(100L).start()
+        mainDock.animate().alpha(1f).setDuration(ImeMotionTokens.SURFACE_FADE_MS).start()
         listener.onPanelChanged(Panel.NONE)
         return true
     }
@@ -1189,7 +1189,7 @@ open class ImeKeyboardView(
         expandedPanel.animate()
             .translationX(0f)
             .alpha(1f)
-            .setDuration(160L)
+            .setDuration(ImeMotionTokens.STANDARD_TRANSITION_MS)
             .setInterpolator(DecelerateInterpolator(1.5f))
             .start()
     }

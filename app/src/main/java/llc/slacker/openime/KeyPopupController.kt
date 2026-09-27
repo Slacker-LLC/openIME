@@ -165,7 +165,7 @@ internal class KeyPopupController(
             .scaleX(1f)
             .scaleY(1f)
             .alpha(1f)
-            .setDuration(80L)
+            .setDuration(ImeMotionTokens.POPUP_ENTER_MS)
             .setInterpolator(DecelerateInterpolator(1.5f))
             .start()
     }
