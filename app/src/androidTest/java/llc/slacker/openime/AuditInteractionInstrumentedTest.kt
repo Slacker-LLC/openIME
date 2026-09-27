@@ -622,6 +622,22 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun modeSwitchDismissesLongPressChoicePopup() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            keyboard.setMode(KeyboardMode.PINYIN_26, notifyListener = false)
+            val segment = keyboard.findViewWithTag<View>("key-segment")
+            val baseline = keyboard.childCount
+            assertTrue(segment.performLongClick())
+            assertEquals("Long-press choice popup must attach to the root", baseline + 1, keyboard.childCount)
+
+            keyboard.setMode(KeyboardMode.ENGLISH_26, notifyListener = false)
+
+            assertEquals("Mode switch must retire popup whose anchor was rebuilt", baseline, keyboard.childCount)
+            true
+        }
+    }
+
+    @Test
     fun disablingPopupAffectsExistingKeyWithoutRebuilding() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.setSettings(sound = false, haptic = false, popup = true)
