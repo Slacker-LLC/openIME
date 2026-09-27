@@ -4,12 +4,8 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
-import android.graphics.Bitmap
 import android.graphics.Color
-import android.graphics.BitmapFactory
-import android.graphics.Canvas
 import android.graphics.drawable.GradientDrawable
-import android.graphics.Paint
 import android.graphics.drawable.StateListDrawable
 import android.inputmethodservice.InputMethodService
 import android.media.AudioManager
@@ -19,7 +15,6 @@ import android.os.Looper
 import android.text.InputType
 import android.text.TextUtils
 import android.util.Log
-import android.util.LruCache
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
@@ -37,7 +32,6 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
-import java.util.concurrent.Executors
 
 /**
  * Native IME top-level view. Visual baseline: the supplied preview.html prototype.
@@ -120,62 +114,10 @@ open class ImeKeyboardView(
     private val MARK_FUNCTION_KEY = 0x1F000003
 
     companion object {
-        /**
-         * Emoji cells used to decode their PNG from assets inline on the UI
-         * thread: 23-40 synchronous decodes every time the panel opened or
-         * switched category, with no reuse and no recycling. Cache by asset
-         * path so the cost is paid once per process, not once per render.
-         */
-        private const val EMOJI_CACHE_BYTES = 4 * 1024 * 1024
-        private const val CANDIDATE_STRIP_LIMIT = 24
         /** How often a deferred row rebuild re-checks whether the press ended. */
         private const val ROW_REBUILD_POLL_MS = 40L
-        private val emojiBitmaps = object : LruCache<String, Bitmap>(EMOJI_CACHE_BYTES) {
-            override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
-        }
-        private val emojiDecodeExecutor = Executors.newFixedThreadPool(2) { runnable ->
-            Thread(runnable, "openime-emoji-decode").apply { isDaemon = true }
-        }
-        private val emojiMainHandler = Handler(Looper.getMainLooper())
-        private val emojiDecodeLock = Any()
-        private val emojiDecodeWaiters = mutableMapOf<String, MutableList<(Bitmap) -> Unit>>()
-
-        private fun requestEmojiBitmap(context: Context, assetPath: String, onReady: (Bitmap) -> Unit) {
-            emojiBitmaps.get(assetPath)?.let { cached ->
-                onReady(cached)
-                return
-            }
-            val shouldDecode = synchronized(emojiDecodeLock) {
-                emojiBitmaps.get(assetPath)?.let { cached ->
-                    emojiMainHandler.post { onReady(cached) }
-                    return@synchronized false
-                }
-                val waiters = emojiDecodeWaiters[assetPath]
-                if (waiters != null) {
-                    waiters += onReady
-                    false
-                } else {
-                    emojiDecodeWaiters[assetPath] = mutableListOf(onReady)
-                    true
-                }
-            }
-            if (!shouldDecode) return
-
-            val appContext = context.applicationContext
-            emojiDecodeExecutor.execute {
-                val bitmap = runCatching {
-                    appContext.assets.open(assetPath).use { BitmapFactory.decodeStream(it) }
-                }.getOrNull()
-                val waiters = synchronized(emojiDecodeLock) {
-                    if (bitmap != null) emojiBitmaps.put(assetPath, bitmap)
-                    emojiDecodeWaiters.remove(assetPath).orEmpty()
-                }
-                if (bitmap != null && waiters.isNotEmpty()) {
-                    emojiMainHandler.post { waiters.forEach { it(bitmap) } }
-                }
-            }
-        }
     }
+
 
     private val repeatHandler = Handler(Looper.getMainLooper())
     private val backspaceGestureController = BackspaceGestureController(
@@ -508,6 +450,13 @@ open class ImeKeyboardView(
     private val keyboardBody = LinearLayout(context)
     private val expandedPanel = LinearLayout(context)
     private val candidateOverlay = LinearLayout(context)
+    private val emojiCellFactory: EmojiCellFactory by lazy {
+        EmojiCellFactory(
+            context = context,
+            onFeedback = ::feedback,
+            onEmojiSelected = listener::onEmojiSelected,
+        )
+    }
     private val panelHeaderFactory: PanelHeaderFactory by lazy {
         PanelHeaderFactory(
             context = context,
@@ -536,7 +485,7 @@ open class ImeKeyboardView(
             },
             createPanelButton = ::button,
             createTitle = ::title,
-            createEmojiCell = ::emojiCell,
+            createEmojiCell = emojiCellFactory::create,
             gridCellParams = ::gridCellParams,
             currentMode = { mode },
             isPasswordField = { passwordField },
@@ -1910,51 +1859,6 @@ open class ImeKeyboardView(
 
     /** Called on the UI thread after the asynchronous clipboard body is populated. */
     protected open fun onClipboardContentLoaded() = Unit
-
-    private fun emojiCell(emoji: String): View {
-        val cell = FrameLayout(context).apply {
-            tag = "emoji-cell"
-            contentDescription = emoji
-            isClickable = true
-            isFocusable = true
-            background = null
-        }
-        val fallback = TextView(context).apply {
-            text = emoji
-            textSize = 21f
-            gravity = Gravity.CENTER
-            includeFontPadding = false
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-        }
-        cell.addView(fallback, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT,
-        ))
-        FluentEmojiAssetRepository.pathFor(context, emoji)?.let { assetPath ->
-            val image = ImageView(context).apply {
-                scaleType = ImageView.ScaleType.FIT_CENTER
-                visibility = View.INVISIBLE
-                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                tag = assetPath
-            }
-            cell.addView(image, FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT,
-            ))
-            requestEmojiBitmap(context, assetPath) { bitmap ->
-                if (image.tag == assetPath) {
-                    image.setImageBitmap(bitmap)
-                    image.visibility = View.VISIBLE
-                    fallback.visibility = View.INVISIBLE
-                }
-            }
-        }
-        cell.setOnClickListener {
-            feedback()
-            listener.onEmojiSelected(emoji)
-        }
-        return cell
-    }
 
     private fun openQuickPhraseEditor(phrase: QuickPhrase?) {
         val intent = Intent(context, QuickPhraseEditActivity::class.java)
