@@ -131,6 +131,33 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun modeSwitchCancelsActiveVoiceAndRejectsLateFinal() = withKeyboard { harness, recorder, keyboard ->
+        lateinit var staleEvents: VoiceRecognitionEvents
+        harness.awaitMain {
+            keyboard.startVoiceFromSpace()
+            true
+        }
+        harness.awaitMain(timeoutMs = 2_000L) {
+            recorder.events?.let {
+                staleEvents = it
+                true
+            }
+        }
+
+        harness.awaitMain {
+            keyboard.setMode(KeyboardMode.ENGLISH_26, notifyListener = false)
+            assertEquals("Mode switch must cancel the active backend session", 1, recorder.cancels)
+            assertFalse("Mode switch must leave no active voice presentation", keyboard.isVoiceActive())
+            staleEvents.onFinal("stale after mode switch")
+            true
+        }
+        harness.awaitMain {
+            assertTrue("Late final from the cancelled mode must be ignored", recorder.finals.isEmpty())
+            true
+        }
+    }
+
+    @Test
     fun releaseKeepsLateVoiceCallbacksUntilFinalResult() = withKeyboard { harness, recorder, keyboard ->
         harness.awaitMain { keyboard.startVoiceFromSpace(); true }
         harness.awaitMain { if (recorder.events != null) true else null }
