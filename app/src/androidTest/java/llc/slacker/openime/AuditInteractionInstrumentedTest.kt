@@ -158,6 +158,34 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun openingNonVoicePanelCancelsInlineVoiceAndRejectsLateFinal() = withKeyboard { harness, recorder, keyboard ->
+        lateinit var staleEvents: VoiceRecognitionEvents
+        harness.awaitMain {
+            keyboard.startVoiceFromSpace()
+            true
+        }
+        harness.awaitMain(timeoutMs = 2_000L) {
+            recorder.events?.let {
+                staleEvents = it
+                true
+            }
+        }
+
+        harness.awaitMain {
+            keyboard.showPanel(Panel.EMOJI)
+            assertEquals(Panel.EMOJI, keyboard.currentPanel())
+            assertEquals("Opening another panel must cancel inline voice", 1, recorder.cancels)
+            assertFalse(keyboard.isVoiceActive())
+            staleEvents.onFinal("stale behind emoji")
+            true
+        }
+        harness.awaitMain {
+            assertTrue("Hidden inline voice must not commit after panel replacement", recorder.finals.isEmpty())
+            true
+        }
+    }
+
+    @Test
     fun releaseKeepsLateVoiceCallbacksUntilFinalResult() = withKeyboard { harness, recorder, keyboard ->
         harness.awaitMain { keyboard.startVoiceFromSpace(); true }
         harness.awaitMain { if (recorder.events != null) true else null }
