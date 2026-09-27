@@ -534,6 +534,10 @@ open class ImeKeyboardView(
                 }
             },
             onFeedback = ::feedback,
+            onSessionTerminal = {
+                voiceGestureSession = false
+                inlineVoicePresenter.stopPulse()
+            },
         )
     }
     private val settingsPanelController: SettingsPanelController by lazy {
