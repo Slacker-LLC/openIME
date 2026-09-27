@@ -2787,8 +2787,9 @@ open class ImeKeyboardView(
         cards.chunked(4).forEach { chunk ->
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             chunk.forEach { entry ->
-                val onTap = entry.action ?: {
+                val onTap: () -> Unit = entry.action ?: {
                     entry.target?.let(::showPanel)
+                    Unit
                 }
                 val toolEntryView = if (entry.glyph != null) {
                     toolGlyphCard(entry.glyph, entry.label, onTap)
