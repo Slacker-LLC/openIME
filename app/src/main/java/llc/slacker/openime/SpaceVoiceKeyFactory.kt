@@ -20,6 +20,7 @@ internal class SpaceVoiceKeyFactory(
         onTap: () -> Unit,
     ): ImeKeyView {
         var suppressNextTap = false
+        var physicalTouchSequenceActive = false
         return createBaseKey(label) {
             if (suppressNextTap) {
                 suppressNextTap = false
@@ -34,9 +35,11 @@ internal class SpaceVoiceKeyFactory(
                 if (!canStartVoice()) return@setOnLongClickListener true
 
                 // Physical touch timing is already owned by the gesture
-                // controller. Consume the platform long-click to avoid double
-                // starting the same voice session.
-                if (gestureController.trackingTouch) {
+                // controller. Keep consuming it until the whole pointer stream
+                // ends: after the owner lifts, another pointer may still hold
+                // this View and a platform long-click must not look like an
+                // accessibility action.
+                if (physicalTouchSequenceActive || gestureController.trackingTouch) {
                     return@setOnLongClickListener true
                 }
 
@@ -51,6 +54,7 @@ internal class SpaceVoiceKeyFactory(
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
                         suppressNextTap = false
+                        physicalTouchSequenceActive = true
                         onFeedback()
                         gestureController.begin(
                             anchor = view,
@@ -91,10 +95,12 @@ internal class SpaceVoiceKeyFactory(
                     MotionEvent.ACTION_UP,
                     MotionEvent.ACTION_CANCEL,
                     -> {
-                        gestureController.finish(
+                        val consumed = gestureController.finish(
                             cancelled =
                                 event.actionMasked == MotionEvent.ACTION_CANCEL,
                         )
+                        physicalTouchSequenceActive = false
+                        consumed
                     }
                     else -> false
                 }
