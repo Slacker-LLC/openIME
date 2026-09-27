@@ -38,8 +38,8 @@ class AuditInteractionInstrumentedTest {
         var backspaces = 0
         var clears = 0
         val listener = Proxy.newProxyInstance(
-            ImeKeyboardViewV2.Listener::class.java.classLoader,
-            arrayOf(ImeKeyboardViewV2.Listener::class.java),
+            ImeKeyboardView.Listener::class.java.classLoader,
+            arrayOf(ImeKeyboardView.Listener::class.java),
         ) { _, method, args ->
             when (method.name) {
                 "voiceModelState" -> VoiceModelLifecycleState.COLD
@@ -68,7 +68,7 @@ class AuditInteractionInstrumentedTest {
                 "onFuzzyChanged" -> { fuzzyChanges.add(args!![0] as Boolean); null }
                 else -> null
             }
-        } as ImeKeyboardViewV2.Listener
+        } as ImeKeyboardView.Listener
     }
 
     private fun withKeyboard(
