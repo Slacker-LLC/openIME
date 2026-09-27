@@ -423,7 +423,9 @@ internal class ImePanelRenderer(
         notifyRebuilt: Boolean,
     ) {
         body.removeAllViews()
-        val categories = listOf("常用", "中文", "英文", "数学", "序号", "单位", "特殊", "编程", "自定义")
+        val categories = listOf(
+            "常用", "中文", "英文", "数学", "序号", "特殊", "网络颜文字", "单位", "编程", "自定义",
+        )
         val tabs = panelChipScroll(categories, symbolCategory) { category ->
             if (category != symbolCategory) {
                 symbolCategory = category
@@ -682,13 +684,12 @@ internal class ImePanelRenderer(
         ).flatten()
         "编程" -> ImeData.symbols["技术编程"].orEmpty()
         "特殊" -> listOf(
-            ImeData.symbols["数字序号"].orEmpty(),
             ImeData.symbols["特殊图形"].orEmpty(),
             ImeData.symbols["几何图形"].orEmpty(),
             ImeData.symbols["箭头线条"].orEmpty(),
             ImeData.symbols["括号边框"].orEmpty(),
-            ImeData.symbols["网络颜文字"].orEmpty(),
         ).flatten()
+        "网络颜文字" -> ImeData.symbols["网络颜文字"].orEmpty()
         "自定义" -> CustomSymbolRepository.load(context).map { it.symbol }
         else -> listOf(
             ImeData.symbols["常用"].orEmpty(),
