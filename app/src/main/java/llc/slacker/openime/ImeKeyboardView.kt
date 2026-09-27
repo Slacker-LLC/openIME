@@ -1051,6 +1051,11 @@ open class ImeKeyboardView(
     }
 
     fun setMode(newMode: KeyboardMode, notifyListener: Boolean = true) {
+        // Choice popups live directly under the root, outside keyboardBody.
+        // A mode switch can be triggered without a fresh touch (accessibility,
+        // programmatic editor policy), so it must explicitly retire any popup
+        // before rebuilding/removing its anchor.
+        hidePopup()
         if (newMode != KeyboardMode.DIGITS) {
             lastTextMode = newMode
             if (newMode == KeyboardMode.PINYIN_26 || newMode == KeyboardMode.PINYIN_9) {
