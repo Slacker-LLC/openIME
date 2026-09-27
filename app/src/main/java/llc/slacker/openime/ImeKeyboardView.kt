@@ -302,12 +302,16 @@ open class ImeKeyboardView(
     private var voiceGestureSession = false
     // Floating mode changes only the IME window bounds. The keyboard surface
     // itself remains the same normal keyboard used in portrait mode.
-    private var floatingWindowMode = false
-    private val floatingDragController = FloatingDragController(
-        toPx = ::dp,
-        onDragBy = listener::onFloatingKeyboardDragged,
-        onDock = { floatingDragHandle.performClick() },
-    )
+    private val floatingKeyboardController: FloatingKeyboardController by lazy {
+        FloatingKeyboardController(
+            context = context,
+            toPx = ::dp,
+            mainDock = mainDock,
+            canDrag = { panel == Panel.NONE },
+            onDragBy = listener::onFloatingKeyboardDragged,
+            onDock = { listener.onFloatingKeyboardChanged(false) },
+        )
+    }
     private var contentInsetPx = dp(5)
     private var navigationBottomInsetPx = 0
     private val themeApplier: ImeThemeApplier by lazy {
@@ -452,7 +456,6 @@ open class ImeKeyboardView(
     private val composeZone: LinearLayout get() = topZone.composeZone
     private val composition: EditText get() = topZone.composition
     private val associationRow: LinearLayout get() = topZone.associationRow
-    private lateinit var floatingDragHandle: View
     private val keyboardBody = LinearLayout(context)
     private val expandedPanel = LinearLayout(context)
     private val candidateOverlay = LinearLayout(context)
@@ -735,20 +738,8 @@ open class ImeKeyboardView(
                 FrameLayout.LayoutParams.MATCH_PARENT,
             ),
         )
-        floatingDragHandle = FloatingDragHandleView(context).apply {
-            tag = "floating-drag-handle"
-            contentDescription = "拖动浮动键盘，点击贴底显示"
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
-            visibility = View.GONE
-            isClickable = true
-            isFocusable = true
-            setOnClickListener {
-                if (floatingWindowMode) listener.onFloatingKeyboardChanged(false)
-            }
-            setOnTouchListener { _, event -> handleFloatingDragTouch(event) }
-        }
         keyboardHost.addView(
-            floatingDragHandle,
+            floatingKeyboardController.handle,
             FrameLayout.LayoutParams(dp(48), dp(24)).apply {
                 gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
                 bottomMargin = dp(4)
@@ -792,11 +783,6 @@ open class ImeKeyboardView(
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
         super.onSizeChanged(width, height, oldWidth, oldHeight)
         updateResponsiveGeometry(width)
-    }
-
-    private fun handleFloatingDragTouch(event: MotionEvent): Boolean {
-        if (!floatingWindowMode || panel != Panel.NONE) return false
-        return floatingDragController.onTouch(event)
     }
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
@@ -932,7 +918,7 @@ open class ImeKeyboardView(
      */
     private fun updateResponsiveGeometry(measuredWidthPx: Int) {
         if (measuredWidthPx <= 0) return
-        if (floatingWindowMode) {
+        if (floatingKeyboardController.enabled) {
             // A configuration pass can briefly report the physical display
             // width before WindowManager applies the floating window bounds.
             // Keep the normal keyboard's content inset local to its window.
@@ -1047,37 +1033,6 @@ open class ImeKeyboardView(
         )
     }
 
-    private inner class FloatingDragHandleView(context: Context) : View(context) {
-        private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.GRAY
-            style = Paint.Style.FILL
-        }
-
-        fun setDotColor(color: Int) {
-            dotPaint.color = color
-            invalidate()
-        }
-
-        override fun onDraw(canvas: Canvas) {
-            super.onDraw(canvas)
-            val radius = dp(2)
-            val gapX = dp(7)
-            val gapY = dp(7)
-            val startX = width / 2f - gapX
-            val startY = height / 2f - gapY / 2f
-            for (row in 0..1) {
-                for (column in 0..2) {
-                    canvas.drawCircle(
-                        startX + column * gapX,
-                        startY + row * gapY,
-                        radius.toFloat(),
-                        dotPaint,
-                    )
-                }
-            }
-        }
-    }
-
     private fun hideKeyboard() {
         val service = context as? InputMethodService
         if (service != null) {
@@ -1158,37 +1113,24 @@ open class ImeKeyboardView(
             candidateOverlay.visibility = View.GONE
             listener.onPanelChanged(Panel.NONE)
         }
-        floatingWindowMode = true
+        floatingKeyboardController.setEnabled(true)
         listener.onFloatingKeyboardChanged(true)
     }
 
     /** Keep content geometry local when the service changes the window bounds. */
     fun setFloatingWindowMode(enabled: Boolean) {
-        floatingWindowMode = enabled
-        floatingDragHandle.isEnabled = enabled
-        floatingDragHandle.isFocusable = enabled
-        floatingDragHandle.contentDescription = if (enabled) {
-            "拖动浮动键盘，点击贴底显示"
-        } else {
-            "浮动键盘未启用"
-        }
-        if (Build.VERSION.SDK_INT >= 30) {
-            floatingDragHandle.stateDescription = if (enabled) "可拖动，点击可贴底显示" else "不可用"
-        }
+        floatingKeyboardController.setEnabled(enabled)
         if (enabled) {
             contentInsetPx = dp(5)
             keyboardBody.setPadding(contentInsetPx, dp(6), contentInsetPx, dp(16))
             expandedPanel.setPadding(contentInsetPx, 0, contentInsetPx, 0)
             candidateOverlay.setPadding(contentInsetPx, 0, contentInsetPx, 0)
             topZone.setContentInset(contentInsetPx)
-            floatingDragHandle.visibility = View.VISIBLE
         } else {
-            floatingDragController.reset()
-            floatingDragHandle.visibility = View.GONE
             updateTopZone(composition.text?.isNotEmpty() == true)
             if (width > 0) updateResponsiveGeometry(width)
         }
-        applyFloatingChromeTheme()
+        floatingKeyboardController.applyTheme(currentThemeTokens())
         requestLayout()
     }
 
@@ -1501,7 +1443,7 @@ open class ImeKeyboardView(
         removeCallbacks(null)
         backspaceGestureController.shutdown()
         spaceVoiceGestureController.shutdown()
-        floatingDragController.reset()
+        floatingKeyboardController.reset()
         pendingRowRebuild = false
         hidePopup()
     }
@@ -2725,10 +2667,15 @@ open class ImeKeyboardView(
         keyPopupController.hide()
     }
 
+    private fun currentThemeTokens(): ImeTheme.Tokens =
+        theme.tokens(
+            appearance,
+            isNight(),
+            AccentPalette.parse(skinPrimaryColor),
+        )
+
     protected fun applyTheme() {
-        val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-            android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val t = theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor))
+        val t = currentThemeTokens()
         setBackgroundColor(t.keyboardBackground)
         mainDock.setBackgroundColor(t.expandedBackground)
         keyboardBody.setBackgroundColor(t.keyboardBackground)
@@ -2739,7 +2686,7 @@ open class ImeKeyboardView(
         composition.setTextColor(t.keySecondaryText)
         topZone.candidateExpandButton.setTextColor(t.keySecondaryText)
         topZone.candidateEmojiButton.setTextColor(t.keySecondaryText)
-        applyFloatingChromeTheme(t)
+        floatingKeyboardController.applyTheme(t)
         inlineVoicePresenter.refreshPalette()
     }
 
@@ -2748,20 +2695,6 @@ open class ImeKeyboardView(
         val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
         themeApplier.apply(target, theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor)))
-    }
-
-    private fun applyFloatingChromeTheme(tokens: ImeTheme.Tokens? = null) {
-        if (!::floatingDragHandle.isInitialized) return
-        val night = isNight()
-        val t = tokens ?: theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor))
-        (floatingDragHandle as? FloatingDragHandleView)?.setDotColor(t.border)
-        if (floatingWindowMode) {
-            mainDock.background = ImeDrawableFactory.rounded(t.keyboardBackground, dp(ImeGeometryTokens.CARD_RADIUS_DP))
-            mainDock.clipToOutline = true
-        } else {
-            mainDock.setBackgroundColor(t.expandedBackground)
-            mainDock.clipToOutline = false
-        }
     }
 
     private fun statefulRounded(normal: Int, pressed: Int, radius: Int): StateListDrawable =
