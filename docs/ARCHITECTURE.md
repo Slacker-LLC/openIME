@@ -1,59 +1,84 @@
 # openIME 架构
 
-## 运行时边界
+本文描述当前生产运行时，而不是目标重构形态。重构计划见 [REPAIR_PLAN.md](REPAIR_PLAN.md)。
+
+## 生产运行链
 
 ```text
-LocalVoiceImeService (InputMethodService)
+Android InputMethodService
         │
-        ├── ImeKeyboardView / ImeKeyboardViewV2
-        │       └── 动态几何、按键、候选栏、工具面板和浮动布局
-        │
-        ├── ImeState / CompositionController
-        │       └── 模式、预编辑、光标、删除、主题和窗口状态
-        │
-        ├── CandidateEngine / PinyinLexicon
-        │       └── 高频候选、前缀索引和首次词典部署回退
-        │
-        ├── RimeEngine → RimeNative (JNI) → librime/OpenCC
-        │       └── 全拼、简拼、显式分词、完整候选、用户学习和简繁转换
-        │
+        ▼
+LocalVoiceImeService
+        ├── ImeState
+        ├── CandidatePipeline / CandidateSnapshot
+        │       ├── CandidateEngine（Rime 未就绪时的本地回退 + 英文联想）
+        │       ├── NativeCandidatePipeline
+        │       └── RimeEngine → RimeNative (JNI) → librime/OpenCC
         ├── InputConnectionGateway
-        │       └── setComposingText / commitText / deleteSurroundingText
-        │
-        └── VoiceModelLifecycleManager → VoiceModelRepository
-                ├── 异步校验/预热 → 10 秒热驻留 → 异步释放
-                ├── VoiceAudioRouteManager → AudioRecord → PCM ring
-                ├── sherpa-onnx → 动态 hotwords → 流式识别
-                └── VoiceCorrectionRepository → composing / commit
+        ├── VoiceModelLifecycleManager
+        │       ├── VoiceModelRepository
+        │       ├── LocalAudioVoiceBackend / VoiceAudioRouteManager
+        │       └── sherpa-onnx
+        └── IME Window
+                └── ImeKeyboardViewV2
+                        └── ImeKeyboardView
+                                ├── 键盘/候选/面板
+                                ├── 手势与无障碍
+                                ├── Theme / Geometry
+                                └── KeyPopupController
 ```
+
+`ImeKeyboardViewV2` 当前仍是生产 wrapper，不是独立渲染器。它负责生产期 Insets、九键修补、Enter/Space 呈现和 capability 同步；这些职责正在逐步归位，最终目标是删除 V2，让 Service 直接创建正式的 `ImeKeyboardView`。
+
+## 状态所有权
+
+业务事实应由 Service/领域模块持有；View 只保留瞬时显示状态。
+
+- `LocalVoiceImeService / ImeState`：编辑器、键盘模式、Panel、composition、候选、Shift、设置、隐私状态。
+- `CandidatePipeline / CandidateSnapshot / RimeEngine`：候选生成、generation、native identity、Rime session。
+- `VoiceModelLifecycleManager`：本地 ASR runtime、预热、录音与 cooldown。
+- `InputConnectionGateway`：所有目标编辑器副作用。
+- `ImeKeyboardView`：pressed、动画、滚动位置、Popup、手势坐标、测量几何等瞬时 UI 状态。
+
+当前仍存在需要收敛的历史状态桥接，例如九键的 `NineKeyUiState` 和 V2 的 presentation repair；不要为这些临时结构再建立新的抽象层。
 
 ## 输入提交原则
 
-1. 普通按键只改变输入法自己的预编辑状态，不直接把半成品字符写入目标应用。
-2. Rime 返回的 preedit 通过 `InputConnection.setComposingText()` 更新。
-3. 用户选择候选、按空格或执行明确提交动作时，使用 `commitText()` 写入目标编辑器。
-4. 删除键先处理预编辑和候选，再处理目标编辑器中的已提交文本。
-5. 切换编辑器、隐藏输入法、切换模式或结束语音时清理对应的 composing 状态。
-6. 首选提交直接向当前 Rime session 请求最终结果，避免最后一次异步候选刷新造成旧首选上屏。
-7. 候选上屏后统一结束 Rime composition、清空拼音和候选；用户学习结果优先于通用词频。
+1. 半成品拼音通过 composing 更新，不直接作为普通文本写入目标应用。
+2. 选择候选、空格、Enter 或明确提交动作才执行 commit。
+3. 删除优先处理 openIME 自己的 composition，再处理目标编辑器文本。
+4. 候选提交使用已经渲染的 `CandidateSnapshot`/native identity，避免旧异步结果提交到新 composition。
+5. 切换输入框、模式或结束会话时必须使旧 generation/session 失效。
+6. 密码及隐私编辑器不暴露持久剪贴板历史、语音和个性化学习路径。
 
-## 词典部署与回退
+## 候选与 Rime
 
-- 完整 Rime Ice 词典在 APK 首次运行时由 librime 部署，部署完成后成为中文候选的权威来源。
-- `pinyin_phrases.tsv` 是构建时从同一词典筛选生成的高频子集，完整词典尚未就绪时仍能即时打字。
-- 高频候选使用有序拼音键和二分前缀查找，避免每次按键遍历整个词典。
-- 空格、回车及明确提交动作走同步首选提交；候选栏刷新仍可异步执行，保证按键反馈连续。
+- librime 就绪后是生产中文候选的权威来源。
+- `CandidateEngine` 是本地回退、英文联想和部分九键辅助，不应被理解成第二套权威中文引擎。
+- `CandidateSnapshot` 保证“用户看到的候选”和“真正上屏的候选”属于同一 generation。
+- native 单次查询进入 JNI 后当前不可从 Kotlin 中断；在有真机延迟数据之前不要修改 librime 内部。
 
-## 布局适配原则
+## UI 与窗口
 
-- 横向列宽、列间距由当前 IME 窗口的实际可用宽度计算。
-- 普通按键的纵向高度保持稳定，只在 Compact / Normal / Wide 断点做小范围调整。
-- 宽屏限制键盘内容最大宽度并居中，避免平板上无限拉伸。
-- WindowInsets 提供底部系统栏占用，不能写死手势条或导航栏高度。
-- 窗口尺寸、方向或浮动状态改变后重新测量并重排，不复用旧屏幕的绝对像素。
+- Docked/Floating 是 IME Window 状态，不属于 Panel。
+- 横竖屏只影响响应式几何，不自动改变用户的 Floating/Docked 选择。
+- `KeyboardLayoutMetrics` 只做纯 dp 计算；View 负责把结果应用到 LayoutParams。
+- `KeyPopupController` 负责 transient key popup 的定位、动画和生命周期。
+- 所有布局基于当前 IME Window 实际尺寸和 WindowInsets，不使用固定屏幕坐标。
+
+## Voice
+
+`VoiceModelLifecycleManager` 是 ASR runtime 的唯一 owner。模型校验、预热、构建和释放不在 IME 主线程执行。空格语音是产品手势，触发阈值固定为 150ms；松手、取消和旧 session 回调必须保持 generation 隔离。
+
+## Native 与第三方代码
+
+`app/src/main/cpp/local_rime_jni.cc` 和 CMake glue 是本项目维护边界。vendored librime/OpenCC/Boost 等第三方源码不作为日常架构重构对象；除非有明确 native 缺陷和测试证据，否则不要改 vendor 源码。
 
 ## 测试边界
 
-debug 变体提供语义化 E2E Receiver，脚本通过 `tap:key:q`、`tap:候选`、`state` 和
-`bounds` 驱动测试。Receiver 和测试 Activity 受 `android.permission.DUMP` 保护，
-仅 adb shell/系统测试可调用；生产变体不包含这套入口，也不依赖固定屏幕坐标。
+- JVM Unit：纯策略、候选、输入连接、状态、几何。
+- Android Instrumentation：真实 View/IME 交互、API 29/31 兼容性。
+- debug source set：E2E Receiver 和测试 Activity，只用于测试 APK。
+- PowerShell/Bash scripts：真实 IME、视觉、性能、升级、安全和 SOP 证据。
+
+测试说明见 [TEST_ARCHITECTURE.md](TEST_ARCHITECTURE.md)。
