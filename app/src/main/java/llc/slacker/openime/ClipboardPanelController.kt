@@ -127,7 +127,7 @@ internal class ClipboardPanelController(
         column.addView(createSectionTitle("最近复制"), wrapParams())
         val loadingHint = TextView(context).apply {
             text = "正在读取剪贴板…"
-            textSize = 13f
+            textSize = ImeTypographyTokens.PANEL_BODY_SP
             setPadding(toPx(4), toPx(6), toPx(4), 0)
             tag = "panel-note"
         }
@@ -232,7 +232,7 @@ internal class ClipboardPanelController(
                 statusText(
                     "还没有常用语；点击上方按钮添加后即可一键输入。",
                     error = false,
-                    textSize = 12f,
+                    textSize = ImeTypographyTokens.PANEL_NOTE_SP,
                 ),
                 wrapParams(),
             )
@@ -327,7 +327,7 @@ internal class ClipboardPanelController(
             addView(
                 TextView(context).apply {
                     text = entry.text
-                    textSize = 13f
+                    textSize = ImeTypographyTokens.PANEL_BODY_SP
                     maxLines = 2
                     ellipsize = TextUtils.TruncateAt.END
                 },
@@ -348,7 +348,7 @@ internal class ClipboardPanelController(
                             DateUtils.MINUTE_IN_MILLIS,
                         )
                     }
-                    textSize = 11f
+                    textSize = ImeTypographyTokens.CAPTION_SP
                 },
                 LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
             )
@@ -458,7 +458,7 @@ internal class ClipboardPanelController(
         onClick: () -> Unit,
     ): TextView = TextView(context).apply {
         text = label
-        textSize = 12f
+        textSize = ImeTypographyTokens.PANEL_NOTE_SP
         gravity = Gravity.CENTER
         minHeight = toPx(48)
         minimumHeight = toPx(48)

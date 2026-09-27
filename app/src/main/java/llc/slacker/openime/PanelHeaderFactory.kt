@@ -54,7 +54,7 @@ internal class PanelHeaderFactory(
             addView(
                 TextView(context).apply {
                     text = name
-                    textSize = 13f
+                    textSize = ImeTypographyTokens.PANEL_TITLE_SP
                     setPadding(toPx(8), 0, 0, 0)
                     tag = "panel-title"
                 },

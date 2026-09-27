@@ -1308,7 +1308,7 @@ open class ImeKeyboardView(
             associationRow.addView(
                 TextView(context).apply {
                     text = candidate
-                    textSize = 12f
+                    textSize = ImeTypographyTokens.CANDIDATE_SP
                     gravity = Gravity.CENTER
                     maxLines = 1
                     ellipsize = TextUtils.TruncateAt.END

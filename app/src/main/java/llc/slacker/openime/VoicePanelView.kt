@@ -50,7 +50,7 @@ internal class VoicePanelView(
             } else {
                 "离线模型后台准备中 · 未启用联网识别"
             }
-            textSize = 11f
+            textSize = ImeTypographyTokens.CAPTION_SP
             includeFontPadding = false
             gravity = Gravity.CENTER_VERTICAL
             tag = "voice-model-status"

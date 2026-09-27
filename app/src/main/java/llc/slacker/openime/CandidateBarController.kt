@@ -68,7 +68,7 @@ internal class CandidateBarController(
                 row.addView(
                     TextView(context).apply {
                         tag = "candidate-empty"
-                        textSize = 12f
+                        textSize = ImeTypographyTokens.CANDIDATE_SP
                         setPadding(toPx(10), 0, toPx(10), 0)
                     },
                     LinearLayout.LayoutParams(

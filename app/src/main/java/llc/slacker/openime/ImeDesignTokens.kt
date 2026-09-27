@@ -49,6 +49,15 @@ internal object ImeMotionTokens {
     const val STANDARD_TRANSITION_MS = 160L
 }
 
+/** Shared native text roles; keyboard glyph sizing remains renderer-specific. */
+internal object ImeTypographyTokens {
+    const val PANEL_TITLE_SP = 13f
+    const val PANEL_BODY_SP = 13f
+    const val PANEL_NOTE_SP = 12f
+    const val CAPTION_SP = 11f
+    const val CANDIDATE_SP = 12f
+}
+
 /**
  * Native design tokens for the bundled IME renderer.
  *

@@ -71,7 +71,7 @@ internal class ImePanelRenderer(
         body.addView(
             TextView(context).apply {
                 text = "选择输入布局"
-                textSize = 13f
+                textSize = ImeTypographyTokens.PANEL_BODY_SP
                 setPadding(toPx(4), 0, 0, toPx(8))
                 tag = "panel-section-title"
             },
@@ -463,7 +463,7 @@ internal class ImePanelRenderer(
             grid.addView(
                 TextView(context).apply {
                     text = "还没有自定义符号；点击上方按钮添加第一个。"
-                    textSize = 12f
+                    textSize = ImeTypographyTokens.PANEL_NOTE_SP
                     gravity = Gravity.CENTER
                     tag = "panel-note"
                 },
@@ -541,7 +541,7 @@ internal class ImePanelRenderer(
             grid.addView(
                 TextView(context).apply {
                     text = "最近使用的表情会显示在这里"
-                    textSize = 12f
+                    textSize = ImeTypographyTokens.PANEL_NOTE_SP
                     gravity = Gravity.CENTER
                     tag = "panel-note"
                 },
@@ -598,7 +598,7 @@ internal class ImePanelRenderer(
         onTap: () -> Unit,
     ): TextView = TextView(context).apply {
         text = label
-        textSize = 11f
+        textSize = ImeTypographyTokens.CAPTION_SP
         gravity = Gravity.CENTER
         includeFontPadding = false
         minWidth = toPx(48)
@@ -650,7 +650,7 @@ internal class ImePanelRenderer(
         card.addView(
             TextView(context).apply {
                 text = label
-                textSize = 11f
+                textSize = ImeTypographyTokens.CAPTION_SP
                 gravity = Gravity.CENTER
                 includeFontPadding = false
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO

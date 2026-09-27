@@ -249,7 +249,7 @@ internal class SettingsPanelController(
         content.addView(
             TextView(context).apply {
                 text = "用于处理常见的近音输入。开启后，候选会同时尝试相近声母，不会改变用户已经输入的拼音。"
-                textSize = 13f
+                textSize = ImeTypographyTokens.PANEL_BODY_SP
                 setLineSpacing(0f, 1.15f)
                 tag = "panel-note"
             },
@@ -271,7 +271,7 @@ internal class SettingsPanelController(
         content.addView(
             TextView(context).apply {
                 text = "z / zh · c / ch · s / sh · l / n · en / eng · in / ing"
-                textSize = 13f
+                textSize = ImeTypographyTokens.PANEL_BODY_SP
                 setPadding(0, toPx(6), 0, toPx(6))
             },
             LinearLayout.LayoutParams(
@@ -282,7 +282,7 @@ internal class SettingsPanelController(
         content.addView(
             TextView(context).apply {
                 text = "规则由输入法自动参与候选计算，暂不单独修改每一组映射。"
-                textSize = 12f
+                textSize = ImeTypographyTokens.PANEL_NOTE_SP
                 tag = "panel-note"
             },
             wrapParams(),
@@ -594,7 +594,7 @@ internal class SettingsPanelController(
                             addView(
                                 TextView(context).apply {
                                     text = "✓"
-                                    textSize = 13f
+                                    textSize = ImeTypographyTokens.PANEL_BODY_SP
                                     gravity = Gravity.CENTER
                                     includeFontPadding = false
                                     tag = "accent-selected-mark:$hex"
@@ -637,7 +637,7 @@ internal class SettingsPanelController(
             TextView(context).apply {
                 text =
                     if (customSelected) "自定义 · $current" else "自定义颜色"
-                textSize = 12f
+                textSize = ImeTypographyTokens.PANEL_NOTE_SP
                 gravity = Gravity.CENTER
                 includeFontPadding = false
                 maxLines = 1
@@ -669,7 +669,7 @@ internal class SettingsPanelController(
                     AccentPalette.presets.firstOrNull {
                         AccentPalette.normalize(it.first) == current
                     }?.second ?: current
-                textSize = 12f
+                textSize = ImeTypographyTokens.PANEL_NOTE_SP
                 setPadding(0, toPx(8), 0, 0)
                 tag = "panel-note"
             },
@@ -758,7 +758,7 @@ internal class SettingsPanelController(
         row.addView(
             TextView(context).apply {
                 text = labelText
-                textSize = 13f
+                textSize = ImeTypographyTokens.PANEL_BODY_SP
             },
             LinearLayout.LayoutParams(
                 0,
