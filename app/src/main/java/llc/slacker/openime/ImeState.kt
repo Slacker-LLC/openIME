@@ -53,7 +53,6 @@ data class ImeState(
     val popupEnabled: Boolean = false,
     val fuzzyPinyinEnabled: Boolean = false,
     val editorInfo: EditorInfo? = null,
-    val editorAction: Int = EditorInfo.IME_ACTION_NONE,
     val passwordField: Boolean = false,
     val symbolCategory: String = "常用",
     // First real emoji category tab (see ImeData.fluentSmileysByCategory order).
