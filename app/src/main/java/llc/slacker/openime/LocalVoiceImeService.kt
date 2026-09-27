@@ -129,6 +129,16 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         fuzzy = fuzzy,
     )
 
+    override fun nineKeyPathsFor(code: String?): List<String> =
+        candidatePipeline.nineKeyPathsFor(code)
+
+    override fun selectedNineKeyPathFor(code: String?): String? =
+        candidatePipeline.selectedNineKeyPathFor(code)
+
+    override fun selectNineKeyPath(code: String, path: String) {
+        candidatePipeline.selectNineKeyPath(code, path)
+    }
+
     private fun createKeyboardView(): ImeKeyboardView {
         return ImeKeyboardView(this, this).also { view ->
             view.setMode(state.keyboardMode, notifyListener = false)
