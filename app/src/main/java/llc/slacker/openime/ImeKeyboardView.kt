@@ -1154,33 +1154,14 @@ open class ImeKeyboardView(
     fun showPanel(newPanel: Panel) {
         if (newPanel == Panel.NONE || newPanel == Panel.CANDIDATE_EXPANDED) return
         if (passwordField && newPanel in setOf(Panel.CLIPBOARD, Panel.VOICE)) return
-        if (newPanel == Panel.GAMING) {
-            enableFloatingKeyboard()
-            return
-        }
         hidePopup()
         if (panel == Panel.VOICE && newPanel != Panel.VOICE) stopVoiceIfActive()
         if (panel != Panel.NONE && panel != newPanel) panelBackStack += panel
         panel = newPanel
         mainDock.visibility = View.GONE
-        // Publish the page before rendering it. Opening a floating IME can
-        // cause InputMethodService to receive a window relayout immediately;
-        // the service must already know that GAMING is the active panel or it
-        // may restore the IME window to the bottom during that callback.
         listener.onPanelChanged(newPanel)
         renderPanel(newPanel)
         animatePanelEntrance()
-    }
-
-    /** Enable floating window bounds without changing the keyboard surface. */
-    fun enableFloatingKeyboardForLandscape() {
-        enableFloatingKeyboard()
-    }
-
-    /** Return to the normal IME window when an automatic landscape session ends. */
-    fun disableFloatingKeyboardForPortrait() {
-        floatingWindowMode = false
-        listener.onFloatingKeyboardChanged(false)
     }
 
     /** Enter floating mode from the tools page without replacing the keyboard. */
@@ -2678,7 +2659,6 @@ open class ImeKeyboardView(
         Panel.TEXT_EDITOR -> "文本编辑"
         Panel.SETTINGS -> "设置"
         Panel.FUZZY_SETTINGS -> "模糊音纠错"
-        Panel.GAMING -> "浮动键盘"
         Panel.NONE, Panel.CANDIDATE_EXPANDED -> "键盘"
     }
 
@@ -2840,10 +2820,11 @@ open class ImeKeyboardView(
         val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         data class ToolEntry(
             val label: String,
-            val target: Panel,
+            val target: Panel? = null,
             val iconRes: Int? = null,
             val glyph: String? = null,
             val enabled: Boolean = true,
+            val action: (() -> Unit)? = null,
         )
         // When no handwriting recognizer is configured, hide the entry entirely
         // instead of showing a dead grey card (V2 used to patch this in a post pass).
@@ -2855,18 +2836,19 @@ open class ImeKeyboardView(
             ToolEntry("符号", Panel.SYMBOLS, R.drawable.ic_symbols),
             ToolEntry("切换键盘", Panel.KEYBOARD_SELECT, R.drawable.ic_grid),
             ToolEntry("文本编辑", Panel.TEXT_EDITOR, R.drawable.ic_keyboard),
-            ToolEntry("浮动键盘", Panel.GAMING, R.drawable.ic_game),
+            ToolEntry("浮动键盘", iconRes = R.drawable.ic_game, action = ::enableFloatingKeyboard),
             ToolEntry("设置", Panel.SETTINGS, R.drawable.ic_settings),
         ).filter { it.enabled }
         cards.chunked(4).forEach { chunk ->
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             chunk.forEach { entry ->
+                val onTap = entry.action ?: {
+                    entry.target?.let(::showPanel)
+                }
                 val toolEntryView = if (entry.glyph != null) {
-                    toolGlyphCard(entry.glyph, entry.label) { showPanel(entry.target) }
+                    toolGlyphCard(entry.glyph, entry.label, onTap)
                 } else {
-                    toolCard(entry.iconRes ?: R.drawable.ic_settings, entry.label) {
-                        showPanel(entry.target)
-                    }
+                    toolCard(entry.iconRes ?: R.drawable.ic_settings, entry.label, onTap)
                 }
                 row.addView(
                     toolEntryView,
