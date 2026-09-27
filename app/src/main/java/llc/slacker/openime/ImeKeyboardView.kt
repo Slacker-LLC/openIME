@@ -356,6 +356,7 @@ open class ImeKeyboardView(
     // itself remains the same normal keyboard used in portrait mode.
     private var floatingWindowMode = false
     private var floatingDragActive = false
+    private var floatingDragMoved = false
     private var floatingDragLastX = 0f
     private var floatingDragLastY = 0f
     private var popupView: View? = null
@@ -499,10 +500,14 @@ open class ImeKeyboardView(
         )
         floatingDragHandle = FloatingDragHandleView(context).apply {
             tag = "floating-drag-handle"
-            contentDescription = "拖动浮动键盘"
+            contentDescription = "拖动浮动键盘，点击贴底显示"
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             visibility = View.GONE
             isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                if (floatingWindowMode) listener.onFloatingKeyboardChanged(false)
+            }
             setOnTouchListener { _, event -> handleFloatingDragTouch(event) }
         }
         keyboardHost.addView(
@@ -560,19 +565,31 @@ open class ImeKeyboardView(
                 floatingDragLastX = event.rawX
                 floatingDragLastY = event.rawY
                 floatingDragActive = true
+                floatingDragMoved = false
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
                 if (!floatingDragActive) return true
                 val deltaX = event.rawX - floatingDragLastX
                 val deltaY = event.rawY - floatingDragLastY
+                if (kotlin.math.abs(deltaX) + kotlin.math.abs(deltaY) >= dp(3)) {
+                    floatingDragMoved = true
+                }
                 floatingDragLastX = event.rawX
                 floatingDragLastY = event.rawY
                 listener.onFloatingKeyboardDragged(deltaX, deltaY)
                 return true
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+            MotionEvent.ACTION_UP -> {
+                val shouldDock = floatingDragActive && !floatingDragMoved
                 floatingDragActive = false
+                floatingDragMoved = false
+                if (shouldDock) floatingDragHandle.performClick()
+                return true
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                floatingDragActive = false
+                floatingDragMoved = false
                 return true
             }
         }
@@ -1187,6 +1204,16 @@ open class ImeKeyboardView(
     /** Keep content geometry local when the service changes the window bounds. */
     fun setFloatingWindowMode(enabled: Boolean) {
         floatingWindowMode = enabled
+        floatingDragHandle.isEnabled = enabled
+        floatingDragHandle.isFocusable = enabled
+        floatingDragHandle.contentDescription = if (enabled) {
+            "拖动浮动键盘，点击贴底显示"
+        } else {
+            "浮动键盘未启用"
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            floatingDragHandle.stateDescription = if (enabled) "可拖动，点击可贴底显示" else "不可用"
+        }
         if (enabled) {
             contentInsetPx = dp(5)
             keyboardBody.setPadding(contentInsetPx, dp(6), contentInsetPx, dp(16))
@@ -1195,16 +1222,19 @@ open class ImeKeyboardView(
             toolbarRow.setPadding(contentInsetPx + dp(10), 0, contentInsetPx + dp(10), 0)
             composition.setPadding(contentInsetPx + dp(14), dp(3), contentInsetPx + dp(14), 0)
             floatingDragHandle.visibility = View.VISIBLE
-            applyFloatingChromeTheme()
-            requestLayout()
         } else {
+            floatingDragActive = false
+            floatingDragMoved = false
             floatingDragHandle.visibility = View.GONE
             toolbarRow.visibility = if (voiceInlineActive || composeZone.visibility == View.VISIBLE) {
                 View.GONE
             } else {
                 View.VISIBLE
             }
+            if (width > 0) updateResponsiveGeometry(width)
         }
+        applyFloatingChromeTheme()
+        requestLayout()
     }
 
     private fun dismissPanelForModeSwitch() {
@@ -2864,6 +2894,8 @@ open class ImeKeyboardView(
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(0, dp(8), 0, dp(6))
+            minimumWidth = dp(ImeGeometryTokens.TOUCH_TARGET_DP)
+            minimumHeight = dp(ImeGeometryTokens.TOUCH_TARGET_DP)
             tag = "tool:$label"
             contentDescription = label
             isClickable = true
@@ -2890,6 +2922,8 @@ open class ImeKeyboardView(
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(0, dp(8), 0, dp(6))
+            minimumWidth = dp(ImeGeometryTokens.TOUCH_TARGET_DP)
+            minimumHeight = dp(ImeGeometryTokens.TOUCH_TARGET_DP)
             tag = "tool:$label"
             contentDescription = label
             isClickable = true
@@ -3566,10 +3600,14 @@ open class ImeKeyboardView(
                 tag = "panel-note"
             }
             col.addView(loadingHint, wrapParams())
+            // ClipboardManager access is a UI/focus-sensitive platform read.
+            // Take the snapshot while the IME surface is active, then keep only
+            // history parsing/persistence off the UI thread.
+            val captureResult = runCatching { ClipboardHistoryRepository.capturePrimary(context) }
             val gen = ++clipboardLoadGen
             Thread {
                 val historyResult = runCatching {
-                    ClipboardHistoryRepository.capturePrimary(context)
+                    captureResult.getOrThrow()
                     ClipboardHistoryRepository.load(context)
                 }
                 post {
@@ -3751,11 +3789,16 @@ open class ImeKeyboardView(
             .create()
         dialog.setOnShowListener {
             SetupUi.styleDialog(dialog, context, destructivePositive = true)
-            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setOnClickListener {
-                ClipboardHistoryRepository.clearAll(context)
-                dialog.dismiss()
-                renderClipboard(reusePanel = true)
-                focusPanelEntryPoint()
+            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).apply {
+                contentDescription = "清空全部"
+                isFocusable = true
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+                setOnClickListener {
+                    ClipboardHistoryRepository.clearAll(context)
+                    dialog.dismiss()
+                    renderClipboard(reusePanel = true)
+                    focusPanelEntryPoint()
+                }
             }
         }
         dialog.show()
