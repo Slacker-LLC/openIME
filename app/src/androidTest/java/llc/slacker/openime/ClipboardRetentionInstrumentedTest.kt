@@ -99,6 +99,47 @@ class ClipboardRetentionInstrumentedTest {
     }
 
     @Test
+    fun closingClipboardBeforePostedLoadDoesNotCaptureStaleClip() {
+        lateinit var keyboard: ImeKeyboardView
+        rule.scenario.onActivity { activity ->
+            ClipboardHistoryRepository.clearAll(activity)
+            val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.setPrimaryClip(
+                ClipData.newPlainText("closed clipboard fixture", "must not capture after closing panel"),
+            )
+
+            keyboard = ImeKeyboardView(activity, NoopListener())
+            activity.findViewById<ViewGroup>(android.R.id.content).addView(
+                keyboard,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+
+            keyboard.showPanel(Panel.CLIPBOARD)
+            assertTrue("Clipboard panel must close back to the keyboard", keyboard.closePanelToKeyboard())
+        }
+
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        repeat(10) {
+            Thread.sleep(30)
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        }
+
+        rule.scenario.onActivity { activity ->
+            assertEquals(
+                "Closing the clipboard panel must invalidate its queued capture",
+                emptyList<ClipboardEntry>(),
+                ClipboardHistoryRepository.load(activity),
+            )
+            val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.setPrimaryClip(ClipData.newPlainText("test cleanup", ""))
+            keyboard.shutdown()
+        }
+    }
+
+    @Test
     fun clearButtonsMutatePersistentHistoryWithoutTouchingPinnedUntilRequested() {
         lateinit var keyboard: ImeKeyboardView
         rule.scenario.onActivity { activity ->
