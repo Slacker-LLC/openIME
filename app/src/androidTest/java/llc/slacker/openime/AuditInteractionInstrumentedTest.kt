@@ -299,6 +299,29 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun majorKeyboardModesReuseTheSamePrimaryKeyHeight() = withKeyboard { harness, _, keyboard ->
+        fun measuredHeight(mode: KeyboardMode, tag: String): Int {
+            harness.awaitMain {
+                keyboard.setMode(mode, notifyListener = false)
+                true
+            }
+            return harness.awaitMain {
+                val key = keyboard.findViewWithTag<View>(tag) ?: return@awaitMain null
+                key.height.takeIf { it > 0 }
+            }
+        }
+
+        val chinese26 = measuredHeight(KeyboardMode.PINYIN_26, "key:q")
+        val english26 = measuredHeight(KeyboardMode.ENGLISH_26, "key:q")
+        val chinese9 = measuredHeight(KeyboardMode.PINYIN_9, "key-9:2")
+        val numeric = measuredHeight(KeyboardMode.DIGITS, "key:5")
+
+        assertEquals("English 26 must reuse the Chinese 26 row geometry", chinese26, english26)
+        assertEquals("Chinese 9 must reuse the primary key-row height", chinese26, chinese9)
+        assertEquals("Numeric must reuse the primary key-row height", chinese26, numeric)
+    }
+
+    @Test
     fun settingsSlidersExposeCurrentValuesToTouchAndAccessibility() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.showPanel(Panel.SETTINGS)
@@ -787,6 +810,28 @@ class AuditInteractionInstrumentedTest {
             keyboard.setMode(KeyboardMode.ENGLISH_26, notifyListener = false)
 
             assertEquals("Mode switch must retire popup whose anchor was rebuilt", baseline, keyboard.childCount)
+            true
+        }
+    }
+
+    @Test
+    fun openingPanelDismissesOrdinaryKeyPopup() = withKeyboard { harness, _, keyboard ->
+        lateinit var key: View
+        var baseline = 0
+        harness.awaitMain {
+            keyboard.setSettings(sound = false, haptic = false, popup = true)
+            keyboard.setMode(KeyboardMode.ENGLISH_26, notifyListener = false)
+            key = keyboard.findViewWithTag<View>("key:q") ?: return@awaitMain null
+            if (key.width == 0) return@awaitMain null
+            baseline = keyboard.childCount
+            touch(key, MotionEvent.ACTION_DOWN)
+            assertEquals("Ordinary key preview must attach to the root", baseline + 1, keyboard.childCount)
+
+            keyboard.showPanel(Panel.EMOJI)
+
+            assertEquals("Opening a panel must retire the transient key preview", baseline, keyboard.childCount)
+            assertEquals(Panel.EMOJI, keyboard.currentPanel())
+            touch(key, MotionEvent.ACTION_CANCEL)
             true
         }
     }
