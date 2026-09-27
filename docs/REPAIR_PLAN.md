@@ -132,19 +132,19 @@ Use internal concrete classes/functions first. Avoid new generic frameworks.
 
 Target: ImeKeyboardView becomes orchestration rather than the implementation home for every screen and gesture.
 
-## Phase 7 — Retire ImeKeyboardViewV2
+## Phase 7 — Single production keyboard view — completed
 
-ImeKeyboardViewV2 is a production wrapper over the legacy renderer rather than an independent renderer.
+The historical `ImeKeyboardViewV2` compatibility wrapper has been removed.
 
-Move its surviving responsibilities to their owning modules:
+Its surviving responsibilities now have explicit owners:
 
-- insets/responsive geometry -> geometry/presentation;
-- Enter label/capability decoration -> keyboard presentation policy;
-- 9-key repairs -> Pinyin 9 component;
-- accessibility post-processing -> owning controls/components;
-- runtime capability filtering -> capability model.
+- WindowInsets / bottom safe-area measurement -> `ImeKeyboardView`;
+- Enter presentation -> `ImeKeyboardView.renderState`;
+- 9-key earlier-segment repair and accessibility repair -> `NineKeySegmentRepairController`;
+- handwriting availability -> the normal panel/tool capability path;
+- space/voice timing -> the production `ImeKeyboardView` gesture path.
 
-Then make LocalVoiceImeService create the final production ImeKeyboardView directly.
+`LocalVoiceImeService` now creates `ImeKeyboardView` directly. The project no longer uses V1/V2 keyboard naming.
 
 ## Phase 8 — Converge design tokens
 
@@ -422,7 +422,7 @@ Performance sanity:
 4. Orientation/floating separation.
 5. Dead state cleanup.
 6. ImeKeyboardView mechanical split.
-7. Remove ImeKeyboardViewV2.
+7. Single production ImeKeyboardView — completed.
 8. Design-token convergence.
 9. Chinese 26 visual lock.
 10. English 26 / Chinese 9 / numeric polish.
