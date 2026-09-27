@@ -50,6 +50,14 @@ internal class ImePanelRenderer(
     private val chipScrollPositions = mutableMapOf<String, Int>()
     private val verticalScrollPositions = mutableMapOf<String, Int>()
 
+    fun syncSymbolCategoryForMode(mode: KeyboardMode) {
+        symbolCategory = when (mode) {
+            KeyboardMode.ENGLISH_26 -> "英文"
+            KeyboardMode.DIGITS -> "数学"
+            else -> "中文"
+        }
+    }
+
     fun renderKeyboardSelect() {
         addHeader("切换键盘")
         val body = LinearLayout(context).apply {

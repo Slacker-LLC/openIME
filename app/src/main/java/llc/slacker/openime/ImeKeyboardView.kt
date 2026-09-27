@@ -514,7 +514,7 @@ open class ImeKeyboardView(
             gridCellParams = ::gridCellParams,
             currentMode = { mode },
             isPasswordField = { passwordField },
-            onModeSelected = ::setMode,
+            onModeSelected = { selected -> setMode(selected) },
             onShowPanel = ::showPanel,
             onEnableFloatingKeyboard = ::enableFloatingKeyboard,
             onSymbolSelected = listener::onSymbolSelected,
@@ -995,11 +995,7 @@ open class ImeKeyboardView(
         nineTapReset.run()
         val layoutChanged = mode != newMode
         mode = newMode
-        symbolCategory = when (newMode) {
-            KeyboardMode.ENGLISH_26 -> "英文"
-            KeyboardMode.DIGITS -> "数学"
-            else -> "中文"
-        }
+        panelRenderer.syncSymbolCategoryForMode(newMode)
         clearAssociationCandidates()
         pinyinBuffer.clear()
         lastNineDigits = ""
