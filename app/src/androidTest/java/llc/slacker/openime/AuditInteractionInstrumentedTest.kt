@@ -1124,10 +1124,13 @@ class AuditInteractionInstrumentedTest {
     @Test
     fun rebuildWhileSpaceIsHeldDoesNotSwallowTheSpace() = withKeyboard { harness, recorder, keyboard ->
         var downTime = 0L
+        lateinit var spaceKey: View
         harness.awaitMain {
             val point = keyPoint(keyboard, "key-space")
+            spaceKey = requireNotNull(keyboard.findViewWithTag("key-space"))
             downTime = SystemClock.uptimeMillis()
             pointers(keyboard, downTime, MotionEvent.ACTION_DOWN, listOf(point))
+            assertTrue("Space key must own the active press", spaceKey.isPressed)
             true
         }
         // A layout change (mode switch, configuration change, nine-key filter)
@@ -1136,11 +1139,17 @@ class AuditInteractionInstrumentedTest {
         // detach it and swallow the release without a trace.
         harness.awaitMain {
             keyboard.setMode(KeyboardMode.ENGLISH_26, notifyListener = false)
+            assertSame(
+                "Changing layout must keep the pressed Space view attached until release",
+                spaceKey,
+                keyboard.findViewWithTag("key-space"),
+            )
             true
         }
         harness.awaitMain {
             val point = keyPoint(keyboard, "key-space")
             pointers(keyboard, downTime, MotionEvent.ACTION_UP, listOf(point))
+            assertEquals("Space release must commit synchronously", 1, recorder.spaces)
             true
         }
         harness.awaitMain(timeoutMs = 3_000L) { if (recorder.spaces > 0) true else null }
