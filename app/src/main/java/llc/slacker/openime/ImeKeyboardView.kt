@@ -298,8 +298,6 @@ open class ImeKeyboardView(
     private var lastNineSegmentPrefix = ""
     private var lastNinePinyinPaths = emptyList<String>()
     private var currentCandidates = emptyList<String>()
-    private var currentItems: List<String>? = null
-    private var toolPage = 0
     private var voiceAllowed = true
     private var inlineVoicePaletteColor: Int? = null
     private var voiceGestureSession = false
@@ -1134,7 +1132,6 @@ open class ImeKeyboardView(
         lastNineSegmentPrefix = ""
         lastNinePinyinPaths = emptyList()
         currentCandidates = emptyList()
-        currentItems = emptyList()
         // Rebuild the key rows (and play the switch fade) only when the layout
         // actually changes. Re-focusing another field in the same mode now reuses
         // the existing rows instead of recreating ~150 views on every focus.
@@ -1301,7 +1298,6 @@ open class ImeKeyboardView(
             composition.selectionStart.takeIf { sameComposition && it >= 0 },
             composition.selectionEnd.takeIf { sameComposition && it >= 0 },
         )
-        currentItems = state.candidates
         currentCandidates = state.candidates
         if (state.composition.isEmpty()) {
             pinyinBuffer.clear()
