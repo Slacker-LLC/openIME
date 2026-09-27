@@ -77,11 +77,12 @@ internal class FloatingWindowController(
             }
 
             val (screenWidth, screenHeight) = displaySize()
-            val desiredWidth = floatingWidth(screenWidth).coerceIn(
-                dp(320),
-                (screenWidth - dp(24)).coerceAtLeast(dp(320)),
-            )
-            val currentHeight = (keyboardHeightPx() ?: dp(302)).coerceAtLeast(dp(1))
+            val availableWidth = (screenWidth - dp(24)).coerceAtLeast(dp(1))
+            val availableHeight = (screenHeight - dp(24)).coerceAtLeast(dp(1))
+            val desiredWidth = floatingWidth(screenWidth).coerceAtMost(availableWidth)
+            val currentHeight = (keyboardHeightPx() ?: dp(302))
+                .coerceAtLeast(dp(1))
+                .coerceAtMost(availableHeight)
             if (resetPosition) {
                 x = ((screenWidth - desiredWidth) / 2).coerceAtLeast(0)
                 y = ((screenHeight - currentHeight) / 2).coerceAtLeast(dp(16))
@@ -106,12 +107,16 @@ internal class FloatingWindowController(
         val imeWindow = windowProvider() ?: return
         val (screenWidth, screenHeight) = displaySize()
         val attrs = imeWindow.attributes
-        val width = if (attrs.width > 0) attrs.width else floatingWidth(screenWidth)
+        val availableWidth = (screenWidth - dp(24)).coerceAtLeast(dp(1))
+        val availableHeight = (screenHeight - dp(24)).coerceAtLeast(dp(1))
+        val width = (if (attrs.width > 0) attrs.width else floatingWidth(screenWidth))
+            .coerceAtMost(availableWidth)
         val height = (
             keyboardHeightPx()?.takeIf { it > 0 }
                 ?: imeWindow.decorView.height.takeIf { it > 0 }
                 ?: dp(302)
             )
+            .coerceAtMost(availableHeight)
         val bounds = bounds(screenWidth, screenHeight, width, height)
         x = x.coerceIn(bounds[0], bounds[1])
         y = y.coerceIn(bounds[2], bounds[3])
