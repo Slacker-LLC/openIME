@@ -364,8 +364,7 @@ class VoiceModelLifecycleManager(
             }
 
             override fun onFinal(text: String) {
-                if (!isCurrentSession(token)) return
-                markSessionFinished(token)
+                if (!markSessionFinished(token)) return
                 events.onFinal(text)
             }
 
@@ -374,8 +373,7 @@ class VoiceModelLifecycleManager(
             }
 
             override fun onError(message: String) {
-                if (!isCurrentSession(token)) return
-                markSessionFinished(token)
+                if (!markSessionFinished(token)) return
                 VoicePerformanceTrace.finish(droppedPcmSamples = 0L, failed = true)
                 events.onError(message)
             }
@@ -481,9 +479,13 @@ class VoiceModelLifecycleManager(
     private fun isCurrentSession(token: Long): Boolean =
         token == sessionGeneration.get() && !destroyed
 
-    private fun markSessionFinished(token: Long) {
+    private fun markSessionFinished(token: Long): Boolean {
         synchronized(lock) {
-            if (token != sessionGeneration.get() || destroyed) return
+            if (token != sessionGeneration.get() || destroyed) return false
+            // Final/error owns the terminal transition exactly once. Advancing
+            // the token here rejects duplicate terminal callbacks and any
+            // partial/RMS/ready callback that arrives after this session ended.
+            sessionGeneration.incrementAndGet()
             recording = false
             state = when {
                 runtime == null && state == VoiceModelLifecycleState.ERROR -> VoiceModelLifecycleState.ERROR
@@ -493,6 +495,7 @@ class VoiceModelLifecycleManager(
             }
         }
         scheduleUnloadIfHidden()
+        return true
     }
 
     private fun scheduleUnloadIfHidden() {
