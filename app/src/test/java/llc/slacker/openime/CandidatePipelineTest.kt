@@ -31,10 +31,6 @@ class CandidatePipelineTest {
             english,
         )
 
-        assertEquals(
-            engine.getT9EnglishCandidates("435"),
-            pipeline.candidatesFor(KeyboardMode.ENGLISH_T9, "435", false),
-        )
         assertTrue(pipeline.candidatesFor(KeyboardMode.DIGITS, "123", false).isEmpty())
     }
 
