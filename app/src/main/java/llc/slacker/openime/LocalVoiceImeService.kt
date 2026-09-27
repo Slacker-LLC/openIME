@@ -7,10 +7,8 @@ import android.os.SystemClock
 import android.text.InputType
 import android.text.TextUtils
 import android.util.Log
-import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
-import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.view.inputmethod.InputMethodSubtype
@@ -55,13 +53,17 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     private var state = ImeState()
     private var lastComposition = ""
     private val mainHandler = Handler(Looper.getMainLooper())
-    private var floatingWindowEnabled = false
-    private var floatingWindowX = 0
-    private var floatingWindowY = 0
-    private var baseImeGravity: Int? = null
-    private var baseImeWidth: Int? = null
-    private var baseImeHeight: Int? = null
-    private var baseImeSoftInputMode: Int? = null
+    private val floatingWindow by lazy {
+        FloatingWindowController(
+            resources = resources,
+            mainHandler = mainHandler,
+            windowProvider = { getWindow().window },
+            keyboardHeightPx = { keyboardView?.measuredHeight },
+            debugLog = { message ->
+                if (verboseLogging) Log.d(TAG, message)
+            },
+        )
+    }
     private var voiceComposing = false
     private var voiceAutoCommitOnFinal = true
     private var pendingVoiceCorrection: PendingVoiceCorrection? = null
@@ -164,9 +166,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         // Orientation changes affect keyboard geometry, not the user's chosen
         // window mode. A manually floating keyboard stays floating; a docked
         // keyboard stays docked.
-        if (floatingWindowEnabled) {
-            scheduleFloatingWindowLayout(resetPosition = false)
-        }
+        floatingWindow.onConfigurationChanged()
     }
 
     override fun onEvaluateInputViewShown(): Boolean {
@@ -339,11 +339,11 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     override fun onStartInputView(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(attribute, restarting)
         ensureInputViewAfterFinish()
-        if (floatingWindowEnabled) {
+        if (floatingWindow.enabled) {
             keyboardView?.setFloatingWindowMode(true)
-            scheduleFloatingWindowLayout(resetPosition = false)
+            floatingWindow.reapply()
         } else {
-            restoreImeWindow()
+            floatingWindow.restore()
         }
         keyboardView?.refreshAuxiliaryContent()
         voiceLifecycle.onStartInputView()
@@ -674,20 +674,12 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     }
 
     override fun onFloatingKeyboardChanged(floating: Boolean) {
-        floatingWindowEnabled = floating
         keyboardView?.setFloatingWindowMode(floating)
-        if (floating) {
-            scheduleFloatingWindowLayout(resetPosition = floatingWindowX == 0 && floatingWindowY == 0)
-        } else {
-            restoreImeWindow()
-        }
+        if (floating) floatingWindow.enable() else floatingWindow.restore()
     }
 
     override fun onFloatingKeyboardDragged(deltaX: Float, deltaY: Float) {
-        if (!floatingWindowEnabled) return
-        floatingWindowX += deltaX.toInt()
-        floatingWindowY += deltaY.toInt()
-        applyFloatingWindowLayout()
+        floatingWindow.drag(deltaX, deltaY)
     }
 
     override fun onSpace() {
@@ -1387,133 +1379,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     }
 
     private fun dropLastCodePoint(text: String): String = dropLastCodePointSafe(text)
-
-    /**
-     * The floating keyboard is an actual IME window, not a card translated
-     * inside the 296dp keyboard view.  That keeps it draggable over the whole
-     * display while retaining the system IME token and editor connection.
-     */
-    private fun scheduleFloatingWindowLayout(resetPosition: Boolean) {
-        mainHandler.post {
-            val imeWindow = getWindow().window ?: return@post
-            val attrs = imeWindow.attributes
-            if (baseImeGravity == null) {
-                baseImeGravity = attrs.gravity
-                baseImeWidth = attrs.width
-                baseImeHeight = attrs.height
-                baseImeSoftInputMode = attrs.softInputMode
-            }
-            val (screenWidth, screenHeight) = displaySize()
-            // Keep the floating window compact but usable. Portrait follows
-            // the available width; landscape uses the compact reference card
-            // size so it does not become a second full-width keyboard.
-            val desiredWidth = floatingWindowWidth(screenWidth).coerceIn(
-                dp(320),
-                (screenWidth - dp(24)).coerceAtLeast(dp(320)),
-            )
-            val currentHeight = (keyboardView?.measuredHeight ?: dp(302)).coerceAtLeast(dp(1))
-            if (resetPosition) {
-                floatingWindowX = ((screenWidth - desiredWidth) / 2).coerceAtLeast(0)
-                floatingWindowY = ((screenHeight - currentHeight) / 2).coerceAtLeast(dp(16))
-            }
-            val bounds = floatingWindowBounds(screenWidth, screenHeight, desiredWidth, currentHeight)
-            attrs.gravity = Gravity.TOP or Gravity.START
-            attrs.width = desiredWidth
-            attrs.height = currentHeight
-            attrs.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
-            attrs.x = floatingWindowX.coerceIn(bounds[0], bounds[1])
-            attrs.y = floatingWindowY.coerceIn(bounds[2], bounds[3])
-            floatingWindowX = attrs.x
-            floatingWindowY = attrs.y
-            imeWindow.attributes = attrs
-            if (verboseLogging) Log.d(TAG, "floating-window x=${attrs.x} y=${attrs.y} w=${attrs.width} h=${attrs.height}")
-        }
-    }
-
-    private fun applyFloatingWindowLayout() {
-        if (!floatingWindowEnabled) return
-        val imeWindow = getWindow().window ?: return
-        val (screenWidth, screenHeight) = displaySize()
-        val attrs = imeWindow.attributes
-        val width = if (attrs.width > 0) attrs.width else floatingWindowWidth(screenWidth)
-        val height = (
-            keyboardView?.measuredHeight?.takeIf { it > 0 }
-                ?: imeWindow.decorView.height.takeIf { it > 0 }
-                ?: dp(302)
-            )
-        val bounds = floatingWindowBounds(screenWidth, screenHeight, width, height)
-        floatingWindowX = floatingWindowX.coerceIn(bounds[0], bounds[1])
-        floatingWindowY = floatingWindowY.coerceIn(bounds[2], bounds[3])
-        attrs.gravity = Gravity.TOP or Gravity.START
-        attrs.width = width
-        attrs.height = height
-        attrs.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
-        attrs.x = floatingWindowX
-        attrs.y = floatingWindowY
-        imeWindow.attributes = attrs
-        if (verboseLogging) Log.d(TAG, "floating-window-drag x=$floatingWindowX y=$floatingWindowY w=$width h=$height")
-    }
-
-    private fun restoreImeWindow() {
-        mainHandler.post {
-            val imeWindow = getWindow().window ?: return@post
-            val attrs = imeWindow.attributes
-            attrs.gravity = baseImeGravity ?: Gravity.BOTTOM
-            attrs.width = baseImeWidth ?: WindowManager.LayoutParams.MATCH_PARENT
-            attrs.height = baseImeHeight ?: WindowManager.LayoutParams.WRAP_CONTENT
-            baseImeSoftInputMode?.let { attrs.softInputMode = it }
-            attrs.x = 0
-            attrs.y = 0
-            imeWindow.attributes = attrs
-            floatingWindowEnabled = false
-            if (verboseLogging) Log.d(TAG, "floating-window-restored")
-        }
-    }
-
-    /** Return [minX, maxX, minY, maxY] for a visible floating IME card. */
-    private fun floatingWindowBounds(
-        screenWidth: Int,
-        screenHeight: Int,
-        windowWidth: Int,
-        windowHeight: Int,
-    ): IntArray {
-        val margin = dp(12)
-        val minX = margin
-        val maxX = (screenWidth - windowWidth - margin).coerceAtLeast(minX)
-        val minY = margin
-        val maxY = (screenHeight - windowHeight - margin).coerceAtLeast(minY)
-        return intArrayOf(minX, maxX, minY, maxY)
-    }
-
-    private fun floatingWindowWidth(screenWidth: Int): Int {
-        // Keep the landscape card at the compact reference size instead of
-        // letting a wide display turn it into a second full-width keyboard.
-        // The edge clamp below still protects small screens and insets.
-        val landscape = resources.configuration.orientation ==
-            android.content.res.Configuration.ORIENTATION_LANDSCAPE
-        val preferred = if (landscape) {
-            dp(ImeGeometryTokens.FLOATING_LANDSCAPE_WIDTH_DP)
-        } else {
-            (screenWidth * 0.88f).toInt()
-        }
-        val maximum = dp(if (landscape) {
-            ImeGeometryTokens.FLOATING_LANDSCAPE_WIDTH_DP
-        } else {
-            400
-        })
-        return minOf(
-            preferred,
-            maximum,
-            (screenWidth - dp(16)).coerceAtLeast(dp(1)),
-        ).coerceAtLeast(dp(320))
-    }
-
-    private fun displaySize(): Pair<Int, Int> {
-        val metrics = resources.displayMetrics
-        return metrics.widthPixels to metrics.heightPixels
-    }
-
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     @Suppress("DEPRECATION")
     private fun currentSystemSubtypeLocale(): String? =
