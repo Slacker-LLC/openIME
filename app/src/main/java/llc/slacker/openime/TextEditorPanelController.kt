@@ -42,7 +42,7 @@ internal class TextEditorPanelController(
             createHeader("文本编辑"),
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(48),
+                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
             ),
         )
 
@@ -62,7 +62,7 @@ internal class TextEditorPanelController(
             actionControls[action] = ActionControl(label, control)
             quick.addView(
                 control,
-                LinearLayout.LayoutParams(0, toPx(48), 1f).apply {
+                LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f).apply {
                     marginEnd = toPx(5)
                 },
             )
@@ -71,7 +71,7 @@ internal class TextEditorPanelController(
             quick,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(48),
+                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
             ).apply { bottomMargin = toPx(10) },
         )
 
@@ -114,7 +114,7 @@ internal class TextEditorPanelController(
             rowItems.forEach { item ->
                 row.addView(
                     item,
-                    LinearLayout.LayoutParams(0, toPx(48), 1f).apply {
+                    LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f).apply {
                         marginEnd = toPx(5)
                     },
                 )
@@ -123,7 +123,7 @@ internal class TextEditorPanelController(
                 row,
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
-                    toPx(48),
+                    toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
                 ).apply { bottomMargin = toPx(5) },
             )
         }

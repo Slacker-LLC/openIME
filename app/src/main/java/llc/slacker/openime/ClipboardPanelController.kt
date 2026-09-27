@@ -58,7 +58,7 @@ internal class ClipboardPanelController(
                 createHeader("剪贴板"),
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
-                    toPx(48),
+                    toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
                 ),
             )
         } else {
@@ -83,7 +83,7 @@ internal class ClipboardPanelController(
             tabs,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(48),
+                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
             ).apply { bottomMargin = toPx(8) },
         )
 
@@ -206,7 +206,7 @@ internal class ClipboardPanelController(
             },
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
-                toPx(48),
+                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
             ).apply { topMargin = toPx(8) },
         )
     }
@@ -222,7 +222,7 @@ internal class ClipboardPanelController(
             },
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(48),
+                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
             ).apply { bottomMargin = toPx(8) },
         )
 
@@ -245,7 +245,7 @@ internal class ClipboardPanelController(
                     quickPhraseRow(phrase),
                     LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
-                        toPx(48),
+                        toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
                     ).apply { bottomMargin = toPx(7) },
                 )
             }
@@ -263,7 +263,7 @@ internal class ClipboardPanelController(
                     setPadding(toPx(12), 0, toPx(12), 0)
                     tag = "phrase:${phrase.id}"
                 },
-                LinearLayout.LayoutParams(0, toPx(48), 1f).apply {
+                LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f).apply {
                     marginEnd = toPx(5)
                 },
             )
@@ -275,7 +275,7 @@ internal class ClipboardPanelController(
                         onOpenQuickPhraseEditor(phrase)
                     }
                 },
-                LinearLayout.LayoutParams(toPx(48), toPx(48)).apply {
+                LinearLayout.LayoutParams(toPx(ImeGeometryTokens.TOUCH_TARGET_DP), toPx(ImeGeometryTokens.TOUCH_TARGET_DP)).apply {
                     marginEnd = toPx(5)
                 },
             )
@@ -303,7 +303,7 @@ internal class ClipboardPanelController(
                         dialog.show()
                     }
                 },
-                LinearLayout.LayoutParams(toPx(48), toPx(48)),
+                LinearLayout.LayoutParams(toPx(ImeGeometryTokens.TOUCH_TARGET_DP), toPx(ImeGeometryTokens.TOUCH_TARGET_DP)),
             )
         }
 
@@ -393,7 +393,7 @@ internal class ClipboardPanelController(
                 render(reusePanel = true)
                 focusEntryPoint()
             },
-            LinearLayout.LayoutParams(0, toPx(48), 1f).apply {
+            LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f).apply {
                 marginEnd = toPx(6)
             },
         )
@@ -401,13 +401,13 @@ internal class ClipboardPanelController(
             retentionAction("清空全部", destructive = true) {
                 showClearConfirmation(body)
             },
-            LinearLayout.LayoutParams(0, toPx(48), 1f),
+            LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f),
         )
         body.addView(
             row,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(48),
+                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
             ).apply { topMargin = toPx(6) },
         )
         applyTheme()
@@ -426,7 +426,7 @@ internal class ClipboardPanelController(
                 render(reusePanel = true)
                 focusEntryPoint()
             },
-            LinearLayout.LayoutParams(0, toPx(48), 1f).apply {
+            LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f).apply {
                 marginEnd = toPx(6)
             },
         )
@@ -439,13 +439,13 @@ internal class ClipboardPanelController(
                 tag = "clipboard-clear-confirm"
                 contentDescription = "确认清空全部剪贴历史"
             },
-            LinearLayout.LayoutParams(0, toPx(48), 1f),
+            LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f),
         )
         body.addView(
             row,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(48),
+                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
             ).apply { topMargin = toPx(6) },
         )
         applyTheme()
@@ -460,8 +460,8 @@ internal class ClipboardPanelController(
         text = label
         textSize = ImeTypographyTokens.PANEL_NOTE_SP
         gravity = Gravity.CENTER
-        minHeight = toPx(48)
-        minimumHeight = toPx(48)
+        minHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
+        minimumHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
         isClickable = true
         isFocusable = true
         tag = if (destructive) {

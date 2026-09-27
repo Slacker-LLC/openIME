@@ -96,7 +96,7 @@ internal class CandidateBarController(
                     createItem(index, candidate),
                     LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.WRAP_CONTENT,
-                        toPx(48),
+                        toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
                     ).apply { marginEnd = toPx(6) },
                 )
             } else {
@@ -188,7 +188,7 @@ internal class CandidateBarController(
             createHeader(),
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(48),
+                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
             ),
         )
 
@@ -275,7 +275,7 @@ internal class CandidateBarController(
         LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            minimumHeight = toPx(48)
+            minimumHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
             isFocusable = true
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             isClickable = true

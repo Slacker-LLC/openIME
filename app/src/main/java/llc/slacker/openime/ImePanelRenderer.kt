@@ -119,7 +119,7 @@ internal class ImePanelRenderer(
             body,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                imeHeightPx() - toPx(48),
+                imeHeightPx() - toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
             ),
         )
     }
@@ -240,7 +240,7 @@ internal class ImePanelRenderer(
             candidateRow,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(48),
+                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
             ).apply { bottomMargin = toPx(7) },
         )
 
@@ -299,22 +299,22 @@ internal class ImePanelRenderer(
         clearButton = createKey("清空", true, 13f) { pad.clear() }
         actions.addView(
             undoButton,
-            LinearLayout.LayoutParams(0, toPx(48), 1f).apply { marginEnd = toPx(6) },
+            LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f).apply { marginEnd = toPx(6) },
         )
         actions.addView(
             clearButton,
-            LinearLayout.LayoutParams(0, toPx(48), 1f).apply { marginEnd = toPx(6) },
+            LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f).apply { marginEnd = toPx(6) },
         )
         actions.addView(
             createKey("空格", true, 13f, onSpace),
-            LinearLayout.LayoutParams(0, toPx(48), 1f),
+            LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f),
         )
         refreshStrokeActions(false)
         body.addView(
             actions,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(48),
+                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
             ),
         )
 
@@ -367,13 +367,13 @@ internal class ImePanelRenderer(
                 chip,
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
-                    toPx(48),
+                    toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
                 ).apply { marginEnd = toPx(6) },
             )
         }
         addView(
             row,
-            ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, toPx(48)),
+            ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, toPx(ImeGeometryTokens.TOUCH_TARGET_DP)),
         )
         setOnScrollChangeListener { _, scrollX, _, _, _ ->
             chipScrollPositions[scrollKey] = scrollX
@@ -434,7 +434,7 @@ internal class ImePanelRenderer(
             tabs,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(48),
+                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
             ).apply { bottomMargin = toPx(8) },
         )
 
@@ -452,7 +452,7 @@ internal class ImePanelRenderer(
                 },
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
-                    toPx(48),
+                    toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
                 ).apply { bottomMargin = toPx(8) },
             )
         }
@@ -492,7 +492,7 @@ internal class ImePanelRenderer(
                 row,
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
-                    toPx(48),
+                    toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
                 ).apply { bottomMargin = toPx(6) },
             )
         }
@@ -527,7 +527,7 @@ internal class ImePanelRenderer(
             tabs,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(48),
+                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
             ).apply { bottomMargin = toPx(10) },
         )
 
@@ -547,7 +547,7 @@ internal class ImePanelRenderer(
                 },
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
-                    toPx(48),
+                    toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
                 ),
             )
         }
@@ -563,7 +563,7 @@ internal class ImePanelRenderer(
                 row,
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
-                    toPx(48),
+                    toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
                 ).apply { bottomMargin = toPx(4) },
             )
         }
@@ -587,7 +587,7 @@ internal class ImePanelRenderer(
             createHeader(title),
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(48),
+                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
             ),
         )
     }
@@ -601,8 +601,8 @@ internal class ImePanelRenderer(
         textSize = ImeTypographyTokens.CAPTION_SP
         gravity = Gravity.CENTER
         includeFontPadding = false
-        minWidth = toPx(48)
-        minimumHeight = toPx(48)
+        minWidth = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
+        minimumHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
         setPadding(toPx(10), 0, toPx(10), 0)
         tag = if (active) "tab-active" else "panel-tab"
         contentDescription = "$label，${if (active) "已选中" else "未选中"}"

@@ -24,7 +24,7 @@ internal class PanelHeaderFactory(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(toPx(10), 0, toPx(10), 0)
-            minimumHeight = toPx(48)
+            minimumHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
             tag = "panel-head"
 
             addView(
@@ -34,8 +34,8 @@ internal class PanelHeaderFactory(
                     scaleType = ImageView.ScaleType.CENTER_INSIDE
                     isClickable = true
                     isFocusable = true
-                    minimumHeight = toPx(48)
-                    minimumWidth = toPx(48)
+                    minimumHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
+                    minimumWidth = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
                     contentDescription = "返回$backTarget"
                     setOnTouchListener { _, event ->
                         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
@@ -48,7 +48,7 @@ internal class PanelHeaderFactory(
                         onBack()
                     }
                 },
-                LinearLayout.LayoutParams(toPx(48), toPx(48)),
+                LinearLayout.LayoutParams(toPx(ImeGeometryTokens.TOUCH_TARGET_DP), toPx(ImeGeometryTokens.TOUCH_TARGET_DP)),
             )
 
             addView(

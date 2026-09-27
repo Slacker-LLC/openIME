@@ -84,7 +84,7 @@ internal class SettingsPanelController(
                 createHeader("偏好设置"),
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
-                    toPx(48),
+                    toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
                 ),
             )
         } else {
@@ -233,7 +233,7 @@ internal class SettingsPanelController(
             createHeader("模糊音纠错"),
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(48),
+                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
             ),
         )
         val scroll = ScrollView(context).apply {
@@ -611,14 +611,14 @@ internal class SettingsPanelController(
                             applyAccentColor(hex)
                         }
                     },
-                    LinearLayout.LayoutParams(toPx(48), toPx(48)),
+                    LinearLayout.LayoutParams(toPx(ImeGeometryTokens.TOUCH_TARGET_DP), toPx(ImeGeometryTokens.TOUCH_TARGET_DP)),
                 )
             }
             swatchGrid.addView(
                 swatchRow,
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
-                    toPx(48),
+                    toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
                 ),
             )
         }
@@ -644,8 +644,8 @@ internal class SettingsPanelController(
                 ellipsize = TextUtils.TruncateAt.END
                 setPadding(toPx(10), 0, toPx(10), 0)
                 tag = "accent-custom"
-                minHeight = toPx(48)
-                minimumHeight = toPx(48)
+                minHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
+                minimumHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
                 isClickable = true
                 isFocusable = true
                 contentDescription =
@@ -659,7 +659,7 @@ internal class SettingsPanelController(
                     showCustomAccentDialog()
                 }
             },
-            LinearLayout.LayoutParams(toPx(132), toPx(48)).apply {
+            LinearLayout.LayoutParams(toPx(132), toPx(ImeGeometryTokens.TOUCH_TARGET_DP)).apply {
                 topMargin = toPx(6)
             },
         )
@@ -770,7 +770,7 @@ internal class SettingsPanelController(
             textSize = 12f
             gravity = Gravity.CENTER
             includeFontPadding = false
-            minWidth = toPx(48)
+            minWidth = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
             contentDescription = "$labelText 当前值"
         }
         val suffix = when (labelText) {
@@ -783,7 +783,7 @@ internal class SettingsPanelController(
             this.min = min
             this.max = max
             progress = initial.coerceIn(min, max)
-            minimumHeight = toPx(48)
+            minimumHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
             isFocusable = true
             tag = "settings-slider:$labelText"
             setOnSeekBarChangeListener(
@@ -817,7 +817,7 @@ internal class SettingsPanelController(
         )
         row.addView(
             valueView,
-            LinearLayout.LayoutParams(toPx(48), toPx(48)),
+            LinearLayout.LayoutParams(toPx(ImeGeometryTokens.TOUCH_TARGET_DP), toPx(ImeGeometryTokens.TOUCH_TARGET_DP)),
         )
         val initialDescription =
             "$labelText，${seekBar.progress}$suffix"
@@ -858,7 +858,7 @@ internal class SettingsPanelController(
     private fun chipParams() =
         LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            toPx(48),
+            toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
         ).apply { bottomMargin = toPx(12) }
 
     private fun groupParams() =
