@@ -1312,6 +1312,15 @@ open class ImeKeyboardView(
         updateTopZone(state.composition.isNotEmpty())
         renderCandidateRow()
         syncCandidateExpandControl()
+        syncEnterKeyPresentation(state.editorInfo?.imeOptions)
+    }
+
+    private fun syncEnterKeyPresentation(imeOptions: Int?) {
+        val options = imeOptions ?: return
+        val enter = findViewWithTag<ImeKeyView>("key-enter") ?: return
+        val label = enterKeyPresentationFor(options).label
+        enter.setMainText(label)
+        enter.contentDescription = label
     }
 
     /** Keep sensitive editors from exposing persistent clipboard history. */
