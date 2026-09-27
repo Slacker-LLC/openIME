@@ -34,6 +34,10 @@ internal object ImeGeometryTokens {
     const val SWITCH_KNOB_TRAVEL_DP = SWITCH_WIDTH_DP - SWITCH_PADDING_DP * 2 - SWITCH_KNOB_DP
     const val KEY_ROW_GAP_DP = 6
     const val KEY_SIDE_MARGIN_DP = 2
+    const val KEY_POPUP_HEIGHT_DP = 76
+    const val KEY_POPUP_MIN_WIDTH_DP = 40
+    const val KEY_POPUP_MAX_WIDTH_DP = 96
+    const val KEY_POPUP_VERTICAL_GAP_DP = 8
     const val LANDSCAPE_KEY_ROW_HEIGHT_DP = 40
     const val FLOATING_LANDSCAPE_WIDTH_DP = 368
     // The toolbar itself is compact; the top zone still reserves the larger
