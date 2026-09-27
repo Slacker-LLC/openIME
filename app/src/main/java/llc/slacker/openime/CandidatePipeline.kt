@@ -30,6 +30,7 @@ interface CandidateResolver {
 class CandidatePipeline(
     private val engine: CandidateEngine,
     private val nineKeyUiState: NineKeyUiState = NineKeyUiState(),
+    private val nineKeyFallbackRegistry: NineKeyFallbackRegistry = NineKeyFallbackRegistry(),
 ) : CandidateResolver {
     /**
      * [pinyinPaths] keeps its historical name for Listener compatibility. For
@@ -155,7 +156,7 @@ class CandidatePipeline(
             .take(MAX_CANDIDATES)
 
         nineKeyUiState.remember(nativeInput, displayPaths, segmentPrefix)
-        NineKeyFallbackRegistry.remember(nativeInput, candidates)
+        nineKeyFallbackRegistry.remember(nativeInput, candidates)
         return NineKeyResolution(
             preview = preview,
             pinyinPaths = listOfNotNull(nativeInput),
@@ -163,6 +164,9 @@ class CandidatePipeline(
             displayPinyinPaths = displayPaths,
         )
     }
+
+    internal fun nineKeyFallbackCandidatesFor(code: String): List<String> =
+        nineKeyFallbackRegistry.candidatesFor(code)
 
     override fun nineKeyPathsFor(code: String?): List<String> =
         nineKeyUiState.pathsFor(code)
