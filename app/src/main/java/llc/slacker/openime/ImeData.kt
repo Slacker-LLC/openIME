@@ -769,9 +769,10 @@ object ImeData {
         ),
     )
 
-    // Legacy shape retained for callers/tests that only need a single flat set.
+    // Preserve the old flat smiley shape without eagerly duplicating the full
+    // categorized catalog. Production UI reads emojiByCategory directly.
     val emojis: LinkedHashMap<String, List<String>> = linkedMapOf(
-        "表情" to emojiByCategory.values.flatten().distinct(),
+        "表情" to fluentSmileys,
     )
 
     val clipboardDemo = listOf(
