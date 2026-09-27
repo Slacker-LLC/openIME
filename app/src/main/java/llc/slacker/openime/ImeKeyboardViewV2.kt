@@ -150,7 +150,7 @@ class ImeKeyboardViewV2(
         try {
             if (repaired != text) editor.setText(repaired)
             editor.setSelection(repairedCursor.coerceIn(0, repaired.length))
-            adapter.onNineKeyCompositionChanged(
+            listenerDelegate.onNineKeyCompositionChanged(
                 composition = repaired,
                 digitBuffer = digitCode,
                 pinyinPaths = listOf(nativeCode),
