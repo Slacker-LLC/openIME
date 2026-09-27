@@ -187,6 +187,28 @@ open class ImeKeyboardView(
         onShowClearPopup = { anchor -> showPopup(anchor, "清空") },
         onHidePopup = ::hidePopup,
     )
+    private val backspaceKeyFactory: BackspaceKeyFactory by lazy {
+        BackspaceKeyFactory(
+            context = context,
+            toPx = ::dp,
+            gestureController = backspaceGestureController,
+            createBaseKey = { onTap ->
+                key(
+                    text = "",
+                    func = true,
+                    secondary = null,
+                    mainTextSizeOverride = 15f,
+                    iconRes = R.drawable.ic_backspace,
+                    onTap = onTap,
+                )
+            },
+            currentTokens = ::currentThemeTokens,
+            onDeleteOne = ::performBackspaceOnce,
+            onFeedback = ::feedback,
+            onClearAll = listener::onClearAll,
+            debugLogging = { debugLogging },
+        )
+    }
     private val spaceVoiceGestureController = SpaceVoiceGestureController(
         toPx = ::dp,
         canStartVoice = { voiceAllowed },
@@ -2557,97 +2579,8 @@ open class ImeKeyboardView(
         if (!deleteCompositionAtCursor()) listener.onBackspace()
     }
 
-    private fun backspaceKey(): ImeKeyView = key("", true, null, 1f, 15f, iconRes = R.drawable.ic_backspace) {
-        performBackspaceOnce()
-    }.apply {
-        tag = "key-backspace"
-        contentDescription = "删除，向上滑清空"
-        accessibilityDelegate = object : View.AccessibilityDelegate() {
-            override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfo) {
-                super.onInitializeAccessibilityNodeInfo(host, info)
-                info.addAction(
-                    AccessibilityNodeInfo.AccessibilityAction(
-                        R.id.accessibility_clear_all,
-                        "清空全部",
-                    ),
-                )
-            }
-
-            override fun performAccessibilityAction(host: View, action: Int, args: android.os.Bundle?): Boolean {
-                if (action == R.id.accessibility_clear_all) {
-                    if (!host.isEnabled) return false
-                    feedback()
-                    listener.onClearAll()
-                    return true
-                }
-                return super.performAccessibilityAction(host, action, args)
-            }
-        }
-        val clearHint = TextView(context).apply {
-            text = "↑ 清空"
-            textSize = 7.5f
-            gravity = Gravity.CENTER
-            includeFontPadding = false
-            alpha = 0.72f
-            setTextColor(Color.GRAY)
-            isClickable = false
-            isFocusable = false
-            tag = "backspace-clear-hint"
-            contentDescription = null
-            visibility = View.INVISIBLE
-        }
-        addView(clearHint, FrameLayout.LayoutParams(dp(30), dp(14)).apply {
-            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            topMargin = dp(2)
-        })
-        fun setClearHintActive(active: Boolean) {
-            clearHint.visibility = if (backspaceGestureController.active) View.VISIBLE else View.INVISIBLE
-            if (active) {
-                val destructive = theme.tokens(
-                    appearance,
-                    isNight(),
-                    AccentPalette.parse(skinPrimaryColor),
-                ).destructive
-                clearHint.text = "清空"
-                clearHint.setTextColor(ImeDrawableFactory.contrastText(destructive))
-                clearHint.background = ImeDrawableFactory.rounded(destructive, dp(ImeGeometryTokens.BADGE_RADIUS_DP))
-                clearHint.alpha = 1f
-            } else {
-                val secondary = theme.tokens(
-                    appearance,
-                    isNight(),
-                    AccentPalette.parse(skinPrimaryColor),
-                ).keySecondaryText
-                clearHint.text = "↑ 清空"
-                clearHint.setTextColor(secondary)
-                clearHint.background = null
-                clearHint.alpha = 0.72f
-            }
-        }
-        setOnTouchListener { view, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    clearHint.alpha = 1f
-                    backspaceGestureController.begin(
-                        view,
-                        event.getPointerId(event.actionIndex),
-                        event.rawX,
-                        event.rawY,
-                        ::setClearHintActive,
-                    )
-                    if (debugLogging) Log.d("OpenIme", "backspace-touch-down x=${event.rawX} y=${event.rawY}")
-                    true
-                }
-                // The keyboard root owns MOVE/UP so the gesture survives even
-                // when the finger leaves this key's rectangle.
-                MotionEvent.ACTION_MOVE,
-                MotionEvent.ACTION_UP,
-                MotionEvent.ACTION_CANCEL,
-                -> true
-                else -> true
-            }
-        }
-    }
+    private fun backspaceKey(): ImeKeyView =
+        backspaceKeyFactory.build()
 
     private fun title(text: String, small: Boolean = false) = TextView(context).apply {
         this.text = text
