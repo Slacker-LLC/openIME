@@ -693,7 +693,9 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
 
     override fun onPanelChanged(panel: Panel) {
         state = state.copy(panel = panel)
-        if (panel != Panel.GAMING && floatingWindowEnabled) restoreImeWindow()
+        // Panels are content inside the current IME window. Opening Tools,
+        // Clipboard or Settings must not silently cancel a user-selected
+        // floating window mode.
         if (panel == Panel.TEXT_EDITOR) mainHandler.post(::refreshTextEditControls)
     }
 
