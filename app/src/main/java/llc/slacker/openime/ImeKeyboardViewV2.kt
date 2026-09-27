@@ -12,7 +12,6 @@ import android.view.WindowInsets
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.EditText
 import android.widget.LinearLayout
-import android.widget.TextView
 import kotlin.math.abs
 
 /**
@@ -31,12 +30,9 @@ class ImeKeyboardViewV2 private constructor(
     private var repairingEarlierNineKeySegment = false
 
     /**
-     * [syncProductionKeyPresentation] walks the whole key tree three times
-     * (space geometry, Enter label, handwriting capability). onMeasure fires on
-     * every key tap, every async candidate callback, every insets change and
-     * every rotation, so the previous unconditional call made ~450 node visits
-     * per keystroke. Geometry only depends on the editor's IME options and on
-     * explicit invalidate calls; gate on those.
+     * Production presentation sync is gated because onMeasure runs frequently.
+     * Space geometry and Enter labeling depend on the current hierarchy/editor;
+     * do not rescan the tree when neither changed.
      */
     private var presentationDirty = true
     private var lastSyncedImeOptions: Int? = null
@@ -51,14 +47,9 @@ class ImeKeyboardViewV2 private constructor(
             presentationDirty = true
             post { syncProductionKeyPresentation() }
         }
-        adapter.afterPanelChanged = { panel ->
+        adapter.afterPanelChanged = {
             presentationDirty = true
-            when (panel) {
-                Panel.CLIPBOARD -> post {
-                    syncProductionKeyPresentation()
-                }
-                else -> post { syncProductionKeyPresentation() }
-            }
+            post { syncProductionKeyPresentation() }
         }
         post { syncProductionKeyPresentation() }
 
@@ -242,7 +233,6 @@ class ImeKeyboardViewV2 private constructor(
         lastSyncedImeOptions = imeOptions
         normalizeSpaceRowGeometry()
         syncEnterKeyPresentation()
-        syncHandwritingCapability()
     }
 
     /**
@@ -296,37 +286,6 @@ class ImeKeyboardViewV2 private constructor(
             if (view is ImeKeyView && view.tag == "key-enter") {
                 view.setMainText(label)
                 view.contentDescription = label
-            }
-            if (view is ViewGroup) {
-                for (index in 0 until view.childCount) visit(view.getChildAt(index))
-            }
-        }
-        visit(this)
-    }
-
-    /** Do not expose a dead handwriting flow while production has no recognizer. */
-    private fun syncHandwritingCapability() {
-        if (HandwritingFeaturePolicy.entryEnabled(UnavailableHandwritingProvider)) return
-
-        fun markUnavailableLabel(view: View) {
-            if (view is TextView && view.text.toString() == "手写输入") {
-                view.text = "手写输入·未配置"
-            }
-            if (view is ViewGroup) {
-                for (index in 0 until view.childCount) markUnavailableLabel(view.getChildAt(index))
-            }
-        }
-
-        fun visit(view: View) {
-            if (view.contentDescription?.toString() == "手写输入") {
-                view.isEnabled = false
-                view.isClickable = false
-                view.isLongClickable = false
-                view.alpha = 0.38f
-                view.contentDescription = "手写输入（未配置）"
-                if (Build.VERSION.SDK_INT >= 30) view.stateDescription = "不可用"
-                markUnavailableLabel(view)
-                return
             }
             if (view is ViewGroup) {
                 for (index in 0 until view.childCount) visit(view.getChildAt(index))
