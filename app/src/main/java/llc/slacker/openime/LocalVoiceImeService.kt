@@ -214,8 +214,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         }
         state = state.copy(
             editorInfo = attribute,
-            editorAction = attribute?.imeOptions?.and(EditorInfo.IME_MASK_ACTION)
-                ?: EditorInfo.IME_ACTION_NONE,
             passwordField = EditorInfoAdapter.isPassword(kind),
             keyboardMode = nextMode,
             panel = Panel.NONE,
@@ -582,7 +580,11 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         finalizeVoiceCorrectionIfNeeded()
         invalidateCandidateQueries()
         rime.clear()
-        state = state.withMode(mode)
+        state = state.copy(
+            keyboardMode = mode,
+            composition = "",
+            candidates = emptyList(),
+        )
         lastComposition = ""
         keyboardView?.renderState(state)
         if (mode == KeyboardMode.ENGLISH_26) {
