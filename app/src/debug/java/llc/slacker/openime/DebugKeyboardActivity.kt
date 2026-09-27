@@ -127,7 +127,7 @@ class DebugKeyboardActivity : Activity(), ImeKeyboardView.Listener, CandidateRes
     }
 
     override fun onVoiceToggle() {
-        keyboard.toggleVoiceFromSpace()
+        keyboard.startVoiceFromSpace()
         status.text = "voice-toggle"
     }
 
