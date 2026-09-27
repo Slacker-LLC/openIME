@@ -317,7 +317,11 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             // feeds the effective mode back through onModeChanged().
             keyboardView?.setMode(nextMode)
         } else {
-            state = state.withMode(nextMode)
+            state = state.copy(
+                keyboardMode = nextMode,
+                composition = "",
+                candidates = emptyList(),
+            )
         }
         keyboardView?.renderState(state)
     }
