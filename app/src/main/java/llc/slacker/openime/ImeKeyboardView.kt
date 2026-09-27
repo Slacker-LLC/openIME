@@ -508,6 +508,15 @@ open class ImeKeyboardView(
     private val keyboardBody = LinearLayout(context)
     private val expandedPanel = LinearLayout(context)
     private val candidateOverlay = LinearLayout(context)
+    private val panelHeaderFactory: PanelHeaderFactory by lazy {
+        PanelHeaderFactory(
+            context = context,
+            toPx = ::dp,
+            previousPanel = { panelBackStack.lastOrNull() },
+            onBack = ::closePanelToKeyboard,
+            onFeedback = ::feedback,
+        )
+    }
     private val panelRenderer: ImePanelRenderer by lazy {
         ImePanelRenderer(
             context = context,
@@ -515,7 +524,7 @@ open class ImeKeyboardView(
             toPx = ::dp,
             panelBodyHeightPx = { dp(panelBodyHeightDp()) },
             imeHeightPx = { dp(imeHeightDp()) },
-            createHeader = ::panelHead,
+            createHeader = panelHeaderFactory::create,
             createKey = { text, function, textSize, onTap ->
                 key(
                     text = text,
@@ -568,7 +577,7 @@ open class ImeKeyboardView(
             expandedPanel = expandedPanel,
             toPx = ::dp,
             panelBodyHeightPx = { dp(panelBodyHeightDp()) },
-            createHeader = ::panelHead,
+            createHeader = panelHeaderFactory::create,
             createButton = ::button,
             listener = listener,
             isGestureSessionActive = { voiceGestureSession },
@@ -593,7 +602,7 @@ open class ImeKeyboardView(
             context = context,
             expandedPanel = expandedPanel,
             toPx = ::dp,
-            createHeader = ::panelHead,
+            createHeader = panelHeaderFactory::create,
             createSectionTitle = ::sectionTitle,
             createChipScroll = panelRenderer::panelChipScroll,
             currentTheme = { theme },
@@ -637,7 +646,7 @@ open class ImeKeyboardView(
             expandedPanel = expandedPanel,
             toPx = ::dp,
             panelBodyHeightPx = { dp(panelBodyHeightDp()) },
-            createHeader = ::panelHead,
+            createHeader = panelHeaderFactory::create,
             createKey = { text, textSize, onTap ->
                 key(
                     text = text,
@@ -667,7 +676,7 @@ open class ImeKeyboardView(
             expandedPanel = expandedPanel,
             toPx = ::dp,
             panelBodyHeightPx = { dp(panelBodyHeightDp()) },
-            createHeader = ::panelHead,
+            createHeader = panelHeaderFactory::create,
             createKey = { text, textSize, onTap ->
                 key(
                     text = text,
@@ -1049,7 +1058,7 @@ open class ImeKeyboardView(
             keyboardBody = keyboardBody,
             toPx = ::dp,
             keyRowHeightPx = { dp(keyRowHeightDp()) },
-            createHeader = { panelHead("候选字词") },
+            createHeader = { panelHeaderFactory.create("候选字词") },
             createExpandedCandidate = { candidate ->
                 key(candidate, false, null, 1f, 15f) {
                     listener.onCandidateSelected(candidate)
@@ -1877,66 +1886,6 @@ open class ImeKeyboardView(
             val entryPoint = expandedPanel.findViewWithTag<View>("key-panel-back") ?: return@post
             if (entryPoint.isShown && entryPoint.isFocusable) entryPoint.requestFocus()
         }
-    }
-
-    private fun panelHead(name: String): LinearLayout {
-        val backTarget = panelBackStack.lastOrNull()?.let(::panelTitle) ?: "键盘"
-        val nav = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(10), 0, dp(10), 0)
-            minimumHeight = dp(48)
-            tag = "panel-head"
-        }
-        nav.addView(
-            ImageView(context).apply {
-                tag = "key-panel-back"
-                setImageResource(R.drawable.ic_arrow_back)
-                scaleType = ImageView.ScaleType.CENTER_INSIDE
-                isClickable = true
-                isFocusable = true
-                minimumHeight = dp(48)
-                minimumWidth = dp(48)
-                contentDescription = "返回$backTarget"
-                setOnTouchListener { _, event ->
-                    if (event.actionMasked == MotionEvent.ACTION_DOWN) feedback()
-                    false
-                }
-                setOnClickListener {
-                    feedback()
-                    closePanelToKeyboard()
-                }
-            },
-            LinearLayout.LayoutParams(dp(48), dp(48)),
-        )
-        nav.addView(TextView(context).apply {
-            text = name
-            textSize = 13f
-            setPadding(dp(8), 0, 0, 0)
-            tag = "panel-title"
-        }, wrapParams())
-        return nav
-    }
-
-    private fun panelTitle(value: Panel): String = when (value) {
-        Panel.TOOLS -> "更多"
-        Panel.KEYBOARD_SELECT -> "切换键盘"
-        Panel.SYMBOLS -> "符号"
-        Panel.EMOJI -> "表情"
-        Panel.HANDWRITING -> "手写输入"
-        Panel.VOICE -> "语音"
-        Panel.CLIPBOARD -> "剪贴板"
-        Panel.TEXT_EDITOR -> "文本编辑"
-        Panel.SETTINGS -> "设置"
-        Panel.FUZZY_SETTINGS -> "模糊音纠错"
-        Panel.NONE, Panel.CANDIDATE_EXPANDED -> "键盘"
-    }
-
-    private fun addPanelHead(name: String) {
-        expandedPanel.addView(panelHead(name), LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(48),
-        ))
     }
 
     private fun stopVoiceIfActive() {
