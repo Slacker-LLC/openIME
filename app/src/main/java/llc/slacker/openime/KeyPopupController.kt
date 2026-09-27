@@ -99,7 +99,10 @@ internal class KeyPopupController(
                         onSymbolSelected(symbol)
                     }
                 },
-                LinearLayout.LayoutParams(dp(48), dp(48)),
+                LinearLayout.LayoutParams(
+                    dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+                    dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+                ),
             )
         }
 
