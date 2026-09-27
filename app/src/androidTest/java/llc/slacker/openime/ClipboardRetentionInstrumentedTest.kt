@@ -210,7 +210,7 @@ class ClipboardRetentionInstrumentedTest {
         return null
     }
 
-    private class NoopListener : ImeKeyboardViewV2.Listener {
+    private class NoopListener : ImeKeyboardView.Listener {
         var lastCharacter: String? = null
 
         override fun onModeChanged(mode: KeyboardMode) = Unit
