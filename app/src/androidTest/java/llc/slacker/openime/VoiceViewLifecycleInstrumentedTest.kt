@@ -36,9 +36,9 @@ class VoiceViewLifecycleInstrumentedTest {
         DirectActivityHarness(DebugKeyboardActivity::class.java).use { harness ->
             harness.launch()
             val recorder = Recorder()
-            lateinit var keyboard: ImeKeyboardViewV2
+            lateinit var keyboard: ImeKeyboardView
             harness.awaitMain { activity ->
-                keyboard = ImeKeyboardViewV2(activity, recorder.listener)
+                keyboard = ImeKeyboardView(activity, recorder.listener)
                 activity.findViewById<ViewGroup>(android.R.id.content).addView(keyboard)
                 keyboard.startVoiceFromSpace()
                 true
@@ -61,9 +61,9 @@ class VoiceViewLifecycleInstrumentedTest {
         DirectActivityHarness(DebugKeyboardActivity::class.java).use { harness ->
             harness.launch()
             val recorder = Recorder()
-            lateinit var keyboard: ImeKeyboardViewV2
+            lateinit var keyboard: ImeKeyboardView
             harness.awaitMain { activity ->
-                keyboard = ImeKeyboardViewV2(activity, recorder.listener)
+                keyboard = ImeKeyboardView(activity, recorder.listener)
                 activity.findViewById<ViewGroup>(android.R.id.content).addView(keyboard)
                 true
             }
