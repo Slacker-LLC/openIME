@@ -33,4 +33,4 @@
 
 ## 当前临时架构
 
-`ImeKeyboardViewV2` 是旧 renderer 上的生产兼容 wrapper，仍在使用，但属于待清理结构，不应继续往 V2 添加新业务能力。新 UI 抽取优先从 `ImeKeyboardView` 中机械迁移到具体组件/controller，最终删除 V2。
+生产运行时只有 `ImeKeyboardView`。历史兼容 wrapper `ImeKeyboardViewV2` 已删除；后续 UI 清理只从这个唯一 renderer 向具体组件/controller 机械拆分，不再引入 V1/V2 命名。
