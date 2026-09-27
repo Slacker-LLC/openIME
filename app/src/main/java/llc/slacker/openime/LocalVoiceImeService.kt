@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicLong
  * Native system IME service. The view is a thin native renderer; all candidate
  * state, editor side effects and privacy rules live here.
  */
-class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, CandidateResolver {
+class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, CandidateResolver {
 
     private data class CandidateDiagnostics(
         val learnedCount: Int = 0,
@@ -82,64 +82,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
      */
     private val verboseLogging: Boolean by lazy {
         (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
-    }
-
-    private val legacyAdapter = object : ImeKeyboardView.Listener {
-        override fun onModeChanged(mode: KeyboardMode) = this@LocalVoiceImeService.onModeChanged(mode)
-        override fun onPanelChanged(panel: Panel) = this@LocalVoiceImeService.onPanelChanged(panel)
-        override fun onCharacter(char: String) = this@LocalVoiceImeService.onCharacter(char)
-        override fun onBackspace() = this@LocalVoiceImeService.onBackspace()
-        override fun onClearAll() = this@LocalVoiceImeService.onClearAll()
-        override fun onSpace() = this@LocalVoiceImeService.onSpace()
-        override fun onFloatingKeyboardChanged(floating: Boolean) =
-            this@LocalVoiceImeService.onFloatingKeyboardChanged(floating)
-        override fun onFloatingKeyboardDragged(deltaX: Float, deltaY: Float) =
-            this@LocalVoiceImeService.onFloatingKeyboardDragged(deltaX, deltaY)
-        override fun onVoiceToggle() = this@LocalVoiceImeService.onVoiceToggle()
-        override fun onVoicePressChanged(pressed: Boolean) =
-            this@LocalVoiceImeService.onVoicePressChanged(pressed)
-        override fun onVoiceSessionStarted(autoCommitOnFinal: Boolean) =
-            this@LocalVoiceImeService.onVoiceSessionStarted(autoCommitOnFinal)
-        override fun onVoicePartial(text: String) = this@LocalVoiceImeService.onVoicePartial(text)
-        override fun onVoiceFinal(text: String) = this@LocalVoiceImeService.onVoiceFinal(text)
-        override fun onVoiceError(message: String) = this@LocalVoiceImeService.onVoiceError(message)
-        override fun onVoiceCommit() = this@LocalVoiceImeService.onVoiceCommit()
-        override fun onVoiceCancel() = this@LocalVoiceImeService.onVoiceCancel()
-        override fun voiceModelState() = this@LocalVoiceImeService.voiceModelState()
-        override fun startVoiceRecognition(languageTag: String, events: VoiceRecognitionEvents) =
-            this@LocalVoiceImeService.startVoiceRecognition(languageTag, events)
-        override fun stopVoiceRecognition() = this@LocalVoiceImeService.stopVoiceRecognition()
-        override fun cancelVoiceRecognition() = this@LocalVoiceImeService.cancelVoiceRecognition()
-        override fun onEnter() = this@LocalVoiceImeService.onEnter()
-        override fun onCompositionChanged(composition: String, candidates: List<String>) =
-            this@LocalVoiceImeService.onCompositionChanged(composition, candidates)
-        override fun onNineKeyCompositionChanged(
-            composition: String,
-            digitBuffer: String,
-            pinyinPaths: List<String>,
-            candidates: List<String>,
-        ) = this@LocalVoiceImeService.onNineKeyCompositionChanged(
-            composition,
-            digitBuffer,
-            pinyinPaths,
-            candidates,
-        )
-        override fun onCandidateSelected(candidate: String) =
-            this@LocalVoiceImeService.onCandidateSelected(candidate)
-        override fun onAssociationSelected(text: String) =
-            this@LocalVoiceImeService.onAssociationSelected(text)
-        override fun onCompositionBackspace() = this@LocalVoiceImeService.onCompositionBackspace()
-        override fun onThemeChanged(theme: ImeTheme) = this@LocalVoiceImeService.onThemeChanged(theme)
-        override fun onAppearanceChanged(appearance: ImeAppearance) = this@LocalVoiceImeService.onAppearanceChanged(appearance)
-        override fun onShiftStateChanged(state: ShiftState) = this@LocalVoiceImeService.onShiftStateChanged(state)
-        override fun onCandidateExpanded(open: Boolean) = this@LocalVoiceImeService.onCandidateExpanded(open)
-        override fun onSymbolSelected(symbol: String) = this@LocalVoiceImeService.onSymbolSelected(symbol)
-        override fun onEmojiSelected(emoji: String) = this@LocalVoiceImeService.onEmojiSelected(emoji)
-        override fun onTextEdit(action: String) = this@LocalVoiceImeService.onTextEdit(action)
-        override fun onSoundChanged(enabled: Boolean) = this@LocalVoiceImeService.onSoundChanged(enabled)
-        override fun onHapticChanged(enabled: Boolean) = this@LocalVoiceImeService.onHapticChanged(enabled)
-        override fun onPopupChanged(enabled: Boolean) = this@LocalVoiceImeService.onPopupChanged(enabled)
-        override fun onFuzzyChanged(enabled: Boolean) = this@LocalVoiceImeService.onFuzzyChanged(enabled)
     }
 
     override fun onCreate() {
