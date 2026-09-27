@@ -50,6 +50,10 @@ internal class FloatingWindowController(
     }
 
     fun restore() {
+        // Docking is a product-state transition, not a successful Window write.
+        // Record it synchronously so a disappearing IME window cannot leave the
+        // controller logically floating and cause an unwanted reapply on reopen.
+        enabled = false
         mainHandler.post {
             val imeWindow = windowProvider() ?: return@post
             val attrs = imeWindow.attributes
@@ -60,7 +64,6 @@ internal class FloatingWindowController(
             attrs.x = 0
             attrs.y = 0
             imeWindow.attributes = attrs
-            enabled = false
             debugLog("floating-window-restored")
         }
     }
