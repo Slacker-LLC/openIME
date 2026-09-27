@@ -190,8 +190,8 @@ internal class Pinyin9KeyboardRenderer(
             toPx(keyRowHeightDp()),
             weight,
         ).apply {
-            marginStart = toPx(2)
-            marginEnd = toPx(2)
+            marginStart = toPx(ImeGeometryTokens.KEY_SIDE_MARGIN_DP)
+            marginEnd = toPx(ImeGeometryTokens.KEY_SIDE_MARGIN_DP)
         }
 
     private fun sideKeyParams(
@@ -210,8 +210,8 @@ internal class Pinyin9KeyboardRenderer(
             toPx(nineBodyHeightDp()),
             weight,
         ).apply {
-            marginStart = toPx(2)
-            marginEnd = toPx(2)
+            marginStart = toPx(ImeGeometryTokens.KEY_SIDE_MARGIN_DP)
+            marginEnd = toPx(ImeGeometryTokens.KEY_SIDE_MARGIN_DP)
         }
 
     private companion object {

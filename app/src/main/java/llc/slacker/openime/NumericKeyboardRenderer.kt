@@ -228,8 +228,8 @@ internal class NumericKeyboardRenderer(
             toPx(keyRowHeightDp()),
             weight,
         ).apply {
-            marginStart = toPx(2)
-            marginEnd = toPx(2)
+            marginStart = toPx(ImeGeometryTokens.KEY_SIDE_MARGIN_DP)
+            marginEnd = toPx(ImeGeometryTokens.KEY_SIDE_MARGIN_DP)
         }
 
     private fun sideKeyParams(includeBottomGap: Boolean = false) =
@@ -246,8 +246,8 @@ internal class NumericKeyboardRenderer(
             toPx(nineBodyHeightDp()),
             weight,
         ).apply {
-            marginStart = toPx(2)
-            marginEnd = toPx(2)
+            marginStart = toPx(ImeGeometryTokens.KEY_SIDE_MARGIN_DP)
+            marginEnd = toPx(ImeGeometryTokens.KEY_SIDE_MARGIN_DP)
         }
 
     private companion object {
