@@ -18,6 +18,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -255,6 +256,22 @@ class AuditInteractionInstrumentedTest {
             assertEquals("Back from a child panel must restore its parent", Panel.SETTINGS, keyboard.currentPanel())
             assertTrue(keyboard.closePanelToKeyboard())
             assertEquals(Panel.NONE, keyboard.currentPanel())
+            true
+        }
+    }
+
+    @Test
+    fun emojiCategorySelectionReplacesTheRenderedGrid() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            keyboard.showPanel(Panel.EMOJI)
+            assertNotNull("Default smiley category must render a smiley", keyboard.findTestTarget("😀"))
+            assertTrue(keyboard.findTestTarget("人物/手势")!!.performClick())
+            assertNull("Switching category must replace, not append to, the old emoji grid", keyboard.findTestTarget("😀"))
+            assertNotNull("People category must render skin-tone variants", keyboard.findTestTarget("👍🏿"))
+
+            assertTrue(keyboard.findTestTarget("动物/自然")!!.performClick())
+            assertNotNull("Animal category must render its own content", keyboard.findTestTarget("🐶"))
+            assertNull("Previous people grid must be removed", keyboard.findTestTarget("👍🏿"))
             true
         }
     }
