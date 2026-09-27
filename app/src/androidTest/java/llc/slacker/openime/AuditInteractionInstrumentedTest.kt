@@ -391,6 +391,19 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun switchingIntoPasswordFieldClosesAnOpenClipboardPanel() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            keyboard.renderState(ImeState(passwordField = false))
+            keyboard.showPanel(Panel.CLIPBOARD)
+            assertEquals(Panel.CLIPBOARD, keyboard.currentPanel())
+            keyboard.renderState(ImeState(passwordField = true))
+            assertEquals("Sensitive editor must close persistent clipboard history immediately", Panel.NONE, keyboard.currentPanel())
+            assertTrue(keyboard.findViewWithTag<View>("main-dock").isShown)
+            true
+        }
+    }
+
+    @Test
     fun passwordFieldsDisableVoiceGestureButKeepSpaceKey() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.renderState(ImeState(passwordField = true))
