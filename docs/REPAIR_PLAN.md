@@ -134,7 +134,7 @@ Target: ImeKeyboardView becomes orchestration rather than the implementation hom
 
 ## Phase 7 — Single production keyboard view — completed
 
-The historical `ImeKeyboardViewV2` compatibility wrapper has been removed.
+The historical compatibility wrapper around the production keyboard has been removed.
 
 Its surviving responsibilities now have explicit owners:
 
