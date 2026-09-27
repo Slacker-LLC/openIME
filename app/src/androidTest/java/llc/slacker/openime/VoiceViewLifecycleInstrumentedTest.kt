@@ -18,8 +18,8 @@ class VoiceViewLifecycleInstrumentedTest {
         var finals = 0
         var presses = 0
         val listener = Proxy.newProxyInstance(
-            ImeKeyboardViewV2.Listener::class.java.classLoader,
-            arrayOf(ImeKeyboardViewV2.Listener::class.java),
+            ImeKeyboardView.Listener::class.java.classLoader,
+            arrayOf(ImeKeyboardView.Listener::class.java),
         ) { _, method, args ->
             when (method.name) {
                 "voiceModelState" -> VoiceModelLifecycleState.COLD
@@ -28,7 +28,7 @@ class VoiceViewLifecycleInstrumentedTest {
                 "onVoicePressChanged" -> { if (args!![0] == true) presses++; null }
                 else -> null
             }
-        } as ImeKeyboardViewV2.Listener
+        } as ImeKeyboardView.Listener
     }
 
     @Test
