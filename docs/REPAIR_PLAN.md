@@ -106,7 +106,7 @@ Product contract remains: Chinese 26-key, Chinese 9-key, English 26-key, numeric
 
 ## Phase 6 — Mechanically split ImeKeyboardView
 
-ImeKeyboardView is currently approximately 6,020 lines and is the dominant UI debt. Do not rewrite the state model and do not migrate to Compose during this phase.
+ImeKeyboardView started this phase at approximately 6,020 lines and was the dominant UI debt. Do not rewrite the state model and do not migrate to Compose during this phase.
 
 Extract by real UI/interaction boundaries:
 
