@@ -53,7 +53,7 @@ class CandidatePipelineTest {
         assertTrue(resolution.candidates.contains("你好"))
         assertFalse(resolution.candidates.any { candidate -> candidate.any(Char::isDigit) })
         assertEquals(resolution.candidates.distinct(), resolution.candidates)
-        assertEquals(resolution.candidates, NineKeyFallbackRegistry.candidatesFor("64426"))
+        assertEquals(resolution.candidates, pipeline.nineKeyFallbackCandidatesFor("64426"))
     }
 
     @Test
@@ -70,7 +70,7 @@ class CandidatePipelineTest {
         assertTrue("ni hao" in resolution.displayPinyinPaths)
         assertFalse("Suffix-only choices would drop ni when selected", resolution.candidates.contains("好"))
         assertTrue(resolution.candidates.contains("你好"))
-        assertEquals(resolution.candidates, NineKeyFallbackRegistry.candidatesFor("64'426"))
+        assertEquals(resolution.candidates, pipeline.nineKeyFallbackCandidatesFor("64'426"))
     }
 
     @Test
