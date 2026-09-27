@@ -164,7 +164,7 @@ class TextEditControlsInstrumentedTest {
         return null
     }
 
-    private class NoopListener : ImeKeyboardViewV2.Listener {
+    private class NoopListener : ImeKeyboardView.Listener {
         override fun onModeChanged(mode: KeyboardMode) = Unit
         override fun onPanelChanged(panel: Panel) = Unit
         override fun onCharacter(char: String) = Unit
