@@ -183,9 +183,9 @@ open class ImeKeyboardView(
     }
 
     private val repeatHandler = Handler(Looper.getMainLooper())
-    // Voice arms at the platform long-press threshold instead of a hard-coded
-    // 150 ms, so a deliberate-but-brief space press no longer opens the mic.
-    private val spaceVoiceTriggerMs = ViewConfiguration.getLongPressTimeout().toLong()
+    // Voice is a product gesture, not Android's generic context-menu
+    // long-press. Keep the explicit 150 ms threshold used by openIME.
+    private val spaceVoiceTriggerMs = ProductionKeyPolicy.SPACE_VOICE_TRIGGER_MS
     // Whether long-press alternate glyphs are shown as small corner hints.
     private var showSecondaryHints = true
     // Touch-coordinate trace logs are debug-only; they must never spam logcat
