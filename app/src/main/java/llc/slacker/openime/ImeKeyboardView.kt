@@ -2040,7 +2040,7 @@ open class ImeKeyboardView(
         centerBottom.addView(
             key("123", true, null, 1f, 13f) { setMode(KeyboardMode.DIGITS) }
                 .apply { setTag(MARK_SIDE_KEY, true) },
-            flexKeyParams(0.9f, gapDp = 2),
+            flexKeyParams(0.925f, gapDp = 2),
         )
         centerBottom.addView(
             spaceVoiceKey("空格", white = true) { commitFirstCandidateOrSpace() },
@@ -2051,7 +2051,7 @@ open class ImeKeyboardView(
                 tag = "key:mode"
                 setTag(MARK_SIDE_KEY, true)
             },
-            flexKeyParams(0.95f, gapDp = 2),
+            flexKeyParams(0.925f, gapDp = 2),
         )
         center.addView(centerBottom, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
