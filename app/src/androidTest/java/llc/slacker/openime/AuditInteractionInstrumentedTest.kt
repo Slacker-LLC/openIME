@@ -616,6 +616,43 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun voiceErrorReleasesGestureLockAndAllowsRetry() = withKeyboard { harness, recorder, keyboard ->
+        harness.awaitMain {
+            keyboard.showPanel(Panel.VOICE)
+            keyboard.startVoiceFromSpace()
+            val language = keyboard.findViewWithTag<View>("voice-language")
+            assertFalse("Voice language must lock while recognition is starting", language.isEnabled)
+            true
+        }
+        harness.awaitMain(timeoutMs = 2_000L) { if (recorder.events != null) true else null }
+        harness.awaitMain {
+            recorder.events!!.onError("麦克风权限不可用")
+            true
+        }
+        harness.awaitMain {
+            val language = keyboard.findViewWithTag<View>("voice-language")
+            if (!language.isEnabled) return@awaitMain null
+            assertFalse("Terminal error must clear active voice state", keyboard.isVoiceActive())
+            assertTrue("Terminal error must release the gesture-owned language lock", language.isEnabled)
+            assertTrue("Language selection must work again after error", language.performClick())
+            true
+        }
+        harness.awaitMain {
+            val previousStarts = recorder.starts
+            keyboard.startVoiceFromSpace()
+            true
+        }
+        harness.awaitMain(timeoutMs = 2_000L) {
+            if (recorder.starts >= 2) true else null
+        }
+        harness.awaitMain {
+            assertEquals("Voice must be retryable after a terminal error", 2, recorder.starts)
+            keyboard.cancelVoiceForManualInput()
+            true
+        }
+    }
+
+    @Test
     fun voiceControlsDescribeTheActiveGesture() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.showPanel(Panel.VOICE)
