@@ -92,12 +92,22 @@ class TextEditControlsInstrumentedTest {
         harness.awaitMain { true }
 
         harness.awaitMain {
-            listOf("全选", "复制", "剪切", "粘贴").forEach { label ->
-                val control = findInteractiveControl(keyboard, label)
+            listOf(
+                "select-all" to "全选",
+                "copy" to "复制",
+                "cut" to "剪切",
+                "paste" to "粘贴",
+            ).forEach { (action, label) ->
+                val control = findTextEditAction(keyboard, action)
                 assertNotNull("password editor must still show $label", control)
                 assertFalse("password $label must not remain clickable", control!!.isClickable)
                 assertFalse("password $label must expose an enabled state", control.isEnabled)
                 assertTrue("password $label should look unavailable", control.alpha < 1f)
+                val description = control.contentDescription?.toString().orEmpty()
+                assertTrue(
+                    "password $label must remain named when unavailable",
+                    description == label || description.startsWith("$label，"),
+                )
                 if (Build.VERSION.SDK_INT >= 30) {
                     assertTrue(
                         "password $label must explain why it is unavailable",
