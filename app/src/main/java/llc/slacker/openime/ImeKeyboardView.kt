@@ -184,6 +184,14 @@ open class ImeKeyboardView(
     }
 
     private val repeatHandler = Handler(Looper.getMainLooper())
+    private val backspaceGestureController = BackspaceGestureController(
+        toPx = ::dp,
+        onDeleteOne = ::performBackspaceOnce,
+        onClearAll = listener::onClearAll,
+        onFeedback = ::hapticFeedback,
+        onShowClearPopup = { anchor -> showPopup(anchor, "清空") },
+        onHidePopup = ::hidePopup,
+    )
     // Match Android's configured touch-and-hold timing instead of inventing
     // a second fixed threshold for the space/voice gesture.
     private val spaceVoiceTriggerMs = ViewConfiguration.getLongPressTimeout().toLong()
@@ -194,24 +202,6 @@ open class ImeKeyboardView(
     private val debugLogging: Boolean by lazy {
         (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
     }
-    private val repeatAction = object : Runnable {
-        override fun run() {
-            if (!backspaceGestureActive || backspaceClearArmed) return
-            backspaceRepeatStarted = true
-            performBackspaceOnce()
-            repeatHandler.postDelayed(this, 60L)
-        }
-    }
-    private var backspaceGestureActive = false
-    private var backspaceClearArmed = false
-    private var backspaceRepeatStarted = false
-    private var backspaceRepeatSuspended = false
-    private var backspacePointerId = -1
-    private var backspaceStartX = 0f
-    private var backspaceStartY = 0f
-    private var backspaceAnchor: View? = null
-    private var backspaceClearUiAction: ((Boolean) -> Unit)? = null
-    private var backspaceRepeatStartAction: Runnable? = null
 
     private val candidateProvider = context as? CandidateResolver
     private var theme = ImeTheme.IOS
@@ -1550,14 +1540,7 @@ open class ImeKeyboardView(
         // delete or compose into whichever InputConnection is current then.
         repeatHandler.removeCallbacksAndMessages(null)
         removeCallbacks(null)
-        backspaceRepeatStartAction?.let { repeatHandler.removeCallbacks(it) }
-        backspaceRepeatStartAction = null
-        backspaceGestureActive = false
-        backspaceClearArmed = false
-        backspaceRepeatStarted = false
-        backspaceAnchor?.isPressed = false
-        backspaceAnchor = null
-        backspaceClearUiAction = null
+        backspaceGestureController.shutdown()
         spaceVoiceGestureActive = false
         spaceVoiceGestureCancel = false
         pendingRowRebuild = false
@@ -1606,9 +1589,9 @@ open class ImeKeyboardView(
         anchor.getLocationOnScreen(location)
         val rawX = location[0] + anchor.width / 2f
         val rawY = location[1] + anchor.height / 2f
-        beginBackspaceGesture(anchor, rawX, rawY) { }
-        updateBackspaceGesture(rawX, rawY - dp(48))
-        finishBackspaceGesture(commit = true)
+        backspaceGestureController.begin(anchor, pointerId = 0, rawX, rawY) { }
+        backspaceGestureController.update(rawX, rawY - dp(48))
+        backspaceGestureController.finish(commit = true)
         return true
     }
 
@@ -2357,20 +2340,22 @@ open class ImeKeyboardView(
             keyPopupController.hideIfOutside(event.x, event.y)
         }
         val handled = super.dispatchTouchEvent(event)
-        if (backspaceGestureActive) {
+        if (backspaceGestureController.active) {
             when (event.actionMasked) {
                 MotionEvent.ACTION_MOVE -> {
-                    val index = event.findPointerIndex(backspacePointerId)
-                    if (index >= 0) updateBackspaceGesture(
+                    val index = event.findPointerIndex(backspaceGestureController.pointerId)
+                    if (index >= 0) backspaceGestureController.update(
                         event.rawX + event.getX(index) - event.x,
                         event.rawY + event.getY(index) - event.y,
                     )
                 }
-                MotionEvent.ACTION_POINTER_UP -> if (event.getPointerId(event.actionIndex) == backspacePointerId) {
-                    finishBackspaceGesture(commit = true)
+                MotionEvent.ACTION_POINTER_UP -> if (
+                    event.getPointerId(event.actionIndex) == backspaceGestureController.pointerId
+                ) {
+                    backspaceGestureController.finish(commit = true)
                 }
-                MotionEvent.ACTION_UP -> finishBackspaceGesture(commit = true)
-                MotionEvent.ACTION_CANCEL -> finishBackspaceGesture(commit = false)
+                MotionEvent.ACTION_UP -> backspaceGestureController.finish(commit = true)
+                MotionEvent.ACTION_CANCEL -> backspaceGestureController.finish(commit = false)
             }
         }
         if (spaceVoiceGestureActive) {
@@ -5239,106 +5224,6 @@ open class ImeKeyboardView(
         if (!deleteCompositionAtCursor()) listener.onBackspace()
     }
 
-    private fun beginBackspaceGesture(
-        anchor: View,
-        rawX: Float,
-        rawY: Float,
-        clearUiAction: (Boolean) -> Unit,
-    ) {
-        if (backspaceGestureActive) finishBackspaceGesture(commit = false)
-        repeatHandler.removeCallbacks(repeatAction)
-        backspaceRepeatStartAction?.let(repeatHandler::removeCallbacks)
-        backspaceGestureActive = true
-        backspaceClearArmed = false
-        backspaceRepeatStarted = false
-        backspaceRepeatSuspended = false
-        backspaceStartX = rawX
-        backspaceStartY = rawY
-        backspaceAnchor = anchor
-        backspaceClearUiAction = clearUiAction
-        anchor.isPressed = true
-        anchor.parent?.requestDisallowInterceptTouchEvent(true)
-        clearUiAction(false)
-        hidePopup()
-        feedback()
-        val startRepeat = Runnable {
-            if (backspaceGestureActive && !backspaceClearArmed) repeatAction.run()
-        }
-        backspaceRepeatStartAction = startRepeat
-        repeatHandler.postDelayed(startRepeat, ViewConfiguration.getLongPressTimeout().toLong())
-    }
-
-    private fun updateBackspaceGesture(rawX: Float, rawY: Float) {
-        if (!backspaceGestureActive) return
-        val upward = backspaceStartY - rawY
-        val horizontal = kotlin.math.abs(rawX - backspaceStartX)
-        // As soon as the motion clearly points upward, suspend repeat-delete
-        // while waiting for the clear threshold. A slow swipe must not erase
-        // characters one by one before it becomes an atomic clear.
-        if (upward >= dp(8) && horizontal <= dp(96)) {
-            backspaceRepeatSuspended = true
-            backspaceRepeatStartAction?.let(repeatHandler::removeCallbacks)
-            repeatHandler.removeCallbacks(repeatAction)
-        } else if (backspaceRepeatSuspended) {
-            backspaceRepeatSuspended = false
-            backspaceRepeatStartAction?.let {
-                repeatHandler.postDelayed(it, if (backspaceRepeatStarted) 60L else ViewConfiguration.getLongPressTimeout().toLong())
-            }
-        }
-        val shouldArm = if (backspaceClearArmed) {
-            upward > dp(16) && horizontal <= dp(120)
-        } else {
-            upward >= dp(36) && horizontal <= dp(96)
-        }
-        if (shouldArm == backspaceClearArmed) return
-        backspaceClearArmed = shouldArm
-        backspaceClearUiAction?.invoke(shouldArm)
-        if (shouldArm) {
-            backspaceRepeatStartAction?.let(repeatHandler::removeCallbacks)
-            repeatHandler.removeCallbacks(repeatAction)
-            backspaceAnchor?.let { showPopup(it, "清空") }
-            // Tactile confirmation that the gesture crossed into "clear all".
-            hapticFeedback()
-        } else {
-            hidePopup()
-            // Matching light tick when sliding back out of the armed clear tier.
-            hapticFeedback()
-        }
-    }
-
-    private fun finishBackspaceGesture(commit: Boolean) {
-        if (!backspaceGestureActive) return
-        val clearAll = commit && backspaceClearArmed
-        val deleteOnce = commit && !backspaceClearArmed && !backspaceRepeatStarted
-        repeatHandler.removeCallbacks(repeatAction)
-        backspaceRepeatStartAction?.let(repeatHandler::removeCallbacks)
-        backspaceRepeatStartAction = null
-        backspaceAnchor?.apply {
-            isPressed = false
-            parent?.requestDisallowInterceptTouchEvent(false)
-        }
-        backspaceGestureActive = false
-        backspaceClearUiAction?.invoke(false)
-        backspaceClearArmed = false
-        backspaceRepeatStarted = false
-        backspaceAnchor = null
-        backspaceClearUiAction = null
-        hidePopup()
-        when {
-            clearAll -> {
-                // One callback performs one batch clear. Never emulate this by
-                // dispatching hundreds of backspace events.
-                hapticFeedback()
-                listener.onClearAll()
-            }
-            deleteOnce -> {
-                hidePopup()
-                performBackspaceOnce()
-            }
-            else -> hidePopup()
-        }
-    }
-
     private fun backspaceKey(): ImeKeyView = key("", true, null, 1f, 15f, iconRes = R.drawable.ic_backspace) {
         performBackspaceOnce()
     }.apply {
@@ -5383,7 +5268,7 @@ open class ImeKeyboardView(
             topMargin = dp(2)
         })
         fun setClearHintActive(active: Boolean) {
-            clearHint.visibility = if (backspaceGestureActive) View.VISIBLE else View.INVISIBLE
+            clearHint.visibility = if (backspaceGestureController.active) View.VISIBLE else View.INVISIBLE
             if (active) {
                 val destructive = theme.tokens(
                     appearance,
@@ -5410,8 +5295,13 @@ open class ImeKeyboardView(
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     clearHint.alpha = 1f
-                    beginBackspaceGesture(view, event.rawX, event.rawY, ::setClearHintActive)
-                    backspacePointerId = event.getPointerId(event.actionIndex)
+                    backspaceGestureController.begin(
+                        view,
+                        event.getPointerId(event.actionIndex),
+                        event.rawX,
+                        event.rawY,
+                        ::setClearHintActive,
+                    )
                     if (debugLogging) Log.d("OpenIme", "backspace-touch-down x=${event.rawX} y=${event.rawY}")
                     true
                 }
