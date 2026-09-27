@@ -9,38 +9,37 @@ import android.widget.EditText
 /**
  * Repairs edits made inside an earlier Chinese 9-key segment.
  *
- * The renderer owns the visible preedit; this controller reconstructs the
- * affected 2-9 digit code and republishes one coherent 9-key composition.
- * It also wires the same repair to accessibility clicks, which do not emit the
- * root ACTION_UP used by touch input.
+ * The renderer supplies explicit digit-key references for accessibility repair;
+ * this controller no longer scans the rebuilt keyboard hierarchy.
  */
 internal class NineKeySegmentRepairController(
     private val context: Context,
-    private val host: ImeKeyboardView,
+    private val composition: () -> EditText,
+    private val isNineKeyActive: () -> Boolean,
     private val listener: ImeKeyboardView.Listener,
-    private val feedback: () -> Unit,
 ) {
     private var repairing = false
 
-    fun onHierarchyRebuilt() {
-        NineKeySymbolRailController.decorate(
-            root = host,
-            onCommit = listener::onCharacter,
-            onFeedback = feedback,
-        )
-        NumericKeypadDecorator.decorate(
-            root = host,
-            onCommit = listener::onCharacter,
-            onFeedback = feedback,
-        )
-        host.applyThemeToSubtree(host)
-        installAccessibilityRepair()
+    fun bindDigitKey(digit: String, key: ImeKeyView) {
+        if (digit.length != 1 || digit[0] !in '2'..'9') return
+        key.accessibilityDelegate = object : View.AccessibilityDelegate() {
+            override fun performAccessibilityAction(
+                hostView: View,
+                action: Int,
+                args: Bundle?,
+            ): Boolean {
+                val handled = super.performAccessibilityAction(hostView, action, args)
+                if (handled && action == AccessibilityNodeInfo.ACTION_CLICK) {
+                    hostView.post(::repairIfNeeded)
+                }
+                return handled
+            }
+        }
     }
 
     fun repairIfNeeded() {
-        if (repairing) return
-        if (host.findViewWithTag<View>("pinyin9-layout") == null) return
-        val editor = host.findViewWithTag<EditText>("pinyin-composition-editor") ?: return
+        if (repairing || !isNineKeyActive()) return
+        val editor = composition()
         val text = editor.text?.toString().orEmpty()
         if (text.isEmpty()) return
 
@@ -52,7 +51,6 @@ internal class NineKeySegmentRepairController(
             ?.coerceIn(0, text.length)
             ?: text.length
 
-        // The final segment is already owned by the regular 9-key digit buffer.
         if (rawCursor > lastSpace) return
 
         val segmentAnchor = when {
@@ -115,25 +113,6 @@ internal class NineKeySegmentRepairController(
             )
         } finally {
             repairing = false
-        }
-    }
-
-    private fun installAccessibilityRepair() {
-        for (digit in '2'..'9') {
-            val key = host.findViewWithTag<View>("key-9:$digit") ?: continue
-            key.accessibilityDelegate = object : View.AccessibilityDelegate() {
-                override fun performAccessibilityAction(
-                    hostView: View,
-                    action: Int,
-                    args: Bundle?,
-                ): Boolean {
-                    val handled = super.performAccessibilityAction(hostView, action, args)
-                    if (handled && action == AccessibilityNodeInfo.ACTION_CLICK) {
-                        hostView.post(::repairIfNeeded)
-                    }
-                    return handled
-                }
-            }
         }
     }
 }

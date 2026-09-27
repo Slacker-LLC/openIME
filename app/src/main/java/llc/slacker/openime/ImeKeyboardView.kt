@@ -274,12 +274,15 @@ open class ImeKeyboardView(
             Panel.SYMBOLS -> if (symbolCategory == "自定义") renderPanel(Panel.SYMBOLS)
             else -> Unit
         }
-        if (panel == Panel.NONE && mode in setOf(
-                KeyboardMode.PINYIN_9,
-                KeyboardMode.DIGITS,
-            )
-        ) {
-            onViewHierarchyRebuilt()
+        if (panel == Panel.NONE) {
+            when (mode) {
+                KeyboardMode.PINYIN_9 -> {
+                    nineKeySymbolRailController?.refreshSymbols()
+                    applyThemeToSubtree(this)
+                }
+                KeyboardMode.DIGITS -> onViewHierarchyRebuilt()
+                else -> Unit
+            }
         }
     }
 
@@ -297,7 +300,12 @@ open class ImeKeyboardView(
     private var skinPrimaryColor = ImeSettingsRepository.loadSkinColor(context)
 
     protected open fun onViewHierarchyRebuilt() {
-        nineKeySegmentRepairController.onHierarchyRebuilt()
+        NumericKeypadDecorator.decorate(
+            root = this,
+            onCommit = listener::onCharacter,
+            onFeedback = ::feedback,
+        )
+        applyThemeToSubtree(this)
     }
 
     private val pinyinBuffer = StringBuilder()
@@ -378,10 +386,49 @@ open class ImeKeyboardView(
     )
     private val nineKeySegmentRepairController = NineKeySegmentRepairController(
         context = context,
-        host = this,
+        composition = { composition },
+        isNineKeyActive = { mode == KeyboardMode.PINYIN_9 },
         listener = listener,
-        feedback = ::feedback,
     )
+    private var nineKeySymbolRailController: NineKeySymbolRailController? = null
+    private val pinyin9Renderer: Pinyin9KeyboardRenderer by lazy {
+        Pinyin9KeyboardRenderer(
+            context = context,
+            keyboardBody = keyboardBody,
+            toPx = ::dp,
+            keyRowHeightDp = ::keyRowHeightDp,
+            nineGridHeightDp = ::nineGridHeightDp,
+            nineBodyHeightDp = ::nineBodyHeightDp,
+            doubleKeyHeightDp = ::doubleKeyHeightDp,
+            createKey = { text, function, secondary, textSize, onTap ->
+                key(
+                    text = text,
+                    func = function,
+                    secondary = secondary,
+                    mainTextSizeOverride = textSize,
+                    onTap = onTap,
+                )
+            },
+            createBackspaceKey = ::backspaceKey,
+            createSpaceVoiceKey = { label, onTap ->
+                spaceVoiceKey(label, white = true, onTap = onTap)
+            },
+            createSymbolRail = { requireNineKeySymbolRailController().buildRail() },
+            markSideKey = { key -> key.setTag(MARK_SIDE_KEY, true) },
+            markWhiteKey = { key -> key.setTag(MARK_WHITE_KEY, true) },
+            onDigitKeyCreated = nineKeySegmentRepairController::bindDigitKey,
+            onNineKey = ::onNineKey,
+            onPinyinSegment = ::onPinyinSegment,
+            onShowChoicePopup = ::showChoicePopup,
+            onCommitCharacter = ::commitKeyboardCharacter,
+            onShowSymbols = { showPanel(Panel.SYMBOLS) },
+            onDigits = { setMode(KeyboardMode.DIGITS) },
+            onSpace = ::commitFirstCandidateOrSpace,
+            onModeSwitch = ::cycleMode,
+            onRetranslate = { publishComposition("", emptyList()) },
+            onEnter = listener::onEnter,
+        )
+    }
     private var systemBottomInsetPx = 0
     private val maxContentWidthDp = 600
     // Portrait keeps the historical 296dp total. Landscape uses a compact
@@ -1588,156 +1635,16 @@ open class ImeKeyboardView(
     }
 
     private fun renderPinyin9() {
-        val container = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            tag = "pinyin9-layout"
-        }
-
-        val left = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        left.addView(punctStack(), LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(nineGridHeightDp()),
-        ))
-        left.addView(
-            key("符号", true, null, 1f, 13f) { showPanel(Panel.SYMBOLS) }
-                .apply { setTag(MARK_SIDE_KEY, true) },
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(keyRowHeightDp()),
-            ).apply { topMargin = dp(ImeGeometryTokens.KEY_ROW_GAP_DP) },
-        )
-        container.addView(left, adaptiveColumnParams(1f))
-
-        val center = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        center.addView(
-            nineGrid().apply { tag = "pinyin9-grid" },
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(nineGridHeightDp()),
-            ),
-        )
-        val centerBottom = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        centerBottom.addView(
-            key("123", true, null, 1f, 13f) { setMode(KeyboardMode.DIGITS) }
-                .apply { setTag(MARK_SIDE_KEY, true) },
-            flexKeyParams(0.925f, gapDp = 2),
-        )
-        centerBottom.addView(
-            spaceVoiceKey("空格", white = true) { commitFirstCandidateOrSpace() },
-            flexKeyParams(3.4f, gapDp = 2),
-        )
-        centerBottom.addView(
-            key("中/英", true, null, 1f, 13f) { cycleMode() }.apply {
-                tag = "key:mode"
-                setTag(MARK_SIDE_KEY, true)
-            },
-            flexKeyParams(0.925f, gapDp = 2),
-        )
-        center.addView(centerBottom, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(keyRowHeightDp()),
-        ).apply { topMargin = dp(ImeGeometryTokens.KEY_ROW_GAP_DP) })
-        container.addView(center, adaptiveColumnParams(3.7f))
-
-        val side = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            tag = "pinyin9-actions"
-        }
-        side.addView(
-            backspaceKey().apply { setTag(MARK_SIDE_KEY, true) },
-            sideKeyParams(keyRowHeightDp(), true),
-        )
-        side.addView(
-            key("重输", true, null, 1f, 13f) {
-                publishComposition("", emptyList())
-            }.apply { setTag(MARK_SIDE_KEY, true) },
-            sideKeyParams(keyRowHeightDp(), true),
-        )
-        side.addView(
-            key(enterKeyLabel(false), true, null, 1f, 13f) {
-                listener.onEnter()
-            }.apply {
-                tag = "key-enter"
-                setTag(MARK_SIDE_KEY, true)
-            },
-            sideKeyParams(doubleKeyHeightDp()),
-        )
-        container.addView(side, adaptiveColumnParams(1f))
-        keyboardBody.addView(container, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(nineBodyHeightDp()),
-        ))
+        pinyin9Renderer.render(enterLabel = enterKeyLabel(false))
     }
 
-    /** Adaptive-width gray punct column（，。？！）, tap commits the character. */
-    private fun punctStack(): LinearLayout {
-        val stack = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            tag = "nine-punct-stack"
-        }
-        listOf("，", "。", "？", "！").forEach { p ->
-            stack.addView(TextView(context).apply {
-                text = p
-                textSize = 17f
-                gravity = Gravity.CENTER
-                tag = "punct:$p"
-                contentDescription = p
-                isClickable = true
-                isFocusable = true
-                setOnClickListener {
-                    feedback()
-                    commitKeyboardCharacter(p)
-                }
-            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
-        }
-        return stack
-    }
-
-    /** 3x3 Chinese 9-key grid; contentDescription/tag key-9:<digit>. */
-    private fun nineGrid(): LinearLayout {
-        val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        listOf(
-            listOf("1" to "@#", "2" to "ABC", "3" to "DEF"),
-            listOf("4" to "GHI", "5" to "JKL", "6" to "MNO"),
-            listOf("7" to "PQRS", "8" to "TUV", "9" to "WXYZ"),
-        ).forEachIndexed { rowIndex, rowDef ->
-            val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            rowDef.forEach { (num, sub) ->
-                val segmentation = num == "1"
-                val display = if (segmentation) "分词" else sub
-                val secondary = if (segmentation) "@#/" else null
-                row.addView(
-                    key(display, false, secondary, 1f, if (segmentation) 12f else 17f) {
-                        if (segmentation) onPinyinSegment() else onNineKey(num)
-                    }.apply {
-                        tag = "key-9:$num"
-                        contentDescription = if (segmentation) "1，分词" else num
-                        setTag(MARK_WHITE_KEY, true)
-                        if (segmentation) {
-                            setOnLongClickListener {
-                                showChoicePopup(this, listOf("@", "#", "/"))
-                                true
-                            }
-                        } else if (ImeData.keypad9Map[num].orEmpty().any {
-                                it.length == 1 && it[0] in 'a'..'z'
-                            }) {
-                            setOnLongClickListener {
-                                commitKeyboardCharacter(num)
-                                true
-                            }
-                        }
-                    },
-                    flexKeyParams(gapDp = 2),
-                )
-            }
-            grid.addView(row, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(keyRowHeightDp()),
-            ).apply {
-                if (rowIndex < 2) bottomMargin = dp(ImeGeometryTokens.KEY_ROW_GAP_DP)
-            })
-        }
-        return grid
+    private fun requireNineKeySymbolRailController(): NineKeySymbolRailController {
+        return nineKeySymbolRailController ?: NineKeySymbolRailController(
+            context = context,
+            composition = composition,
+            onCommit = listener::onCharacter,
+            onFeedback = ::feedback,
+        ).also { nineKeySymbolRailController = it }
     }
 
     private fun renderDigits() {

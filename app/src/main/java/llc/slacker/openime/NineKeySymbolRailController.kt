@@ -1,10 +1,10 @@
 package llc.slacker.openime
 
+import android.content.Context
 import android.os.Build
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
-import android.view.View
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -13,48 +13,19 @@ import android.widget.TextView
 /**
  * Owns the Chinese 9-key side symbol rail and ambiguity filter presentation.
  *
- * Candidate decoding remains in CandidatePipeline/Rime. This controller only
- * reflects the cached ambiguity paths and the user's explicit path choice.
+ * The renderer receives the built rail directly. Composition updates also use
+ * explicit editor/rail references rather than searching the whole View tree.
  */
-internal object NineKeySymbolRailController {
-    private const val NINE_RAIL_TAG = "nine-punct-stack"
-    private const val NINE_CONTENT_TAG = "nine-symbol-scroll-content"
-    private const val FILTER_TAG = "nine-pinyin-path-filter"
-    private const val WATCHER_TAG = 0x1F000081
+internal class NineKeySymbolRailController(
+    private val context: Context,
+    private val composition: EditText,
+    private val onCommit: (String) -> Unit,
+    private val onFeedback: () -> Unit,
+) {
+    private var rail: ScrollView? = null
 
-    fun decorate(
-        root: View,
-        onCommit: (String) -> Unit,
-        onFeedback: () -> Unit,
-    ) {
-        val existingHeader = root
-            .findViewWithTag<ScrollView>(NINE_RAIL_TAG)
-            ?.getChildAt(0)
-            ?.let { it as? LinearLayout }
-            ?.findViewWithTag<TextView>(FILTER_TAG)
-
-        SymbolRailRenderer.decorate(
-            root = root,
-            sourceTag = NINE_RAIL_TAG,
-            railTag = NINE_RAIL_TAG,
-            contentTag = NINE_CONTENT_TAG,
-            contentDescription = "九键常用符号，上下滑动查看更多",
-            symbols = commonSymbols(root),
-            tagPrefix = "punct:",
-            preservedHeader = existingHeader,
-            onCommit = onCommit,
-            onFeedback = onFeedback,
-        )
-
-        installFilterWatcher(root, onFeedback)
-        refreshPinyinFilters(root, onFeedback)
-    }
-
-    private fun installFilterWatcher(root: View, onFeedback: () -> Unit) {
-        val editor = root.findViewWithTag<EditText>("pinyin-composition-editor") ?: return
-        if (editor.getTag(WATCHER_TAG) != null) return
-
-        val watcher = object : TextWatcher {
+    init {
+        composition.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(
                 s: CharSequence?,
                 start: Int,
@@ -70,25 +41,45 @@ internal object NineKeySymbolRailController {
             ) = Unit
 
             override fun afterTextChanged(s: Editable?) {
-                root.post { refreshPinyinFilters(root, onFeedback) }
+                composition.post(::refreshPinyinFilters)
             }
-        }
-        editor.addTextChangedListener(watcher)
-        editor.setTag(WATCHER_TAG, watcher)
+        })
     }
 
-    private fun refreshPinyinFilters(root: View, onFeedback: () -> Unit) {
-        val scroll = root.findViewWithTag<ScrollView>(NINE_RAIL_TAG) ?: return
-        val content = scroll.getChildAt(0) as? LinearLayout ?: return
-        if (root.findViewWithTag<View>("pinyin9-layout") == null) {
-            content.findViewWithTag<View>(FILTER_TAG)?.let(content::removeView)
-            return
+    fun buildRail(): ScrollView =
+        SymbolRailRenderer.build(
+            context = context,
+            railTag = NINE_RAIL_TAG,
+            contentTag = NINE_CONTENT_TAG,
+            contentDescription = "九键常用符号，上下滑动查看更多",
+            symbols = commonSymbols(),
+            tagPrefix = "punct:",
+            onCommit = onCommit,
+            onFeedback = onFeedback,
+        ).also {
+            rail = it
+            refreshPinyinFilters()
         }
 
-        val editor = root.findViewWithTag<EditText>("pinyin-composition-editor") ?: return
-        val text = editor.text?.toString().orEmpty()
+    fun refreshSymbols() {
+        val current = rail ?: return
+        val content = current.getChildAt(0) as? LinearLayout ?: return
+        val header = content.findViewWithTag<TextView>(FILTER_TAG)
+        SymbolRailRenderer.populate(
+            scroll = current,
+            symbols = commonSymbols(),
+            tagPrefix = "punct:",
+            preservedHeader = header,
+            onCommit = onCommit,
+            onFeedback = onFeedback,
+        )
+        refreshPinyinFilters()
+    }
+
+    private fun refreshPinyinFilters() {
+        val text = composition.text?.toString().orEmpty()
         if (text.isBlank()) {
-            setPinyinFilters(root, emptyList(), null, onFeedback) {}
+            setPinyinFilters(emptyList(), null) {}
             return
         }
 
@@ -98,34 +89,30 @@ internal object NineKeySymbolRailController {
         val digits = CandidatePipeline.nineKeyDigitsFor(suffix)
         val code = digits?.let { NineKeyLocalDecoder.nativeCode(prefix, it) }
         if (code.isNullOrEmpty()) {
-            setPinyinFilters(root, emptyList(), null, onFeedback) {}
+            setPinyinFilters(emptyList(), null) {}
             return
         }
 
-        val resolver = root.context as? CandidateResolver ?: return
+        val resolver = context as? CandidateResolver ?: return
         val choices = resolver.nineKeyPathsFor(code)
         val selected = resolver.selectedNineKeyPathFor(code) ?: text
         setPinyinFilters(
-            root = root,
             filters = choices,
             selected = selected,
-            onFeedback = onFeedback,
         ) { chosen ->
             resolver.selectNineKeyPath(code, chosen)
-            if (chosen == editor.text?.toString()) return@setPinyinFilters
-            editor.setText(chosen)
-            editor.setSelection(chosen.length)
+            if (chosen == composition.text?.toString()) return@setPinyinFilters
+            composition.setText(chosen)
+            composition.setSelection(chosen.length)
         }
     }
 
-    fun setPinyinFilters(
-        root: View,
+    private fun setPinyinFilters(
         filters: List<String>,
         selected: String?,
-        onFeedback: () -> Unit = {},
         onSelect: (String) -> Unit,
     ) {
-        val scroll = root.findViewWithTag<ScrollView>(NINE_RAIL_TAG) ?: return
+        val scroll = rail ?: return
         val content = scroll.getChildAt(0) as? LinearLayout ?: return
         val choices = filters
             .asSequence()
@@ -183,8 +170,8 @@ internal object NineKeySymbolRailController {
         if (scroll.scrollY != 0) scroll.post { scroll.scrollTo(0, 0) }
     }
 
-    private fun commonSymbols(root: View): List<String> =
-        CustomSymbolRepository.load(root.context)
+    private fun commonSymbols(): List<String> =
+        CustomSymbolRepository.load(context)
             .map { it.symbol }
             .filter { it.isNotBlank() } +
             ImeData.symbols["常用"].orEmpty()
@@ -193,4 +180,10 @@ internal object NineKeySymbolRailController {
                 .distinct()
                 .toList()
                 .ifEmpty { listOf("，", "。", "？", "！") }
+
+    private companion object {
+        const val NINE_RAIL_TAG = "nine-punct-stack"
+        const val NINE_CONTENT_TAG = "nine-symbol-scroll-content"
+        const val FILTER_TAG = "nine-pinyin-path-filter"
+    }
 }
