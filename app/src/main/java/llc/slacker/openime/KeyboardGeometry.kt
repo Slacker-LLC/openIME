@@ -43,3 +43,51 @@ data class NormalizedBounds(
         }
     }
 }
+
+/**
+ * Pure dp geometry derived from orientation and font scale.
+ *
+ * Keep calculations here; applying these values to Android View layout params
+ * remains the renderer's responsibility.
+ */
+internal data class KeyboardLayoutMetrics(
+    val landscape: Boolean,
+    val fontScale: Float,
+) {
+    val keyRowHeightDp: Int = run {
+        val base = if (landscape) {
+            ImeGeometryTokens.LANDSCAPE_KEY_ROW_HEIGHT_DP
+        } else {
+            ImeGeometryTokens.TOUCH_TARGET_DP
+        }
+        val fontGrow = ((fontScale - 1f).coerceAtLeast(0f) * 12f)
+            .toInt()
+            .coerceAtMost(12)
+        base + fontGrow
+    }
+
+    val nineGridHeightDp: Int =
+        keyRowHeightDp * 3 + ImeGeometryTokens.KEY_ROW_GAP_DP * 2
+
+    val nineBodyHeightDp: Int =
+        nineGridHeightDp + ImeGeometryTokens.KEY_ROW_GAP_DP + keyRowHeightDp
+
+    val doubleKeyHeightDp: Int =
+        keyRowHeightDp * 2 + ImeGeometryTokens.KEY_ROW_GAP_DP
+
+    val topZoneHeightDp: Int = ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP
+
+    val imeHeightDp: Int = run {
+        val derived = topZoneHeightDp +
+            keyRowHeightDp * 4 +
+            ImeGeometryTokens.KEY_ROW_GAP_DP * 3 +
+            22
+        maxOf(if (landscape) 264 else 302, derived)
+    }
+
+    val keyboardBodyHeightDp: Int = imeHeightDp - topZoneHeightDp
+
+    val panelBodyHeightDp: Int =
+        (imeHeightDp - ImeGeometryTokens.TOUCH_TARGET_DP).coerceAtLeast(0)
+}
+
