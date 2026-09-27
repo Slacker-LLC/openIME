@@ -144,7 +144,7 @@ Its surviving responsibilities now have explicit owners:
 - handwriting availability -> the normal panel/tool capability path;
 - space/voice timing -> the production `ImeKeyboardView` gesture path.
 
-`LocalVoiceImeService` now creates `ImeKeyboardView` directly. The project no longer uses V1/V2 keyboard naming.
+`LocalVoiceImeService` now creates the single production `ImeKeyboardView` directly.
 
 ## Phase 8 — Converge design tokens
 
