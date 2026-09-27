@@ -45,7 +45,7 @@ internal class VoicePanelController(
             createHeader("语音输入"),
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(48),
+                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
             ),
         )
         val panelView = VoicePanelView(
