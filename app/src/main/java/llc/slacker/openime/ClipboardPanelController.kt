@@ -135,6 +135,17 @@ internal class ClipboardPanelController(
 
         val generation = ++loadGeneration
         column.post {
+            // The panel may have been replaced before this posted task gets a
+            // main-thread turn. Do not even read/capture the clipboard for a
+            // stale surface; the existing generation check below still guards
+            // the asynchronous result on its way back.
+            if (
+                generation != loadGeneration ||
+                tab != 0 ||
+                column.parent == null
+            ) {
+                return@post
+            }
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
             val primaryClip = runCatching { clipboard?.primaryClip }.getOrNull()
             Thread {
