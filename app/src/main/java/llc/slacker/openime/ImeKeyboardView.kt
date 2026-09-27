@@ -3982,12 +3982,12 @@ open class ImeKeyboardView(
                 }
                 val policyUnavailable = TextEditControlPolicy.isUnavailableLabel(label, passwordField)
                 val dynamicReason = when {
-                    passwordField && label in setOf("全选", "复制", "剪切") -> "密码输入中不可用"
+                    policyUnavailable -> TextEditControlPolicy.unavailableReason(label, passwordField)
                     label in setOf("复制", "剪切") && !selectionAvailable -> "请先选择文本"
                     label == "粘贴" && !clipboardAvailable -> "剪贴板暂无文本"
                     else -> null
                 }
-                val unavailable = policyUnavailable || dynamicReason != null
+                val unavailable = dynamicReason != null
                 view.isEnabled = !unavailable
                 view.isClickable = !unavailable
                 view.alpha = if (unavailable) 0.38f else 1f
