@@ -120,9 +120,6 @@ open class ImeKeyboardView(
     private val MARK_FUNCTION_KEY = 0x1F000003
 
     companion object {
-        /** Compiled once. [applyThemeRecursive] walks ~150 nodes per pass. */
-        private val DIGITS_ONLY = Regex("[0-9]+")
-
         /**
          * Emoji cells used to decode their PNG from assets inline on the UI
          * thread: 23-40 synchronous decodes every time the panel opened or
@@ -336,6 +333,28 @@ open class ImeKeyboardView(
     )
     private var contentInsetPx = dp(5)
     private var navigationBottomInsetPx = 0
+    private val themeApplier: ImeThemeApplier by lazy {
+        ImeThemeApplier(
+            toPx = ::dp,
+            statefulRounded = ::statefulRounded,
+            keyMainTextScale = ::skinFontScale,
+            skinRadiusPx = { dp(skinRadius) },
+            skinOpacity = { skinOpacity },
+            skinPrimaryColor = { skinPrimaryColor },
+            toggleState = ::onState,
+            isSideKey = { key ->
+                key.getTag(MARK_SIDE_KEY) == true ||
+                    (key.parent as? View)?.tag in
+                    setOf("pinyin9-actions", "t9-actions", "digits-actions")
+            },
+            isFunctionKey = { key ->
+                key.getTag(MARK_FUNCTION_KEY) == true
+            },
+            isWhiteKey = { key ->
+                key.getTag(MARK_WHITE_KEY) == true
+            },
+        )
+    }
     private val keyPopupController = KeyPopupController(
         host = this,
         dp = ::dp,
@@ -2588,14 +2607,14 @@ open class ImeKeyboardView(
         val target = shift ?: return
         val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
-        applyThemeRecursive(target, theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor)))
+        themeApplier.apply(target, theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor)))
     }
 
     private fun applyAssociationTheme() {
         if (!::topZone.isInitialized) return
         val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
-        applyThemeRecursive(associationRow, theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor)))
+        themeApplier.apply(associationRow, theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor)))
     }
 
     private fun firstCandidateOrComposition(): String =
@@ -2817,7 +2836,7 @@ open class ImeKeyboardView(
         topZone.setBackgroundColor(t.toolbarBackground)
         expandedPanel.setBackgroundColor(t.expandedBackground)
         candidateOverlay.setBackgroundColor(t.expandedBackground)
-        applyThemeRecursive(this, t)
+        themeApplier.apply(this, t)
         composition.setTextColor(t.keySecondaryText)
         candidateExpandBtn.setTextColor(t.keySecondaryText)
         candidateEmojiBtn.setTextColor(t.keySecondaryText)
@@ -2829,7 +2848,7 @@ open class ImeKeyboardView(
     internal fun applyThemeToSubtree(target: View) {
         val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
-        applyThemeRecursive(target, theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor)))
+        themeApplier.apply(target, theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor)))
     }
 
     private fun applyFloatingChromeTheme(tokens: ImeTheme.Tokens? = null) {
@@ -2843,374 +2862,6 @@ open class ImeKeyboardView(
         } else {
             mainDock.setBackgroundColor(t.expandedBackground)
             mainDock.clipToOutline = false
-        }
-    }
-
-    private fun applyThemeRecursive(view: View, t: ImeTheme.Tokens) {
-        when (view) {
-            is ImeKeyView -> {
-                val side = view.getTag(MARK_SIDE_KEY) == true ||
-                    (view.parent as? View)?.tag in setOf("pinyin9-actions", "t9-actions", "digits-actions")
-                val label = view.contentDescription?.toString().orEmpty()
-                // Function styling is driven by the explicit semantic tag set in
-                // key(), never by matching localized label substrings.
-                val function = view.getTag(MARK_FUNCTION_KEY) == true
-                // Numeric glyphs are white grid keys only when they are real
-                // number keys. Function labels such as 123 must stay gray.
-                val white = !side && (
-                    view.getTag(MARK_WHITE_KEY) == true ||
-                        (!function && DIGITS_ONLY.matches(label))
-                    )
-                val primary = !side && (view.tag == "tab-active" ||
-                    view.tag == "key-shift-caps" ||
-                    view.tag == "key-shift-active" ||
-                    view.tag == "key-enter")
-                val color = when {
-                    primary -> t.primary
-                    white -> t.lightKeyBackground
-                    side -> t.sideKeyBackground
-                    function -> t.functionKeyBackground
-                    else -> t.keyBackground
-                }
-                val pressedColor = when {
-                    primary -> ImeDrawableFactory.dim(color, 0.88f)
-                    side -> ImeDrawableFactory.dim(t.sideKeyBackground, 0.88f)
-                    function -> ImeDrawableFactory.dim(t.functionKeyBackground, 0.88f)
-                    else -> t.keyPressedBackground
-                }
-                view.applyMainTextScale(skinFontScale())
-                view.background = statefulRounded(color, pressedColor, dp(skinRadius))
-                // Skin opacity slider fades key backgrounds toward transparency.
-                view.background?.alpha = (skinOpacity.coerceIn(70, 100) * 255 / 100)
-                view.elevation = 0f
-                when {
-                    primary -> {
-                        val onPrimary = ImeDrawableFactory.contrastText(t.primary)
-                        view.setColors(onPrimary, onPrimary, onPrimary)
-                    }
-                    white -> view.setColors(t.lightKeyText, t.lightKeyText, t.lightKeyText)
-                    side -> view.setColors(t.sideKeyText, t.sideKeyText, t.sideKeyText)
-                    function -> view.setColors(t.functionKeyText, t.functionKeyText, t.functionKeyText)
-                    else -> view.setColors(t.keyText, t.keySecondaryText, t.keyText)
-                }
-            }
-            is LinearLayout -> {
-                when (view.tag) {
-                    "candidate-first-row" -> view.background = statefulRounded(
-                        t.keyBackground,
-                        t.keyPressedBackground,
-                        dp(ImeGeometryTokens.KEY_RADIUS_DP),
-                    )
-                    "candidate-row" -> view.background = statefulRounded(
-                        Color.TRANSPARENT,
-                        t.keyPressedBackground,
-                        dp(ImeGeometryTokens.KEY_RADIUS_DP),
-                    )
-                    "setting-row" -> if (view.isClickable) {
-                        view.background = statefulRounded(
-                            Color.TRANSPARENT,
-                            t.keyPressedBackground,
-                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                        )
-                    }
-                    "nine-symbol-scroll-content", "digits-symbol-scroll-content" -> view.background = ImeDrawableFactory.rounded(
-                        t.sideKeyBackground,
-                        dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                    )
-                    "setting-group" -> view.background = ImeDrawableFactory.rounded(
-                        t.toolCardBackground,
-                        dp(ImeGeometryTokens.CARD_RADIUS_DP),
-                    )
-                    "clip-card" -> view.background = ImeDrawableFactory.rounded(
-                        t.toolCardBackground,
-                        dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                    )
-                    "panel-head" -> view.background = ImeDrawableFactory.rounded(
-                        t.panelHeadBackground,
-                        dp(ImeGeometryTokens.CARD_RADIUS_DP),
-                    )
-                    else -> if ((view.tag as? String)?.startsWith("tool:") == true && view.isClickable) {
-                        view.background = statefulRounded(
-                            t.toolCardBackground,
-                            t.keyPressedBackground,
-                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                        )
-                    }
-                }
-                if (view.contentDescription != null && view.isClickable && view.tag == null) {
-                    view.background = statefulRounded(
-                        t.toolCardBackground,
-                        t.keyPressedBackground,
-                        dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                    )
-                }
-            }
-            is ScrollView -> {
-                when (view.tag) {
-                    "nine-punct-stack", "digits-symbol-scroll" -> {
-                        view.background = ImeDrawableFactory.rounded(
-                            t.sideKeyBackground,
-                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                        )
-                    }
-                }
-            }
-            is ImageView -> {
-                if (view.tag == "setting-icon") {
-                    val icon = t.primary
-                    view.imageTintList = ColorStateList.valueOf(icon)
-                    val dark = ImeDrawableFactory.contrastText(t.keyboardBackground) == Color.WHITE
-                    view.background = ImeDrawableFactory.rounded(
-                        if (dark) Color.argb(42, Color.red(icon), Color.green(icon), Color.blue(icon))
-                        else Color.argb(24, Color.red(icon), Color.green(icon), Color.blue(icon)),
-                        dp(ImeGeometryTokens.KEY_RADIUS_DP),
-                    )
-                } else if (view.tag == "key-panel-back") {
-                    view.imageTintList = ColorStateList.valueOf(t.keyText)
-                    view.background = statefulRounded(
-                        t.panelHeadBackground,
-                        ImeDrawableFactory.dim(t.panelHeadBackground),
-                        dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                    )
-                } else if ((view.parent is LinearLayout && (view.parent as LinearLayout).tag == "toolbar-row") ||
-                    hasAncestorTag(view, "tools-panel")) {
-                    view.imageTintList = ColorStateList.valueOf(t.keyText)
-                    if (view.isClickable) {
-                        view.background = statefulRounded(
-                            Color.TRANSPARENT,
-                            t.keyPressedBackground,
-                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                        )
-                    }
-                }
-            }
-            is SeekBar -> {
-                // Keep the value control in the same accent system as active
-                // tabs, primary keys, and selected swatches. The platform
-                // default tint is otherwise blue even after a custom accent
-                // has been chosen.
-                view.progressTintList = ColorStateList.valueOf(t.primary)
-                view.thumbTintList = ColorStateList.valueOf(t.primary)
-                view.progressBackgroundTintList = ColorStateList.valueOf(t.panelHeadBackground)
-            }
-            is TextView -> {
-                val tag = view.tag as? String
-                if (view.parent !is ImeKeyView) view.setTextColor(t.keyText)
-                when {
-                    tag == "backspace-clear-hint" -> {
-                        view.setTextColor(t.keySecondaryText)
-                    }
-                    tag == "candidate-first" -> {
-                        view.setTextColor(t.keyText)
-                    }
-                    tag == "candidate-word" -> {
-                        view.setTextColor(t.candidateText)
-                    }
-                    tag == "panel-note" -> {
-                        view.setTextColor(t.keySecondaryText)
-                    }
-                    tag == "panel-error" -> {
-                        val error = t.destructive
-                        view.setTextColor(error)
-                        view.background = ImeDrawableFactory.rounded(
-                            Color.argb(
-                                28,
-                                Color.red(error),
-                                Color.green(error),
-                                Color.blue(error),
-                            ),
-                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                        )
-                    }
-                    tag == "tab-active" -> {
-                        view.setTextColor(ImeDrawableFactory.contrastText(t.primary))
-                        view.background = statefulRounded(
-                            t.primary,
-                            ImeDrawableFactory.dim(t.primary),
-                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                        )
-                    }
-                    tag == "panel-tab" -> {
-                        view.setTextColor(t.keySecondaryText)
-                        view.background = statefulRounded(
-                            t.panelHeadBackground,
-                            ImeDrawableFactory.dim(t.panelHeadBackground),
-                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                        )
-                    }
-                    tag == "quick-phrase-add" -> {
-                        view.setTextColor(ImeDrawableFactory.contrastText(t.primary))
-                        view.background = statefulRounded(
-                            t.primary,
-                            ImeDrawableFactory.dim(t.primary),
-                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                        )
-                    }
-                    tag == "panel-button" ||
-                        tag == "clipboard-refresh" ||
-                        tag?.startsWith("clip-pin:") == true ||
-                        tag?.startsWith("clip-use:") == true ||
-                        tag?.startsWith("phrase-edit:") == true ||
-                        tag?.startsWith("phrase-delete:") == true -> {
-                        view.setTextColor(t.keyText)
-                        view.background = statefulRounded(
-                            t.panelHeadBackground,
-                            ImeDrawableFactory.dim(t.panelHeadBackground),
-                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                        )
-                    }
-                    tag == "clipboard-retention-action" -> {
-                        view.setTextColor(t.keyText)
-                        view.background = statefulRounded(
-                            t.panelHeadBackground,
-                            ImeDrawableFactory.dim(t.panelHeadBackground),
-                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                        )
-                    }
-                    tag == "clipboard-retention-destructive" -> {
-                        view.setTextColor(ImeDrawableFactory.contrastText(t.destructive))
-                        view.background = statefulRounded(
-                            t.destructive,
-                            ImeDrawableFactory.dim(t.destructive, 0.86f),
-                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                        )
-                    }
-                    tag?.startsWith("punct:") == true ||
-                        tag?.startsWith("digit-symbol:") == true -> {
-                        view.setTextColor(t.keyText)
-                        view.background = statefulRounded(
-                            Color.TRANSPARENT,
-                            t.keyPressedBackground,
-                            dp(ImeGeometryTokens.KEY_RADIUS_DP),
-                        )
-                    }
-                    tag == "nine-pinyin-path-filter" -> {
-                        view.setTextColor(ImeDrawableFactory.contrastText(t.primary))
-                        view.background = statefulRounded(
-                            t.primary,
-                            ImeDrawableFactory.dim(t.primary, 0.86f),
-                            dp(ImeGeometryTokens.KEY_RADIUS_DP),
-                        )
-                    }
-                    tag == "accent-custom" -> {
-                        val customSelected = AccentPalette.presets.none {
-                            AccentPalette.normalize(it.first) == AccentPalette.normalize(skinPrimaryColor)
-                        }
-                        view.setTextColor(if (customSelected) ImeDrawableFactory.contrastText(t.primary) else t.keyText)
-                        view.background = if (customSelected) {
-                            statefulRounded(
-                                t.primary,
-                                ImeDrawableFactory.dim(t.primary),
-                                dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                            )
-                        } else {
-                            statefulRounded(
-                                t.panelHeadBackground,
-                                ImeDrawableFactory.dim(t.panelHeadBackground),
-                                dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                            )
-                        }
-                    }
-                    tag?.startsWith("accent-selected-mark:") == true -> {
-                        val hex = tag.substringAfter(':')
-                        view.setTextColor(ImeDrawableFactory.contrastText(AccentPalette.parse(hex)))
-                    }
-                    tag == "key-panel-back" -> {
-                        view.setTextColor(t.keyText)
-                        view.background = statefulRounded(
-                            t.panelHeadBackground,
-                            ImeDrawableFactory.dim(t.panelHeadBackground),
-                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                        )
-                    }
-                    tag == "panel-title" -> {
-                        view.setTextColor(t.keyText)
-                    }
-                    tag == "candidate-emoji" || tag == "candidate-expand" -> {
-                        view.setTextColor(t.keySecondaryText)
-                        view.background = statefulRounded(
-                            t.panelHeadBackground,
-                            ImeDrawableFactory.dim(t.panelHeadBackground),
-                            dp(ImeGeometryTokens.KEY_RADIUS_DP),
-                        )
-                    }
-                    tag == "voice-transcript" -> {
-                        view.setTextColor(t.keyText)
-                        view.background = ImeDrawableFactory.rounded(t.toolCardBackground, dp(ImeGeometryTokens.CARD_RADIUS_DP))
-                    }
-                    tag == "voice-model-status" -> {
-                        view.setTextColor(t.keySecondaryText)
-                    }
-                    tag == "association-candidate" -> {
-                        view.setTextColor(t.candidateText)
-                        view.background = statefulRounded(
-                            t.toolCardBackground,
-                            ImeDrawableFactory.dim(t.toolCardBackground),
-                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                        )
-                    }
-                    tag == "tools-page-dots" -> {
-                        view.setTextColor(t.keySecondaryText)
-                    }
-                    tag == "voice-mic" -> {
-                        view.setTextColor(ImeDrawableFactory.contrastText(t.primary))
-                        view.background = statefulRounded(
-                            t.primary,
-                            ImeDrawableFactory.dim(t.primary, 0.88f),
-                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                        )
-                    }
-                    view.parent is LinearLayout &&
-                        ((view.parent as LinearLayout).tag == "nine-symbol-scroll-content" ||
-                            (view.parent as LinearLayout).tag == "digits-symbol-scroll-content") -> {
-                        view.setTextColor(t.sideKeyText)
-                    }
-                }
-            }
-            is FrameLayout -> when (view.tag) {
-                "emoji-cell" -> view.background = statefulRounded(
-                    Color.TRANSPARENT,
-                    t.keyPressedBackground,
-                    dp(ImeGeometryTokens.KEY_RADIUS_DP),
-                )
-                "accent-swatch" -> view.background = statefulRounded(
-                    Color.TRANSPARENT,
-                    t.keyPressedBackground,
-                    dp(ImeGeometryTokens.KEY_RADIUS_DP),
-                )
-                "toggle" -> {
-                    val seed = view.contentDescription?.toString()
-                        ?.substringBefore('，')
-                        .orEmpty()
-                    val enabled = onState(seed)
-                    view.background = ImeDrawableFactory.rounded(
-                        if (enabled) t.primary else t.panelHeadBackground,
-                        dp(ImeGeometryTokens.PILL_RADIUS_DP),
-                    )
-                }
-            }
-            else -> when (view.tag) {
-                "handwriting-canvas" -> view.background = ImeDrawableFactory.rounded(
-                    t.canvasBackground,
-                    dp(ImeGeometryTokens.CARD_RADIUS_DP),
-                )
-                "voice-wave-bar" -> view.background = ImeDrawableFactory.rounded(t.primary, dp(ImeGeometryTokens.PILL_RADIUS_DP))
-                "setting-divider" -> view.setBackgroundColor(t.border)
-            }
-        }
-        if (view is HandwritingPadView) {
-            view.setInkColor(t.primary)
-            view.setGridColor(
-                Color.argb(
-                    72,
-                    Color.red(t.border),
-                    Color.green(t.border),
-                    Color.blue(t.border),
-                ),
-            )
-        }
-        if (view is ViewGroup) {
-            for (i in 0 until view.childCount) applyThemeRecursive(view.getChildAt(i), t)
         }
     }
 
@@ -3234,15 +2885,6 @@ open class ImeKeyboardView(
             color
         }
         return ImeFocusRingPolicy.resolve(background, AccentPalette.parse(skinPrimaryColor))
-    }
-
-    private fun hasAncestorTag(view: View, tag: String): Boolean {
-        var parent = view.parent
-        while (parent is View) {
-            if (parent.tag == tag) return true
-            parent = parent.parent
-        }
-        return false
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
