@@ -742,7 +742,7 @@ open class ImeKeyboardView(
         )
         keyboardHost.addView(
             floatingKeyboardController.handle,
-            FrameLayout.LayoutParams(dp(48), dp(24)).apply {
+            FrameLayout.LayoutParams(dp(ImeGeometryTokens.TOUCH_TARGET_DP), dp(24)).apply {
                 gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
                 bottomMargin = dp(4)
             },
@@ -1353,7 +1353,7 @@ open class ImeKeyboardView(
                 },
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
-                    dp(48),
+                    dp(ImeGeometryTokens.TOUCH_TARGET_DP),
                 ).apply { marginEnd = dp(5) },
             )
         }
@@ -2387,7 +2387,7 @@ open class ImeKeyboardView(
             setTag(MARK_FUNCTION_KEY, func)
             contentDescription = if (text.isNotEmpty()) text else if (iconRes != 0) "功能键" else " "
             if (!func && secondary != null && !showSecondaryHints) setSecondaryVisible(false)
-            minimumHeight = dp(48)
+            minimumHeight = dp(ImeGeometryTokens.TOUCH_TARGET_DP)
             setOnClickListener {
                 if (!consumeTouchFeedback()) feedback()
                 onTap()
@@ -2422,8 +2422,8 @@ open class ImeKeyboardView(
         tag = "panel-button"
         gravity = Gravity.CENTER
         includeFontPadding = false
-        minHeight = dp(48)
-        minimumHeight = dp(48)
+        minHeight = dp(ImeGeometryTokens.TOUCH_TARGET_DP)
+        minimumHeight = dp(ImeGeometryTokens.TOUCH_TARGET_DP)
         isClickable = true
         isFocusable = true
         setOnTouchListener { _, event ->
