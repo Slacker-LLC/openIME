@@ -274,10 +274,18 @@ class ClipboardRetentionInstrumentedTest {
     @Test
     fun openingClipboardCapturesPrimaryClipBeforeAddingRetentionActions() {
         lateinit var keyboard: ImeKeyboardView
+        harness.awaitMain(timeoutMs = 10_000L) { activity ->
+            if (activity.hasWindowFocus()) true else null
+        }
         harness.awaitMain { activity ->
             ClipboardHistoryRepository.clearAll(activity)
             val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             clipboard.setPrimaryClip(ClipData.newPlainText("capture on open", "captured on open"))
+            assertEquals(
+                "The foreground activity must be able to read the clip used by this capture test",
+                "captured on open",
+                clipboard.primaryClip?.getItemAt(0)?.text?.toString(),
+            )
             val content = activity.findViewById<ViewGroup>(android.R.id.content)
             keyboard = ImeKeyboardView(activity, NoopListener())
             content.addView(

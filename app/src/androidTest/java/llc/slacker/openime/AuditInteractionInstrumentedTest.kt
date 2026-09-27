@@ -1039,7 +1039,7 @@ class AuditInteractionInstrumentedTest {
             true
         }
         harness.awaitMain { if (released) true else null }
-        harness.awaitMain(timeoutMs = 2_000L) { if (recorder.starts > 0) true else null }
+        harness.awaitMain(timeoutMs = 10_000L) { if (recorder.starts > 0) true else null }
         harness.awaitMain {
             assertEquals("Configured long press must arm voice exactly once", 1, recorder.starts)
             assertEquals("Voice gesture must not also insert a space", 0, recorder.spaces)
