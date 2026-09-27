@@ -33,4 +33,4 @@
 
 ## 当前临时架构
 
-生产运行时只有 `ImeKeyboardView`。历史兼容 wrapper `ImeKeyboardViewV2` 已删除；后续 UI 清理只从这个唯一 renderer 向具体组件/controller 机械拆分，不再引入 V1/V2 命名。
+生产运行时只有 `ImeKeyboardView`。后续 UI 清理只从这个唯一 renderer 向具体组件/controller 机械拆分，不再引入版本化键盘 View 命名。
