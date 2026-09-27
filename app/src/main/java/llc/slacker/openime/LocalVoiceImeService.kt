@@ -65,7 +65,13 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
     private var baseImeHeight: Int? = null
     private var baseImeSoftInputMode: Int? = null
     private val showImeAfterRotation = Runnable {
-        if (inputViewSessionActive && inputViewRequestedBySystem()) requestShowSelf(0)
+        if (!inputViewSessionActive || !inputViewRequestedBySystem()) return@Runnable
+        // requestShowSelf() was added in API 28. On API 26–27 the system
+        // already owns the active IME visibility request, so there is no
+        // equivalent self-request needed here.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            requestShowSelf(0)
+        }
     }
     private var voiceComposing = false
     private var voiceAutoCommitOnFinal = true
