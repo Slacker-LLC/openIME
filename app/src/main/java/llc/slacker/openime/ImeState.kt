@@ -55,7 +55,7 @@ data class ImeState(
     val editorInfo: EditorInfo? = null,
     val passwordField: Boolean = false,
     val symbolCategory: String = "常用",
-    // First real emoji category tab (see ImeData.fluentSmileysByCategory order).
+    // First real emoji category tab (see ImeData.emojiByCategory order).
     val emojiCategory: String = "笑脸",
     val voiceState: VoiceUiState = VoiceUiState(),
     val skinOpacity: Int = 95,
