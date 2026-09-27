@@ -16,6 +16,87 @@ import android.widget.TextView
 internal object SymbolRailRenderer {
     private const val CELL_HEIGHT_DP = 48
 
+    /**
+     * Builds a symbol rail correctly on its first frame. New keyboard renderers
+     * should use this instead of constructing a temporary stack and decorating
+     * it through a later tree scan.
+     */
+    fun build(
+        context: Context,
+        railTag: String,
+        contentTag: String,
+        contentDescription: String,
+        symbols: List<String>,
+        tagPrefix: String,
+        onCommit: (String) -> Unit,
+        onFeedback: () -> Unit,
+    ): ScrollView {
+        val content = LinearLayout(context).apply {
+            tag = contentTag
+            orientation = LinearLayout.VERTICAL
+        }
+        val scroll = ScrollView(context).apply {
+            tag = railTag
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            clipToPadding = false
+            this.contentDescription = contentDescription
+            addView(
+                content,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+        }
+        populate(
+            scroll = scroll,
+            symbols = symbols,
+            tagPrefix = tagPrefix,
+            onCommit = onCommit,
+            onFeedback = onFeedback,
+        )
+        return scroll
+    }
+
+    fun populate(
+        scroll: ScrollView,
+        symbols: List<String>,
+        tagPrefix: String,
+        preservedHeader: TextView? = null,
+        onCommit: (String) -> Unit,
+        onFeedback: () -> Unit,
+    ) {
+        val content = scroll.getChildAt(0) as? LinearLayout ?: return
+        val inheritedTextColor = (0 until content.childCount)
+            .asSequence()
+            .mapNotNull { content.getChildAt(it) as? TextView }
+            .firstOrNull { it !== preservedHeader }
+            ?.currentTextColor
+
+        content.removeAllViews()
+        if (preservedHeader != null) {
+            inheritedTextColor?.let(preservedHeader::setTextColor)
+            content.addView(
+                preservedHeader,
+                cellParams(content.context, withGap = true),
+            )
+        }
+        symbols.forEachIndexed { index, symbol ->
+            content.addView(
+                symbolCell(
+                    context = content.context,
+                    symbol = symbol,
+                    inheritedTextColor = inheritedTextColor,
+                    tagPrefix = tagPrefix,
+                    onCommit = onCommit,
+                    onFeedback = onFeedback,
+                ),
+                cellParams(content.context, withGap = index < symbols.lastIndex),
+            )
+        }
+    }
+
     fun decorate(
         root: View,
         sourceTag: String,
@@ -45,31 +126,15 @@ internal object SymbolRailRenderer {
             }
         if (alreadyDecorated) return scroll
 
-        val inheritedTextColor = (0 until content.childCount)
-            .asSequence()
-            .mapNotNull { content.getChildAt(it) as? TextView }
-            .firstOrNull { it !== preservedHeader }
-            ?.currentTextColor
-
-        content.removeAllViews()
         content.contentDescription = null
-        if (preservedHeader != null) {
-            inheritedTextColor?.let(preservedHeader::setTextColor)
-            content.addView(preservedHeader, cellParams(content.context, withGap = true))
-        }
-        symbols.forEachIndexed { index, symbol ->
-            content.addView(
-                symbolCell(
-                    context = content.context,
-                    symbol = symbol,
-                    inheritedTextColor = inheritedTextColor,
-                    tagPrefix = tagPrefix,
-                    onCommit = onCommit,
-                    onFeedback = onFeedback,
-                ),
-                cellParams(content.context, withGap = index < symbols.lastIndex),
-            )
-        }
+        populate(
+            scroll = scroll,
+            symbols = symbols,
+            tagPrefix = tagPrefix,
+            preservedHeader = preservedHeader,
+            onCommit = onCommit,
+            onFeedback = onFeedback,
+        )
         return scroll
     }
 
