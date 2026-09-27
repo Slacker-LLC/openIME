@@ -18,12 +18,10 @@ import android.widget.LinearLayout
  * the service; this layer owns window geometry and production-only capability
  * filtering that should not leak into key layout/state code.
  */
-class ImeKeyboardViewV2 private constructor(
+class ImeKeyboardViewV2(
     context: Context,
-    private val adapter: Adapter,
-) : ImeKeyboardView(context, adapter) {
-
-    constructor(context: Context, listener: ImeKeyboardView.Listener) : this(context, Adapter(listener))
+    private val listenerDelegate: ImeKeyboardView.Listener,
+) : ImeKeyboardView(context, listenerDelegate) {
 
     private var navigationBottomInsetPx = 0
     private var repairingEarlierNineKeySegment = false
@@ -37,14 +35,6 @@ class ImeKeyboardViewV2 private constructor(
     private var lastSyncedImeOptions: Int? = null
 
     init {
-        adapter.afterModeChanged = {
-            presentationDirty = true
-            post { syncProductionKeyPresentation() }
-        }
-        adapter.afterPanelChanged = {
-            presentationDirty = true
-            post { syncProductionKeyPresentation() }
-        }
         post { syncProductionKeyPresentation() }
 
         // Insets already consumed by the IME window arrive as zero, so this
@@ -72,7 +62,7 @@ class ImeKeyboardViewV2 private constructor(
         post {
             NineKeySymbolRailDecorator.decorate(
                 root = this,
-                onCommit = { symbol -> adapter.onCharacter(symbol) },
+                onCommit = { symbol -> listenerDelegate.onCharacter(symbol) },
                 onFeedback = ::feedback,
             )
             installNineKeyAccessibilityRepair()
@@ -249,65 +239,4 @@ class ImeKeyboardViewV2 private constructor(
     private fun insetDp(value: Int): Int =
         (value * resources.displayMetrics.density).toInt()
 
-    private class Adapter(private val delegate: ImeKeyboardView.Listener) : ImeKeyboardView.Listener {
-        var afterModeChanged: ((KeyboardMode) -> Unit)? = null
-        var afterPanelChanged: ((Panel) -> Unit)? = null
-
-        override fun onModeChanged(mode: KeyboardMode) {
-            delegate.onModeChanged(mode)
-            afterModeChanged?.invoke(mode)
-        }
-        override fun onPanelChanged(panel: Panel) {
-            delegate.onPanelChanged(panel)
-            afterPanelChanged?.invoke(panel)
-        }
-        override fun onCharacter(char: String) = delegate.onCharacter(char)
-        override fun onBackspace() = delegate.onBackspace()
-        override fun onClearAll() = delegate.onClearAll()
-        override fun onSpace() = delegate.onSpace()
-        override fun onFloatingKeyboardChanged(floating: Boolean) = delegate.onFloatingKeyboardChanged(floating)
-        override fun onFloatingKeyboardDragged(deltaX: Float, deltaY: Float) =
-            delegate.onFloatingKeyboardDragged(deltaX, deltaY)
-        override fun onVoiceToggle() = delegate.onVoiceToggle()
-        override fun onVoicePressChanged(pressed: Boolean) =
-            delegate.onVoicePressChanged(pressed)
-        override fun onVoiceSessionStarted(autoCommitOnFinal: Boolean) =
-            delegate.onVoiceSessionStarted(autoCommitOnFinal)
-        override fun onVoicePartial(text: String) = delegate.onVoicePartial(text)
-        override fun onVoiceFinal(text: String) = delegate.onVoiceFinal(text)
-        override fun onVoiceError(message: String) = delegate.onVoiceError(message)
-        override fun onVoiceCommit() = delegate.onVoiceCommit()
-        override fun onVoiceCancel() = delegate.onVoiceCancel()
-        override fun voiceModelState() = delegate.voiceModelState()
-        override fun startVoiceRecognition(languageTag: String, events: VoiceRecognitionEvents) =
-            delegate.startVoiceRecognition(languageTag, events)
-        override fun stopVoiceRecognition() = delegate.stopVoiceRecognition()
-        override fun cancelVoiceRecognition() = delegate.cancelVoiceRecognition()
-        override fun onEnter() = delegate.onEnter()
-        override fun onCompositionChanged(composition: String, candidates: List<String>) =
-            delegate.onCompositionChanged(composition, candidates)
-        override fun onNineKeyCompositionChanged(
-            composition: String,
-            digitBuffer: String,
-            pinyinPaths: List<String>,
-            candidates: List<String>,
-        ) = delegate.onNineKeyCompositionChanged(composition, digitBuffer, pinyinPaths, candidates)
-        override fun onCandidateSelected(candidate: String) = delegate.onCandidateSelected(candidate)
-        override fun onAssociationSelected(text: String) = delegate.onAssociationSelected(text)
-        override fun onCompositionBackspace() = delegate.onCompositionBackspace()
-        override fun onThemeChanged(theme: ImeTheme) = delegate.onThemeChanged(theme)
-        override fun onAppearanceChanged(appearance: ImeAppearance) = delegate.onAppearanceChanged(appearance)
-        override fun onShiftStateChanged(state: ShiftState) = delegate.onShiftStateChanged(state)
-        override fun onCandidateExpanded(open: Boolean) = delegate.onCandidateExpanded(open)
-        override fun onSymbolSelected(symbol: String) = delegate.onSymbolSelected(symbol)
-        override fun onEmojiSelected(emoji: String) = delegate.onEmojiSelected(emoji)
-        override fun onTextEdit(action: String) = delegate.onTextEdit(action)
-        override fun onSoundChanged(enabled: Boolean) = delegate.onSoundChanged(enabled)
-        override fun onHapticChanged(enabled: Boolean) = delegate.onHapticChanged(enabled)
-        override fun onPopupChanged(enabled: Boolean) = delegate.onPopupChanged(enabled)
-        override fun onFuzzyChanged(enabled: Boolean) = delegate.onFuzzyChanged(enabled)
-        override fun onSkinChanged(opacity: Int, radius: Int, fontSize: Int, primaryColor: String) =
-            delegate.onSkinChanged(opacity, radius, fontSize, primaryColor)
-
-    }
 }
