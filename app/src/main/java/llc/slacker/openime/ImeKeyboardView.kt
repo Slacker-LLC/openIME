@@ -509,7 +509,8 @@ open class ImeKeyboardView(
                 )
             },
             isGestureSessionActive = { voiceGestureSession },
-            updateTopZone = { updateTopZone(false) },
+            isComposing = { composition.text?.isNotEmpty() == true },
+            updateTopZone = ::updateTopZone,
         )
     }
     private val voicePanelController: VoicePanelController by lazy {

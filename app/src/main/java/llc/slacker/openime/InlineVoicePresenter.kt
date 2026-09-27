@@ -17,7 +17,8 @@ internal class InlineVoicePresenter(
     private val waves: () -> List<View>,
     private val tokens: () -> ImeTheme.Tokens,
     private val isGestureSessionActive: () -> Boolean,
-    private val updateTopZone: () -> Unit,
+    private val isComposing: () -> Boolean,
+    private val updateTopZone: (Boolean) -> Unit,
 ) {
     var active: Boolean = false
         private set
@@ -84,7 +85,7 @@ internal class InlineVoicePresenter(
         }
 
         refreshPalette()
-        updateTopZone()
+        updateTopZone(false)
     }
 
     fun startPulse() {
@@ -127,7 +128,7 @@ internal class InlineVoicePresenter(
         cancelling = false
         error = false
         paletteColor = null
-        updateTopZone()
+        updateTopZone(isComposing())
     }
 
     fun hideLater(
