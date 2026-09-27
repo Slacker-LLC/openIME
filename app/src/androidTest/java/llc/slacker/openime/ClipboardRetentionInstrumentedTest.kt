@@ -54,6 +54,50 @@ class ClipboardRetentionInstrumentedTest {
     }
 
     @Test
+    fun leavingClipboardBeforePostedLoadDoesNotCaptureStaleClip() {
+        lateinit var keyboard: ImeKeyboardView
+        rule.scenario.onActivity { activity ->
+            ClipboardHistoryRepository.clearAll(activity)
+            val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.setPrimaryClip(
+                ClipData.newPlainText("stale clipboard fixture", "must not capture after leaving panel"),
+            )
+
+            keyboard = ImeKeyboardView(activity, NoopListener())
+            activity.findViewById<ViewGroup>(android.R.id.content).addView(
+                keyboard,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+
+            // Both calls happen in one main-thread turn. The clipboard loader is
+            // only posted by the first call, so the second panel must invalidate
+            // its surface before that task is allowed to read/capture the clip.
+            keyboard.showPanel(Panel.CLIPBOARD)
+            keyboard.showPanel(Panel.SETTINGS)
+        }
+
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        repeat(10) {
+            Thread.sleep(30)
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        }
+
+        rule.scenario.onActivity { activity ->
+            assertEquals(
+                "A detached clipboard surface must not persist a stale queued capture",
+                emptyList<ClipboardEntry>(),
+                ClipboardHistoryRepository.load(activity),
+            )
+            val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.setPrimaryClip(ClipData.newPlainText("test cleanup", ""))
+            keyboard.shutdown()
+        }
+    }
+
+    @Test
     fun clearButtonsMutatePersistentHistoryWithoutTouchingPinnedUntilRequested() {
         lateinit var keyboard: ImeKeyboardView
         rule.scenario.onActivity { activity ->
