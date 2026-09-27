@@ -28,7 +28,7 @@ LocalVoiceImeService
                         └── NineKeySegmentRepairController
 ```
 
-生产运行时只存在一个键盘 View：`ImeKeyboardView`。历史上的 `ImeKeyboardViewV2` 只是补丁 wrapper，已删除；WindowInsets 已归主 View，九键早段编辑修复已归 `NineKeySegmentRepairController`。项目不再使用 V1/V2 命名。
+生产运行时只存在一个键盘 View：`ImeKeyboardView`。WindowInsets 由主 View 负责，九键早段编辑修复由 `NineKeySegmentRepairController` 负责。当前架构不使用版本化键盘 View 命名。
 
 ## 状态所有权
 
