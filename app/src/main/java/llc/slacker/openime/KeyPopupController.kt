@@ -35,11 +35,13 @@ internal class KeyPopupController(
         keepAfterKeyUp = false
 
         val t = tokens()
-        val popupWidth = (anchor.width * 1.08f).toInt()
-            .coerceIn(
-                dp(ImeGeometryTokens.KEY_POPUP_MIN_WIDTH_DP),
-                dp(ImeGeometryTokens.KEY_POPUP_MAX_WIDTH_DP),
-            )
+        val minimumWidth = dp(ImeGeometryTokens.KEY_POPUP_MIN_WIDTH_DP)
+        val desiredWidth = (anchor.width * ImeGeometryTokens.KEY_POPUP_WIDTH_SCALE)
+            .toInt()
+            .coerceAtLeast(minimumWidth)
+        val availableWidth = (host.width - contentInsetPx() * 2)
+            .coerceAtLeast(minimumWidth)
+        val popupWidth = desiredWidth.coerceAtMost(availableWidth)
         val popupHeight = dp(
             if (text == "清空") 36 else ImeGeometryTokens.KEY_POPUP_HEIGHT_DP,
         )
