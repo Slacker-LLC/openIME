@@ -133,9 +133,18 @@ class ClipboardRetentionInstrumentedTest {
             val remaining = ClipboardHistoryRepository.load(activity)
             assertEquals(listOf("keep pinned"), remaining.map { it.text })
             assertEquals(true, remaining.single().pinned)
+        }
 
-            val clearAll = findTextView(keyboard, "清空全部")
-            assertNotNull(clearAll)
+        var clearAll: TextView? = null
+        repeat(20) {
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            rule.scenario.onActivity { clearAll = findTextView(keyboard, "清空全部") }
+            if (clearAll != null) return@repeat
+            Thread.sleep(50)
+        }
+        rule.scenario.onActivity { activity ->
+            val minimumTarget = (48 * activity.resources.displayMetrics.density).toInt()
+            assertNotNull("Retention actions must return after the pruned history reloads", clearAll)
             assertTrue("clear-all must keep a 48dp target", clearAll!!.minimumHeight >= minimumTarget)
             assertTrue(clearAll!!.contentDescription.toString().contains("删除全部剪贴历史"))
             clearAll!!.performClick()
