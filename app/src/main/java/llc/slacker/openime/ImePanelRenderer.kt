@@ -279,6 +279,7 @@ internal class ImePanelRenderer(
                         )
                     }
                 }
+                is HandwritingResult.Error -> Unit
             }
         }.apply {
             tag = "handwriting-canvas"

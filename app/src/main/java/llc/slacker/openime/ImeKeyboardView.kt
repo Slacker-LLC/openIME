@@ -526,6 +526,28 @@ open class ImeKeyboardView(
             onHierarchyRebuilt = ::onViewHierarchyRebuilt,
         )
     }
+    private val textEditorPanelController: TextEditorPanelController by lazy {
+        TextEditorPanelController(
+            context = context,
+            expandedPanel = expandedPanel,
+            toPx = ::dp,
+            panelBodyHeightPx = { dp(panelBodyHeightDp()) },
+            createHeader = ::panelHead,
+            createKey = { text, textSize, onTap ->
+                key(
+                    text = text,
+                    func = true,
+                    secondary = null,
+                    mainTextSizeOverride = textSize,
+                    onTap = onTap,
+                )
+            },
+            createPanelButton = ::button,
+            isPasswordField = { passwordField },
+            onTextEdit = listener::onTextEdit,
+            onFeedback = ::feedback,
+        )
+    }
     private val pinyin26Renderer: Pinyin26KeyboardRenderer by lazy {
         Pinyin26KeyboardRenderer(
             context = context,
@@ -1891,7 +1913,7 @@ open class ImeKeyboardView(
             Panel.HANDWRITING -> panelRenderer.renderHandwriting()
             Panel.VOICE -> renderVoice()
             Panel.CLIPBOARD -> renderClipboard()
-            Panel.TEXT_EDITOR -> renderTextEditor()
+            Panel.TEXT_EDITOR -> textEditorPanelController.render()
             Panel.SETTINGS -> renderSettings()
             Panel.FUZZY_SETTINGS -> renderFuzzySettings()
             else -> closePanelToKeyboard()
@@ -2710,139 +2732,16 @@ open class ImeKeyboardView(
         context.startActivity(intent)
     }
 
-    private fun renderTextEditor() {
-        addPanelHead("文本编辑")
-        val body = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), dp(10), dp(10), dp(10))
-            tag = "text_editor_panel"
-        }
-        val quick = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        listOf("全选" to "select-all", "复制" to "copy", "剪切" to "cut", "粘贴" to "paste", "撤销" to "undo")
-            .forEach { (label, action) ->
-                quick.addView(
-                    key(label, true, null, 1f, 10f) { listener.onTextEdit(action) }.apply {
-                        tag = "textedit-action:$action"
-                    },
-                    LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(5) },
-                )
-            }
-        body.addView(quick, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(48),
-        ).apply { bottomMargin = dp(10) })
-        val cross = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            tag = "textedit-cross"
-        }
-        fun cell(label: String? = null, action: String? = null, center: Boolean = false): TextView =
-            button(label ?: "", if (center) 9f else 14f, !center).apply {
-                if (action != null) {
-                    setOnClickListener {
-                        feedback()
-                        listener.onTextEdit(action)
-                    }
-                } else {
-                    tag = "textedit-spacer"
-                    isClickable = false
-                    isFocusable = false
-                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                    contentDescription = null
-                }
-                if (center) text = "光标"
-            }
-        listOf(
-            listOf(cell(), cell("▲", "up"), cell()),
-            listOf(cell("◀", "left"), cell(center = true), cell("▶", "right")),
-            listOf(cell(), cell("▼", "down"), cell()),
-        ).forEach { rowItems ->
-            val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            rowItems.forEach { c -> row.addView(c, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(5) }) }
-            cross.addView(row, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(48),
-            ).apply { bottomMargin = dp(5) })
-        }
-        body.addView(cross, LinearLayout.LayoutParams(dp(158), dp(150)).apply {
-            gravity = Gravity.CENTER_HORIZONTAL
-        })
-        expandedPanel.addView(body, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(panelBodyHeightDp()),
-        ))
-        applyTextEditControlAvailability(body)
-    }
-
-    /** Keep controls that cannot be implemented for arbitrary editors visibly unavailable. */
-    private fun applyTextEditControlAvailability(root: View) {
-        fun visit(view: View) {
-            val label = when (view) {
-                is ImeKeyView -> view.contentDescription?.toString().orEmpty()
-                is TextView -> view.text.toString()
-                else -> ""
-            }
-            if (label.isNotEmpty() && TextEditControlPolicy.isUnavailableLabel(label, passwordField)) {
-                val reason = TextEditControlPolicy.unavailableReason(label, passwordField)
-                view.isEnabled = false
-                view.isClickable = false
-                view.alpha = 0.38f
-                view.contentDescription = label
-                if (Build.VERSION.SDK_INT >= 30) view.stateDescription = reason
-            }
-            if (view is ViewGroup) {
-                for (index in 0 until view.childCount) visit(view.getChildAt(index))
-            }
-        }
-        visit(root)
-    }
-
     /** Keep copy/cut/paste honest as the target editor selection changes. */
     internal fun refreshTextEditAvailability(
         selectionAvailable: Boolean,
         clipboardAvailable: Boolean,
     ) {
         if (panel != Panel.TEXT_EDITOR) return
-
-        fun visit(view: View) {
-            val action = (view.tag as? String)
-                ?.takeIf { it.startsWith("textedit-action:") }
-                ?.substringAfter(':')
-            if (action != null && (view is ImeKeyView || view is TextView)) {
-                val label = when (view) {
-                    is ImeKeyView -> view.contentDescription?.toString().orEmpty()
-                    is TextView -> view.text.toString()
-                    else -> ""
-                }
-                val policyUnavailable = TextEditControlPolicy.isUnavailableLabel(label, passwordField)
-                val dynamicReason = when {
-                    policyUnavailable -> TextEditControlPolicy.unavailableReason(label, passwordField)
-                    label in setOf("复制", "剪切") && !selectionAvailable -> "请先选择文本"
-                    label == "粘贴" && !clipboardAvailable -> "剪贴板暂无文本"
-                    else -> null
-                }
-                val unavailable = dynamicReason != null
-                view.isEnabled = !unavailable
-                view.isClickable = !unavailable
-                view.alpha = if (unavailable) 0.38f else 1f
-                val reason = dynamicReason ?: "当前编辑器暂不支持"
-                view.contentDescription = if (unavailable && Build.VERSION.SDK_INT < 30) {
-                    "$label，不可用：$reason"
-                } else {
-                    label
-                }
-                if (Build.VERSION.SDK_INT >= 30) {
-                    view.stateDescription = if (unavailable) {
-                        reason
-                    } else {
-                        "可用"
-                    }
-                }
-            }
-            if (view is ViewGroup) {
-                for (index in 0 until view.childCount) visit(view.getChildAt(index))
-            }
-        }
-        visit(expandedPanel)
+        textEditorPanelController.refreshAvailability(
+            selectionAvailable = selectionAvailable,
+            clipboardAvailable = clipboardAvailable,
+        )
     }
 
     private fun renderSettings(reusePanel: Boolean = false) {
