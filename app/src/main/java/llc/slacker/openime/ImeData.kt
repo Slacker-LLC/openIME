@@ -1,8 +1,8 @@
 package llc.slacker.openime
 
 /**
- * Data migrated 1:1 from ui-suite/js/ime-engine.js IME_DATA.
- * This is the candidate source of truth; do not redesign entries here.
+ * Built-in fallback dictionaries, symbol catalogs and emoji metadata used by
+ * the Android IME. Rime remains authoritative for production Chinese ranking.
  */
 object ImeData {
 
