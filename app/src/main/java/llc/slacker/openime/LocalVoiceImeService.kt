@@ -129,8 +129,8 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         fuzzy = fuzzy,
     )
 
-    private fun createKeyboardView(): ImeKeyboardViewV2 {
-        return ImeKeyboardViewV2(this, this).also { view ->
+    private fun createKeyboardView(): ImeKeyboardView {
+        return ImeKeyboardView(this, this).also { view ->
             view.setMode(state.keyboardMode, notifyListener = false)
             view.setTheme(state.theme)
             view.setAppearance(state.appearance)
