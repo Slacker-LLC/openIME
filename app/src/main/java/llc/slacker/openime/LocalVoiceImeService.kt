@@ -1229,7 +1229,11 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         }
         if (isCancelled()) return null
         return NativeQueryResult(
-            choices = NativeCandidatePipeline.mergeRoundRobin(batches, MAX_CANDIDATES),
+            choices = NativeCandidatePipeline.mergeRoundRobin(
+                batches = batches,
+                limit = MAX_CANDIDATES,
+                fallbackCandidatesFor = candidatePipeline::nineKeyFallbackCandidatesFor,
+            ),
             latencyMs = SystemClock.elapsedRealtime() - startedAt,
         )
     }
