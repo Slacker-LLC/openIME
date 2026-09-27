@@ -25,7 +25,7 @@ class ImeKeyboardViewV2 private constructor(
     private val adapter: Adapter,
 ) : ImeKeyboardView(context, adapter) {
 
-    constructor(context: Context, listener: Listener) : this(context, Adapter(listener))
+    constructor(context: Context, listener: ImeKeyboardView.Listener) : this(context, Adapter(listener))
 
     private var navigationBottomInsetPx = 0
     private var repairingEarlierNineKeySegment = false
@@ -338,66 +338,7 @@ class ImeKeyboardViewV2 private constructor(
     private fun insetDp(value: Int): Int =
         (value * resources.displayMetrics.density).toInt()
 
-    interface Listener {
-        fun onModeChanged(mode: KeyboardMode)
-        fun onPanelChanged(panel: Panel)
-        fun onCharacter(char: String)
-        fun onBackspace()
-        fun onClearAll()
-        fun onSpace()
-        fun onFloatingKeyboardChanged(floating: Boolean)
-        fun onFloatingKeyboardDragged(deltaX: Float, deltaY: Float)
-        fun onVoiceToggle()
-        fun onVoicePressChanged(pressed: Boolean) {
-            if (pressed) onVoiceToggle()
-        }
-        fun onVoiceSessionStarted(autoCommitOnFinal: Boolean) {}
-        fun onVoicePartial(text: String) {}
-        fun onVoiceFinal(text: String) {}
-        fun onVoiceError(message: String) {}
-        fun onVoiceCommit() {}
-        fun onVoiceCancel() {}
-        fun voiceModelState(): VoiceModelLifecycleState = VoiceModelLifecycleState.COLD
-        fun startVoiceRecognition(languageTag: String, events: VoiceRecognitionEvents) {
-            events.onError("本地语音服务未连接")
-        }
-        fun stopVoiceRecognition() {}
-        fun cancelVoiceRecognition() {}
-        fun onEnter()
-        fun onCompositionChanged(composition: String, candidates: List<String>)
-        fun onNineKeyCompositionChanged(
-            composition: String,
-            digitBuffer: String,
-            pinyinPaths: List<String>,
-            candidates: List<String>,
-        ) {
-            onCompositionChanged(composition, candidates)
-        }
-        fun onCandidateSelected(candidate: String)
-
-        /**
-         * Association chips are shown after a commit, when no composition is
-         * live. They must not be funnelled through [onCandidateSelected], which
-         * is guarded on an active composition and silently drops them.
-         */
-        fun onAssociationSelected(text: String) = Unit
-
-        fun onCompositionBackspace()
-        fun onThemeChanged(theme: ImeTheme)
-        fun onAppearanceChanged(appearance: ImeAppearance)
-        fun onShiftStateChanged(state: ShiftState)
-        fun onCandidateExpanded(open: Boolean)
-        fun onSymbolSelected(symbol: String)
-        fun onEmojiSelected(emoji: String)
-        fun onTextEdit(action: String)
-        fun onSoundChanged(enabled: Boolean)
-        fun onHapticChanged(enabled: Boolean)
-        fun onPopupChanged(enabled: Boolean)
-        fun onFuzzyChanged(enabled: Boolean)
-        fun onSkinChanged(opacity: Int, radius: Int, fontSize: Int, primaryColor: String)
-    }
-
-    private class Adapter(private val delegate: Listener) : ImeKeyboardView.Listener {
+    private class Adapter(private val delegate: ImeKeyboardView.Listener) : ImeKeyboardView.Listener {
         var afterModeChanged: ((KeyboardMode) -> Unit)? = null
         var afterPanelChanged: ((Panel) -> Unit)? = null
 
