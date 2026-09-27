@@ -5433,6 +5433,7 @@ open class ImeKeyboardView(
             topMargin = top
         })
         popupView = p
+        animatePopupIn(p, popupWidth, popupHeight)
     }
 
     /** Horizontal long-press selector for symbols that share one key. */
@@ -5492,11 +5493,31 @@ open class ImeKeyboardView(
             topMargin = top
         })
         popupView = row
+        animatePopupIn(row, popupWidth, popupHeight)
+    }
+
+    private fun animatePopupIn(view: View, popupWidth: Int, popupHeight: Int) {
+        view.animate().cancel()
+        view.pivotX = popupWidth / 2f
+        view.pivotY = popupHeight.toFloat()
+        view.scaleX = 0.88f
+        view.scaleY = 0.88f
+        view.alpha = 0f
+        view.animate()
+            .scaleX(1f)
+            .scaleY(1f)
+            .alpha(1f)
+            .setDuration(80L)
+            .setInterpolator(DecelerateInterpolator(1.5f))
+            .start()
     }
 
     private fun hidePopup() {
         repeatHandler.removeCallbacks(popupHideRunnable)
-        popupView?.let { removeView(it) }
+        popupView?.let {
+            it.animate().cancel()
+            removeView(it)
+        }
         popupView = null
         keepPopupAfterKeyUp = false
     }
