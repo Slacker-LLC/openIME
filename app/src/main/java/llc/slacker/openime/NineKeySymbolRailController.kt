@@ -183,11 +183,13 @@ internal object NineKeySymbolRailController {
     }
 
     private fun commonSymbols(root: View): List<String> =
-        (CustomSymbolRepository.load(root.context).map { it.symbol } +
-            ImeData.symbols["常用"].orEmpty())
-            .asSequence()
-            .filter { it.isNotBlank() }
-            .distinct()
-            .toList()
-            .ifEmpty { listOf("，", "。", "？", "！") }
+        CustomSymbolRepository.load(root.context)
+            .map { it.symbol }
+            .filter { it.isNotBlank() } +
+            ImeData.symbols["常用"].orEmpty()
+                .asSequence()
+                .filter { it.isNotBlank() }
+                .distinct()
+                .toList()
+                .ifEmpty { listOf("，", "。", "？", "！") }
 }
