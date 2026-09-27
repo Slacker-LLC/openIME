@@ -33,6 +33,7 @@ class AuditInteractionInstrumentedTest {
         var events: VoiceRecognitionEvents? = null
         val partials = mutableListOf<String>()
         val finals = mutableListOf<String>()
+        val characters = mutableListOf<String>()
         val fuzzyChanges = mutableListOf<Boolean>()
         var starts = 0
         var stops = 0
@@ -55,6 +56,7 @@ class AuditInteractionInstrumentedTest {
                 "cancelVoiceRecognition" -> { cancels++; null }
                 "onVoicePartial" -> { partials.add(args!![0] as String); null }
                 "onVoiceFinal" -> { finals.add(args!![0] as String); null }
+                "onCharacter" -> { characters.add(args!![0] as String); null }
                 "onVoiceToggle" -> { keyboard.startVoiceFromSpace(); null }
                 "onVoicePressChanged" -> {
                     if (args!![0] == true) keyboard.startVoiceFromSpace()
@@ -297,6 +299,70 @@ class AuditInteractionInstrumentedTest {
             assertTrue(keyboard.closePanelToKeyboard())
             assertEquals(Panel.NONE, keyboard.currentPanel())
             true
+        }
+    }
+
+    @Test
+    fun quickPhrasePanelRefreshesEditedEntryAndCommitsCurrentText() = withKeyboard { harness, recorder, keyboard ->
+        val original = "面板原文-${SystemClock.uptimeMillis()}"
+        val edited = "面板编辑后-${SystemClock.uptimeMillis()}"
+        var phraseId = 0L
+        try {
+            harness.awaitMain {
+                val phrase = requireNotNull(
+                    QuickPhraseRepository.upsert(
+                        keyboard.context,
+                        0L,
+                        "测试分类",
+                        original,
+                    ),
+                )
+                phraseId = phrase.id
+                keyboard.showPanel(Panel.CLIPBOARD)
+                assertTrue(
+                    "Clipboard panel must expose the quick-phrase tab",
+                    keyboard.findTestTarget("常用语")!!.performClick(),
+                )
+                true
+            }
+            harness.awaitMain {
+                val entry = keyboard.findViewWithTag<View>("phrase:$phraseId")
+                    ?: return@awaitMain null
+                assertTrue(entry.performClick())
+                assertEquals(listOf(original), recorder.characters)
+
+                QuickPhraseRepository.upsert(
+                    keyboard.context,
+                    phraseId,
+                    "更新分类",
+                    edited,
+                )
+                keyboard.refreshAuxiliaryContent()
+                true
+            }
+            harness.awaitMain {
+                val editedEntry = keyboard.findViewWithTag<View>("phrase:$phraseId")
+                    ?: return@awaitMain null
+                assertTrue(
+                    "Refreshing auxiliary content must rebuild the row with edited text",
+                    editedEntry.contentDescription.toString().contains(edited),
+                )
+                assertTrue(editedEntry.performClick())
+                assertEquals(listOf(original, edited), recorder.characters)
+
+                QuickPhraseRepository.remove(keyboard.context, phraseId)
+                keyboard.refreshAuxiliaryContent()
+                assertNull(
+                    "Deleting then refreshing must remove the phrase row",
+                    keyboard.findViewWithTag<View>("phrase:$phraseId"),
+                )
+                true
+            }
+        } finally {
+            harness.awaitMain {
+                if (phraseId > 0L) QuickPhraseRepository.remove(keyboard.context, phraseId)
+                true
+            }
         }
     }
 
