@@ -1472,11 +1472,12 @@ open class ImeKeyboardView(
     open fun shutdown() {
         if (panel == Panel.CLIPBOARD) clipboardPanelController.invalidatePendingLoad()
         stopVoiceIfActive()
-        // Drop every pending callback, not just the repeat one. A surviving
-        // backspace/voice runnable fires after the editor changed and would
-        // delete or compose into whichever InputConnection is current then.
+        // View.removeCallbacks(null) is a no-op; cancel the root-owned
+        // named runnable explicitly. Gesture/controllers below invalidate their
+        // own delayed work, while the posted voice-start lambda is guarded by
+        // voiceGestureSession, which stopVoiceIfActive() cleared above.
         repeatHandler.removeCallbacksAndMessages(null)
-        removeCallbacks(null)
+        removeCallbacks(pendingRowRebuildPoll)
         backspaceGestureController.shutdown()
         spaceVoiceGestureController.shutdown()
         floatingKeyboardController.reset()
