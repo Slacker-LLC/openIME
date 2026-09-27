@@ -22,10 +22,10 @@ class TextEditControlsInstrumentedTest {
 
     @Test
     fun textEditorExposesUndoAndVerticalCursorControls() {
-        lateinit var keyboard: ImeKeyboardViewV2
+        lateinit var keyboard: ImeKeyboardView
         rule.scenario.onActivity { activity ->
             val content = activity.findViewById<ViewGroup>(android.R.id.content)
-            keyboard = ImeKeyboardViewV2(activity, NoopListener())
+            keyboard = ImeKeyboardView(activity, NoopListener())
             content.addView(
                 keyboard,
                 ViewGroup.LayoutParams(
@@ -57,10 +57,10 @@ class TextEditControlsInstrumentedTest {
 
     @Test
     fun passwordFieldsDisableClipboardActionsBeforeTheUserCanTriggerADeadAction() {
-        lateinit var keyboard: ImeKeyboardViewV2
+        lateinit var keyboard: ImeKeyboardView
         rule.scenario.onActivity { activity ->
             val content = activity.findViewById<ViewGroup>(android.R.id.content)
-            keyboard = ImeKeyboardViewV2(activity, NoopListener())
+            keyboard = ImeKeyboardView(activity, NoopListener())
             content.addView(
                 keyboard,
                 ViewGroup.LayoutParams(
@@ -95,10 +95,10 @@ class TextEditControlsInstrumentedTest {
 
     @Test
     fun editorActionsReflectSelectionAndClipboardAvailability() {
-        lateinit var keyboard: ImeKeyboardViewV2
+        lateinit var keyboard: ImeKeyboardView
         rule.scenario.onActivity { activity ->
             val content = activity.findViewById<ViewGroup>(android.R.id.content)
-            keyboard = ImeKeyboardViewV2(activity, NoopListener())
+            keyboard = ImeKeyboardView(activity, NoopListener())
             content.addView(
                 keyboard,
                 ViewGroup.LayoutParams(
