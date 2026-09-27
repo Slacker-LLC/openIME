@@ -1458,8 +1458,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
             attrs.gravity = Gravity.TOP or Gravity.START
             attrs.width = desiredWidth
             attrs.height = currentHeight
-            attrs.softInputMode = (attrs.softInputMode and WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST.inv()) or
-                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+            attrs.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
             attrs.x = floatingWindowX.coerceIn(bounds[0], bounds[1])
             attrs.y = floatingWindowY.coerceIn(bounds[2], bounds[3])
             floatingWindowX = attrs.x
@@ -1486,8 +1485,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
         attrs.gravity = Gravity.TOP or Gravity.START
         attrs.width = width
         attrs.height = height
-        attrs.softInputMode = (attrs.softInputMode and WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST.inv()) or
-            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+        attrs.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
         attrs.x = floatingWindowX
         attrs.y = floatingWindowY
         imeWindow.attributes = attrs
