@@ -108,8 +108,8 @@ class QuickPhraseEditActivity : Activity() {
                 setImageResource(R.drawable.ic_arrow_back)
                 imageTintList = ColorStateList.valueOf(accent)
                 contentDescription = "返回"
-                setMinimumWidth(dp(48))
-                setMinimumHeight(dp(48))
+                setMinimumWidth(dp(ImeGeometryTokens.TOUCH_TARGET_DP))
+                setMinimumHeight(dp(ImeGeometryTokens.TOUCH_TARGET_DP))
                 isClickable = true
                 isFocusable = true
                 applySelectableBackground(this)
@@ -117,7 +117,7 @@ class QuickPhraseEditActivity : Activity() {
                     it.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                     requestClose()
                 }
-            }, LinearLayout.LayoutParams(dp(48), dp(56)))
+            }, LinearLayout.LayoutParams(dp(ImeGeometryTokens.TOUCH_TARGET_DP), dp(56)))
             addView(title, LinearLayout.LayoutParams(0, dp(56), 1f))
         }
 
