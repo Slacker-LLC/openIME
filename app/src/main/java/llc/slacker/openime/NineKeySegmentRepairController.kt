@@ -23,11 +23,17 @@ internal class NineKeySegmentRepairController(
     private var repairing = false
 
     fun onHierarchyRebuilt() {
-        NineKeySymbolRailDecorator.decorate(
+        NineKeySymbolRailController.decorate(
             root = host,
             onCommit = listener::onCharacter,
             onFeedback = feedback,
         )
+        NumericKeypadDecorator.decorate(
+            root = host,
+            onCommit = listener::onCharacter,
+            onFeedback = feedback,
+        )
+        host.applyThemeToSubtree(host)
         installAccessibilityRepair()
     }
 
