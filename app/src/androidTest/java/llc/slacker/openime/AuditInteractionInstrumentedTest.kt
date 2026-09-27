@@ -261,6 +261,28 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun networkEmoticonCategoryFiltersSymbolsInsteadOfOnlyHighlightingTab() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            keyboard.showPanel(Panel.SYMBOLS)
+            val emoticonTab = keyboard.findTestTarget("网络颜文字")
+            assertNotNull("Symbols must expose network emoticons as a real category", emoticonTab)
+            assertTrue(emoticonTab!!.performClick())
+            assertNotNull(
+                "Selecting the category must render its contents",
+                keyboard.findTestTarget("(｡◕‿◕｡)"),
+            )
+
+            assertTrue(keyboard.findTestTarget("特殊")!!.performClick())
+            assertNotNull("Special shapes must remain in the special category", keyboard.findTestTarget("★"))
+            assertNull(
+                "Special category must not silently retain network emoticons",
+                keyboard.findTestTarget("(｡◕‿◕｡)"),
+            )
+            true
+        }
+    }
+
+    @Test
     fun emojiCategorySelectionReplacesTheRenderedGrid() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.showPanel(Panel.EMOJI)
