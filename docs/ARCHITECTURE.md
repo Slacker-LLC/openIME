@@ -20,15 +20,15 @@ LocalVoiceImeService
         │       ├── LocalAudioVoiceBackend / VoiceAudioRouteManager
         │       └── sherpa-onnx
         └── IME Window
-                └── ImeKeyboardViewV2
-                        └── ImeKeyboardView
-                                ├── 键盘/候选/面板
-                                ├── 手势与无障碍
-                                ├── Theme / Geometry
-                                └── KeyPopupController
+                └── ImeKeyboardView
+                        ├── 键盘/候选/面板
+                        ├── 手势与无障碍
+                        ├── Theme / Geometry
+                        ├── KeyPopupController
+                        └── NineKeySegmentRepairController
 ```
 
-`ImeKeyboardViewV2` 当前仍是生产 wrapper，不是独立渲染器。它负责生产期 Insets、九键修补、Enter/Space 呈现和 capability 同步；这些职责正在逐步归位，最终目标是删除 V2，让 Service 直接创建正式的 `ImeKeyboardView`。
+生产运行时只存在一个键盘 View：`ImeKeyboardView`。历史上的 `ImeKeyboardViewV2` 只是补丁 wrapper，已删除；WindowInsets 已归主 View，九键早段编辑修复已归 `NineKeySegmentRepairController`。项目不再使用 V1/V2 命名。
 
 ## 状态所有权
 
@@ -40,7 +40,7 @@ LocalVoiceImeService
 - `InputConnectionGateway`：所有目标编辑器副作用。
 - `ImeKeyboardView`：pressed、动画、滚动位置、Popup、手势坐标、测量几何等瞬时 UI 状态。
 
-当前仍存在需要收敛的历史状态桥接，例如九键的 `NineKeyUiState` 和 V2 的 presentation repair；不要为这些临时结构再建立新的抽象层。
+当前仍存在需要收敛的历史状态桥接，例如九键的 `NineKeyUiState`；不要为这些临时结构再建立新的抽象层。
 
 ## 输入提交原则
 
