@@ -53,7 +53,7 @@ LocalVoiceImeService
 - `ImeKeyboardView`：当前编辑器/composition 协调、响应式测量几何、Panel/window 编排等顶层瞬时状态。
 - 各具体 UI owner：只持有自己表面的瞬时状态，例如候选滚动、Panel tab/scroll、Voice presentation generation、held-key gesture pointer、Popup 生命周期和 floating drag。
 
-当前仍存在需要收敛的历史状态桥接，例如九键的 `NineKeyUiState`；不要为这些临时结构再建立新的抽象层。
+`NineKeyUiState` 是 CandidatePipeline 实例内的 session-scoped 歧义路径/显式选择缓存，不持有候选排序或编辑器状态；它不是第二套候选 source of truth。继续重构时不要把这类局部状态重新提升成全局状态。
 
 ## 输入提交原则
 
