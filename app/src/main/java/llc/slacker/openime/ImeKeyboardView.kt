@@ -16,10 +16,8 @@ import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.text.Editable
 import android.text.InputType
 import android.text.TextUtils
-import android.text.TextWatcher
 import android.util.Log
 import android.util.LruCache
 import android.view.Gravity
@@ -424,6 +422,37 @@ open class ImeKeyboardView(
     private val keyboardBody = LinearLayout(context)
     private val expandedPanel = LinearLayout(context)
     private val candidateOverlay = LinearLayout(context)
+    private val pinyin26Renderer: Pinyin26KeyboardRenderer by lazy {
+        Pinyin26KeyboardRenderer(
+            context = context,
+            keyboardBody = keyboardBody,
+            toPx = ::dp,
+            keyRowHeightDp = ::keyRowHeightDp,
+            createKey = { text, function, secondary, textSize, iconRes, onTap ->
+                key(
+                    text = text,
+                    func = function,
+                    secondary = secondary,
+                    mainTextSizeOverride = textSize,
+                    iconRes = iconRes,
+                    onTap = onTap,
+                )
+            },
+            createBackspaceKey = ::backspaceKey,
+            createSpaceVoiceKey = { label, onTap ->
+                spaceVoiceKey(label, white = true, onTap = onTap)
+            },
+            onLetter = ::onKeyTapped,
+            onPinyinSegment = ::onPinyinSegment,
+            onShowChoicePopup = ::showChoicePopup,
+            onCommitCharacter = ::commitKeyboardCharacter,
+            onShift = ::cycleShift,
+            onDigits = { setMode(KeyboardMode.DIGITS) },
+            onModeSwitch = ::cycleMode,
+            onSpace = listener::onSpace,
+            onEnter = listener::onEnter,
+        )
+    }
     private var nineTapKey = ""
     private var nineTapIndex = 0
     private val nineTapReset = Runnable {
@@ -1473,7 +1502,7 @@ open class ImeKeyboardView(
             return
         }
         pendingRowRebuild = false
-        // Corner hints default on (9-key needs them); renderPinyin26 opts out.
+        // Corner hints default on for host-built surfaces such as 9-key.
         showSecondaryHints = true
         mainDock.visibility = View.VISIBLE
         keyboardBody.removeAllViews()
@@ -1525,106 +1554,20 @@ open class ImeKeyboardView(
     }
 
     private fun renderPinyin26() {
-        // Keep the 26-key surface clean: long-press digits still work, but the
-        // small corner numerals are not painted by default.
-        showSecondaryHints = false
-        val rows = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
-        val hints = mapOf(
-            'q' to "1", 'w' to "2", 'e' to "3", 'r' to "4", 't' to "5",
-            'y' to "6", 'u' to "7", 'i' to "8", 'o' to "9", 'p' to "0",
+        pinyin26Renderer.render(
+            english = false,
+            shiftState = shiftState,
+            enterLabel = enterKeyLabel(false),
         )
-        rows.forEachIndexed { rowIndex, rowText ->
-            val row = rowHost().apply {
-                if (rowIndex == 1) tag = "key-row-secondary"
-            }
-            if (rowIndex == 2) {
-                val leadingKey = if (mode == KeyboardMode.PINYIN_26) {
-                    key("分词", true, "@#/", 1f, 12f) { onPinyinSegment() }.apply {
-                        tag = "key-segment"
-                        contentDescription = "分词，长按输入@井号或斜杠"
-                        setOnLongClickListener {
-                            showChoicePopup(this, listOf("@", "#", "/"))
-                            true
-                        }
-                    }
-                } else {
-                    val iconRes = if (shiftState == ShiftState.CAPS_LOCK) R.drawable.ic_caps_lock else R.drawable.ic_shift
-                    key("", true, null, 1f, iconRes = iconRes) { cycleShift() }.apply {
-                        tag = if (shiftState == ShiftState.CAPS_LOCK) {
-                            "key-shift-caps"
-                        } else if (shiftState == ShiftState.SHIFT_ONCE) {
-                            "key-shift-active"
-                        } else {
-                            "key-shift"
-                        }
-                    }
-                }
-                row.addView(leadingKey, flexKeyParams(1.25f))
-            }
-            rowText.forEach { ch ->
-                val main = if (mode == KeyboardMode.ENGLISH_26 && shiftState != ShiftState.LOWERCASE) {
-                    ch.uppercaseChar()
-                } else {
-                    ch
-                }.toString()
-                val secondary = if (mode == KeyboardMode.PINYIN_26) hints[ch] else null
-                val base = ch.toString()
-                val k = key(main, false, secondary, 1f, 20f) { onKeyTapped(base) }.apply {
-                    tag = "key:$base"
-                }
-                if (secondary != null) {
-                    k.setOnLongClickListener {
-                        commitKeyboardCharacter(secondary)
-                        true
-                    }
-                }
-                row.addView(k, flexKeyParams())
-            }
-            if (rowIndex == 2) {
-                row.addView(backspaceKey(), flexKeyParams(1.25f))
-            }
-            keyboardBody.addView(row, rowParams())
-        }
-        val bottom = rowHost()
-        // Balance the two outer keys around the centered space so it is optically
-        // centered on the first frame (same result ProductionKeyPolicy/V2 used to
-        // apply in a post pass).
-        val outerLeft0 = 1.3f
-        val innerLeft = 0.95f
-        val innerRight = 1.05f
-        val outerRight0 = 1.8f
-        val balanced = ProductionKeyPolicy.balancedOuterWeights(
-            leftTotal = outerLeft0 + innerLeft,
-            rightTotal = innerRight + outerRight0,
-            leftOuter = outerLeft0,
-            rightOuter = outerRight0,
-        )
-        bottom.addView(key("123", true, null, 1f, 15f) { setMode(KeyboardMode.DIGITS) }, flexKeyParams(balanced.leftOuter))
-        bottom.addView(
-            key(if (mode == KeyboardMode.ENGLISH_26) "." else "，", true, null, 1f, 15f) {
-                commitKeyboardCharacter(if (mode == KeyboardMode.ENGLISH_26) "." else "，")
-            },
-            flexKeyParams(innerLeft),
-        )
-        bottom.addView(
-            spaceVoiceKey(if (mode == KeyboardMode.ENGLISH_26) "space" else "空格", white = true) {
-                listener.onSpace()
-            },
-            flexKeyParams(3.4f),
-        )
-        bottom.addView(
-            key("中/英", true, null, 1f, 14f) { cycleMode() }.apply { tag = "key:mode" },
-            flexKeyParams(innerRight),
-        )
-        bottom.addView(
-            key(enterKeyLabel(mode == KeyboardMode.ENGLISH_26), true, null, 1f, 15f) { listener.onEnter() }
-                .apply { tag = "key-enter" },
-            flexKeyParams(balanced.rightOuter),
-        )
-        keyboardBody.addView(bottom, rowParams(includeBottomGap = false))
     }
 
-    private fun renderEnglish26() = renderPinyin26()
+    private fun renderEnglish26() {
+        pinyin26Renderer.render(
+            english = true,
+            shiftState = shiftState,
+            enterLabel = enterKeyLabel(true),
+        )
+    }
 
     /**
      * Resolve the Enter label from the bound editor at render time so the key is
