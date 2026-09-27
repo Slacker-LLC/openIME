@@ -55,7 +55,7 @@ class ClipboardRetentionInstrumentedTest {
 
     @Test
     fun clearButtonsMutatePersistentHistoryWithoutTouchingPinnedUntilRequested() {
-        lateinit var keyboard: ImeKeyboardViewV2
+        lateinit var keyboard: ImeKeyboardView
         rule.scenario.onActivity { activity ->
             val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             clipboard.setPrimaryClip(ClipData.newPlainText("test", ""))
@@ -65,7 +65,7 @@ class ClipboardRetentionInstrumentedTest {
             ClipboardHistoryRepository.add(activity, "remove normal")
 
             val content = activity.findViewById<ViewGroup>(android.R.id.content)
-            keyboard = ImeKeyboardViewV2(activity, NoopListener())
+            keyboard = ImeKeyboardView(activity, NoopListener())
             content.addView(
                 keyboard,
                 ViewGroup.LayoutParams(
@@ -128,7 +128,7 @@ class ClipboardRetentionInstrumentedTest {
 
     @Test
     fun clipboardCardTapUsesTheDisplayedEntry() {
-        lateinit var keyboard: ImeKeyboardViewV2
+        lateinit var keyboard: ImeKeyboardView
         lateinit var listener: NoopListener
         rule.scenario.onActivity { activity ->
             ClipboardHistoryRepository.clearAll(activity)
@@ -137,7 +137,7 @@ class ClipboardRetentionInstrumentedTest {
             ClipboardHistoryRepository.add(activity, "tap this entry")
             listener = NoopListener()
             val content = activity.findViewById<ViewGroup>(android.R.id.content)
-            keyboard = ImeKeyboardViewV2(activity, listener)
+            keyboard = ImeKeyboardView(activity, listener)
             content.addView(
                 keyboard,
                 ViewGroup.LayoutParams(
@@ -168,13 +168,13 @@ class ClipboardRetentionInstrumentedTest {
 
     @Test
     fun openingClipboardCapturesPrimaryClipBeforeAddingRetentionActions() {
-        lateinit var keyboard: ImeKeyboardViewV2
+        lateinit var keyboard: ImeKeyboardView
         rule.scenario.onActivity { activity ->
             ClipboardHistoryRepository.clearAll(activity)
             val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             clipboard.setPrimaryClip(ClipData.newPlainText("capture on open", "captured on open"))
             val content = activity.findViewById<ViewGroup>(android.R.id.content)
-            keyboard = ImeKeyboardViewV2(activity, NoopListener())
+            keyboard = ImeKeyboardView(activity, NoopListener())
             content.addView(
                 keyboard,
                 ViewGroup.LayoutParams(
