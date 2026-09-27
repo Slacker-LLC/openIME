@@ -132,6 +132,16 @@ Use internal concrete classes/functions first. Avoid new generic frameworks.
 
 Target: ImeKeyboardView becomes orchestration rather than the implementation home for every screen and gesture.
 
+Current extraction snapshot on `chore/architecture-debt-cleanup`:
+
+- `ImeKeyboardView` reduced from roughly 6,020 lines to roughly 2,500 lines without Compose migration.
+- 26-key, 9-key and numeric/phone rendering have concrete renderer owners.
+- candidate strip + expanded candidates are owned by `CandidateBarController`.
+- Tools/keyboard selector/symbols/emoji/handwriting share `ImePanelRenderer`; clipboard, text-edit and settings/fuzzy use concrete controllers.
+- Voice panel/session presentation, inline voice presentation, floating chrome/drag, popup, backspace gesture/wiring and space/voice gesture/wiring have concrete owners.
+- theme traversal, shared panel header and emoji bitmap-cell construction are no longer implemented in the top-level View.
+- remaining work should continue to remove only real implementation ownership from `ImeKeyboardView`; editor/composition orchestration and responsive geometry are allowed to stay there.
+
 ## Phase 7 — Single production keyboard view — completed
 
 The historical compatibility wrapper around the production keyboard has been removed.
@@ -142,7 +152,7 @@ Its surviving responsibilities now have explicit owners:
 - Enter presentation -> `ImeKeyboardView.renderState`;
 - 9-key earlier-segment repair and accessibility repair -> `NineKeySegmentRepairController`;
 - handwriting availability -> the normal panel/tool capability path;
-- space/voice timing -> the production `ImeKeyboardView` gesture path.
+- space/voice timing -> `SpaceVoiceGestureController`; key binding -> `SpaceVoiceKeyFactory`; session presentation -> `VoicePanelController`.
 
 `LocalVoiceImeService` now creates the single production `ImeKeyboardView` directly.
 

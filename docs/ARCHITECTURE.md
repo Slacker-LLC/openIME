@@ -20,15 +20,27 @@ LocalVoiceImeService
         │       ├── LocalAudioVoiceBackend / VoiceAudioRouteManager
         │       └── sherpa-onnx
         └── IME Window
-                └── ImeKeyboardView
-                        ├── 键盘/候选/面板
-                        ├── 手势与无障碍
-                        ├── Theme / Geometry
+                └── ImeKeyboardView（orchestration / geometry / editor state）
+                        ├── ImeTopZone + CandidateBarController
+                        ├── Pinyin26KeyboardRenderer / Pinyin9KeyboardRenderer
+                        ├── NumericKeyboardRenderer
+                        ├── ImePanelRenderer
+                        │       ├── ClipboardPanelController
+                        │       ├── TextEditorPanelController
+                        │       └── SettingsPanelController
+                        ├── VoicePanelController / VoicePanelView
+                        ├── InlineVoicePresenter
+                        ├── FloatingKeyboardController
+                        ├── BackspaceGestureController / BackspaceKeyFactory
+                        ├── SpaceVoiceGestureController / SpaceVoiceKeyFactory
                         ├── KeyPopupController
-                        └── NineKeySegmentRepairController
+                        ├── NineKeySegmentRepairController
+                        ├── ImeThemeApplier
+                        ├── PanelHeaderFactory
+                        └── EmojiCellFactory
 ```
 
-生产运行时只存在一个键盘 View：`ImeKeyboardView`。WindowInsets 由主 View 负责，九键早段编辑修复由 `NineKeySegmentRepairController` 负责。当前架构不使用版本化键盘 View 命名。
+生产运行时只存在一个顶层键盘 View：`ImeKeyboardView`。它负责 WindowInsets、响应式几何、编辑器/composition 协调和各具体 UI owner 的编排；候选、键盘布局、Panel、Voice presentation、Theme traversal、Popup 与 held-key gesture 已由上图中的具体类分别持有。当前架构不使用版本化键盘 View 命名。
 
 ## 状态所有权
 
@@ -38,7 +50,8 @@ LocalVoiceImeService
 - `CandidatePipeline / CandidateSnapshot / RimeEngine`：候选生成、generation、native identity、Rime session。
 - `VoiceModelLifecycleManager`：本地 ASR runtime、预热、录音与 cooldown。
 - `InputConnectionGateway`：所有目标编辑器副作用。
-- `ImeKeyboardView`：pressed、动画、滚动位置、Popup、手势坐标、测量几何等瞬时 UI 状态。
+- `ImeKeyboardView`：当前编辑器/composition 协调、响应式测量几何、Panel/window 编排等顶层瞬时状态。
+- 各具体 UI owner：只持有自己表面的瞬时状态，例如候选滚动、Panel tab/scroll、Voice presentation generation、held-key gesture pointer、Popup 生命周期和 floating drag。
 
 当前仍存在需要收敛的历史状态桥接，例如九键的 `NineKeyUiState`；不要为这些临时结构再建立新的抽象层。
 
@@ -64,11 +77,13 @@ LocalVoiceImeService
 - 横竖屏只影响响应式几何，不自动改变用户的 Floating/Docked 选择。
 - `KeyboardLayoutMetrics` 只做纯 dp 计算；View 负责把结果应用到 LayoutParams。
 - `KeyPopupController` 负责 transient key popup 的定位、动画和生命周期。
+- `FloatingKeyboardController` 负责浮动卡片 chrome、drag handle 和本地 drag 交互；WindowManager 边界仍由 Service 持有。
+- `ImeThemeApplier` 负责把当前 tokens 递归应用到已构建的 native View 树。
 - 所有布局基于当前 IME Window 实际尺寸和 WindowInsets，不使用固定屏幕坐标。
 
 ## Voice
 
-`VoiceModelLifecycleManager` 是 ASR runtime 的唯一 owner。模型校验、预热、构建和释放不在 IME 主线程执行。空格语音是产品手势，长按判定跟随 Android 配置的 touch-and-hold timeout；松手、取消和旧 session 回调必须保持 generation 隔离。
+`VoiceModelLifecycleManager` 是 ASR runtime 的唯一 owner。模型校验、预热、构建和释放不在 IME 主线程执行。`VoicePanelController` 只持有 presentation-side session/generation，`InlineVoicePresenter` 只负责顶部内联状态，`SpaceVoiceGestureController` 只负责长按/上滑取消手势。长按判定跟随 Android 配置的 touch-and-hold timeout；松手、取消和旧 session 回调必须保持 generation 隔离。
 
 ## Native 与第三方代码
 
