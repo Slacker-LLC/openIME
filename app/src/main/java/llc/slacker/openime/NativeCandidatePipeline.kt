@@ -40,7 +40,7 @@ internal data class NativeCandidateChoice(
  * native Rime frame. It is keyed by the authoritative T9 code, so a stale
  * candidate list for another composition can never be merged accidentally.
  */
-internal object NineKeyFallbackRegistry {
+internal class NineKeyFallbackRegistry {
     private const val MAX_CODES = 32
     private const val MAX_PER_CODE = 96
     private val lock = Any()
@@ -75,6 +75,7 @@ internal object NativeCandidatePipeline {
     fun mergeRoundRobin(
         batches: List<Pair<String, List<RimeCandidateEntry>>>,
         limit: Int = 96,
+        fallbackCandidatesFor: (String) -> List<String> = { emptyList() },
     ): List<NativeCandidateChoice> {
         if (limit <= 0 || batches.isEmpty()) return emptyList()
         val result = ArrayList<NativeCandidateChoice>(limit)
@@ -103,7 +104,7 @@ internal object NativeCandidatePipeline {
         // choices that native did not return on its current page. Deferred
         // references make those choices learnable if tapped after the refresh.
         for ((input, _) in batches) {
-            for (candidate in NineKeyFallbackRegistry.candidatesFor(input)) {
+            for (candidate in fallbackCandidatesFor(input)) {
                 if (!seen.add(candidate)) continue
                 result += NativeCandidateChoice(
                     text = candidate,
