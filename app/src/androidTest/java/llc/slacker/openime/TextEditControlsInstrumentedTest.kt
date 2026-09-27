@@ -71,6 +71,13 @@ class TextEditControlsInstrumentedTest {
             keyboard.renderState(ImeState(passwordField = false))
             keyboard.showPanel(Panel.TEXT_EDITOR)
             keyboard.renderState(ImeState(passwordField = true))
+            // Even if editor/clipboard probes later report that their dynamic
+            // prerequisites are available, password privacy must remain the
+            // higher-priority disabled reason.
+            keyboard.refreshTextEditAvailability(
+                selectionAvailable = true,
+                clipboardAvailable = true,
+            )
         }
 
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
