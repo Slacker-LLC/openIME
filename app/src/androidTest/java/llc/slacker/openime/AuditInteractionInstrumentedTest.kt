@@ -26,7 +26,7 @@ import java.lang.reflect.Proxy
 @RunWith(AndroidJUnit4::class)
 class AuditInteractionInstrumentedTest {
     private class Recorder {
-        lateinit var keyboard: ImeKeyboardViewV2
+        lateinit var keyboard: ImeKeyboardView
         var events: VoiceRecognitionEvents? = null
         val partials = mutableListOf<String>()
         val finals = mutableListOf<String>()
@@ -72,13 +72,13 @@ class AuditInteractionInstrumentedTest {
     }
 
     private fun withKeyboard(
-        test: (DirectActivityHarness<DebugKeyboardActivity>, Recorder, ImeKeyboardViewV2) -> Any?,
+        test: (DirectActivityHarness<DebugKeyboardActivity>, Recorder, ImeKeyboardView) -> Any?,
     ) {
         DirectActivityHarness(DebugKeyboardActivity::class.java).use { harness ->
             harness.launch()
             val recorder = Recorder()
             val keyboard = harness.awaitMain { activity ->
-                ImeKeyboardViewV2(activity, recorder.listener).also {
+                ImeKeyboardView(activity, recorder.listener).also {
                     recorder.keyboard = it
                     activity.findViewById<ViewGroup>(android.R.id.content).addView(it)
                 }
@@ -792,7 +792,7 @@ class AuditInteractionInstrumentedTest {
 
     private data class Finger(val id: Int, val x: Float, val y: Float)
 
-    private fun keyPoint(keyboard: ImeKeyboardViewV2, tag: String): Finger {
+    private fun keyPoint(keyboard: ImeKeyboardView, tag: String): Finger {
         val key = requireNotNull(keyboard.findViewWithTag<View>(tag))
         check(key.width > 0 && key.height > 0) { "Key $tag has not been laid out" }
         val rect = Rect(0, 0, key.width, key.height)
@@ -803,7 +803,7 @@ class AuditInteractionInstrumentedTest {
     private fun pointerAction(action: Int, index: Int): Int =
         action or (index shl MotionEvent.ACTION_POINTER_INDEX_SHIFT)
 
-    private fun pointers(keyboard: ImeKeyboardViewV2, downTime: Long, action: Int, fingers: List<Finger>) {
+    private fun pointers(keyboard: ImeKeyboardView, downTime: Long, action: Int, fingers: List<Finger>) {
         val properties = fingers.map { finger ->
             MotionEvent.PointerProperties().apply {
                 id = finger.id
