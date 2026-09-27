@@ -33,6 +33,11 @@ class ProductionKeyPolicyTest {
     }
 
     @Test
+    fun spaceVoiceUsesTheProduct150msThreshold() {
+        assertEquals(150L, ProductionKeyPolicy.SPACE_VOICE_TRIGGER_MS)
+    }
+
+    @Test
     fun v2DoesNotAddASecondLongPressDelayAfterLegacy150msTrigger() {
         assertEquals(0L, ProductionKeyPolicy.remainingVoiceDelayMs(500L))
         assertEquals(0L, ProductionKeyPolicy.remainingVoiceDelayMs(100L))
