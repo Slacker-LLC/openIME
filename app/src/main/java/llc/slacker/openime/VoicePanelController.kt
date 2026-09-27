@@ -23,6 +23,7 @@ internal class VoicePanelController(
     private val onInlineState: (String, Boolean, Boolean, Float?) -> Unit,
     private val onHideInlineLater: (Long) -> Unit,
     private val onFeedback: () -> Unit,
+    private val onSessionTerminal: () -> Unit = {},
 ) {
     var active: Boolean = false
         private set
@@ -242,6 +243,7 @@ internal class VoicePanelController(
                     active = false
                     pending = false
                     stopRequested = false
+                    onSessionTerminal()
                     refreshLanguageControl()
                     setModelStatus("离线识别完成 · 已自动上屏")
                     listener.onVoiceFinal(text)
@@ -302,6 +304,7 @@ internal class VoicePanelController(
                     active = false
                     pending = false
                     stopRequested = false
+                    onSessionTerminal()
                     refreshLanguageControl()
                     setModelStatus("语音未完成 · 请检查本地模型和麦克风权限")
                     listener.onVoiceError(message)
