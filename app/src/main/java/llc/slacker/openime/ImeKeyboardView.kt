@@ -374,7 +374,7 @@ open class ImeKeyboardView(
                 AccentPalette.parse(skinPrimaryColor),
             )
         },
-        rounded = { color, radius -> rounded(color, radius) },
+        rounded = { color, radius -> ImeDrawableFactory.rounded(color, radius) },
         statefulRounded = { normal, pressed, radius -> statefulRounded(normal, pressed, radius) },
         contrastText = ::contrastText,
         feedback = ::feedback,
@@ -1012,7 +1012,7 @@ open class ImeKeyboardView(
         repeat(6) { index ->
             val bar = View(context).apply {
                 tag = "voice-inline-wave-$index"
-                background = rounded(Color.WHITE, dp(ImeGeometryTokens.PILL_RADIUS_DP))
+                background = ImeDrawableFactory.rounded(Color.WHITE, dp(ImeGeometryTokens.PILL_RADIUS_DP))
             }
             voiceInlineWaves += bar
             inlineWave.addView(
@@ -1710,15 +1710,15 @@ open class ImeKeyboardView(
         }
         if (inlineVoicePaletteColor == backgroundColor) return
         inlineVoicePaletteColor = backgroundColor
-        voiceInlineZone.background = rounded(
+        voiceInlineZone.background = ImeDrawableFactory.rounded(
             backgroundColor,
             dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
         )
-        val foregroundColor = contrastText(backgroundColor)
+        val foregroundColor = ImeDrawableFactory.contrastText(backgroundColor)
         voiceInlineIcon.imageTintList = ColorStateList.valueOf(foregroundColor)
         voiceInlineStatus.setTextColor(foregroundColor)
         voiceInlineWaves.forEach {
-            it.background = rounded(foregroundColor, dp(ImeGeometryTokens.PILL_RADIUS_DP))
+            it.background = ImeDrawableFactory.rounded(foregroundColor, dp(ImeGeometryTokens.PILL_RADIUS_DP))
         }
     }
 
@@ -4297,7 +4297,7 @@ open class ImeKeyboardView(
             ).apply {
                 gravity = Gravity.START or Gravity.CENTER_VERTICAL
             }
-            background = rounded(Color.WHITE, dp(ImeGeometryTokens.PILL_RADIUS_DP))
+            background = ImeDrawableFactory.rounded(Color.WHITE, dp(ImeGeometryTokens.PILL_RADIUS_DP))
             translationX = if (isOn) dp(ImeGeometryTokens.SWITCH_KNOB_TRAVEL_DP).toFloat() else 0f
         }
         return FrameLayout(context).apply {
@@ -4395,7 +4395,7 @@ open class ImeKeyboardView(
                             background = GradientDrawable().apply {
                                 shape = GradientDrawable.OVAL
                                 setColor(AccentPalette.parse(hex))
-                                if (selected) setStroke(dp(2), contrastText(AccentPalette.parse(hex)))
+                                if (selected) setStroke(dp(2), ImeDrawableFactory.contrastText(AccentPalette.parse(hex)))
                             }
                         }, FrameLayout.LayoutParams(dp(28), dp(28)).apply {
                             gravity = Gravity.CENTER
@@ -5198,8 +5198,8 @@ open class ImeKeyboardView(
                     AccentPalette.parse(skinPrimaryColor),
                 ).destructive
                 clearHint.text = "清空"
-                clearHint.setTextColor(contrastText(destructive))
-                clearHint.background = rounded(destructive, dp(ImeGeometryTokens.BADGE_RADIUS_DP))
+                clearHint.setTextColor(ImeDrawableFactory.contrastText(destructive))
+                clearHint.background = ImeDrawableFactory.rounded(destructive, dp(ImeGeometryTokens.BADGE_RADIUS_DP))
                 clearHint.alpha = 1f
             } else {
                 val secondary = theme.tokens(
@@ -5288,7 +5288,7 @@ open class ImeKeyboardView(
         val t = tokens ?: theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor))
         (floatingDragHandle as? FloatingDragHandleView)?.setDotColor(t.border)
         if (floatingWindowMode) {
-            mainDock.background = rounded(t.keyboardBackground, dp(ImeGeometryTokens.CARD_RADIUS_DP))
+            mainDock.background = ImeDrawableFactory.rounded(t.keyboardBackground, dp(ImeGeometryTokens.CARD_RADIUS_DP))
             mainDock.clipToOutline = true
         } else {
             mainDock.setBackgroundColor(t.expandedBackground)
@@ -5323,9 +5323,9 @@ open class ImeKeyboardView(
                     else -> t.keyBackground
                 }
                 val pressedColor = when {
-                    primary -> dim(color, 0.88f)
-                    side -> dim(t.sideKeyBackground, 0.88f)
-                    function -> dim(t.functionKeyBackground, 0.88f)
+                    primary -> ImeDrawableFactory.dim(color, 0.88f)
+                    side -> ImeDrawableFactory.dim(t.sideKeyBackground, 0.88f)
+                    function -> ImeDrawableFactory.dim(t.functionKeyBackground, 0.88f)
                     else -> t.keyPressedBackground
                 }
                 view.applyMainTextScale(skinFontScale())
@@ -5335,7 +5335,7 @@ open class ImeKeyboardView(
                 view.elevation = 0f
                 when {
                     primary -> {
-                        val onPrimary = contrastText(t.primary)
+                        val onPrimary = ImeDrawableFactory.contrastText(t.primary)
                         view.setColors(onPrimary, onPrimary, onPrimary)
                     }
                     white -> view.setColors(t.lightKeyText, t.lightKeyText, t.lightKeyText)
@@ -5364,19 +5364,19 @@ open class ImeKeyboardView(
                         )
                     }
                     "nine-punct-stack", "nine-symbol-scroll-content",
-                    "digits-symbol-stack", "digits-symbol-scroll-content", "digits-symbol-scroll" -> view.background = rounded(
+                    "digits-symbol-stack", "digits-symbol-scroll-content", "digits-symbol-scroll" -> view.background = ImeDrawableFactory.rounded(
                         t.sideKeyBackground,
                         dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
                     )
-                    "setting-group" -> view.background = rounded(
+                    "setting-group" -> view.background = ImeDrawableFactory.rounded(
                         t.toolCardBackground,
                         dp(ImeGeometryTokens.CARD_RADIUS_DP),
                     )
-                    "clip-card" -> view.background = rounded(
+                    "clip-card" -> view.background = ImeDrawableFactory.rounded(
                         t.toolCardBackground,
                         dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
                     )
-                    "panel-head" -> view.background = rounded(
+                    "panel-head" -> view.background = ImeDrawableFactory.rounded(
                         t.panelHeadBackground,
                         dp(ImeGeometryTokens.CARD_RADIUS_DP),
                     )
@@ -5400,8 +5400,8 @@ open class ImeKeyboardView(
                 if (view.tag == "setting-icon") {
                     val icon = t.primary
                     view.imageTintList = ColorStateList.valueOf(icon)
-                    val dark = contrastText(t.keyboardBackground) == Color.WHITE
-                    view.background = rounded(
+                    val dark = ImeDrawableFactory.contrastText(t.keyboardBackground) == Color.WHITE
+                    view.background = ImeDrawableFactory.rounded(
                         if (dark) Color.argb(42, Color.red(icon), Color.green(icon), Color.blue(icon))
                         else Color.argb(24, Color.red(icon), Color.green(icon), Color.blue(icon)),
                         dp(ImeGeometryTokens.KEY_RADIUS_DP),
@@ -5410,7 +5410,7 @@ open class ImeKeyboardView(
                     view.imageTintList = ColorStateList.valueOf(t.keyText)
                     view.background = statefulRounded(
                         t.panelHeadBackground,
-                        dim(t.panelHeadBackground),
+                        ImeDrawableFactory.dim(t.panelHeadBackground),
                         dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
                     )
                 } else if ((view.parent is LinearLayout && (view.parent as LinearLayout).tag == "toolbar-row") ||
@@ -5453,7 +5453,7 @@ open class ImeKeyboardView(
                     tag == "panel-error" -> {
                         val error = t.destructive
                         view.setTextColor(error)
-                        view.background = rounded(
+                        view.background = ImeDrawableFactory.rounded(
                             Color.argb(
                                 28,
                                 Color.red(error),
@@ -5464,10 +5464,10 @@ open class ImeKeyboardView(
                         )
                     }
                     tag == "tab-active" -> {
-                        view.setTextColor(contrastText(t.primary))
+                        view.setTextColor(ImeDrawableFactory.contrastText(t.primary))
                         view.background = statefulRounded(
                             t.primary,
-                            dim(t.primary),
+                            ImeDrawableFactory.dim(t.primary),
                             dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
                         )
                     }
@@ -5475,15 +5475,15 @@ open class ImeKeyboardView(
                         view.setTextColor(t.keySecondaryText)
                         view.background = statefulRounded(
                             t.panelHeadBackground,
-                            dim(t.panelHeadBackground),
+                            ImeDrawableFactory.dim(t.panelHeadBackground),
                             dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
                         )
                     }
                     tag == "quick-phrase-add" -> {
-                        view.setTextColor(contrastText(t.primary))
+                        view.setTextColor(ImeDrawableFactory.contrastText(t.primary))
                         view.background = statefulRounded(
                             t.primary,
-                            dim(t.primary),
+                            ImeDrawableFactory.dim(t.primary),
                             dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
                         )
                     }
@@ -5496,7 +5496,7 @@ open class ImeKeyboardView(
                         view.setTextColor(t.keyText)
                         view.background = statefulRounded(
                             t.panelHeadBackground,
-                            dim(t.panelHeadBackground),
+                            ImeDrawableFactory.dim(t.panelHeadBackground),
                             dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
                         )
                     }
@@ -5504,15 +5504,15 @@ open class ImeKeyboardView(
                         view.setTextColor(t.keyText)
                         view.background = statefulRounded(
                             t.panelHeadBackground,
-                            dim(t.panelHeadBackground),
+                            ImeDrawableFactory.dim(t.panelHeadBackground),
                             dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
                         )
                     }
                     tag == "clipboard-retention-destructive" -> {
-                        view.setTextColor(contrastText(t.destructive))
+                        view.setTextColor(ImeDrawableFactory.contrastText(t.destructive))
                         view.background = statefulRounded(
                             t.destructive,
-                            dim(t.destructive, 0.86f),
+                            ImeDrawableFactory.dim(t.destructive, 0.86f),
                             dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
                         )
                     }
@@ -5526,10 +5526,10 @@ open class ImeKeyboardView(
                         )
                     }
                     tag == "nine-pinyin-path-filter" -> {
-                        view.setTextColor(contrastText(t.primary))
+                        view.setTextColor(ImeDrawableFactory.contrastText(t.primary))
                         view.background = statefulRounded(
                             t.primary,
-                            dim(t.primary, 0.86f),
+                            ImeDrawableFactory.dim(t.primary, 0.86f),
                             dp(ImeGeometryTokens.KEY_RADIUS_DP),
                         )
                     }
@@ -5537,30 +5537,30 @@ open class ImeKeyboardView(
                         val customSelected = AccentPalette.presets.none {
                             AccentPalette.normalize(it.first) == AccentPalette.normalize(skinPrimaryColor)
                         }
-                        view.setTextColor(if (customSelected) contrastText(t.primary) else t.keyText)
+                        view.setTextColor(if (customSelected) ImeDrawableFactory.contrastText(t.primary) else t.keyText)
                         view.background = if (customSelected) {
                             statefulRounded(
                                 t.primary,
-                                dim(t.primary),
+                                ImeDrawableFactory.dim(t.primary),
                                 dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
                             )
                         } else {
                             statefulRounded(
                                 t.panelHeadBackground,
-                                dim(t.panelHeadBackground),
+                                ImeDrawableFactory.dim(t.panelHeadBackground),
                                 dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
                             )
                         }
                     }
                     tag?.startsWith("accent-selected-mark:") == true -> {
                         val hex = tag.substringAfter(':')
-                        view.setTextColor(contrastText(AccentPalette.parse(hex)))
+                        view.setTextColor(ImeDrawableFactory.contrastText(AccentPalette.parse(hex)))
                     }
                     tag == "key-panel-back" -> {
                         view.setTextColor(t.keyText)
                         view.background = statefulRounded(
                             t.panelHeadBackground,
-                            dim(t.panelHeadBackground),
+                            ImeDrawableFactory.dim(t.panelHeadBackground),
                             dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
                         )
                     }
@@ -5571,13 +5571,13 @@ open class ImeKeyboardView(
                         view.setTextColor(t.keySecondaryText)
                         view.background = statefulRounded(
                             t.panelHeadBackground,
-                            dim(t.panelHeadBackground),
+                            ImeDrawableFactory.dim(t.panelHeadBackground),
                             dp(ImeGeometryTokens.KEY_RADIUS_DP),
                         )
                     }
                     tag == "voice-transcript" -> {
                         view.setTextColor(t.keyText)
-                        view.background = rounded(t.toolCardBackground, dp(ImeGeometryTokens.CARD_RADIUS_DP))
+                        view.background = ImeDrawableFactory.rounded(t.toolCardBackground, dp(ImeGeometryTokens.CARD_RADIUS_DP))
                     }
                     tag == "voice-model-status" -> {
                         view.setTextColor(t.keySecondaryText)
@@ -5586,7 +5586,7 @@ open class ImeKeyboardView(
                         view.setTextColor(t.candidateText)
                         view.background = statefulRounded(
                             t.toolCardBackground,
-                            dim(t.toolCardBackground),
+                            ImeDrawableFactory.dim(t.toolCardBackground),
                             dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
                         )
                     }
@@ -5594,10 +5594,10 @@ open class ImeKeyboardView(
                         view.setTextColor(t.keySecondaryText)
                     }
                     tag == "voice-mic" -> {
-                        view.setTextColor(contrastText(t.primary))
+                        view.setTextColor(ImeDrawableFactory.contrastText(t.primary))
                         view.background = statefulRounded(
                             t.primary,
-                            dim(t.primary, 0.88f),
+                            ImeDrawableFactory.dim(t.primary, 0.88f),
                             dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
                         )
                     }
@@ -5626,18 +5626,18 @@ open class ImeKeyboardView(
                         ?.substringBefore('，')
                         .orEmpty()
                     val enabled = onState(seed)
-                    view.background = rounded(
+                    view.background = ImeDrawableFactory.rounded(
                         if (enabled) t.primary else t.panelHeadBackground,
                         dp(ImeGeometryTokens.PILL_RADIUS_DP),
                     )
                 }
             }
             else -> when (view.tag) {
-                "handwriting-canvas" -> view.background = rounded(
+                "handwriting-canvas" -> view.background = ImeDrawableFactory.rounded(
                     t.canvasBackground,
                     dp(ImeGeometryTokens.CARD_RADIUS_DP),
                 )
-                "voice-wave-bar" -> view.background = rounded(t.primary, dp(ImeGeometryTokens.PILL_RADIUS_DP))
+                "voice-wave-bar" -> view.background = ImeDrawableFactory.rounded(t.primary, dp(ImeGeometryTokens.PILL_RADIUS_DP))
                 "setting-divider" -> view.setBackgroundColor(t.border)
             }
         }
@@ -5657,18 +5657,14 @@ open class ImeKeyboardView(
         }
     }
 
-    private fun rounded(color: Int, radius: Int, strokeColor: Int? = null) = GradientDrawable().apply {
-        shape = GradientDrawable.RECTANGLE
-        setColor(color)
-        cornerRadius = radius.toFloat()
-        strokeColor?.let { setStroke(dp(1), it) }
-    }
-
-    private fun statefulRounded(normal: Int, pressed: Int, radius: Int) = StateListDrawable().apply {
-        addState(intArrayOf(android.R.attr.state_pressed), rounded(pressed, radius))
-        addState(intArrayOf(android.R.attr.state_focused), rounded(normal, radius, focusStroke(normal)))
-        addState(intArrayOf(), rounded(normal, radius))
-    }
+    private fun statefulRounded(normal: Int, pressed: Int, radius: Int): StateListDrawable =
+        ImeDrawableFactory.statefulRounded(
+            normal = normal,
+            pressed = pressed,
+            radiusPx = radius,
+            focusStrokeColor = focusStroke(normal),
+            focusStrokeWidthPx = dp(1),
+        )
 
     private fun focusStroke(color: Int): Int {
         val background = if (Color.alpha(color) == 0) {
@@ -5682,15 +5678,6 @@ open class ImeKeyboardView(
         }
         return ImeFocusRingPolicy.resolve(background, AccentPalette.parse(skinPrimaryColor))
     }
-
-    private fun dim(color: Int, factor: Float = 0.82f): Int = Color.argb(
-        Color.alpha(color),
-        (Color.red(color) * factor).toInt().coerceIn(0, 255),
-        (Color.green(color) * factor).toInt().coerceIn(0, 255),
-        (Color.blue(color) * factor).toInt().coerceIn(0, 255),
-    )
-
-    private fun contrastText(background: Int): Int = ImeContrastPolicy.contrastText(background)
 
     private fun hasAncestorTag(view: View, tag: String): Boolean {
         var parent = view.parent
