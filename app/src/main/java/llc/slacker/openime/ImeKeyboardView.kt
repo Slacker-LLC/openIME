@@ -1273,7 +1273,13 @@ open class ImeKeyboardView(
             if (!voiceAllowed && (voiceGestureSession || voiceActive || voicePending)) {
                 cancelVoiceForManualInput()
             }
-            if (panel == Panel.TOOLS) {
+            if (passwordField && panel == Panel.CLIPBOARD) {
+                // A retained IME view can survive a focus change into a
+                // password field. Persistent history must disappear
+                // immediately instead of remaining visible until the user
+                // manually backs out of the panel.
+                closePanelToKeyboard()
+            } else if (panel == Panel.TOOLS) {
                 renderPanel(Panel.TOOLS)
             } else if (panel == Panel.TEXT_EDITOR) {
                 // The same IME view can survive an editor switch. Rebuild the
