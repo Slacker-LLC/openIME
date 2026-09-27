@@ -3605,60 +3605,66 @@ open class ImeKeyboardView(
                 tag = "panel-note"
             }
             col.addView(loadingHint, wrapParams())
-            // ClipboardManager access is a UI/focus-sensitive platform read.
-            // Take the snapshot while the IME surface is active, then keep only
-            // history parsing/persistence off the UI thread.
-            val captureResult = runCatching { ClipboardHistoryRepository.capturePrimary(context) }
             val gen = ++clipboardLoadGen
-            Thread {
-                val historyResult = runCatching {
-                    captureResult.getOrThrow()
-                    ClipboardHistoryRepository.load(context)
-                }
-                post {
-                    if (gen != clipboardLoadGen || clipboardTab != 0 || col.parent == null) return@post
-                    (loadingHint.parent as? ViewGroup)?.removeView(loadingHint)
-                    fun addRefreshAction() {
-                        col.addView(button("重新读取", 12f, true).apply {
-                            tag = "clipboard-refresh"
-                            contentDescription = "重新读取剪贴板"
-                            setOnClickListener {
-                                feedback()
-                                renderClipboard(reusePanel = true)
-                            }
-                        }, LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.WRAP_CONTENT,
-                            dp(48),
-                        ).apply {
-                            topMargin = dp(8)
-                        })
+            // View.post before attachment is queued until the view enters a
+            // window. This avoids racing the background load against the panel
+            // hierarchy construction and also ensures ClipboardManager is read
+            // while this UI owns foreground focus.
+            col.post {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                val primaryClip = runCatching { clipboard?.primaryClip }.getOrNull()
+                Thread {
+                    val historyResult = runCatching {
+                        if (primaryClip != null) {
+                            ClipboardHistoryRepository.captureClip(context, primaryClip)
+                        }
+                        ClipboardHistoryRepository.load(context)
                     }
-                    if (historyResult.isFailure) {
-                        col.addView(TextView(context).apply {
-                            text = "暂时无法读取剪贴板，请重试。"
-                            textSize = 13f
-                            setPadding(dp(4), dp(6), dp(4), 0)
-                            tag = "panel-error"
-                        }, wrapParams())
-                        addRefreshAction()
-                    } else if (historyResult.getOrThrow().isEmpty()) {
-                        col.addView(TextView(context).apply {
-                            text = "暂无剪贴历史；复制文本后重新打开这里即可看到。"
-                            textSize = 13f
-                            setPadding(dp(4), dp(6), dp(4), 0)
-                            tag = "panel-note"
-                        }, wrapParams())
-                        addRefreshAction()
-                    } else {
-                        historyResult.getOrThrow().forEach { entry -> col.addView(clipboardHistoryCard(entry), LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT,
-                        ).apply { bottomMargin = dp(7) }) }
-                        addClipboardRetentionControls(body)
+                    post {
+                        if (gen != clipboardLoadGen || clipboardTab != 0 || col.parent == null) return@post
+                        (loadingHint.parent as? ViewGroup)?.removeView(loadingHint)
+                        fun addRefreshAction() {
+                            col.addView(button("重新读取", 12f, true).apply {
+                                tag = "clipboard-refresh"
+                                contentDescription = "重新读取剪贴板"
+                                setOnClickListener {
+                                    feedback()
+                                    renderClipboard(reusePanel = true)
+                                }
+                            }, LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.WRAP_CONTENT,
+                                dp(48),
+                            ).apply {
+                                topMargin = dp(8)
+                            })
+                        }
+                        if (historyResult.isFailure) {
+                            col.addView(TextView(context).apply {
+                                text = "暂时无法读取剪贴板，请重试。"
+                                textSize = 13f
+                                setPadding(dp(4), dp(6), dp(4), 0)
+                                tag = "panel-error"
+                            }, wrapParams())
+                            addRefreshAction()
+                        } else if (historyResult.getOrThrow().isEmpty()) {
+                            col.addView(TextView(context).apply {
+                                text = "暂无剪贴历史；复制文本后重新打开这里即可看到。"
+                                textSize = 13f
+                                setPadding(dp(4), dp(6), dp(4), 0)
+                                tag = "panel-note"
+                            }, wrapParams())
+                            addRefreshAction()
+                        } else {
+                            historyResult.getOrThrow().forEach { entry -> col.addView(clipboardHistoryCard(entry), LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.MATCH_PARENT,
+                                LinearLayout.LayoutParams.WRAP_CONTENT,
+                            ).apply { bottomMargin = dp(7) }) }
+                            addClipboardRetentionControls(body)
+                        }
+                        onClipboardContentLoaded()
                     }
-                    onClipboardContentLoaded()
-                }
-            }.apply { isDaemon = true }.start()
+                }.apply { isDaemon = true }.start()
+            }
         } else {
             col.addView(button("新增常用语", 13f, true).apply {
                 tag = "quick-phrase-add"
@@ -3771,7 +3777,7 @@ open class ImeKeyboardView(
         )
         row.addView(
             clipboardRetentionAction("清空全部", destructive = true) {
-                confirmClearClipboardHistory()
+                showClipboardClearConfirmation(body)
             },
             LinearLayout.LayoutParams(0, dp(48), 1f),
         )
@@ -3785,28 +3791,41 @@ open class ImeKeyboardView(
         applyTheme()
     }
 
-    private fun confirmClearClipboardHistory() {
-        val dialog = android.app.AlertDialog.Builder(context)
-            .setTitle("清空全部剪贴历史？")
-            .setMessage("已固定的内容也会删除，且无法恢复。")
-            .setNegativeButton("取消", null)
-            .setPositiveButton("清空全部", null)
-            .create()
-        dialog.setOnShowListener {
-            SetupUi.styleDialog(dialog, context, destructivePositive = true)
-            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).apply {
-                contentDescription = "清空全部"
-                isFocusable = true
-                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
-                setOnClickListener {
-                    ClipboardHistoryRepository.clearAll(context)
-                    dialog.dismiss()
-                    renderClipboard(reusePanel = true)
-                    focusPanelEntryPoint()
-                }
-            }
+    private fun showClipboardClearConfirmation(body: LinearLayout) {
+        body.findViewWithTag<View>("clipboard-retention-actions")?.let(body::removeView)
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            tag = "clipboard-clear-confirmation"
+            contentDescription = "确认清空全部剪贴历史"
         }
-        dialog.show()
+        row.addView(
+            clipboardRetentionAction("取消", destructive = false) {
+                renderClipboard(reusePanel = true)
+                focusPanelEntryPoint()
+            },
+            LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(6) },
+        )
+        row.addView(
+            clipboardRetentionAction("确认清空", destructive = true) {
+                ClipboardHistoryRepository.clearAll(context)
+                renderClipboard(reusePanel = true)
+                focusPanelEntryPoint()
+            }.apply {
+                tag = "clipboard-clear-confirm"
+                contentDescription = "确认清空全部剪贴历史"
+            },
+            LinearLayout.LayoutParams(0, dp(48), 1f),
+        )
+        body.addView(
+            row,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(48),
+            ).apply { topMargin = dp(6) },
+        )
+        applyTheme()
+        row.findViewWithTag<View>("clipboard-clear-confirm")?.requestFocus()
     }
 
     private fun clipboardRetentionAction(
