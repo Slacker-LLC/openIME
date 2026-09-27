@@ -51,6 +51,10 @@ internal class ClipboardPanelController(
     private var tab = 0
     private var loadGeneration = 0
 
+    fun invalidatePendingLoad() {
+        loadGeneration++
+    }
+
     fun render(reusePanel: Boolean = false) {
         if (!reusePanel || expandedPanel.childCount == 0) {
             expandedPanel.removeAllViews()
