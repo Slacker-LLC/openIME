@@ -169,20 +169,20 @@ internal class TextEditorPanelController(
 
     private fun applyPasswordPolicy() {
         actionControls.forEach { (_, control) ->
-            val reason = if (
+            if (
                 TextEditControlPolicy.isUnavailableLabel(
                     control.label,
                     isPasswordField(),
                 )
             ) {
-                TextEditControlPolicy.unavailableReason(
-                    control.label,
-                    isPasswordField(),
+                applyAvailability(
+                    control,
+                    TextEditControlPolicy.unavailableReason(
+                        control.label,
+                        isPasswordField(),
+                    ),
                 )
-            } else {
-                null
             }
-            applyAvailability(control, reason)
         }
     }
 
