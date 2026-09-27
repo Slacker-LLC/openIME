@@ -36,7 +36,7 @@ internal object ImeGeometryTokens {
     const val KEY_SIDE_MARGIN_DP = 2
     const val KEY_POPUP_HEIGHT_DP = 76
     const val KEY_POPUP_MIN_WIDTH_DP = 40
-    const val KEY_POPUP_MAX_WIDTH_DP = 96
+    const val KEY_POPUP_WIDTH_SCALE = 1.08f
     const val KEY_POPUP_VERTICAL_GAP_DP = 8
     const val LANDSCAPE_KEY_ROW_HEIGHT_DP = 40
     const val FLOATING_LANDSCAPE_WIDTH_DP = 368
