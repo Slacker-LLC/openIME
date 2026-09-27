@@ -1068,6 +1068,15 @@ open class ImeKeyboardView(
         }
         if (panel != Panel.NONE) dismissPanelForModeSwitch()
         val layoutChanged = mode != newMode
+        if (
+            layoutChanged &&
+            (voiceGestureSession || voicePanelController.active || voicePanelController.pending)
+        ) {
+            // A mode change replaces the interaction surface. Inline/accessibility
+            // voice can be active without a pressed space key, so do not let the
+            // old recognition session continue behind the new keyboard mode.
+            stopVoiceIfActive()
+        }
         mode = newMode
         panelRenderer.syncSymbolCategoryForMode(newMode)
         clearAssociationCandidates()
