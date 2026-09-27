@@ -312,9 +312,6 @@ open class ImeKeyboardView(
     private var currentCandidates = emptyList<String>()
     private var currentItems: List<String>? = null
     private var voiceEventGeneration = 0L
-    private var clipboardTab = 0
-    // Guards async clipboard loads so a stale background result can't render over a newer panel.
-    private var clipboardLoadGen = 0
     private var voiceLanguageIndex = 0
     private var toolPage = 0
     private var settingsScrollY = 0
@@ -521,6 +518,36 @@ open class ImeKeyboardView(
             onFeedback = ::feedback,
             applyTheme = ::applyTheme,
             onHierarchyRebuilt = ::onViewHierarchyRebuilt,
+        )
+    }
+    private val clipboardPanelController: ClipboardPanelController by lazy {
+        ClipboardPanelController(
+            context = context,
+            expandedPanel = expandedPanel,
+            toPx = ::dp,
+            panelBodyHeightPx = { dp(panelBodyHeightDp()) },
+            createHeader = ::panelHead,
+            createKey = { text, textSize, onTap ->
+                key(
+                    text = text,
+                    func = false,
+                    secondary = null,
+                    mainTextSizeOverride = textSize,
+                    onTap = onTap,
+                )
+            },
+            createPanelButton = ::button,
+            createSectionTitle = ::sectionTitle,
+            createChipScroll = panelRenderer::panelChipScroll,
+            createVerticalScroll = panelRenderer::panelVerticalScroll,
+            rememberVerticalScroll = panelRenderer::rememberPanelVerticalScroll,
+            onCharacter = listener::onCharacter,
+            onOpenQuickPhraseEditor = ::openQuickPhraseEditor,
+            onFeedback = ::feedback,
+            applyTheme = ::applyTheme,
+            onHierarchyRebuilt = ::onViewHierarchyRebuilt,
+            onContentLoaded = ::onClipboardContentLoaded,
+            focusEntryPoint = ::focusPanelEntryPoint,
         )
     }
     private val textEditorPanelController: TextEditorPanelController by lazy {
@@ -2371,335 +2398,9 @@ open class ImeKeyboardView(
         voiceCancelPreviewAction = null
     }
 
-    private fun clipboardHistoryCard(entry: ClipboardEntry): LinearLayout {
-        val card = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(10), dp(12), dp(8))
-            minimumHeight = dp(70)
-            tag = "clip-card"
-            contentDescription = "剪贴板：${entry.text}，点击使用"
-            if (Build.VERSION.SDK_INT >= 30) {
-                stateDescription = if (entry.pinned) "已置顶" else "未置顶"
-            }
-            isClickable = true
-            isFocusable = true
-            setOnClickListener {
-                feedback()
-                listener.onCharacter(entry.text)
-            }
-        }
-        card.addView(TextView(context).apply {
-            text = entry.text
-            textSize = 13f
-            maxLines = 2
-            ellipsize = TextUtils.TruncateAt.END
-        }, wrapParams())
-        val meta = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        meta.addView(TextView(context).apply {
-            text = if (entry.pinned) "已置顶" else android.text.format.DateUtils.getRelativeTimeSpanString(
-                entry.timestamp, System.currentTimeMillis(), android.text.format.DateUtils.MINUTE_IN_MILLIS,
-            )
-            textSize = 11f
-        }, weightParams(1f))
-        meta.addView(button(if (entry.pinned) "取消置顶" else "置顶", 10f, true).apply {
-            tag = "clip-pin:${entry.text}"
-            setOnClickListener {
-                feedback()
-                ClipboardHistoryRepository.togglePin(context, entry.text)
-                renderClipboard(reusePanel = true)
-            }
-        }, wrapParams())
-        meta.addView(button("使用", 10f, true).apply {
-            tag = "clip-use:${entry.text}"
-            setOnClickListener {
-                feedback()
-                listener.onCharacter(entry.text)
-            }
-        }, wrapParams())
-        card.addView(meta, wrapParams())
-        return card
-    }
-
     protected fun renderClipboard(reusePanel: Boolean = false) {
         inlineEditTarget = null
-        if (!reusePanel || expandedPanel.childCount == 0) {
-            expandedPanel.removeAllViews()
-            addPanelHead("剪贴板")
-        } else {
-            while (expandedPanel.childCount > 1) {
-                expandedPanel.removeViewAt(expandedPanel.childCount - 1)
-            }
-        }
-        val body = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), dp(10), dp(10), dp(10))
-            tag = "clipboard-panel"
-        }
-        val tabs = panelRenderer.panelChipScroll(listOf("剪贴板", "常用语"), if (clipboardTab == 0) "剪贴板" else "常用语") { label ->
-            clipboardTab = if (label == "剪贴板") 0 else 1
-            renderClipboard(reusePanel = true)
-        }
-        body.addView(tabs, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(48),
-        ).apply { bottomMargin = dp(8) })
-        val col = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        if (clipboardTab == 0) {
-            // Reading the system clipboard + parsing the history JSON is disk/I/O
-            // work; do it off the UI thread and render once it returns.
-            col.addView(sectionTitle("最近复制"), wrapParams())
-            val loadingHint = TextView(context).apply {
-                text = "正在读取剪贴板…"
-                textSize = 13f
-                setPadding(dp(4), dp(6), dp(4), 0)
-                tag = "panel-note"
-            }
-            col.addView(loadingHint, wrapParams())
-            val gen = ++clipboardLoadGen
-            // View.post before attachment is queued until the view enters a
-            // window. This avoids racing the background load against the panel
-            // hierarchy construction and also ensures ClipboardManager is read
-            // while this UI owns foreground focus.
-            col.post {
-                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
-                val primaryClip = runCatching { clipboard?.primaryClip }.getOrNull()
-                Thread {
-                    val historyResult = runCatching {
-                        if (primaryClip != null) {
-                            ClipboardHistoryRepository.captureClip(context, primaryClip)
-                        }
-                        ClipboardHistoryRepository.load(context)
-                    }
-                    post {
-                        if (gen != clipboardLoadGen || clipboardTab != 0 || col.parent == null) return@post
-                        (loadingHint.parent as? ViewGroup)?.removeView(loadingHint)
-                        fun addRefreshAction() {
-                            col.addView(button("重新读取", 12f, true).apply {
-                                tag = "clipboard-refresh"
-                                contentDescription = "重新读取剪贴板"
-                                setOnClickListener {
-                                    feedback()
-                                    renderClipboard(reusePanel = true)
-                                }
-                            }, LinearLayout.LayoutParams(
-                                LinearLayout.LayoutParams.WRAP_CONTENT,
-                                dp(48),
-                            ).apply {
-                                topMargin = dp(8)
-                            })
-                        }
-                        if (historyResult.isFailure) {
-                            col.addView(TextView(context).apply {
-                                text = "暂时无法读取剪贴板，请重试。"
-                                textSize = 13f
-                                setPadding(dp(4), dp(6), dp(4), 0)
-                                tag = "panel-error"
-                            }, wrapParams())
-                            addRefreshAction()
-                        } else if (historyResult.getOrThrow().isEmpty()) {
-                            col.addView(TextView(context).apply {
-                                text = "暂无剪贴历史；复制文本后重新打开这里即可看到。"
-                                textSize = 13f
-                                setPadding(dp(4), dp(6), dp(4), 0)
-                                tag = "panel-note"
-                            }, wrapParams())
-                            addRefreshAction()
-                        } else {
-                            historyResult.getOrThrow().forEach { entry -> col.addView(clipboardHistoryCard(entry), LinearLayout.LayoutParams(
-                                LinearLayout.LayoutParams.MATCH_PARENT,
-                                LinearLayout.LayoutParams.WRAP_CONTENT,
-                            ).apply { bottomMargin = dp(7) }) }
-                            addClipboardRetentionControls(body)
-                        }
-                        onClipboardContentLoaded()
-                    }
-                }.apply { isDaemon = true }.start()
-            }
-        } else {
-            col.addView(button("新增常用语", 13f, true).apply {
-                tag = "quick-phrase-add"
-                setOnClickListener {
-                    feedback()
-                    openQuickPhraseEditor(null)
-                }
-            }, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(48),
-            ).apply { bottomMargin = dp(8) })
-
-            val phrases = QuickPhraseRepository.load(context)
-            if (phrases.isEmpty()) {
-                col.addView(TextView(context).apply {
-                    text = "还没有常用语；点击上方按钮添加后即可一键输入。"
-                    textSize = 12f
-                    setPadding(dp(4), dp(6), dp(4), 0)
-                    tag = "panel-note"
-                }, wrapParams())
-            }
-            phrases.groupBy { it.category }
-                .forEach { (category, phrases) ->
-                    col.addView(sectionTitle(category), wrapParams())
-                    phrases.forEach { phrase ->
-                        val row = LinearLayout(context).apply {
-                            orientation = LinearLayout.HORIZONTAL
-                            tag = "phrase-card"
-                        }
-                        row.addView(
-                            key(phrase.text, false, null, 1f, 13f) {
-                                listener.onCharacter(phrase.text)
-                            }.apply {
-                                setPadding(dp(12), 0, dp(12), 0)
-                                tag = "phrase:${phrase.id}"
-                            },
-                            LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(5) },
-                        )
-                        row.addView(button("编辑", 11f, true).apply {
-                            tag = "phrase-edit:${phrase.id}"
-                            setOnClickListener {
-                                feedback()
-                                openQuickPhraseEditor(phrase)
-                            }
-                        }, LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginEnd = dp(5) })
-                        row.addView(button("删除", 11f, true).apply {
-                            tag = "phrase-delete:${phrase.id}"
-                            setOnClickListener {
-                                feedback()
-                                val dialog = android.app.AlertDialog.Builder(context)
-                                    .setTitle("删除常用语？")
-                                    .setMessage(phrase.text)
-                                    .setNegativeButton("取消", null)
-                                    .setPositiveButton("删除") { _, _ ->
-                                        QuickPhraseRepository.remove(context, phrase.id)
-                                        renderClipboard(reusePanel = true)
-                                    }
-                                    .create()
-                                dialog.setOnShowListener {
-                                    SetupUi.styleDialog(dialog, context, destructivePositive = true)
-                                }
-                                dialog.show()
-                            }
-                        }, LinearLayout.LayoutParams(dp(48), dp(48)))
-                        col.addView(row, LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT,
-                            dp(48),
-                        ).apply { bottomMargin = dp(7) })
-                    }
-                }
-        }
-        val clipboardScroll = panelRenderer.panelVerticalScroll(col, "clipboard-scroll")
-        panelRenderer.rememberPanelVerticalScroll(clipboardScroll, "clipboard:$clipboardTab")
-        body.addView(
-            clipboardScroll,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1f,
-            ),
-        )
-        // Keep history management reachable while the clipboard is loading or
-        // already empty. Rebuilding the async content must not make the
-        // destructive-action entry point disappear for a frame.
-        if (clipboardTab == 0) addClipboardRetentionControls(body)
-        expandedPanel.addView(body, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(panelBodyHeightDp()),
-        ))
-        expandedPanel.post { requestLayout() }
-        applyTheme()
-        onViewHierarchyRebuilt()
-    }
-
-    /** Keep clipboard retention actions available in every keyboard-view entry point. */
-    private fun addClipboardRetentionControls(body: LinearLayout) {
-        if (body.findViewWithTag<View>("clipboard-retention-actions") != null) return
-        val row = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            tag = "clipboard-retention-actions"
-        }
-        row.addView(
-            clipboardRetentionAction("清除未固定", destructive = false) {
-                ClipboardHistoryRepository.clearUnpinned(context)
-                renderClipboard(reusePanel = true)
-                focusPanelEntryPoint()
-            },
-            LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(6) },
-        )
-        row.addView(
-            clipboardRetentionAction("清空全部", destructive = true) {
-                showClipboardClearConfirmation(body)
-            },
-            LinearLayout.LayoutParams(0, dp(48), 1f),
-        )
-        body.addView(
-            row,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(48),
-            ).apply { topMargin = dp(6) },
-        )
-        applyTheme()
-    }
-
-    private fun showClipboardClearConfirmation(body: LinearLayout) {
-        body.findViewWithTag<View>("clipboard-retention-actions")?.let(body::removeView)
-        val row = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            tag = "clipboard-clear-confirmation"
-            contentDescription = "确认清空全部剪贴历史"
-        }
-        row.addView(
-            clipboardRetentionAction("取消", destructive = false) {
-                renderClipboard(reusePanel = true)
-                focusPanelEntryPoint()
-            },
-            LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(6) },
-        )
-        row.addView(
-            clipboardRetentionAction("确认清空", destructive = true) {
-                ClipboardHistoryRepository.clearAll(context)
-                renderClipboard(reusePanel = true)
-                focusPanelEntryPoint()
-            }.apply {
-                tag = "clipboard-clear-confirm"
-                contentDescription = "确认清空全部剪贴历史"
-            },
-            LinearLayout.LayoutParams(0, dp(48), 1f),
-        )
-        body.addView(
-            row,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(48),
-            ).apply { topMargin = dp(6) },
-        )
-        applyTheme()
-        row.findViewWithTag<View>("clipboard-clear-confirm")?.requestFocus()
-    }
-
-    private fun clipboardRetentionAction(
-        label: String,
-        destructive: Boolean,
-        onClick: () -> Unit,
-    ): TextView = TextView(context).apply {
-        text = label
-        textSize = 12f
-        gravity = Gravity.CENTER
-        minHeight = dp(48)
-        minimumHeight = dp(48)
-        isClickable = true
-        isFocusable = true
-        tag = if (destructive) "clipboard-retention-destructive" else "clipboard-retention-action"
-        contentDescription = if (destructive) {
-            "$label，删除全部剪贴历史"
-        } else {
-            "$label，保留已固定内容"
-        }
-        setOnClickListener {
-            feedback()
-            onClick()
-        }
+        clipboardPanelController.render(reusePanel)
     }
 
     /** Called on the UI thread after the asynchronous clipboard body is populated. */
