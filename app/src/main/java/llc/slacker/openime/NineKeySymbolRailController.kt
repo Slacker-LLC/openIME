@@ -102,15 +102,16 @@ internal object NineKeySymbolRailController {
             return
         }
 
-        val choices = NineKeyUiState.pathsFor(code)
-        val selected = NineKeyUiState.selectedPathFor(code) ?: text
+        val resolver = root.context as? CandidateResolver ?: return
+        val choices = resolver.nineKeyPathsFor(code)
+        val selected = resolver.selectedNineKeyPathFor(code) ?: text
         setPinyinFilters(
             root = root,
             filters = choices,
             selected = selected,
             onFeedback = onFeedback,
         ) { chosen ->
-            NineKeyUiState.select(code, chosen)
+            resolver.selectNineKeyPath(code, chosen)
             if (chosen == editor.text?.toString()) return@setPinyinFilters
             editor.setText(chosen)
             editor.setSelection(chosen.length)
