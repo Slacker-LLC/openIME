@@ -14,7 +14,8 @@ internal class BackspaceGestureController(
     private val toPx: (Int) -> Int,
     private val onDeleteOne: () -> Unit,
     private val onClearAll: () -> Unit,
-    private val onFeedback: () -> Unit,
+    private val onPressFeedback: () -> Unit,
+    private val onHapticFeedback: () -> Unit,
     private val onShowClearPopup: (View) -> Unit,
     private val onHidePopup: () -> Unit,
 ) {
@@ -70,7 +71,7 @@ internal class BackspaceGestureController(
         anchor.parent?.requestDisallowInterceptTouchEvent(true)
         onClearPreviewChanged(false)
         onHidePopup()
-        onFeedback()
+        onPressFeedback()
 
         val startRepeat = Runnable {
             if (active && !clearArmed) repeatAction.run()
@@ -113,7 +114,7 @@ internal class BackspaceGestureController(
         } else {
             onHidePopup()
         }
-        onFeedback()
+        onHapticFeedback()
     }
 
     fun finish(commit: Boolean) {
@@ -141,7 +142,7 @@ internal class BackspaceGestureController(
 
         when {
             clearAll -> {
-                onFeedback()
+                onHapticFeedback()
                 onClearAll()
             }
             deleteOnce -> onDeleteOne()

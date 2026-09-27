@@ -188,7 +188,8 @@ open class ImeKeyboardView(
         toPx = ::dp,
         onDeleteOne = ::performBackspaceOnce,
         onClearAll = listener::onClearAll,
-        onFeedback = ::hapticFeedback,
+        onPressFeedback = ::feedback,
+        onHapticFeedback = ::hapticFeedback,
         onShowClearPopup = { anchor -> showPopup(anchor, "清空") },
         onHidePopup = ::hidePopup,
     )
