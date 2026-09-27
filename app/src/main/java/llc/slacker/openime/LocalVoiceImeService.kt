@@ -58,21 +58,10 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
     private var floatingWindowEnabled = false
     private var floatingWindowX = 0
     private var floatingWindowY = 0
-    private var landscapeAutoFloating = false
-    private var inputViewSessionActive = false
     private var baseImeGravity: Int? = null
     private var baseImeWidth: Int? = null
     private var baseImeHeight: Int? = null
     private var baseImeSoftInputMode: Int? = null
-    private val showImeAfterRotation = Runnable {
-        if (!inputViewSessionActive || !inputViewRequestedBySystem()) return@Runnable
-        // requestShowSelf() was added in API 28. On API 26–27 the system
-        // already owns the active IME visibility request, so there is no
-        // equivalent self-request needed here.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            requestShowSelf(0)
-        }
-    }
     private var voiceComposing = false
     private var voiceAutoCommitOnFinal = true
     private var pendingVoiceCorrection: PendingVoiceCorrection? = null
@@ -220,22 +209,10 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
-        val inputWasRequested = inputViewSessionActive && inputViewRequestedBySystem()
-        if (newConfig.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE &&
-            inputWasRequested
-        ) {
-            landscapeAutoFloating = true
-            keyboardView?.enableFloatingKeyboardForLandscape()
-            // Some Android 17 device builds hide the IME window during the
-            // rotation transaction. Re-request visibility after switching
-            // the window bounds so the floating keyboard is actually shown,
-            // not merely left registered in WindowManager.
-            requestImeVisibleAfterRotation()
-        } else if (landscapeAutoFloating) {
-            landscapeAutoFloating = false
-            keyboardView?.disableFloatingKeyboardForPortrait()
-            if (inputWasRequested) requestImeVisibleAfterRotation()
-        } else if (floatingWindowEnabled) {
+        // Orientation changes affect keyboard geometry, not the user's chosen
+        // window mode. A manually floating keyboard stays floating; a docked
+        // keyboard stays docked.
+        if (floatingWindowEnabled) {
             scheduleFloatingWindowLayout(resetPosition = false)
         }
     }
@@ -250,17 +227,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
         super.onEvaluateInputViewShown()
         return true
     }
-
-    private fun requestImeVisibleAfterRotation() {
-        // On some device builds the rotation transaction issues its final
-        // hide after onConfigurationChanged(). Waiting one frame boundary
-        // avoids losing a user/app-owned visibility request during that transaction.
-        mainHandler.removeCallbacks(showImeAfterRotation)
-        mainHandler.postDelayed(showImeAfterRotation, 400L)
-    }
-
-    private fun inputViewRequestedBySystem(): Boolean =
-        isInputViewShown() || isShowInputRequested()
 
     private fun ensureInputViewAfterFinish() {
         if (keyboardView != null) return
@@ -418,17 +384,11 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
 
     override fun onStartInputView(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(attribute, restarting)
-        inputViewSessionActive = true
         ensureInputViewAfterFinish()
-        if (resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) {
-            landscapeAutoFloating = true
-            keyboardView?.enableFloatingKeyboardForLandscape()
-            requestImeVisibleAfterRotation()
-        } else if (landscapeAutoFloating) {
-            landscapeAutoFloating = false
-            keyboardView?.disableFloatingKeyboardForPortrait()
-            requestImeVisibleAfterRotation()
-        } else if (!floatingWindowEnabled && state.panel != Panel.GAMING) {
+        if (floatingWindowEnabled) {
+            keyboardView?.setFloatingWindowMode(true)
+            scheduleFloatingWindowLayout(resetPosition = false)
+        } else {
             restoreImeWindow()
         }
         keyboardView?.refreshAuxiliaryContent()
@@ -441,8 +401,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
     }
 
     override fun onFinishInput() {
-        inputViewSessionActive = false
-        mainHandler.removeCallbacks(showImeAfterRotation)
         invalidateCandidateQueries()
         finalizeVoiceCorrectionIfNeeded()
         voiceMediaMute.restore()
@@ -460,13 +418,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardViewV2.Listener, C
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
-        inputViewSessionActive = false
-        mainHandler.removeCallbacks(showImeAfterRotation)
-        if (landscapeAutoFloating) {
-            landscapeAutoFloating = false
-            keyboardView?.setFloatingWindowMode(false)
-            restoreImeWindow()
-        }
         voiceMediaMute.restore()
         keyboardView?.shutdown()
         keyboardView = null
