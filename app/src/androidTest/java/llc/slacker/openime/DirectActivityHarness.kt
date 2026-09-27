@@ -4,7 +4,6 @@ import android.app.Activity
 import android.app.Application
 import android.content.ComponentName
 import android.content.Intent
-import android.os.ParcelFileDescriptor
 import android.os.Bundle
 import android.os.SystemClock
 import androidx.test.platform.app.InstrumentationRegistry
@@ -15,8 +14,9 @@ import java.util.concurrent.atomic.AtomicReference
  *
  * ActivityScenario/startActivitySync wait for global main-thread idleness. Some
  * MIUI builds keep Choreographer/window callbacks active while an IME-like view
- * is visible, which can make that global-idle condition unreachable. This
- * harness waits only for the lifecycle/UI condition the test actually needs.
+ * is visible, which can make that global-idle condition unreachable. Start
+ * through the target app context so private activities work across Android
+ * versions, then wait only for the lifecycle/UI condition the test needs.
  */
 internal class DirectActivityHarness<T : Activity>(
     private val activityClass: Class<T>,
@@ -54,20 +54,8 @@ internal class DirectActivityHarness<T : Activity>(
             component = ComponentName(instrumentation.targetContext, activityClass)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
         }
-        val component = requireNotNull(launchIntent.component)
-        val extraArgs = launchIntent.extras?.keySet()?.sorted()?.joinToString("") { key ->
-            val value = launchIntent.extras?.get(key)
-            require(value is String) { "Shell activity launch only supports string extra '$key'" }
-            " --es ${key.shellQuoted()} ${value.shellQuoted()}"
-        }.orEmpty()
-        val output = ParcelFileDescriptor.AutoCloseInputStream(
-            instrumentation.uiAutomation.executeShellCommand(
-                "am start -W -f 0x${Integer.toHexString(launchIntent.flags)} -n " +
-                    component.flattenToString() + extraArgs,
-            ),
-        ).bufferedReader().use { it.readText() }
-        check("Status: ok" in output) {
-            "Unable to start ${component.flattenToShortString()}: ${output.trim()}"
+        instrumentation.runOnMainSync {
+            application.startActivity(launchIntent)
         }
         return await(timeoutMs) { resumed.get() }
             ?: error("${activityClass.simpleName} did not resume within ${timeoutMs}ms")
@@ -113,5 +101,3 @@ internal class DirectActivityHarness<T : Activity>(
         const val POLL_MS = 25L
     }
 }
-
-private fun String.shellQuoted(): String = "'${replace("'", "'\\''")}'"
