@@ -330,7 +330,7 @@ open class ImeKeyboardView(
         },
         rounded = { color, radius -> ImeDrawableFactory.rounded(color, radius) },
         statefulRounded = { normal, pressed, radius -> statefulRounded(normal, pressed, radius) },
-        contrastText = ::contrastText,
+        contrastText = ImeDrawableFactory::contrastText,
         feedback = ::feedback,
         onSymbolSelected = listener::onCharacter,
     )

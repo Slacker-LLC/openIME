@@ -8,7 +8,9 @@ package llc.slacker.openime
  * leaking a 9-key choice across IME sessions or test instances.
  */
 internal class NineKeyUiState {
-    private const val MAX_CODES = 32
+    private companion object {
+        const val MAX_CODES = 32
+    }
 
     private data class Options(
         val paths: List<String>,

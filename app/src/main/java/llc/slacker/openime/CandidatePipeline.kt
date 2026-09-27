@@ -27,7 +27,7 @@ interface CandidateResolver {
  * CandidateEngine or candidate ordering rules. Rime is authoritative for
  * Chinese ranking; the local 9-key decoder provides only the immediate frame.
  */
-class CandidatePipeline(
+class CandidatePipeline internal constructor(
     private val engine: CandidateEngine,
     private val nineKeyUiState: NineKeyUiState = NineKeyUiState(),
     private val nineKeyFallbackRegistry: NineKeyFallbackRegistry = NineKeyFallbackRegistry(),

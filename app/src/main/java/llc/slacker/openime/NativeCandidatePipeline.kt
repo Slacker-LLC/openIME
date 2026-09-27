@@ -41,8 +41,10 @@ internal data class NativeCandidateChoice(
  * candidate list for another composition can never be merged accidentally.
  */
 internal class NineKeyFallbackRegistry {
-    private const val MAX_CODES = 32
-    private const val MAX_PER_CODE = 96
+    private companion object {
+        const val MAX_CODES = 32
+        const val MAX_PER_CODE = 96
+    }
     private val lock = Any()
     private val byCode = object : LinkedHashMap<String, List<String>>(MAX_CODES, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<String>>?): Boolean =

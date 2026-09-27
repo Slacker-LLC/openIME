@@ -67,7 +67,7 @@ internal object ImeDrawableFactory {
 
     fun dim(
         color: Int,
-        factor: Float,
+        factor: Float = 0.82f,
         preserveAlpha: Boolean = true,
     ): Int {
         val red = (Color.red(color) * factor).toInt().coerceIn(0, 255)
