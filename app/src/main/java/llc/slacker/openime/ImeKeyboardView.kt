@@ -510,6 +510,7 @@ open class ImeKeyboardView(
                 )
             },
             createPanelButton = ::button,
+            createTitle = ::title,
             createEmojiCell = ::emojiCell,
             gridCellParams = ::gridCellParams,
             currentMode = { mode },
@@ -518,6 +519,8 @@ open class ImeKeyboardView(
             onShowPanel = ::showPanel,
             onEnableFloatingKeyboard = ::enableFloatingKeyboard,
             onSymbolSelected = listener::onSymbolSelected,
+            onCharacter = listener::onCharacter,
+            onSpace = listener::onSpace,
             onFeedback = ::feedback,
             applyTheme = ::applyTheme,
             onHierarchyRebuilt = ::onViewHierarchyRebuilt,
@@ -1885,7 +1888,7 @@ open class ImeKeyboardView(
             Panel.KEYBOARD_SELECT -> panelRenderer.renderKeyboardSelect()
             Panel.SYMBOLS -> panelRenderer.renderSymbols()
             Panel.EMOJI -> panelRenderer.renderEmoji()
-            Panel.HANDWRITING -> renderHandwriting()
+            Panel.HANDWRITING -> panelRenderer.renderHandwriting()
             Panel.VOICE -> renderVoice()
             Panel.CLIPBOARD -> renderClipboard()
             Panel.TEXT_EDITOR -> renderTextEditor()
@@ -1974,73 +1977,6 @@ open class ImeKeyboardView(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(48),
         ))
-    }
-
-    private fun renderHandwriting() {
-        addPanelHead("手写输入")
-        val body = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), dp(10), dp(10), dp(10))
-        }
-        val candRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        candRow.addView(title("在下方区域落笔手写...", small = true), wrapParams())
-        body.addView(candRow, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(48),
-        ).apply { bottomMargin = dp(7) })
-        var undoButton: ImeKeyView? = null
-        var clearButton: ImeKeyView? = null
-        fun refreshStrokeActions(hasStrokes: Boolean) {
-            listOf(
-                undoButton to "撤销",
-                clearButton to "清空",
-            ).forEach { (button, label) ->
-                button ?: return@forEach
-                button.isEnabled = hasStrokes
-                button.alpha = if (hasStrokes) 1f else 0.42f
-                button.contentDescription = if (hasStrokes) label else "$label（暂无笔画）"
-                if (Build.VERSION.SDK_INT >= 30) {
-                    button.stateDescription = if (hasStrokes) "可用" else "不可用"
-                }
-            }
-        }
-        val pad = HandwritingPadView(context) { strokes ->
-            refreshStrokeActions(strokes.isNotEmpty())
-            candRow.removeAllViews()
-            val result = UnavailableHandwritingProvider.recognize(strokes)
-            if (result is HandwritingResult.NotConfigured) {
-                candRow.addView(title("当前未配置手写识别引擎", small = true), wrapParams())
-            } else {
-                (result as? HandwritingResult.Success)?.candidates?.forEach { c ->
-                    candRow.addView(key(c, false, null, 1f, 15f) { listener.onCharacter(c) }, wrapParams())
-                }
-            }
-        }
-        pad.tag = "handwriting-canvas"
-        body.addView(pad, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(140),
-        ).apply { bottomMargin = dp(7) })
-        val actions = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        undoButton = key("撤销", true, null, 1f, 13f) { pad.undo() }
-        clearButton = key("清空", true, null, 1f, 13f) { pad.clear() }
-        actions.addView(undoButton!!, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(6) })
-        actions.addView(clearButton!!, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(6) })
-        actions.addView(key("空格", true, null, 1f, 13f) { listener.onSpace() }, LinearLayout.LayoutParams(0, dp(48), 1f))
-        refreshStrokeActions(false)
-        body.addView(actions, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(48),
-        ))
-        val handwritingScroll = panelRenderer.panelVerticalScroll(body, "handwriting-scroll")
-        panelRenderer.rememberPanelVerticalScroll(handwritingScroll, "handwriting")
-        expandedPanel.addView(
-            handwritingScroll,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(panelBodyHeightDp()),
-            ),
-        )
     }
 
     private fun renderVoice() {

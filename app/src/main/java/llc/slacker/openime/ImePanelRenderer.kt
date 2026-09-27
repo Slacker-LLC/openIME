@@ -32,6 +32,7 @@ internal class ImePanelRenderer(
         onTap: () -> Unit,
     ) -> ImeKeyView,
     private val createPanelButton: (String, Float, Boolean) -> TextView,
+    private val createTitle: (String, Boolean) -> TextView,
     private val createEmojiCell: (String) -> View,
     private val gridCellParams: (Int, Int, Int) -> LinearLayout.LayoutParams,
     private val currentMode: () -> KeyboardMode,
@@ -40,6 +41,8 @@ internal class ImePanelRenderer(
     private val onShowPanel: (Panel) -> Unit,
     private val onEnableFloatingKeyboard: () -> Unit,
     private val onSymbolSelected: (String) -> Unit,
+    private val onCharacter: (String) -> Unit,
+    private val onSpace: () -> Unit,
     private val onFeedback: () -> Unit,
     private val applyTheme: () -> Unit,
     private val onHierarchyRebuilt: () -> Unit,
@@ -218,6 +221,111 @@ internal class ImePanelRenderer(
         if (symbolCategory == "自定义") {
             renderSymbolContent(body, notifyRebuilt = true)
         }
+    }
+
+    fun renderHandwriting() {
+        addHeader("手写输入")
+        val body = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(toPx(10), toPx(10), toPx(10), toPx(10))
+        }
+        val candidateRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        candidateRow.addView(
+            createTitle("在下方区域落笔手写...", true),
+            wrapParams(),
+        )
+        body.addView(
+            candidateRow,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                toPx(48),
+            ).apply { bottomMargin = toPx(7) },
+        )
+
+        var undoButton: ImeKeyView? = null
+        var clearButton: ImeKeyView? = null
+        fun refreshStrokeActions(hasStrokes: Boolean) {
+            listOf(
+                undoButton to "撤销",
+                clearButton to "清空",
+            ).forEach { (button, label) ->
+                button ?: return@forEach
+                button.isEnabled = hasStrokes
+                button.alpha = if (hasStrokes) 1f else 0.42f
+                button.contentDescription = if (hasStrokes) label else "$label（暂无笔画）"
+                if (Build.VERSION.SDK_INT >= 30) {
+                    button.stateDescription = if (hasStrokes) "可用" else "不可用"
+                }
+            }
+        }
+
+        val pad = HandwritingPadView(context) { strokes ->
+            refreshStrokeActions(strokes.isNotEmpty())
+            candidateRow.removeAllViews()
+            when (val result = UnavailableHandwritingProvider.recognize(strokes)) {
+                is HandwritingResult.NotConfigured -> {
+                    candidateRow.addView(
+                        createTitle("当前未配置手写识别引擎", true),
+                        wrapParams(),
+                    )
+                }
+                is HandwritingResult.Success -> {
+                    result.candidates.forEach { candidate ->
+                        candidateRow.addView(
+                            createKey(candidate, false, 15f) { onCharacter(candidate) },
+                            wrapParams(),
+                        )
+                    }
+                }
+            }
+        }.apply {
+            tag = "handwriting-canvas"
+        }
+        body.addView(
+            pad,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                toPx(140),
+            ).apply { bottomMargin = toPx(7) },
+        )
+
+        val actions = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        undoButton = createKey("撤销", true, 13f) { pad.undo() }
+        clearButton = createKey("清空", true, 13f) { pad.clear() }
+        actions.addView(
+            undoButton,
+            LinearLayout.LayoutParams(0, toPx(48), 1f).apply { marginEnd = toPx(6) },
+        )
+        actions.addView(
+            clearButton,
+            LinearLayout.LayoutParams(0, toPx(48), 1f).apply { marginEnd = toPx(6) },
+        )
+        actions.addView(
+            createKey("空格", true, 13f, onSpace),
+            LinearLayout.LayoutParams(0, toPx(48), 1f),
+        )
+        refreshStrokeActions(false)
+        body.addView(
+            actions,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                toPx(48),
+            ),
+        )
+
+        val scroll = panelVerticalScroll(body, "handwriting-scroll")
+        rememberPanelVerticalScroll(scroll, "handwriting")
+        expandedPanel.addView(
+            scroll,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                panelBodyHeightPx(),
+            ),
+        )
     }
 
     fun renderEmoji() {
@@ -587,6 +695,12 @@ internal class ImePanelRenderer(
             ImeData.symbols["数学运算"].orEmpty().take(12),
         ).flatten().distinct()
     }
+
+    private fun wrapParams() =
+        LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+        )
 
     private data class ToolEntry(
         val label: String,
