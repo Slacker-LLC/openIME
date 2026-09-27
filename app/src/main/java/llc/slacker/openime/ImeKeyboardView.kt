@@ -1153,7 +1153,7 @@ open class ImeKeyboardView(
 
     fun showPanel(newPanel: Panel) {
         if (newPanel == Panel.NONE || newPanel == Panel.CANDIDATE_EXPANDED) return
-        if (passwordField && newPanel == Panel.VOICE) return
+        if (passwordField && newPanel in setOf(Panel.CLIPBOARD, Panel.VOICE)) return
         if (newPanel == Panel.GAMING) {
             enableFloatingKeyboard()
             return
@@ -1345,15 +1345,20 @@ open class ImeKeyboardView(
         syncCandidateExpandControl()
     }
 
-    /** Keep the clipboard entry available in every editor, including passwords. */
+    /** Keep sensitive editors from exposing persistent clipboard history. */
     private fun syncSensitiveToolbar() {
         val clipboardButton = toolbarRow.findViewWithTag<View>("clipboard-toolbar") ?: return
-        clipboardButton.isEnabled = true
-        clipboardButton.isClickable = true
-        clipboardButton.alpha = 1f
-        clipboardButton.contentDescription = "剪贴板"
+        val available = !passwordField
+        clipboardButton.isEnabled = available
+        clipboardButton.isClickable = available
+        clipboardButton.alpha = if (available) 1f else 0.38f
+        clipboardButton.contentDescription = if (available) {
+            "剪贴板"
+        } else {
+            "剪贴板，密码输入中不可用"
+        }
         if (Build.VERSION.SDK_INT >= 30) {
-            clipboardButton.stateDescription = "可用"
+            clipboardButton.stateDescription = if (available) "可用" else "密码输入中不可用"
         }
     }
 
@@ -2845,7 +2850,7 @@ open class ImeKeyboardView(
         val handwritingAvailable = HandwritingFeaturePolicy.entryEnabled(UnavailableHandwritingProvider)
         val cards = listOf(
             ToolEntry("表情", Panel.EMOJI, R.drawable.ic_emoji),
-            ToolEntry("剪贴板", Panel.CLIPBOARD, R.drawable.ic_clipboard),
+            ToolEntry("剪贴板", Panel.CLIPBOARD, R.drawable.ic_clipboard, enabled = !passwordField),
             ToolEntry("手写输入", Panel.HANDWRITING, R.drawable.ic_handwriting, enabled = handwritingAvailable),
             ToolEntry("符号", Panel.SYMBOLS, R.drawable.ic_symbols),
             ToolEntry("切换键盘", Panel.KEYBOARD_SELECT, R.drawable.ic_grid),
