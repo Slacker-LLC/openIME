@@ -27,7 +27,6 @@ import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.SoundEffectConstants
 import android.view.View
-import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.accessibility.AccessibilityNodeInfo
@@ -193,9 +192,19 @@ open class ImeKeyboardView(
         onShowClearPopup = { anchor -> showPopup(anchor, "清空") },
         onHidePopup = ::hidePopup,
     )
-    // Match Android's configured touch-and-hold timing instead of inventing
-    // a second fixed threshold for the space/voice gesture.
-    private val spaceVoiceTriggerMs = ViewConfiguration.getLongPressTimeout().toLong()
+    private val spaceVoiceGestureController = SpaceVoiceGestureController(
+        toPx = ::dp,
+        canStartVoice = { voiceAllowed },
+        onArmFeedback = ::hapticFeedback,
+        onVoiceStart = { listener.onVoicePressChanged(true) },
+        onVoiceStop = { listener.onVoicePressChanged(false) },
+        onVoiceCancel = {
+            voiceCancelAction?.invoke() ?: cancelVoiceGesture()
+        },
+        onCancelPreviewChanged = { cancelling ->
+            voiceCancelPreviewAction?.invoke(cancelling)
+        },
+    )
     // Whether long-press alternate glyphs are shown as small corner hints.
     private var showSecondaryHints = true
     // Touch-coordinate trace logs are debug-only; they must never spam logcat
@@ -324,10 +333,6 @@ open class ImeKeyboardView(
     private var voiceCancelAction: (() -> Unit)? = null
     private var voiceCancelPreviewAction: ((Boolean) -> Unit)? = null
     private var voiceGestureSession = false
-    private var spaceVoiceGestureActive = false
-    private var spaceVoiceGestureCancel = false
-    private var spaceVoiceDownY = 0f
-    private var spaceVoicePointerId = -1
     private var voiceInlineActive = false
     private var voiceInlineCancel = false
     private var voiceInlineError = false
@@ -1542,8 +1547,7 @@ open class ImeKeyboardView(
         repeatHandler.removeCallbacksAndMessages(null)
         removeCallbacks(null)
         backspaceGestureController.shutdown()
-        spaceVoiceGestureActive = false
-        spaceVoiceGestureCancel = false
+        spaceVoiceGestureController.shutdown()
         pendingRowRebuild = false
         voiceInlineActive = false
         voiceInlineCancel = false
@@ -2359,33 +2363,23 @@ open class ImeKeyboardView(
                 MotionEvent.ACTION_CANCEL -> backspaceGestureController.finish(commit = false)
             }
         }
-        if (spaceVoiceGestureActive) {
+        if (spaceVoiceGestureController.active) {
             when (event.actionMasked) {
                 MotionEvent.ACTION_MOVE -> {
-                    val index = event.findPointerIndex(spaceVoicePointerId)
+                    val index = event.findPointerIndex(spaceVoiceGestureController.pointerId)
                     if (index < 0) return handled
                     val pointerY = event.rawY + event.getY(index) - event.y
-                    val cancelNow = spaceVoiceDownY - pointerY >= dp(48)
-                    if (cancelNow != spaceVoiceGestureCancel) {
-                        spaceVoiceGestureCancel = cancelNow
-                        voiceCancelPreviewAction?.invoke(cancelNow)
-                    }
+                    spaceVoiceGestureController.move(pointerY)
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_UP -> {
                     if (event.actionMasked == MotionEvent.ACTION_POINTER_UP &&
-                        event.getPointerId(event.actionIndex) != spaceVoicePointerId) return handled
-                    val isCancel = spaceVoiceGestureCancel || event.actionMasked == MotionEvent.ACTION_CANCEL
-                    spaceVoiceGestureActive = false
-                    spaceVoiceGestureCancel = false
-                    if (isCancel) {
-                        if (voiceCancelAction != null) {
-                            voiceCancelAction?.invoke()
-                        } else {
-                            cancelVoiceGesture()
-                        }
-                    } else {
-                        listener.onVoicePressChanged(false)
+                        event.getPointerId(event.actionIndex) != spaceVoiceGestureController.pointerId
+                    ) {
+                        return handled
                     }
+                    spaceVoiceGestureController.finish(
+                        cancelled = event.actionMasked == MotionEvent.ACTION_CANCEL,
+                    )
                 }
             }
         }
@@ -2411,10 +2405,12 @@ open class ImeKeyboardView(
     ).apply {
         tag = "key-space"
         contentDescription = "$label，点击空格，长按语音输入"
-        var voiceLongPressed = false
         setOnLongClickListener {
             if (!voiceAllowed) return@setOnLongClickListener true
-            if (voiceLongPressed) return@setOnLongClickListener true
+            // A physical touch is timed by SpaceVoiceGestureController. Android
+            // may dispatch the View long-click callback at the same configured
+            // timeout, so consume it here to avoid starting voice twice.
+            if (spaceVoiceGestureController.trackingTouch) return@setOnLongClickListener true
             // Accessibility actions do not deliver a touch DOWN/UP sequence.
             when {
                 voiceActive -> stopVoiceFromSpace()
@@ -2424,63 +2420,22 @@ open class ImeKeyboardView(
             true
         }
         if (white) setTag(MARK_WHITE_KEY, true)
-        var voiceCancelPreview = false
-        var voiceDownY = 0f
-        val voiceTrigger = Runnable {
-            if (!voiceAllowed) return@Runnable
-            if (!voiceLongPressed) {
-                voiceLongPressed = true
-                spaceVoiceGestureActive = true
-                spaceVoiceGestureCancel = false
-                spaceVoiceDownY = voiceDownY
-                // Tactile confirmation the moment voice actually arms.
-                hapticFeedback()
-                listener.onVoicePressChanged(true)
-            }
-        }
-        setOnTouchListener { _, event ->
+        setOnTouchListener { view, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     feedback()
-                    voiceDownY = event.rawY
-                    spaceVoicePointerId = event.getPointerId(event.actionIndex)
-                    voiceCancelPreview = false
-                    spaceVoiceDownY = event.rawY
-                    spaceVoiceGestureActive = false
-                    spaceVoiceGestureCancel = false
-                    repeatHandler.postDelayed(voiceTrigger, spaceVoiceTriggerMs)
+                    spaceVoiceGestureController.begin(
+                        anchor = view,
+                        pointerId = event.getPointerId(event.actionIndex),
+                        rawY = event.rawY,
+                    )
                     false
                 }
-                MotionEvent.ACTION_MOVE -> {
-                    val cancelNow = voiceLongPressed && voiceDownY - event.rawY >= dp(48)
-                    if (voiceLongPressed && cancelNow != voiceCancelPreview) {
-                        voiceCancelPreview = cancelNow
-                        spaceVoiceGestureCancel = cancelNow
-                        voiceCancelPreviewAction?.invoke(cancelNow)
-                    }
-                    voiceLongPressed
-                }
+                MotionEvent.ACTION_MOVE -> spaceVoiceGestureController.move(event.rawY)
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    repeatHandler.removeCallbacks(voiceTrigger)
-                    if (voiceLongPressed) {
-                        isPressed = false
-                        voiceLongPressed = false
-                        spaceVoiceGestureActive = false
-                        spaceVoiceGestureCancel = false
-                        val isCancel = voiceCancelPreview || event.actionMasked == MotionEvent.ACTION_CANCEL
-                        if (isCancel) {
-                            if (voiceCancelAction != null) {
-                                voiceCancelAction?.invoke()
-                            } else {
-                                cancelVoiceGesture()
-                            }
-                        } else {
-                            listener.onVoicePressChanged(false)
-                        }
-                        true
-                    } else {
-                        false
-                    }
+                    spaceVoiceGestureController.finish(
+                        cancelled = event.actionMasked == MotionEvent.ACTION_CANCEL,
+                    )
                 }
                 else -> false
             }
@@ -2529,8 +2484,7 @@ open class ImeKeyboardView(
         voiceGestureSession = false
         voiceActive = false
         voiceStopRequested = false
-        spaceVoiceGestureActive = false
-        spaceVoiceGestureCancel = false
+        spaceVoiceGestureController.reset()
         voiceInlineGeneration++
         stopInlineVoicePulse()
         showInlineVoiceState("已取消")
@@ -3473,8 +3427,7 @@ open class ImeKeyboardView(
         listener.cancelVoiceRecognition()
         voiceActive = false
         voiceGestureSession = false
-        spaceVoiceGestureActive = false
-        spaceVoiceGestureCancel = false
+        spaceVoiceGestureController.reset()
         voiceInlineGeneration++
         hideInlineVoiceState()
         if (hadVoice || panel == Panel.VOICE) listener.onVoiceCancel()
