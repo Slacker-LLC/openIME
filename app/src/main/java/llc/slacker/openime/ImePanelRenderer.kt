@@ -516,7 +516,7 @@ internal class ImePanelRenderer(
         notifyRebuilt: Boolean,
     ) {
         body.removeAllViews()
-        val categories = listOf("最近") + ImeData.fluentSmileysByCategory.keys.toList()
+        val categories = listOf("最近") + ImeData.emojiByCategory.keys.toList()
         val tabs = panelChipScroll(categories, emojiCategory) { category ->
             if (category != emojiCategory) {
                 emojiCategory = category
@@ -535,7 +535,7 @@ internal class ImePanelRenderer(
         val items = if (emojiCategory == "最近") {
             EmojiRecentRepository.load(context)
         } else {
-            ImeData.fluentSmileysByCategory[emojiCategory].orEmpty()
+            ImeData.emojiByCategory[emojiCategory].orEmpty()
         }
         if (items.isEmpty() && emojiCategory == "最近") {
             grid.addView(
