@@ -650,41 +650,26 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
-    fun spaceHeldPastLegacyThresholdButBeforeSystemTimeoutStillTypesSpace() = withKeyboard { harness, recorder, keyboard ->
-        val timeout = ViewConfiguration.getLongPressTimeout().toLong()
-        assumeTrue("Requires a system timeout greater than the legacy 150 ms threshold", timeout > 200L)
-        val hold = 150L + (timeout - 150L) / 2L
+    fun spaceHeldPast150msStartsVoiceBeforeSystemLongPressTimeout() = withKeyboard { harness, recorder, keyboard ->
+        val systemTimeout = ViewConfiguration.getLongPressTimeout().toLong()
+        val hold = ProductionKeyPolicy.SPACE_VOICE_TRIGGER_MS + 100L
+        assumeTrue("System long-press timeout must leave room for the 150ms product gesture", systemTimeout > hold + 50L)
         var released = false
-        var elapsed = 0L
         harness.awaitMain {
             val point = keyPoint(keyboard, "key-space")
             val downTime = SystemClock.uptimeMillis()
             pointers(keyboard, downTime, MotionEvent.ACTION_DOWN, listOf(point))
             keyboard.postDelayed({
-                elapsed = SystemClock.uptimeMillis() - downTime
                 pointers(keyboard, downTime, MotionEvent.ACTION_UP, listOf(point))
                 released = true
             }, hold)
             true
         }
         harness.awaitMain { if (released) true else null }
-        // View delivers a tap through a posted Runnable, so the space can reach
-        // the listener on a later main-loop turn than the release callback. The
-        // assertion below used to run first and read zero on a loaded device.
-        val typed = runCatching {
-            harness.awaitMain(timeoutMs = 2_000L) { if (recorder.spaces > 0) true else null }
-        }.isSuccess
+        harness.awaitMain(timeoutMs = 2_000L) { if (recorder.starts > 0) true else null }
         harness.awaitMain {
-            assumeTrue("Main-thread scheduling missed the pre-timeout release window", elapsed in 151L until timeout)
-            assertTrue("A sub-long-press release must still type a space", typed)
-            assertEquals(1, recorder.spaces)
-            assertEquals(0, recorder.starts)
-            true
-        }
-        SystemClock.sleep(timeout + 100L)
-        harness.awaitMain {
-            assertEquals("The adapter must cancel its deferred voice start", 0, recorder.starts)
-            assertEquals(1, recorder.spaces)
+            assertEquals("150ms hold must arm voice exactly once", 1, recorder.starts)
+            assertEquals("Voice gesture must not also insert a space", 0, recorder.spaces)
             true
         }
     }
