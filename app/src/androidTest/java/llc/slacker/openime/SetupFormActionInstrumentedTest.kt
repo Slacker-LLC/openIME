@@ -6,7 +6,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
-import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertFalse
@@ -19,8 +18,9 @@ import org.junit.runner.RunWith
 class SetupFormActionInstrumentedTest {
     @Test
     fun symbolFormEditorActionsMoveFocusThroughTheForm() {
-        ActivityScenario.launch(SymbolManagerActivity::class.java).use { scenario ->
-            scenario.onActivity { activity ->
+        DirectActivityHarness(SymbolManagerActivity::class.java).use { harness ->
+            harness.launch()
+            harness.awaitMain { activity ->
                 val group = activity.findViewById<EditText>(R.id.custom_symbol_group_editor)
                 val symbol = activity.findViewById<EditText>(R.id.custom_symbol_text_editor)
                 group.onEditorAction(EditorInfo.IME_ACTION_NEXT)
@@ -34,8 +34,9 @@ class SetupFormActionInstrumentedTest {
     fun quickPhraseBlankContentDisablesAndDimsSaveUntilTextExists() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val intent = Intent(context, QuickPhraseEditActivity::class.java)
-        ActivityScenario.launch<QuickPhraseEditActivity>(intent).use { scenario ->
-            scenario.onActivity { activity ->
+        DirectActivityHarness(QuickPhraseEditActivity::class.java).use { harness ->
+            harness.launch()
+            harness.awaitMain { activity ->
                 val phrase = activity.findViewById<EditText>(R.id.quick_phrase_text_editor)
                 val save = findButton(activity.window.decorView, "保存")
                     ?: error("save button missing")
@@ -60,8 +61,9 @@ class SetupFormActionInstrumentedTest {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val intent = Intent(context, QuickPhraseEditActivity::class.java)
             .putExtra(QuickPhraseEditActivity.EXTRA_TEXT, "测试常用语")
-        ActivityScenario.launch<QuickPhraseEditActivity>(intent).use { scenario ->
-            scenario.onActivity { activity ->
+        DirectActivityHarness(QuickPhraseEditActivity::class.java).use { harness ->
+            harness.launch(intent = intent)
+            harness.awaitMain { activity ->
                 val category = activity.findViewById<EditText>(R.id.quick_phrase_category_editor)
                 val phrase = activity.findViewById<EditText>(R.id.quick_phrase_text_editor)
                 category.onEditorAction(EditorInfo.IME_ACTION_NEXT)

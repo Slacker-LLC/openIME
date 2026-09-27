@@ -4,26 +4,35 @@ import android.os.Build
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
-import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
+import org.junit.After
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
-import org.junit.Rule
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class TextEditControlsInstrumentedTest {
 
-    @get:Rule
-    val rule = ActivityScenarioRule(DebugKeyboardActivity::class.java)
+    private lateinit var harness: DirectActivityHarness<DebugKeyboardActivity>
+
+    @Before
+    fun launch() {
+        harness = DirectActivityHarness(DebugKeyboardActivity::class.java)
+        harness.launch()
+    }
+
+    @After
+    fun close() {
+        harness.close()
+    }
 
     @Test
     fun textEditorExposesUndoAndVerticalCursorControls() {
         lateinit var keyboard: ImeKeyboardView
-        rule.scenario.onActivity { activity ->
+        harness.awaitMain { activity ->
             val content = activity.findViewById<ViewGroup>(android.R.id.content)
             keyboard = ImeKeyboardView(activity, NoopListener())
             content.addView(
@@ -36,9 +45,9 @@ class TextEditControlsInstrumentedTest {
             keyboard.showPanel(Panel.TEXT_EDITOR)
         }
 
-        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        harness.awaitMain { true }
 
-        rule.scenario.onActivity {
+        harness.awaitMain {
             listOf("撤销", "▲", "▼").forEach { label ->
                 val control = findInteractiveControl(keyboard, label)
                 assertNotNull("missing supported text-edit control $label", control)
@@ -58,7 +67,7 @@ class TextEditControlsInstrumentedTest {
     @Test
     fun passwordFieldsDisableClipboardActionsBeforeTheUserCanTriggerADeadAction() {
         lateinit var keyboard: ImeKeyboardView
-        rule.scenario.onActivity { activity ->
+        harness.awaitMain { activity ->
             val content = activity.findViewById<ViewGroup>(android.R.id.content)
             keyboard = ImeKeyboardView(activity, NoopListener())
             content.addView(
@@ -80,9 +89,9 @@ class TextEditControlsInstrumentedTest {
             )
         }
 
-        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        harness.awaitMain { true }
 
-        rule.scenario.onActivity {
+        harness.awaitMain {
             listOf("全选", "复制", "剪切", "粘贴").forEach { label ->
                 val control = findInteractiveControl(keyboard, label)
                 assertNotNull("password editor must still show $label", control)
@@ -103,7 +112,7 @@ class TextEditControlsInstrumentedTest {
     @Test
     fun editorActionsReflectSelectionAndClipboardAvailability() {
         lateinit var keyboard: ImeKeyboardView
-        rule.scenario.onActivity { activity ->
+        harness.awaitMain { activity ->
             val content = activity.findViewById<ViewGroup>(android.R.id.content)
             keyboard = ImeKeyboardView(activity, NoopListener())
             content.addView(
@@ -120,9 +129,9 @@ class TextEditControlsInstrumentedTest {
             )
         }
 
-        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        harness.awaitMain { true }
 
-        rule.scenario.onActivity {
+        harness.awaitMain {
             listOf("copy", "cut", "paste").forEach { action ->
                 val control = findTextEditAction(keyboard, action)
                 assertNotNull("missing dynamic text-edit control $action", control)

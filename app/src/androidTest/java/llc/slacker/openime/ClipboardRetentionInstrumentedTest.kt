@@ -8,27 +8,36 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.BaseInputConnection
 import android.widget.TextView
-import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
+import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class ClipboardRetentionInstrumentedTest {
 
-    @get:Rule
-    val rule = ActivityScenarioRule(DebugKeyboardActivity::class.java)
+    private lateinit var harness: DirectActivityHarness<DebugKeyboardActivity>
+
+    @Before
+    fun launch() {
+        harness = DirectActivityHarness(DebugKeyboardActivity::class.java)
+        harness.launch()
+    }
+
+    @After
+    fun close() {
+        harness.close()
+    }
 
     @Test
     fun sensitiveSystemClipIsNeverCapturedIntoHistory() {
-        rule.scenario.onActivity { activity ->
+        harness.awaitMain { activity ->
             ClipboardHistoryRepository.clearAll(activity)
             val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             val clip = ClipData.newPlainText("sensitive fixture", "synthetic test secret")
@@ -57,7 +66,7 @@ class ClipboardRetentionInstrumentedTest {
     @Test
     fun leavingClipboardBeforePostedLoadDoesNotCaptureStaleClip() {
         lateinit var keyboard: ImeKeyboardView
-        rule.scenario.onActivity { activity ->
+        harness.awaitMain { activity ->
             ClipboardHistoryRepository.clearAll(activity)
             val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             clipboard.setPrimaryClip(
@@ -80,13 +89,13 @@ class ClipboardRetentionInstrumentedTest {
             keyboard.showPanel(Panel.SETTINGS)
         }
 
-        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        harness.awaitMain { true }
         repeat(10) {
             Thread.sleep(30)
-            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            harness.awaitMain { Unit }
         }
 
-        rule.scenario.onActivity { activity ->
+        harness.awaitMain { activity ->
             assertEquals(
                 "A detached clipboard surface must not persist a stale queued capture",
                 emptyList<ClipboardEntry>(),
@@ -101,7 +110,7 @@ class ClipboardRetentionInstrumentedTest {
     @Test
     fun closingClipboardBeforePostedLoadDoesNotCaptureStaleClip() {
         lateinit var keyboard: ImeKeyboardView
-        rule.scenario.onActivity { activity ->
+        harness.awaitMain { activity ->
             ClipboardHistoryRepository.clearAll(activity)
             val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             clipboard.setPrimaryClip(
@@ -121,13 +130,13 @@ class ClipboardRetentionInstrumentedTest {
             assertTrue("Clipboard panel must close back to the keyboard", keyboard.closePanelToKeyboard())
         }
 
-        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        harness.awaitMain { true }
         repeat(10) {
             Thread.sleep(30)
-            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            harness.awaitMain { Unit }
         }
 
-        rule.scenario.onActivity { activity ->
+        harness.awaitMain { activity ->
             assertEquals(
                 "Closing the clipboard panel must invalidate its queued capture",
                 emptyList<ClipboardEntry>(),
@@ -142,7 +151,7 @@ class ClipboardRetentionInstrumentedTest {
     @Test
     fun clearButtonsMutatePersistentHistoryWithoutTouchingPinnedUntilRequested() {
         lateinit var keyboard: ImeKeyboardView
-        rule.scenario.onActivity { activity ->
+        harness.awaitMain { activity ->
             val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             clipboard.setPrimaryClip(ClipData.newPlainText("test", ""))
             ClipboardHistoryRepository.clearAll(activity)
@@ -162,15 +171,12 @@ class ClipboardRetentionInstrumentedTest {
             keyboard.showPanel(Panel.CLIPBOARD)
         }
 
-        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-
-        rule.scenario.onActivity { activity ->
-            val clearUnpinned = findTextView(keyboard, "清除未固定")
-            assertNotNull(clearUnpinned)
+        val clearUnpinned = harness.awaitMain { findTextView(keyboard, "清除未固定") }
+        harness.awaitMain { activity ->
             val minimumTarget = (48 * activity.resources.displayMetrics.density).toInt()
-            assertTrue("clear-unpinned must keep a 48dp target", clearUnpinned!!.minimumHeight >= minimumTarget)
-            assertTrue(clearUnpinned!!.contentDescription.toString().contains("保留已固定内容"))
-            clearUnpinned!!.performClick()
+            assertTrue("clear-unpinned must keep a 48dp target", clearUnpinned.minimumHeight >= minimumTarget)
+            assertTrue(clearUnpinned.contentDescription.toString().contains("保留已固定内容"))
+            clearUnpinned.performClick()
             val remaining = ClipboardHistoryRepository.load(activity)
             assertEquals(listOf("keep pinned"), remaining.map { it.text })
             assertEquals(true, remaining.single().pinned)
@@ -178,12 +184,12 @@ class ClipboardRetentionInstrumentedTest {
 
         var clearAll: TextView? = null
         repeat(20) {
-            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-            rule.scenario.onActivity { clearAll = findTextView(keyboard, "清空全部") }
+            harness.awaitMain { true }
+            harness.awaitMain { clearAll = findTextView(keyboard, "清空全部") }
             if (clearAll != null) return@repeat
             Thread.sleep(50)
         }
-        rule.scenario.onActivity { activity ->
+        harness.awaitMain { activity ->
             val minimumTarget = (48 * activity.resources.displayMetrics.density).toInt()
             assertNotNull("Retention actions must return after the pruned history reloads", clearAll)
             assertTrue("clear-all must keep a 48dp target", clearAll!!.minimumHeight >= minimumTarget)
@@ -195,7 +201,7 @@ class ClipboardRetentionInstrumentedTest {
                 ClipboardHistoryRepository.load(activity).map { it.text },
             )
         }
-        rule.scenario.onActivity { activity ->
+        harness.awaitMain { activity ->
             val confirm = keyboard.findViewWithTag<View>("clipboard-clear-confirm")
             assertNotNull("Inline confirmation must expose a clear action", confirm)
             assertTrue("Inline confirmation must be keyboard-focusable", confirm!!.isFocusable)
@@ -206,15 +212,15 @@ class ClipboardRetentionInstrumentedTest {
 
         var emptyState: TextView? = null
         repeat(20) {
-            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-            rule.scenario.onActivity {
+            harness.awaitMain { true }
+            harness.awaitMain {
                 emptyState = findTextView(keyboard, "暂无剪贴历史；复制文本后重新打开这里即可看到。")
             }
             if (emptyState != null) return@repeat
             Thread.sleep(50)
         }
         assertNotNull("Clearing all history must expose an empty state", emptyState)
-        rule.scenario.onActivity { activity ->
+        harness.awaitMain { activity ->
             val refresh = findTextView(keyboard, "重新读取")
             assertNotNull("Empty clipboard state must offer an immediate refresh action", refresh)
             assertTrue(refresh!!.contentDescription.toString().contains("重新读取剪贴板"))
@@ -225,7 +231,7 @@ class ClipboardRetentionInstrumentedTest {
     fun clipboardCardTapUsesTheDisplayedEntry() {
         lateinit var keyboard: ImeKeyboardView
         lateinit var listener: NoopListener
-        rule.scenario.onActivity { activity ->
+        harness.awaitMain { activity ->
             ClipboardHistoryRepository.clearAll(activity)
             val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             clipboard.setPrimaryClip(ClipData.newPlainText("test", ""))
@@ -249,8 +255,8 @@ class ClipboardRetentionInstrumentedTest {
 
         var card: View? = null
         repeat(20) {
-            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-            rule.scenario.onActivity { card = keyboard.findViewWithTag("clip-card") }
+            harness.awaitMain { true }
+            harness.awaitMain { card = keyboard.findViewWithTag("clip-card") }
             if (card != null) return@repeat
             Thread.sleep(50)
         }
@@ -259,7 +265,7 @@ class ClipboardRetentionInstrumentedTest {
         assertTrue(card!!.contentDescription.toString().contains("tap this entry"))
         assertTrue(card!!.contentDescription.toString().contains("点击使用"))
 
-        rule.scenario.onActivity {
+        harness.awaitMain {
             assertTrue(card!!.performClick())
             assertEquals("tap this entry", listener.lastCharacter)
         }
@@ -268,7 +274,7 @@ class ClipboardRetentionInstrumentedTest {
     @Test
     fun openingClipboardCapturesPrimaryClipBeforeAddingRetentionActions() {
         lateinit var keyboard: ImeKeyboardView
-        rule.scenario.onActivity { activity ->
+        harness.awaitMain { activity ->
             ClipboardHistoryRepository.clearAll(activity)
             val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             clipboard.setPrimaryClip(ClipData.newPlainText("capture on open", "captured on open"))
@@ -287,8 +293,8 @@ class ClipboardRetentionInstrumentedTest {
         var card: View? = null
         var clearAll: TextView? = null
         repeat(30) {
-            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-            rule.scenario.onActivity {
+            harness.awaitMain { true }
+            harness.awaitMain {
                 card = keyboard.findViewWithTag("clip-card")
                 clearAll = findTextView(keyboard, "清空全部")
             }

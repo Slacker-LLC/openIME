@@ -2,7 +2,9 @@ package llc.slacker.openime
 
 import android.app.Activity
 import android.app.Application
+import android.content.ComponentName
 import android.content.Intent
+import android.os.ParcelFileDescriptor
 import android.os.Bundle
 import android.os.SystemClock
 import androidx.test.platform.app.InstrumentationRegistry
@@ -46,13 +48,27 @@ internal class DirectActivityHarness<T : Activity>(
         application.registerActivityLifecycleCallbacks(callbacks)
     }
 
-    fun launch(timeoutMs: Long = 30_000L): T {
+    fun launch(timeoutMs: Long = 30_000L, intent: Intent? = null): T {
         resumed.set(null)
-        instrumentation.targetContext.startActivity(
-            Intent(instrumentation.targetContext, activityClass).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-            },
-        )
+        val launchIntent = (intent ?: Intent()).apply {
+            component = ComponentName(instrumentation.targetContext, activityClass)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        }
+        val component = requireNotNull(launchIntent.component)
+        val extraArgs = launchIntent.extras?.keySet()?.sorted()?.joinToString("") { key ->
+            val value = launchIntent.extras?.get(key)
+            require(value is String) { "Shell activity launch only supports string extra '$key'" }
+            " --es ${key.shellQuoted()} ${value.shellQuoted()}"
+        }.orEmpty()
+        val output = ParcelFileDescriptor.AutoCloseInputStream(
+            instrumentation.uiAutomation.executeShellCommand(
+                "am start -W -f 0x${Integer.toHexString(launchIntent.flags)} -n " +
+                    component.flattenToString() + extraArgs,
+            ),
+        ).bufferedReader().use { it.readText() }
+        check("Status: ok" in output) {
+            "Unable to start ${component.flattenToShortString()}: ${output.trim()}"
+        }
         return await(timeoutMs) { resumed.get() }
             ?: error("${activityClass.simpleName} did not resume within ${timeoutMs}ms")
     }
@@ -97,3 +113,5 @@ internal class DirectActivityHarness<T : Activity>(
         const val POLL_MS = 25L
     }
 }
+
+private fun String.shellQuoted(): String = "'${replace("'", "'\\''")}'"
