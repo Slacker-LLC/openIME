@@ -314,7 +314,7 @@ internal class ImeTopZone(
             voiceInlineZone,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(48),
+                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
             ).apply {
                 setMargins(toPx(8), toPx(8), toPx(8), toPx(8))
             },
