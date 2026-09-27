@@ -106,8 +106,6 @@ internal class ClipboardPanelController(
                 1f,
             ),
         )
-        if (tab == 0) addRetentionControls(body)
-
         expandedPanel.addView(
             body,
             LinearLayout.LayoutParams(
