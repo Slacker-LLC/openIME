@@ -299,28 +299,7 @@ open class ImeKeyboardView(
     private var lastNinePinyinPaths = emptyList<String>()
     private var currentCandidates = emptyList<String>()
     private var voiceAllowed = true
-    private var inlineVoicePaletteColor: Int? = null
     private var voiceGestureSession = false
-    private var voiceInlineActive = false
-    private var voiceInlineCancel = false
-    private var voiceInlineError = false
-    private var voiceInlineGeneration = 0L
-    private var voiceInlineHasLiveRms = false
-    private var voiceInlinePulseFrame = 0
-    private val voiceInlinePulseAction = object : Runnable {
-        override fun run() {
-            if (!voiceInlineActive || !voiceGestureSession || voiceInlineHasLiveRms) return
-            voiceInlineWaves.forEachIndexed { index, bar ->
-                val phase = (voiceInlinePulseFrame + index * 2) % 12
-                val distance = kotlin.math.abs(phase - 6)
-                val params = bar.layoutParams
-                params.height = dp((7 + (6 - distance) * 3).coerceIn(7, 25))
-                bar.layoutParams = params
-            }
-            voiceInlinePulseFrame = (voiceInlinePulseFrame + 1) % 12
-            repeatHandler.postDelayed(this, 72L)
-        }
-    }
     // Floating mode changes only the IME window bounds. The keyboard surface
     // itself remains the same normal keyboard used in portrait mode.
     private var floatingWindowMode = false
@@ -473,10 +452,6 @@ open class ImeKeyboardView(
     private val composeZone: LinearLayout get() = topZone.composeZone
     private val composition: EditText get() = topZone.composition
     private val associationRow: LinearLayout get() = topZone.associationRow
-    private val voiceInlineZone: LinearLayout get() = topZone.voiceInlineZone
-    private val voiceInlineIcon: ImageView get() = topZone.voiceInlineIcon
-    private val voiceInlineStatus: TextView get() = topZone.voiceInlineStatus
-    private val voiceInlineWaves: List<View> get() = topZone.voiceInlineWaves
     private lateinit var floatingDragHandle: View
     private val keyboardBody = LinearLayout(context)
     private val expandedPanel = LinearLayout(context)
@@ -515,6 +490,25 @@ open class ImeKeyboardView(
             onHierarchyRebuilt = ::onViewHierarchyRebuilt,
         )
     }
+    private val inlineVoicePresenter: InlineVoicePresenter by lazy {
+        InlineVoicePresenter(
+            handler = repeatHandler,
+            toPx = ::dp,
+            zone = { topZone.voiceInlineZone },
+            icon = { topZone.voiceInlineIcon },
+            status = { topZone.voiceInlineStatus },
+            waves = { topZone.voiceInlineWaves },
+            tokens = {
+                theme.tokens(
+                    appearance,
+                    isNight(),
+                    AccentPalette.parse(skinPrimaryColor),
+                )
+            },
+            isGestureSessionActive = { voiceGestureSession },
+            updateTopZone = { updateTopZone(false) },
+        )
+    }
     private val voicePanelController: VoicePanelController by lazy {
         VoicePanelController(
             context = context,
@@ -526,14 +520,18 @@ open class ImeKeyboardView(
             listener = listener,
             isGestureSessionActive = { voiceGestureSession },
             onInlineState = { message, cancelling, error, rms ->
-                showInlineVoiceState(
+                inlineVoicePresenter.show(
                     message = message,
                     cancelling = cancelling,
                     error = error,
                     rms = rms,
                 )
             },
-            onHideInlineLater = ::hideInlineVoiceStateLater,
+            onHideInlineLater = { delayMs ->
+                inlineVoicePresenter.hideLater(delayMs) {
+                    !voicePanelController.active
+                }
+            },
             onFeedback = ::feedback,
         )
     }
@@ -1505,9 +1503,6 @@ open class ImeKeyboardView(
         spaceVoiceGestureController.shutdown()
         floatingDragController.reset()
         pendingRowRebuild = false
-        voiceInlineActive = false
-        voiceInlineCancel = false
-        voiceInlineError = false
         hidePopup()
     }
 
@@ -1618,7 +1613,7 @@ open class ImeKeyboardView(
             dp(16),
         )
         val state = when {
-            voiceInlineActive -> ImeTopZoneState.VOICE_INLINE
+            inlineVoicePresenter.active -> ImeTopZoneState.VOICE_INLINE
             candidateBarController.expandedOpen -> ImeTopZoneState.CANDIDATE_EXPANDED
             composing -> ImeTopZoneState.COMPOSING
             else -> ImeTopZoneState.IDLE
@@ -1628,87 +1623,6 @@ open class ImeKeyboardView(
             showCompositionEditor = (composing || candidateBarController.expandedOpen) &&
                 mode != KeyboardMode.ENGLISH_26,
         )
-    }
-
-    private fun showInlineVoiceState(
-        message: String,
-        cancelling: Boolean = false,
-        error: Boolean = false,
-        rms: Float? = null,
-    ) {
-        voiceInlineActive = true
-        voiceInlineCancel = cancelling
-        voiceInlineError = error
-        if (voiceInlineStatus.text.toString() != message) {
-            voiceInlineStatus.text = message
-            voiceInlineZone.contentDescription = message
-        }
-        if (rms != null) {
-            voiceInlineHasLiveRms = true
-            repeatHandler.removeCallbacks(voiceInlinePulseAction)
-            val strength = (rms * 9f).coerceIn(0.08f, 1f)
-            voiceInlineWaves.forEachIndexed { index, bar ->
-                val shape = if (index in 2..3) 1f else if (index in 1..4) 0.72f else 0.48f
-                val params = bar.layoutParams
-                val height = dp((6f + 22f * strength * shape).toInt().coerceIn(6, 28))
-                if (params.height != height) {
-                    params.height = height
-                    bar.layoutParams = params
-                }
-            }
-        }
-        applyInlineVoicePalette()
-        updateTopZone(false)
-    }
-
-    private fun startInlineVoicePulse() {
-        voiceInlineHasLiveRms = false
-        voiceInlinePulseFrame = 0
-        repeatHandler.removeCallbacks(voiceInlinePulseAction)
-        repeatHandler.post(voiceInlinePulseAction)
-    }
-
-    private fun stopInlineVoicePulse() {
-        repeatHandler.removeCallbacks(voiceInlinePulseAction)
-    }
-
-    private fun applyInlineVoicePalette() {
-        if (!::topZone.isInitialized) return
-        val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-            android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val tokens = theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor))
-        val backgroundColor = if (voiceInlineCancel || voiceInlineError) {
-            tokens.destructive
-        } else {
-            tokens.primary
-        }
-        if (inlineVoicePaletteColor == backgroundColor) return
-        inlineVoicePaletteColor = backgroundColor
-        voiceInlineZone.background = ImeDrawableFactory.rounded(
-            backgroundColor,
-            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-        )
-        val foregroundColor = ImeDrawableFactory.contrastText(backgroundColor)
-        voiceInlineIcon.imageTintList = ColorStateList.valueOf(foregroundColor)
-        voiceInlineStatus.setTextColor(foregroundColor)
-        voiceInlineWaves.forEach {
-            it.background = ImeDrawableFactory.rounded(foregroundColor, dp(ImeGeometryTokens.PILL_RADIUS_DP))
-        }
-    }
-
-    private fun hideInlineVoiceState() {
-        stopInlineVoicePulse()
-        voiceInlineActive = false
-        voiceInlineCancel = false
-        voiceInlineError = false
-        updateTopZone(composition.text?.isNotEmpty() == true)
-    }
-
-    private fun hideInlineVoiceStateLater(delayMs: Long) {
-        val generation = voiceInlineGeneration
-        postDelayed({
-            if (generation == voiceInlineGeneration && !voicePanelController.active) hideInlineVoiceState()
-        }, delayMs)
     }
 
     private fun renderModeBody() {
@@ -1941,9 +1855,9 @@ open class ImeKeyboardView(
         if (!voiceAllowed) return
         voiceGestureSession = true
         voicePanelController.lockLanguageForGesture()
-        voiceInlineGeneration++
-        showInlineVoiceState("正在准备麦克风…")
-        startInlineVoicePulse()
+        inlineVoicePresenter.invalidateGeneration()
+        inlineVoicePresenter.show("正在准备麦克风…")
+        inlineVoicePresenter.startPulse()
         // Let the in-place state row draw before model/session startup begins.
         post {
             if (voiceGestureSession) voicePanelController.start()
@@ -1954,16 +1868,16 @@ open class ImeKeyboardView(
     fun stopVoiceFromSpace() {
         if (!voiceGestureSession) return
         voiceGestureSession = false
-        stopInlineVoicePulse()
-        showInlineVoiceState("正在识别…")
+        inlineVoicePresenter.stopPulse()
+        inlineVoicePresenter.show("正在识别…")
         voicePanelController.stop()
     }
 
     private fun cancelVoiceGesture() {
         voiceGestureSession = false
         spaceVoiceGestureController.reset()
-        voiceInlineGeneration++
-        stopInlineVoicePulse()
+        inlineVoicePresenter.invalidateGeneration()
+        inlineVoicePresenter.stopPulse()
         voicePanelController.cancel()
     }
 
@@ -1977,7 +1891,7 @@ open class ImeKeyboardView(
             return
         }
         cancelVoiceGesture()
-        hideInlineVoiceState()
+        inlineVoicePresenter.hide()
     }
 
     private fun renderPanel(panel: Panel) {
@@ -2082,8 +1996,8 @@ open class ImeKeyboardView(
         voiceGestureSession = false
         voicePanelController.resetAndCancel()
         spaceVoiceGestureController.reset()
-        voiceInlineGeneration++
-        hideInlineVoiceState()
+        inlineVoicePresenter.invalidateGeneration()
+        inlineVoicePresenter.hide()
         if (hadVoice || panel == Panel.VOICE) {
             listener.onVoiceCancel()
         }
@@ -2826,7 +2740,7 @@ open class ImeKeyboardView(
         topZone.candidateExpandButton.setTextColor(t.keySecondaryText)
         topZone.candidateEmojiButton.setTextColor(t.keySecondaryText)
         applyFloatingChromeTheme(t)
-        if (voiceInlineActive) applyInlineVoicePalette()
+        inlineVoicePresenter.refreshPalette()
     }
 
     /** Reuse the renderer's design tokens for views added by production decorators. */
