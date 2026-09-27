@@ -280,7 +280,10 @@ open class ImeKeyboardView(
                     nineKeySymbolRailController?.refreshSymbols()
                     applyThemeToSubtree(this)
                 }
-                KeyboardMode.DIGITS -> onViewHierarchyRebuilt()
+                KeyboardMode.DIGITS -> {
+                    numericKeyboardRenderer.refreshSymbols()
+                    applyThemeToSubtree(this)
+                }
                 else -> Unit
             }
         }
@@ -299,14 +302,7 @@ open class ImeKeyboardView(
     private var skinFontSize = ImeSettingsRepository.loadSkinFont(context)
     private var skinPrimaryColor = ImeSettingsRepository.loadSkinColor(context)
 
-    protected open fun onViewHierarchyRebuilt() {
-        NumericKeypadDecorator.decorate(
-            root = this,
-            onCommit = listener::onCharacter,
-            onFeedback = ::feedback,
-        )
-        applyThemeToSubtree(this)
-    }
+    protected open fun onViewHierarchyRebuilt() = Unit
 
     private val pinyinBuffer = StringBuilder()
     private var lastNineDigits = ""
@@ -426,6 +422,36 @@ open class ImeKeyboardView(
             onSpace = ::commitFirstCandidateOrSpace,
             onModeSwitch = ::cycleMode,
             onRetranslate = { publishComposition("", emptyList()) },
+            onEnter = listener::onEnter,
+        )
+    }
+    private val numericKeyboardRenderer: NumericKeyboardRenderer by lazy {
+        NumericKeyboardRenderer(
+            context = context,
+            keyboardBody = keyboardBody,
+            toPx = ::dp,
+            keyRowHeightDp = ::keyRowHeightDp,
+            nineGridHeightDp = ::nineGridHeightDp,
+            nineBodyHeightDp = ::nineBodyHeightDp,
+            createKey = { text, function, textSize, onTap ->
+                key(
+                    text = text,
+                    func = function,
+                    secondary = null,
+                    mainTextSizeOverride = textSize,
+                    onTap = onTap,
+                )
+            },
+            createBackspaceKey = ::backspaceKey,
+            createSpaceVoiceKey = { label, onTap ->
+                spaceVoiceKey(label, white = true, onTap = onTap)
+            },
+            markSideKey = { key -> key.setTag(MARK_SIDE_KEY, true) },
+            markWhiteKey = { key -> key.setTag(MARK_WHITE_KEY, true) },
+            onCommitCharacter = ::commitKeyboardCharacter,
+            onShowSymbols = { showPanel(Panel.SYMBOLS) },
+            onReturnToText = { setMode(lastTextMode) },
+            onSpace = listener::onSpace,
             onEnter = listener::onEnter,
         )
     }
@@ -1648,128 +1674,12 @@ open class ImeKeyboardView(
     }
 
     private fun renderDigits() {
-        val container = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            tag = "digits-layout"
-        }
-        val symStack = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            tag = "digits-symbol-stack"
-        }
-        listOf("%", "+", "−", "＊").forEach { s ->
-            symStack.addView(TextView(context).apply {
-                text = s
-                textSize = 17f
-                gravity = Gravity.CENTER
-                tag = "digit-symbol:$s"
-                contentDescription = s
-                isClickable = true
-                isFocusable = true
-                setOnClickListener {
-                    feedback()
-                    commitKeyboardCharacter(s)
-                }
-            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
-        }
-        val left = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        left.addView(symStack, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(nineGridHeightDp()),
-        ))
-        left.addView(
-            key("符号", true, null, 1f, 13f) { showPanel(Panel.SYMBOLS) }
-                .apply { setTag(MARK_SIDE_KEY, true) },
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(keyRowHeightDp()),
-            ).apply { topMargin = dp(ImeGeometryTokens.KEY_ROW_GAP_DP) },
+        val info = (context as? android.inputmethodservice.InputMethodService)
+            ?.currentInputEditorInfo
+        numericKeyboardRenderer.render(
+            editorKind = EditorInfoAdapter.kind(info),
+            enterLabel = enterKeyLabel(false, "换行"),
         )
-        container.addView(left, adaptiveColumnParams(1f))
-
-        val grid = LinearLayout(context).apply {
-            tag = "digits-grid"
-            orientation = LinearLayout.VERTICAL
-        }
-        listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("7", "8", "9")).forEachIndexed { rowIndex, chunk ->
-            val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            chunk.forEach { d ->
-                row.addView(
-                    key(d, false, null, 1f, 22f) { commitKeyboardCharacter(d) }.apply {
-                        tag = "key:$d"
-                        setTag(MARK_WHITE_KEY, true)
-                    },
-                    flexKeyParams(gapDp = 2),
-                )
-            }
-            grid.addView(row, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(keyRowHeightDp()),
-            ).apply {
-                if (rowIndex < 2) bottomMargin = dp(ImeGeometryTokens.KEY_ROW_GAP_DP)
-            })
-        }
-        val center = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        center.addView(grid, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(nineGridHeightDp()),
-        ))
-        val centerBottom = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        centerBottom.addView(
-            key("返回", true, null, 1f, 14f) { setMode(lastTextMode) }.apply {
-                tag = "key:mode"
-                setTag(MARK_SIDE_KEY, true)
-            },
-            flexKeyParams(),
-        )
-        centerBottom.addView(
-            spaceVoiceKey("空格", white = true) { listener.onSpace() }.apply {
-                setTag(MARK_WHITE_KEY, true)
-            },
-            flexKeyParams(),
-        )
-        centerBottom.addView(
-            key(".", false, null, 1f, 22f) { commitKeyboardCharacter(".") }.apply {
-                tag = "key:."
-                setTag(MARK_WHITE_KEY, true)
-            },
-            flexKeyParams(),
-        )
-        center.addView(centerBottom, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(keyRowHeightDp()),
-        ).apply { topMargin = dp(ImeGeometryTokens.KEY_ROW_GAP_DP) })
-        container.addView(center, adaptiveColumnParams(3.7f))
-
-        val side = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            tag = "digits-actions"
-        }
-        side.addView(
-            backspaceKey().apply { setTag(MARK_SIDE_KEY, true) },
-            sideKeyParams(keyRowHeightDp(), true),
-        )
-        side.addView(
-            key("0", false, null, 1f, 22f) { commitKeyboardCharacter("0") }.apply {
-                tag = "key:0"
-                setTag(MARK_SIDE_KEY, true)
-            },
-            sideKeyParams(keyRowHeightDp(), true),
-        )
-        side.addView(
-            key("@", true, null, 1f, 15f) { commitKeyboardCharacter("@") }
-                .apply { setTag(MARK_SIDE_KEY, true) },
-            sideKeyParams(keyRowHeightDp(), true),
-        )
-        side.addView(
-            key(enterKeyLabel(false, "换行"), true, null, 1f, 13f) { listener.onEnter() }
-                .apply { tag = "key-enter"; setTag(MARK_SIDE_KEY, true) },
-            sideKeyParams(keyRowHeightDp()),
-        )
-        container.addView(side, adaptiveColumnParams(1f))
-        keyboardBody.addView(container, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(nineBodyHeightDp()),
-        ))
     }
 
     private fun commitFirstCandidateOrSpace() {
