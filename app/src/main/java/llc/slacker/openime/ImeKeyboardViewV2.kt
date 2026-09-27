@@ -1,7 +1,6 @@
 package llc.slacker.openime
 
 import android.content.Context
-import android.inputmethodservice.InputMethodService
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
@@ -26,17 +25,7 @@ class ImeKeyboardViewV2(
     private var navigationBottomInsetPx = 0
     private var repairingEarlierNineKeySegment = false
 
-    /**
-     * Production presentation sync is gated because onMeasure runs frequently.
-     * Enter labeling depends on the current hierarchy/editor; do not rescan
-     * the tree when neither changed.
-     */
-    private var presentationDirty = true
-    private var lastSyncedImeOptions: Int? = null
-
     init {
-        post { syncProductionKeyPresentation() }
-
         // Insets already consumed by the IME window arrive as zero, so this
         // adds safe area only when Android actually reports an unconsumed nav
         // region. The value is bounded to avoid pathological OEM geometry.
@@ -58,7 +47,6 @@ class ImeKeyboardViewV2(
 
     override fun onViewHierarchyRebuilt() {
         super.onViewHierarchyRebuilt()
-        presentationDirty = true
         post {
             NineKeySymbolRailDecorator.decorate(
                 root = this,
@@ -66,7 +54,6 @@ class ImeKeyboardViewV2(
                 onFeedback = ::feedback,
             )
             installNineKeyAccessibilityRepair()
-            syncProductionKeyPresentation()
         }
     }
 
@@ -179,9 +166,7 @@ class ImeKeyboardViewV2(
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        presentationDirty = true
         requestApplyInsets()
-        post { syncProductionKeyPresentation() }
     }
 
     override fun onDetachedFromWindow() {
@@ -190,10 +175,6 @@ class ImeKeyboardViewV2(
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        // EditorInfo can change while Android reuses the same input view. Keep
-        // the visible Enter label and bottom-row geometry synchronized before
-        // children are measured instead of relying on one-time construction.
-        syncProductionKeyPresentation()
         super.onMeasure(widthMeasureSpec, heightMeasureSpec)
         if (navigationBottomInsetPx <= 0) return
         val targetHeight = ImeBottomInsetPolicy.measuredHeight(
@@ -208,32 +189,6 @@ class ImeKeyboardViewV2(
             // last key row is not compressed upward or covered by navigation.
             setMeasuredDimension(measuredWidth, targetHeight)
         }
-    }
-
-    private fun syncProductionKeyPresentation() {
-        val imeOptions = (context as? InputMethodService)?.currentInputEditorInfo?.imeOptions
-        if (!presentationDirty && imeOptions == lastSyncedImeOptions) return
-        presentationDirty = false
-        lastSyncedImeOptions = imeOptions
-        syncEnterKeyPresentation()
-    }
-
-    /** Keep every visible Enter key honest about what onEnter() will dispatch. */
-    private fun syncEnterKeyPresentation() {
-        val service = context as? InputMethodService ?: return
-        val imeOptions = service.currentInputEditorInfo?.imeOptions ?: return
-        val label = enterKeyPresentationFor(imeOptions).label
-
-        fun visit(view: View) {
-            if (view is ImeKeyView && view.tag == "key-enter") {
-                view.setMainText(label)
-                view.contentDescription = label
-            }
-            if (view is ViewGroup) {
-                for (index in 0 until view.childCount) visit(view.getChildAt(index))
-            }
-        }
-        visit(this)
     }
 
     private fun insetDp(value: Int): Int =
