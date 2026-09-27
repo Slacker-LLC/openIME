@@ -240,6 +240,10 @@ open class ImeKeyboardView(
     private var appliedOrientation = resources.configuration.orientation
     private var appliedFontScale = resources.configuration.fontScale
     private var appliedDensityDpi = resources.displayMetrics.densityDpi
+    private var layoutMetrics = KeyboardLayoutMetrics(
+        landscape = appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE,
+        fontScale = appliedFontScale,
+    )
     private var lastTextMode = KeyboardMode.PINYIN_26
     private var preferredChineseMode = ImeSettingsRepository.loadPreferredChineseMode(context)
     protected var panel = Panel.NONE
@@ -380,44 +384,16 @@ open class ImeKeyboardView(
     // Portrait keeps the historical 296dp total. Landscape uses a compact
     // keyboard, and key rows grow with the system font scale so sp labels are
     // never clipped inside a fixed-height key.
-    private fun isLandscape(): Boolean =
-        resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-
-    private fun keyRowHeightDp(): Int {
-        val base = if (isLandscape()) {
-            ImeGeometryTokens.LANDSCAPE_KEY_ROW_HEIGHT_DP
-        } else {
-            ImeGeometryTokens.TOUCH_TARGET_DP
-        }
-        val fontGrow = ((resources.configuration.fontScale - 1f).coerceAtLeast(0f) * 12f)
-            .toInt().coerceAtMost(12)
-        return base + fontGrow
-    }
-
-    private fun nineGridHeightDp(): Int =
-        keyRowHeightDp() * 3 + ImeGeometryTokens.KEY_ROW_GAP_DP * 2
-
-    private fun nineBodyHeightDp(): Int =
-        nineGridHeightDp() + ImeGeometryTokens.KEY_ROW_GAP_DP + keyRowHeightDp()
-
-    private fun doubleKeyHeightDp(): Int =
-        keyRowHeightDp() * 2 + ImeGeometryTokens.KEY_ROW_GAP_DP
-
-    private fun imeHeightDp(): Int {
-        // Reserve the composed top-zone height even while idle. If this uses
-        // the smaller toolbar height until the first keypress, the IME window
-        // relayouts and the whole keyboard appears to jump down while typing.
-        // Toolbar + four key rows + three shared gaps + bottom breathing.
-        val derived = ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP +
-            keyRowHeightDp() * 4 + ImeGeometryTokens.KEY_ROW_GAP_DP * 3 + 22
-        return maxOf(if (isLandscape()) 264 else 302, derived)
-    }
+    private fun keyRowHeightDp(): Int = layoutMetrics.keyRowHeightDp
+    private fun nineGridHeightDp(): Int = layoutMetrics.nineGridHeightDp
+    private fun nineBodyHeightDp(): Int = layoutMetrics.nineBodyHeightDp
+    private fun doubleKeyHeightDp(): Int = layoutMetrics.doubleKeyHeightDp
+    private fun imeHeightDp(): Int = layoutMetrics.imeHeightDp
 
     /** The top zone is reserved at its composed height in every state. */
-    private fun topZoneHeightDp(): Int = ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP
-    private fun keyboardBodyHeightDp(): Int = imeHeightDp() - topZoneHeightDp()
-    private fun panelBodyHeightDp(): Int =
-        (imeHeightDp() - ImeGeometryTokens.TOUCH_TARGET_DP).coerceAtLeast(0)
+    private fun topZoneHeightDp(): Int = layoutMetrics.topZoneHeightDp
+    private fun keyboardBodyHeightDp(): Int = layoutMetrics.keyboardBodyHeightDp
+    private fun panelBodyHeightDp(): Int = layoutMetrics.panelBodyHeightDp
     private var syncingComposition = false
     private var passwordField = false
     private var inlineEditTarget: EditText? = null
@@ -620,6 +596,10 @@ open class ImeKeyboardView(
         appliedOrientation = newConfig.orientation
         appliedFontScale = newConfig.fontScale
         appliedDensityDpi = newConfig.densityDpi
+        layoutMetrics = KeyboardLayoutMetrics(
+            landscape = appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE,
+            fontScale = appliedFontScale,
+        )
         if (!geometryChanged) return
         // Do not yank the user out of an open panel.
         applyDynamicHeights()
