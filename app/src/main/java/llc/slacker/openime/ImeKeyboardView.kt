@@ -1106,7 +1106,20 @@ open class ImeKeyboardView(
         if (newPanel == Panel.NONE || newPanel == Panel.CANDIDATE_EXPANDED) return
         if (passwordField && newPanel in setOf(Panel.CLIPBOARD, Panel.VOICE)) return
         hidePopup()
-        if (panel == Panel.VOICE && newPanel != Panel.VOICE) stopVoiceIfActive()
+        if (
+            newPanel != Panel.VOICE &&
+            (
+                panel == Panel.VOICE ||
+                    voiceGestureSession ||
+                    voicePanelController.active ||
+                    voicePanelController.pending
+            )
+        ) {
+            // Inline voice normally lives while panel == NONE. Replacing the
+            // keyboard surface with another panel must not leave that session
+            // recording behind a hidden space key.
+            stopVoiceIfActive()
+        }
         if (panel != Panel.NONE && panel != newPanel) panelBackStack += panel
         panel = newPanel
         mainDock.visibility = View.GONE
