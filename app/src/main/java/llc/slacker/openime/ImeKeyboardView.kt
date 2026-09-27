@@ -184,9 +184,9 @@ open class ImeKeyboardView(
     }
 
     private val repeatHandler = Handler(Looper.getMainLooper())
-    // Voice is a product gesture, not Android's generic context-menu
-    // long-press. Keep the explicit 150 ms threshold used by openIME.
-    private val spaceVoiceTriggerMs = ProductionKeyPolicy.SPACE_VOICE_TRIGGER_MS
+    // Match Android's configured touch-and-hold timing instead of inventing
+    // a second fixed threshold for the space/voice gesture.
+    private val spaceVoiceTriggerMs = ViewConfiguration.getLongPressTimeout().toLong()
     // Whether long-press alternate glyphs are shown as small corner hints.
     private var showSecondaryHints = true
     // Touch-coordinate trace logs are debug-only; they must never spam logcat

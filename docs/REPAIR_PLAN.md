@@ -276,9 +276,9 @@ Backspace:
 
 Space/voice:
 
-- product long-press threshold: 150 ms;
-- <150 ms commits space;
-- >=150 ms arms voice;
+- long-press threshold follows Android's configured touch-and-hold timeout;
+- releasing before that threshold commits space;
+- crossing that threshold arms voice;
 - release finalizes/commits;
 - upward swipe cancels;
 - return from cancel zone restores;

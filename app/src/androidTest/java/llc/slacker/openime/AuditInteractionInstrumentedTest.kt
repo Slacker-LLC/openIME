@@ -18,7 +18,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.lang.reflect.Proxy
@@ -663,10 +662,8 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
-    fun spaceHeldPast150msStartsVoiceBeforeSystemLongPressTimeout() = withKeyboard { harness, recorder, keyboard ->
-        val systemTimeout = ViewConfiguration.getLongPressTimeout().toLong()
-        val hold = ProductionKeyPolicy.SPACE_VOICE_TRIGGER_MS + 100L
-        assumeTrue("System long-press timeout must leave room for the 150ms product gesture", systemTimeout > hold + 50L)
+    fun spaceHeldPastConfiguredLongPressStartsVoiceWithoutInsertingSpace() = withKeyboard { harness, recorder, keyboard ->
+        val hold = ViewConfiguration.getLongPressTimeout().toLong() + 100L
         var released = false
         harness.awaitMain {
             val point = keyPoint(keyboard, "key-space")
@@ -681,7 +678,7 @@ class AuditInteractionInstrumentedTest {
         harness.awaitMain { if (released) true else null }
         harness.awaitMain(timeoutMs = 2_000L) { if (recorder.starts > 0) true else null }
         harness.awaitMain {
-            assertEquals("150ms hold must arm voice exactly once", 1, recorder.starts)
+            assertEquals("Configured long press must arm voice exactly once", 1, recorder.starts)
             assertEquals("Voice gesture must not also insert a space", 0, recorder.spaces)
             true
         }

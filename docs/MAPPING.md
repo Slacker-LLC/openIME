@@ -16,7 +16,7 @@
 | 剪贴板 | `ClipboardHistoryRepository` + `InputConnectionGateway` | 普通编辑器可用；密码编辑器不暴露持久历史/粘贴入口 |
 | 常用语 | `QuickPhraseRepository` / `QuickPhraseEditActivity` | 生产可用 |
 | 文本编辑 | `InputConnectionGateway` | 生产可用，能力随目标 EditorInfo/选区变化 |
-| 语音 | `VoiceModelLifecycleManager` + sherpa-onnx | 本地语音；150ms 长按空格 |
+| 语音 | `VoiceModelLifecycleManager` + sherpa-onnx | 本地语音；长按空格跟随 Android touch-and-hold timeout |
 | 手写 | `HandwritingPadView` + `UnavailableHandwritingProvider` | 只有笔迹 UI，识别引擎未接入，正式入口隐藏 |
 | 浮动键盘 | `LocalVoiceImeService` WindowManager + `ImeKeyboardView` | Docked/Floating Window Mode |
 | 设置 | `ImeSettingsRepository` + 键盘内/Activity 设置 UI | 持久化 |

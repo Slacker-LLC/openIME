@@ -3,7 +3,7 @@ package llc.slacker.openime
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** Regression coverage for current-main production key geometry and long-press timing. */
+/** Regression coverage for current-main production key geometry. */
 class ProductionKeyPolicyTest {
     @Test
     fun balancesTwentySixKeyBottomRowAroundSpace() {
@@ -30,11 +30,6 @@ class ProductionKeyPolicyTest {
         )
         assertEquals(balanced.leftOuter, balanced.rightOuter, 0.0001f)
         assertEquals(0.925f, balanced.leftOuter, 0.0001f)
-    }
-
-    @Test
-    fun spaceVoiceUsesTheProduct150msThreshold() {
-        assertEquals(150L, ProductionKeyPolicy.SPACE_VOICE_TRIGGER_MS)
     }
 
 }

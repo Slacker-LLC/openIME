@@ -1,9 +1,7 @@
 package llc.slacker.openime
 
-/** Pure geometry/timing helpers for production key presentation. */
+/** Pure geometry helpers for production key presentation. */
 internal object ProductionKeyPolicy {
-    const val SPACE_VOICE_TRIGGER_MS = 150L
-
     data class EdgeWeights(
         val leftOuter: Float,
         val rightOuter: Float,

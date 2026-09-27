@@ -68,7 +68,7 @@ LocalVoiceImeService
 
 ## Voice
 
-`VoiceModelLifecycleManager` 是 ASR runtime 的唯一 owner。模型校验、预热、构建和释放不在 IME 主线程执行。空格语音是产品手势，触发阈值固定为 150ms；松手、取消和旧 session 回调必须保持 generation 隔离。
+`VoiceModelLifecycleManager` 是 ASR runtime 的唯一 owner。模型校验、预热、构建和释放不在 IME 主线程执行。空格语音是产品手势，长按判定跟随 Android 配置的 touch-and-hold timeout；松手、取消和旧 session 回调必须保持 generation 隔离。
 
 ## Native 与第三方代码
 
