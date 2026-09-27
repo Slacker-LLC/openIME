@@ -1,5 +1,7 @@
 package llc.slacker.openime
 
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.graphics.Color
 import android.graphics.Rect
@@ -301,6 +303,28 @@ class AuditInteractionInstrumentedTest {
             assertNotNull("Tools must expose the floating keyboard action", floatingEntry)
             assertTrue("Tool actions must be keyboard-focusable", floatingEntry!!.isFocusable)
             assertTrue("Tool actions must keep a 48dp target", floatingEntry.minimumHeight >= keyboard.resources.displayMetrics.density * 48f)
+            true
+        }
+    }
+
+    @Test
+    fun floatingDockStateDoesNotDependOnWindowAvailability() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            val controller = FloatingWindowController(
+                resources = keyboard.resources,
+                mainHandler = Handler(Looper.getMainLooper()),
+                windowProvider = { null },
+                keyboardHeightPx = { keyboard.measuredHeight.takeIf { it > 0 } },
+            )
+            controller.enable()
+            assertTrue(controller.enabled)
+
+            controller.restore()
+
+            assertFalse(
+                "Docked state must be committed even when the IME Window has already disappeared",
+                controller.enabled,
+            )
             true
         }
     }
@@ -666,7 +690,6 @@ class AuditInteractionInstrumentedTest {
             true
         }
         harness.awaitMain {
-            val previousStarts = recorder.starts
             keyboard.startVoiceFromSpace()
             true
         }
