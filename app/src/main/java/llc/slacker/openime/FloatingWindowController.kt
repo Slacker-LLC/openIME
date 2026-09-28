@@ -163,12 +163,13 @@ internal class FloatingWindowController(
         val maximum = dp(
             if (landscape) ImeGeometryTokens.FLOATING_LANDSCAPE_WIDTH_DP else 420,
         )
-        val minimum = dp(if (landscape) 300 else 280)
+        val available = (screenWidth - dp(16)).coerceAtLeast(dp(1))
+        val minimum = minOf(dp(if (landscape) 300 else 280), available)
         return minOf(
             preferred,
             maximum,
-            (screenWidth - dp(16)).coerceAtLeast(dp(1)),
-        ).coerceAtLeast(minimum.coerceAtMost(screenWidth))
+            available,
+        ).coerceAtLeast(minimum)
     }
 
     private fun displaySize(): Pair<Int, Int> {
