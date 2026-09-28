@@ -41,6 +41,7 @@ open class ImeKeyboardView(
         fun onCharacter(char: String)
         fun onBackspace()
         fun onClearAll()
+        fun onUndoClear(): Boolean = false
         fun onSpace()
         fun onFloatingKeyboardChanged(floating: Boolean)
         fun onFloatingKeyboardDragged(deltaX: Float, deltaY: Float)
@@ -115,9 +116,11 @@ open class ImeKeyboardView(
         toPx = ::dp,
         onDeleteOne = ::performBackspaceOnce,
         onClearAll = listener::onClearAll,
+        onUndoClear = listener::onUndoClear,
         onPressFeedback = ::feedback,
         onHapticFeedback = ::hapticFeedback,
         onShowClearPopup = { anchor -> showPopup(anchor, "清空") },
+        onShowUndoPopup = { anchor -> showPopup(anchor, "撤回") },
         onHidePopup = ::hidePopup,
     )
     private val backspaceKeyFactory: BackspaceKeyFactory by lazy {
