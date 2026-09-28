@@ -96,6 +96,22 @@ object UserPhraseRepository {
         }
     }
 
+    /**
+     * Forget one exact fallback-learned phrase. This repository is used only
+     * while librime is unavailable, so deleting here never mutates the native
+     * Rime user database.
+     */
+    fun forget(code: String, text: String): Boolean {
+        val key = normalize(code)
+        val value = text.trim()
+        if (key.isEmpty() || value.isEmpty()) return false
+        synchronized(lock) {
+            val removed = entries.remove("$key\u0000$value") != null
+            if (removed) scheduleSaveLocked()
+            return removed
+        }
+    }
+
     /** Write the latest immutable snapshot synchronously when a lifecycle owner needs durability now. */
     fun flush() {
         synchronized(persistenceLock) {
