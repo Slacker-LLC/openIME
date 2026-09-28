@@ -339,6 +339,51 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
 
     private fun fuzzyVariants(py: String): List<String> = pinyinFuzzyVariants(py)
 
+    /**
+     * Recover common 26-key slips by substituting exactly one physically
+     * adjacent QWERTY key. This is intentionally conservative: it never
+     * changes the user's composition, never chains multiple corrections, and
+     * only contributes real non-ASCII candidates behind the normal result.
+     */
+    fun getAdjacentKeyCorrections(
+        rawPinyin: String,
+        fuzzy: Boolean = false,
+        limit: Int = 24,
+    ): List<String> {
+        val input = rawPinyin.lowercase().trim()
+        if (
+            input.length !in 2..12 ||
+            input.any { it !in 'a'..'z' } ||
+            limit <= 0
+        ) {
+            return emptyList()
+        }
+
+        val result = linkedSetOf<String>()
+        for (index in input.indices.reversed()) {
+            val original = input[index]
+            QWERTY_NEIGHBORS[original].orEmpty().forEach { replacement ->
+                val variant = buildString(input.length) {
+                    append(input, 0, index)
+                    append(replacement)
+                    append(input, index + 1, input.length)
+                }
+                getCandidates(variant, fuzzy)
+                    .asSequence()
+                    .filter { candidate ->
+                        candidate != variant &&
+                            candidate.any { ch -> ch.code > 0x7f }
+                    }
+                    .take(2)
+                    .forEach { candidate ->
+                        result += candidate
+                    }
+                if (result.size >= limit) return result.take(limit)
+            }
+        }
+        return result.take(limit)
+    }
+
     fun get9KeyCandidates(numberStr: String): NineKeyResult {
         val digits = numberStr
             .take(MAX_NINE_KEY_DIGITS)
@@ -491,6 +536,35 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
         const val MAX_NINE_KEY_DIGITS = 64
         private const val MAX_NINE_MATCHES = 12
         private const val MAX_LOCAL_RESOLVE_LENGTH = 32
+
+        private val QWERTY_NEIGHBORS = mapOf(
+            'q' to "wa",
+            'w' to "qase",
+            'e' to "wsdr",
+            'r' to "edft",
+            't' to "rfgy",
+            'y' to "tghu",
+            'u' to "yhji",
+            'i' to "ujko",
+            'o' to "iklp",
+            'p' to "ol",
+            'a' to "qwsz",
+            's' to "awedxz",
+            'd' to "serfcx",
+            'f' to "drtgvc",
+            'g' to "ftyhbv",
+            'h' to "gyujnb",
+            'j' to "huikmn",
+            'k' to "jiolm",
+            'l' to "kop",
+            'z' to "asx",
+            'x' to "zsdc",
+            'c' to "xdfv",
+            'v' to "cfgb",
+            'b' to "vghn",
+            'n' to "bhjm",
+            'm' to "njk",
+        )
 
         /**
          * Correct common legacy table mistakes without trusting the table at
