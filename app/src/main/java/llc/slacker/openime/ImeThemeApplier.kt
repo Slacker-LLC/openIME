@@ -122,23 +122,24 @@ internal class ImeThemeApplier(
     private fun applyLinearLayout(view: LinearLayout, t: ImeTheme.Tokens) {
         when (view.tag) {
             "candidate-first-row" -> {
+                val selected = ImeSurfacePolicy.selectedSurface(t)
                 view.background = statefulRounded(
-                    t.keyBackground,
-                    t.keyPressedBackground,
+                    selected,
+                    ImeSurfacePolicy.pressedSurface(selected, t),
                     toPx(ImeGeometryTokens.KEY_RADIUS_DP),
                 )
             }
             "candidate-row" -> {
                 view.background = statefulRounded(
                     Color.TRANSPARENT,
-                    t.keyPressedBackground,
+                    ImeSurfacePolicy.pressedSurface(t.candidateBackground, t),
                     toPx(ImeGeometryTokens.KEY_RADIUS_DP),
                 )
             }
             "setting-row" -> if (view.isClickable) {
                 view.background = statefulRounded(
                     Color.TRANSPARENT,
-                    t.keyPressedBackground,
+                    ImeSurfacePolicy.pressedSurface(t.toolCardBackground, t),
                     toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
                 )
             }
@@ -168,6 +169,14 @@ internal class ImeThemeApplier(
                     toPx(ImeGeometryTokens.CARD_RADIUS_DP),
                 )
             }
+            "toolbar-row" -> view.setBackgroundColor(t.toolbarBackground)
+            "compose-zone" -> view.setBackgroundColor(t.candidateBackground)
+            "candidate-field" -> {
+                view.background = ImeDrawableFactory.rounded(
+                    t.candidateBackground,
+                    toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
+                )
+            }
             else -> {
                 if (
                     (view.tag as? String)?.startsWith("tool:") == true &&
@@ -175,7 +184,7 @@ internal class ImeThemeApplier(
                 ) {
                     view.background = statefulRounded(
                         t.toolCardBackground,
-                        t.keyPressedBackground,
+                        ImeSurfacePolicy.pressedSurface(t.toolCardBackground, t),
                         toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
                     )
                 }
@@ -189,7 +198,7 @@ internal class ImeThemeApplier(
         ) {
             view.background = statefulRounded(
                 t.toolCardBackground,
-                t.keyPressedBackground,
+                ImeSurfacePolicy.pressedSurface(t.toolCardBackground, t),
                 toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
             )
         }
@@ -235,7 +244,7 @@ internal class ImeThemeApplier(
                 view.imageTintList = ColorStateList.valueOf(t.keyText)
                 view.background = statefulRounded(
                     t.panelHeadBackground,
-                    ImeDrawableFactory.dim(t.panelHeadBackground),
+                    ImeSurfacePolicy.pressedSurface(t.panelHeadBackground, t),
                     toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
                 )
             }
@@ -247,7 +256,7 @@ internal class ImeThemeApplier(
                 if (view.isClickable) {
                     view.background = statefulRounded(
                         Color.TRANSPARENT,
-                        t.keyPressedBackground,
+                        ImeSurfacePolicy.pressedSurface(t.toolbarBackground, t),
                         toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
                     )
                 }
@@ -296,10 +305,11 @@ internal class ImeThemeApplier(
             }
 
             tag == "tab-active" -> {
-                view.setTextColor(ImeDrawableFactory.contrastText(t.primary))
+                val selected = ImeSurfacePolicy.selectedSurface(t)
+                view.setTextColor(ImeSurfacePolicy.selectedText(t))
                 view.background = statefulRounded(
-                    t.primary,
-                    ImeDrawableFactory.dim(t.primary),
+                    selected,
+                    ImeSurfacePolicy.pressedSurface(selected, t),
                     toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
                 )
             }
@@ -361,16 +371,17 @@ internal class ImeThemeApplier(
                 view.setTextColor(t.keyText)
                 view.background = statefulRounded(
                     Color.TRANSPARENT,
-                    t.keyPressedBackground,
+                    ImeSurfacePolicy.pressedSurface(t.sideKeyBackground, t),
                     toPx(ImeGeometryTokens.KEY_RADIUS_DP),
                 )
             }
 
             tag == "nine-pinyin-path-selected" -> {
-                view.setTextColor(ImeDrawableFactory.contrastText(t.primary))
+                val selected = ImeSurfacePolicy.selectedSurface(t)
+                view.setTextColor(ImeSurfacePolicy.selectedText(t))
                 view.background = statefulRounded(
-                    t.primary,
-                    ImeDrawableFactory.dim(t.primary, 0.86f),
+                    selected,
+                    ImeSurfacePolicy.pressedSurface(selected, t),
                     toPx(ImeGeometryTokens.KEY_RADIUS_DP),
                 )
             }
@@ -435,8 +446,8 @@ internal class ImeThemeApplier(
             tag == "candidate-emoji" || tag == "candidate-expand" -> {
                 view.setTextColor(t.keySecondaryText)
                 view.background = statefulRounded(
-                    t.panelHeadBackground,
-                    ImeDrawableFactory.dim(t.panelHeadBackground),
+                    Color.TRANSPARENT,
+                    ImeSurfacePolicy.pressedSurface(t.candidateBackground, t),
                     toPx(ImeGeometryTokens.KEY_RADIUS_DP),
                 )
             }
@@ -531,7 +542,7 @@ internal class ImeThemeApplier(
                 )
             }
             "setting-divider" ->
-                view.setBackgroundColor(t.border)
+                view.setBackgroundColor(ImeSurfacePolicy.divider(t))
         }
     }
 
