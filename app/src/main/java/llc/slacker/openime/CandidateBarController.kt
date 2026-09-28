@@ -153,7 +153,8 @@ internal class CandidateBarController(
     ) {
         val canExpandOrClose = expandedOpen || hasCandidates
         expandButton.isEnabled = canExpandOrClose
-        expandButton.alpha = if (canExpandOrClose) 1f else 0.38f
+        expandButton.alpha =
+            if (canExpandOrClose) 1f else ImeSurfacePolicy.DISABLED_ALPHA
         if (!canExpandOrClose) {
             expandButton.contentDescription = "暂无更多候选"
             if (android.os.Build.VERSION.SDK_INT >= 30) {
@@ -342,10 +343,18 @@ internal class CandidateBarController(
         word.typeface = if (index == 0) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
 
         val palette = tokens()
-        word.setTextColor(if (index == 0) palette.keyText else palette.candidateText)
+        val normalBackground =
+            if (index == 0) ImeSurfacePolicy.selectedSurface(palette) else Color.TRANSPARENT
+        word.setTextColor(
+            if (index == 0) ImeSurfacePolicy.selectedText(palette) else palette.candidateText,
+        )
         item.background = statefulBackground(
-            if (index == 0) palette.keyBackground else Color.TRANSPARENT,
-            palette.keyPressedBackground,
+            normalBackground,
+            if (index == 0) {
+                ImeSurfacePolicy.pressedSurface(normalBackground, palette)
+            } else {
+                ImeSurfacePolicy.pressedSurface(palette.candidateBackground, palette)
+            },
             toPx(ImeGeometryTokens.KEY_RADIUS_DP),
         )
         item.setOnClickListener {
