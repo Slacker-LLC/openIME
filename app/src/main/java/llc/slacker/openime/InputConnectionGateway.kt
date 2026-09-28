@@ -204,6 +204,7 @@ class InputConnectionGateway(
     }
 
     fun deleteForwards() {
+        invalidateClearUndo()
         val ic = connection() ?: return
         if (deleteSelection()) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -382,6 +383,7 @@ class InputConnectionGateway(
     }
 
     fun sendKeyDownUp(keyCode: Int) {
+        invalidateClearUndo()
         val ic = connection() ?: return
         sendKeyDownUp(ic, keyCode)
     }
@@ -594,8 +596,10 @@ class InputConnectionGateway(
         return text
     }
 
-    fun commitContent(info: InputContentInfo): Boolean =
-        connection()?.commitContent(info, 0, null) == true
+    fun commitContent(info: InputContentInfo): Boolean {
+        invalidateClearUndo()
+        return connection()?.commitContent(info, 0, null) == true
+    }
 
     private fun selectionSnapshot(): SelectionSnapshot? {
         if (isPassword()) return null
