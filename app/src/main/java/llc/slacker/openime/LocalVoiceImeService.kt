@@ -1166,8 +1166,26 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         commitFirstCandidate()
     }
 
-    private fun fallbackCandidatesFor(composition: String, mode: KeyboardMode): List<String> =
-        candidatePipeline.candidatesFor(mode, composition, state.fuzzyPinyinEnabled)
+    private fun fallbackCandidatesFor(
+        composition: String,
+        mode: KeyboardMode,
+    ): List<String> {
+        val normal = candidatePipeline.candidatesFor(
+            mode,
+            composition,
+            state.fuzzyPinyinEnabled,
+        )
+        if (mode != KeyboardMode.PINYIN_26 && mode != KeyboardMode.ENGLISH_26) {
+            return normal
+        }
+        val quickPhrases = QuickPhraseRepository.candidatesForInputCode(
+            context = this,
+            rawCode = composition,
+            exactOnly = false,
+            limit = 8,
+        )
+        return (quickPhrases + normal).distinct().take(MAX_CANDIDATES)
+    }
 
     /** The extra learner is only a repeated-choice fallback while Rime is unavailable. */
     private fun immediateCandidates(composition: String, fallback: List<String>): List<String> {
@@ -1216,7 +1234,22 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
                 }
                 val finalCandidates = if (native.isNotEmpty()) {
                     val nativeText = native.map { it.text }
-                    if (
+                    val exactQuickPhrases =
+                        if (mode == KeyboardMode.PINYIN_26 || mode == KeyboardMode.ENGLISH_26) {
+                            QuickPhraseRepository.candidatesForInputCode(
+                                context = this,
+                                rawCode = composition,
+                                exactOnly = true,
+                                limit = 8,
+                            )
+                        } else {
+                            emptyList()
+                        }
+                    if (exactQuickPhrases.isNotEmpty()) {
+                        (exactQuickPhrases + nativeText + fallback)
+                            .distinct()
+                            .take(MAX_CANDIDATES)
+                    } else if (
                         mode == KeyboardMode.PINYIN_26 &&
                         nativeText.size < TYPO_CORRECTION_NATIVE_THRESHOLD
                     ) {
