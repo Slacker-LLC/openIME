@@ -93,7 +93,11 @@ internal class ImeThemeApplier(
         view.background = statefulRounded(color, pressedColor, skinRadiusPx())
         view.background?.alpha =
             skinOpacity().coerceIn(70, 100) * 255 / 100
-        view.elevation = 0f
+        // Keep shadows restrained: ordinary typing surfaces need a slight
+        // separation from the keyboard deck, while side/function controls
+        // stay visually embedded in that deck.
+        view.elevation =
+            if (side || function) 0f else toPx(1).toFloat()
 
         when {
             primary -> {
