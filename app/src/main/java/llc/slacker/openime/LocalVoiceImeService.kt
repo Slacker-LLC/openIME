@@ -47,6 +47,8 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             mainHandler = mainHandler,
             windowProvider = { getWindow().window },
             keyboardHeightPx = { keyboardView?.measuredHeight },
+            floatingWidthPercent = { ImeSettingsRepository.loadFloatingWidthPercent(this) },
+            floatingOpacityPercent = { ImeSettingsRepository.loadFloatingOpacityPercent(this) },
             debugLog = { message ->
                 if (verboseLogging) Log.d(TAG, message)
             },
@@ -699,6 +701,10 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
 
     override fun onFloatingKeyboardDragged(deltaX: Float, deltaY: Float) {
         floatingWindow.drag(deltaX, deltaY)
+    }
+
+    override fun onFloatingStyleChanged(widthPercent: Int, opacityPercent: Int) {
+        if (floatingWindow.enabled) floatingWindow.reapply()
     }
 
     override fun onSpace() {
