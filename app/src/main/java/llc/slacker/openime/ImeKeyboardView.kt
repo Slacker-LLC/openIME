@@ -1,45 +1,27 @@
 package llc.slacker.openime
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
-import android.content.res.ColorStateList
-import android.graphics.Bitmap
 import android.graphics.Color
-import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.graphics.drawable.GradientDrawable
-import android.graphics.Paint
 import android.graphics.drawable.StateListDrawable
 import android.inputmethodservice.InputMethodService
 import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.text.Editable
-import android.text.InputType
 import android.text.TextUtils
-import android.text.TextWatcher
-import android.util.Log
-import android.util.LruCache
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.SoundEffectConstants
 import android.view.View
-import android.view.ViewConfiguration
 import android.view.ViewGroup
-import android.view.accessibility.AccessibilityNodeInfo
+import android.view.WindowInsets
 import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
-import android.widget.HorizontalScrollView
 import android.widget.EditText
-import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.SeekBar
 import android.widget.TextView
-import java.util.concurrent.Executors
 
 /**
  * Native IME top-level view. Visual baseline: the supplied preview.html prototype.
@@ -122,70 +104,81 @@ open class ImeKeyboardView(
     private val MARK_FUNCTION_KEY = 0x1F000003
 
     companion object {
-        /** Compiled once. [applyThemeRecursive] walks ~150 nodes per pass. */
-        private val DIGITS_ONLY = Regex("[0-9]+")
-
-        /**
-         * Emoji cells used to decode their PNG from assets inline on the UI
-         * thread: 23-40 synchronous decodes every time the panel opened or
-         * switched category, with no reuse and no recycling. Cache by asset
-         * path so the cost is paid once per process, not once per render.
-         */
-        private const val EMOJI_CACHE_BYTES = 4 * 1024 * 1024
-        private const val CANDIDATE_STRIP_LIMIT = 24
         /** How often a deferred row rebuild re-checks whether the press ended. */
         private const val ROW_REBUILD_POLL_MS = 40L
-        private val emojiBitmaps = object : LruCache<String, Bitmap>(EMOJI_CACHE_BYTES) {
-            override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
-        }
-        private val emojiDecodeExecutor = Executors.newFixedThreadPool(2) { runnable ->
-            Thread(runnable, "openime-emoji-decode").apply { isDaemon = true }
-        }
-        private val emojiMainHandler = Handler(Looper.getMainLooper())
-        private val emojiDecodeLock = Any()
-        private val emojiDecodeWaiters = mutableMapOf<String, MutableList<(Bitmap) -> Unit>>()
-
-        private fun requestEmojiBitmap(context: Context, assetPath: String, onReady: (Bitmap) -> Unit) {
-            emojiBitmaps.get(assetPath)?.let { cached ->
-                onReady(cached)
-                return
-            }
-            val shouldDecode = synchronized(emojiDecodeLock) {
-                emojiBitmaps.get(assetPath)?.let { cached ->
-                    emojiMainHandler.post { onReady(cached) }
-                    return@synchronized false
-                }
-                val waiters = emojiDecodeWaiters[assetPath]
-                if (waiters != null) {
-                    waiters += onReady
-                    false
-                } else {
-                    emojiDecodeWaiters[assetPath] = mutableListOf(onReady)
-                    true
-                }
-            }
-            if (!shouldDecode) return
-
-            val appContext = context.applicationContext
-            emojiDecodeExecutor.execute {
-                val bitmap = runCatching {
-                    appContext.assets.open(assetPath).use { BitmapFactory.decodeStream(it) }
-                }.getOrNull()
-                val waiters = synchronized(emojiDecodeLock) {
-                    if (bitmap != null) emojiBitmaps.put(assetPath, bitmap)
-                    emojiDecodeWaiters.remove(assetPath).orEmpty()
-                }
-                if (bitmap != null && waiters.isNotEmpty()) {
-                    emojiMainHandler.post { waiters.forEach { it(bitmap) } }
-                }
-            }
-        }
     }
 
+
     private val repeatHandler = Handler(Looper.getMainLooper())
-    // Voice arms at the platform long-press threshold instead of a hard-coded
-    // 150 ms, so a deliberate-but-brief space press no longer opens the mic.
-    private val spaceVoiceTriggerMs = ViewConfiguration.getLongPressTimeout().toLong()
+    private val backspaceGestureController = BackspaceGestureController(
+        toPx = ::dp,
+        onDeleteOne = ::performBackspaceOnce,
+        onClearAll = listener::onClearAll,
+        onPressFeedback = ::feedback,
+        onHapticFeedback = ::hapticFeedback,
+        onShowClearPopup = { anchor -> showPopup(anchor, "清空") },
+        onHidePopup = ::hidePopup,
+    )
+    private val backspaceKeyFactory: BackspaceKeyFactory by lazy {
+        BackspaceKeyFactory(
+            context = context,
+            toPx = ::dp,
+            gestureController = backspaceGestureController,
+            createBaseKey = { onTap ->
+                key(
+                    text = "",
+                    func = true,
+                    secondary = null,
+                    mainTextSizeOverride = 15f,
+                    iconRes = R.drawable.ic_backspace,
+                    onTap = onTap,
+                )
+            },
+            currentTokens = ::currentThemeTokens,
+            onDeleteOne = ::performBackspaceOnce,
+            onFeedback = ::feedback,
+            onClearAll = listener::onClearAll,
+            debugLogging = { debugLogging },
+        )
+    }
+    private val spaceVoiceGestureController = SpaceVoiceGestureController(
+        toPx = ::dp,
+        canStartVoice = { voiceAllowed },
+        onArmFeedback = ::hapticFeedback,
+        onVoiceStart = { listener.onVoicePressChanged(true) },
+        onVoiceStop = { listener.onVoicePressChanged(false) },
+        onVoiceCancel = ::cancelVoiceGesture,
+        onCancelPreviewChanged = { cancelling ->
+            voicePanelController.setCancelPreview(cancelling)
+        },
+    )
+    private val spaceVoiceKeyFactory: SpaceVoiceKeyFactory by lazy {
+        SpaceVoiceKeyFactory(
+            gestureController = spaceVoiceGestureController,
+            createBaseKey = { label, onTap ->
+                key(
+                    text = label,
+                    func = true,
+                    secondary = null,
+                    mainTextSizeOverride = 14f,
+                    iconRes = R.drawable.ic_mic,
+                    onTap = {
+                        if (!insertIntoInlineEditor(" ")) onTap()
+                    },
+                )
+            },
+            canStartVoice = { voiceAllowed },
+            markWhiteKey = { key -> key.setTag(MARK_WHITE_KEY, true) },
+            onFeedback = ::feedback,
+            onAccessibilityLongPress = {
+                when {
+                    voicePanelController.active -> stopVoiceFromSpace()
+                    voicePanelController.pending -> cancelVoiceForManualInput()
+                    else -> listener.onVoiceToggle()
+                }
+            },
+        )
+    }
     // Whether long-press alternate glyphs are shown as small corner hints.
     private var showSecondaryHints = true
     // Touch-coordinate trace logs are debug-only; they must never spam logcat
@@ -193,24 +186,6 @@ open class ImeKeyboardView(
     private val debugLogging: Boolean by lazy {
         (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
     }
-    private val repeatAction = object : Runnable {
-        override fun run() {
-            if (!backspaceGestureActive || backspaceClearArmed) return
-            backspaceRepeatStarted = true
-            performBackspaceOnce()
-            repeatHandler.postDelayed(this, 60L)
-        }
-    }
-    private var backspaceGestureActive = false
-    private var backspaceClearArmed = false
-    private var backspaceRepeatStarted = false
-    private var backspaceRepeatSuspended = false
-    private var backspacePointerId = -1
-    private var backspaceStartX = 0f
-    private var backspaceStartY = 0f
-    private var backspaceAnchor: View? = null
-    private var backspaceClearUiAction: ((Boolean) -> Unit)? = null
-    private var backspaceRepeatStartAction: Runnable? = null
 
     private val candidateProvider = context as? CandidateResolver
     private var theme = ImeTheme.IOS
@@ -240,6 +215,10 @@ open class ImeKeyboardView(
     private var appliedOrientation = resources.configuration.orientation
     private var appliedFontScale = resources.configuration.fontScale
     private var appliedDensityDpi = resources.displayMetrics.densityDpi
+    private var layoutMetrics = KeyboardLayoutMetrics(
+        landscape = appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE,
+        fontScale = appliedFontScale,
+    )
     private var lastTextMode = KeyboardMode.PINYIN_26
     private var preferredChineseMode = ImeSettingsRepository.loadPreferredChineseMode(context)
     protected var panel = Panel.NONE
@@ -250,34 +229,32 @@ open class ImeKeyboardView(
     fun currentPanel(): Panel = panel
 
     /** Persist the standalone settings panel's viewport across Activity recreation. */
-    internal fun settingsScrollPosition(): Int {
-        return (expandedPanel.findViewWithTag<ScrollView>("settings-scroll")?.scrollY ?: settingsScrollY)
-            .coerceAtLeast(0)
-    }
+    internal fun settingsScrollPosition(): Int =
+        settingsPanelController.scrollPosition()
 
     internal fun restoreSettingsScrollPosition(scrollY: Int) {
-        settingsScrollY = scrollY.coerceAtLeast(0)
-        expandedPanel.findViewWithTag<ScrollView>("settings-scroll")?.let { scroll ->
-            scroll.post {
-                scroll.scrollTo(0, settingsScrollY)
-            }
-        }
+        settingsPanelController.restoreScrollPosition(scrollY)
     }
 
     /** Refresh data owned by auxiliary editor Activities when they return. */
     internal fun refreshAuxiliaryContent() {
         when (panel) {
             Panel.CLIPBOARD -> renderClipboard(reusePanel = true)
-            Panel.SYMBOLS -> if (symbolCategory == "自定义") renderPanel(Panel.SYMBOLS)
+            Panel.SYMBOLS -> panelRenderer.refreshCustomSymbols()
             else -> Unit
         }
-        if (panel == Panel.NONE && mode in setOf(
-                KeyboardMode.PINYIN_9,
-                KeyboardMode.ENGLISH_T9,
-                KeyboardMode.DIGITS,
-            )
-        ) {
-            onViewHierarchyRebuilt()
+        if (panel == Panel.NONE) {
+            when (mode) {
+                KeyboardMode.PINYIN_9 -> {
+                    nineKeySymbolRailController?.refreshSymbols()
+                    applyThemeToSubtree(this)
+                }
+                KeyboardMode.DIGITS -> {
+                    numericKeyboardRenderer.refreshSymbols()
+                    applyThemeToSubtree(this)
+                }
+                else -> Unit
+            }
         }
     }
 
@@ -301,145 +278,411 @@ open class ImeKeyboardView(
     private var lastNineCandidates = emptyList<String>()
     private var lastNineSegmentPrefix = ""
     private var lastNinePinyinPaths = emptyList<String>()
-    private var lastT9Digits = ""
     private var currentCandidates = emptyList<String>()
-    private var currentItems: List<String>? = null
-    private var candidateExpandedOpen = false
-    private var voiceEventGeneration = 0L
-    private var renderedStripCandidates: List<String>? = null
-    private var renderedStripComposition: String? = null
-    private var renderedExpandedCandidates: List<String>? = null
-    private var renderedExpandedComposition: String? = null
-    private var symbolCategory = "中文"
-    private var emojiCategory = "笑脸"
-    private var clipboardTab = 0
-    // Guards async clipboard loads so a stale background result can't render over a newer panel.
-    private var clipboardLoadGen = 0
-    private var voiceLanguageIndex = 0
-    private var toolPage = 0
-    private var settingsScrollY = 0
-    private var voiceActive = false
-    private var voicePending = false
-    private var voiceStopRequested = false
     private var voiceAllowed = true
-    private var inlineVoicePaletteColor: Int? = null
-    private var voiceStartAction: (() -> Unit)? = null
-    private var voiceStopAction: (() -> Unit)? = null
-    private var voiceCancelAction: (() -> Unit)? = null
-    private var voiceCancelPreviewAction: ((Boolean) -> Unit)? = null
     private var voiceGestureSession = false
-    private var spaceVoiceGestureActive = false
-    private var spaceVoiceGestureCancel = false
-    private var spaceVoiceDownY = 0f
-    private var spaceVoicePointerId = -1
-    private var voiceInlineActive = false
-    private var voiceInlineCancel = false
-    private var voiceInlineError = false
-    private var voiceInlineGeneration = 0L
-    private var voiceInlineHasLiveRms = false
-    private var voiceInlinePulseFrame = 0
-    private val voiceInlinePulseAction = object : Runnable {
-        override fun run() {
-            if (!voiceInlineActive || !voiceGestureSession || voiceInlineHasLiveRms) return
-            voiceInlineWaves.forEachIndexed { index, bar ->
-                val phase = (voiceInlinePulseFrame + index * 2) % 12
-                val distance = kotlin.math.abs(phase - 6)
-                val params = bar.layoutParams
-                params.height = dp((7 + (6 - distance) * 3).coerceIn(7, 25))
-                bar.layoutParams = params
-            }
-            voiceInlinePulseFrame = (voiceInlinePulseFrame + 1) % 12
-            repeatHandler.postDelayed(this, 72L)
-        }
-    }
     // Floating mode changes only the IME window bounds. The keyboard surface
     // itself remains the same normal keyboard used in portrait mode.
-    private var floatingWindowMode = false
-    private var floatingDragActive = false
-    private var floatingDragLastX = 0f
-    private var floatingDragLastY = 0f
-    private var popupView: View? = null
-    private var keepPopupAfterKeyUp = false
-    private val popupHideRunnable = Runnable { hidePopup() }
+    private val floatingKeyboardController: FloatingKeyboardController by lazy {
+        FloatingKeyboardController(
+            context = context,
+            toPx = ::dp,
+            mainDock = mainDock,
+            canDrag = { panel == Panel.NONE },
+            onDragBy = listener::onFloatingKeyboardDragged,
+            onDock = { listener.onFloatingKeyboardChanged(false) },
+        )
+    }
     private var contentInsetPx = dp(5)
+    private var navigationBottomInsetPx = 0
+    private val themeApplier: ImeThemeApplier by lazy {
+        ImeThemeApplier(
+            toPx = ::dp,
+            statefulRounded = ::statefulRounded,
+            keyMainTextScale = ::skinFontScale,
+            skinRadiusPx = { dp(skinRadius) },
+            skinOpacity = { skinOpacity },
+            skinPrimaryColor = { skinPrimaryColor },
+            toggleState = ::onState,
+            isSideKey = { key ->
+                key.getTag(MARK_SIDE_KEY) == true ||
+                    (key.parent as? View)?.tag in
+                    setOf("pinyin9-actions", "t9-actions", "digits-actions")
+            },
+            isFunctionKey = { key ->
+                key.getTag(MARK_FUNCTION_KEY) == true
+            },
+            isWhiteKey = { key ->
+                key.getTag(MARK_WHITE_KEY) == true
+            },
+        )
+    }
+    private val keyPopupController = KeyPopupController(
+        host = this,
+        dp = ::dp,
+        contentInsetPx = { contentInsetPx },
+        tokens = {
+            theme.tokens(
+                appearance,
+                isNight(),
+                AccentPalette.parse(skinPrimaryColor),
+            )
+        },
+        rounded = { color, radius -> ImeDrawableFactory.rounded(color, radius) },
+        statefulRounded = { normal, pressed, radius -> statefulRounded(normal, pressed, radius) },
+        contrastText = ImeDrawableFactory::contrastText,
+        feedback = ::feedback,
+        onSymbolSelected = listener::onCharacter,
+    )
+    private val nineKeySegmentRepairController = NineKeySegmentRepairController(
+        context = context,
+        composition = { composition },
+        isNineKeyActive = { mode == KeyboardMode.PINYIN_9 },
+        listener = listener,
+    )
+    private var nineKeySymbolRailController: NineKeySymbolRailController? = null
+    private val pinyin9Renderer: Pinyin9KeyboardRenderer by lazy {
+        Pinyin9KeyboardRenderer(
+            context = context,
+            keyboardBody = keyboardBody,
+            toPx = ::dp,
+            keyRowHeightDp = ::keyRowHeightDp,
+            nineGridHeightDp = ::nineGridHeightDp,
+            nineBodyHeightDp = ::nineBodyHeightDp,
+            doubleKeyHeightDp = ::doubleKeyHeightDp,
+            createKey = { text, function, secondary, textSize, onTap ->
+                key(
+                    text = text,
+                    func = function,
+                    secondary = secondary,
+                    mainTextSizeOverride = textSize,
+                    onTap = onTap,
+                )
+            },
+            createBackspaceKey = ::backspaceKey,
+            createSpaceVoiceKey = { label, onTap ->
+                spaceVoiceKey(label, white = true, onTap = onTap)
+            },
+            createSymbolRail = { requireNineKeySymbolRailController().buildRail() },
+            markSideKey = { key -> key.setTag(MARK_SIDE_KEY, true) },
+            markWhiteKey = { key -> key.setTag(MARK_WHITE_KEY, true) },
+            onDigitKeyCreated = nineKeySegmentRepairController::bindDigitKey,
+            onNineKey = ::onNineKey,
+            onPinyinSegment = ::onPinyinSegment,
+            onShowChoicePopup = ::showChoicePopup,
+            onCommitCharacter = ::commitKeyboardCharacter,
+            onShowSymbols = { showPanel(Panel.SYMBOLS) },
+            onDigits = { setMode(KeyboardMode.DIGITS) },
+            onSpace = ::commitFirstCandidateOrSpace,
+            onModeSwitch = ::cycleMode,
+            onRetranslate = { publishComposition("", emptyList()) },
+            onEnter = listener::onEnter,
+        )
+    }
+    private val numericKeyboardRenderer: NumericKeyboardRenderer by lazy {
+        NumericKeyboardRenderer(
+            context = context,
+            keyboardBody = keyboardBody,
+            toPx = ::dp,
+            keyRowHeightDp = ::keyRowHeightDp,
+            nineGridHeightDp = ::nineGridHeightDp,
+            nineBodyHeightDp = ::nineBodyHeightDp,
+            createKey = { text, function, textSize, onTap ->
+                key(
+                    text = text,
+                    func = function,
+                    secondary = null,
+                    mainTextSizeOverride = textSize,
+                    onTap = onTap,
+                )
+            },
+            createBackspaceKey = ::backspaceKey,
+            createSpaceVoiceKey = { label, onTap ->
+                spaceVoiceKey(label, white = true, onTap = onTap)
+            },
+            markSideKey = { key -> key.setTag(MARK_SIDE_KEY, true) },
+            markWhiteKey = { key -> key.setTag(MARK_WHITE_KEY, true) },
+            onCommitCharacter = ::commitKeyboardCharacter,
+            onFeedback = ::feedback,
+            onShowSymbols = { showPanel(Panel.SYMBOLS) },
+            onReturnToText = { setMode(lastTextMode) },
+            onSpace = listener::onSpace,
+            onEnter = listener::onEnter,
+        )
+    }
     private var systemBottomInsetPx = 0
     private val maxContentWidthDp = 600
     // Portrait keeps the historical 296dp total. Landscape uses a compact
     // keyboard, and key rows grow with the system font scale so sp labels are
     // never clipped inside a fixed-height key.
-    private fun isLandscape(): Boolean =
-        resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-
-    private fun keyRowHeightDp(): Int {
-        val base = if (isLandscape()) {
-            ImeGeometryTokens.LANDSCAPE_KEY_ROW_HEIGHT_DP
-        } else {
-            ImeGeometryTokens.TOUCH_TARGET_DP
-        }
-        val fontGrow = ((resources.configuration.fontScale - 1f).coerceAtLeast(0f) * 12f)
-            .toInt().coerceAtMost(12)
-        return base + fontGrow
-    }
-
-    private fun nineGridHeightDp(): Int =
-        keyRowHeightDp() * 3 + ImeGeometryTokens.KEY_ROW_GAP_DP * 2
-
-    private fun nineBodyHeightDp(): Int =
-        nineGridHeightDp() + ImeGeometryTokens.KEY_ROW_GAP_DP + keyRowHeightDp()
-
-    private fun doubleKeyHeightDp(): Int =
-        keyRowHeightDp() * 2 + ImeGeometryTokens.KEY_ROW_GAP_DP
-
-    private fun imeHeightDp(): Int {
-        // Reserve the composed top-zone height even while idle. If this uses
-        // the smaller toolbar height until the first keypress, the IME window
-        // relayouts and the whole keyboard appears to jump down while typing.
-        // Toolbar + four key rows + three shared gaps + bottom breathing.
-        val derived = ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP +
-            keyRowHeightDp() * 4 + ImeGeometryTokens.KEY_ROW_GAP_DP * 3 + 22
-        return maxOf(if (isLandscape()) 264 else 302, derived)
-    }
+    private fun keyRowHeightDp(): Int = layoutMetrics.keyRowHeightDp
+    private fun nineGridHeightDp(): Int = layoutMetrics.nineGridHeightDp
+    private fun nineBodyHeightDp(): Int = layoutMetrics.nineBodyHeightDp
+    private fun doubleKeyHeightDp(): Int = layoutMetrics.doubleKeyHeightDp
+    private fun imeHeightDp(): Int = layoutMetrics.imeHeightDp
 
     /** The top zone is reserved at its composed height in every state. */
-    private fun topZoneHeightDp(): Int = ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP
-    private fun keyboardBodyHeightDp(): Int = imeHeightDp() - topZoneHeightDp()
-    private fun panelBodyHeightDp(): Int =
-        (imeHeightDp() - ImeGeometryTokens.TOUCH_TARGET_DP).coerceAtLeast(0)
+    private fun topZoneHeightDp(): Int = layoutMetrics.topZoneHeightDp
+    private fun keyboardBodyHeightDp(): Int = layoutMetrics.keyboardBodyHeightDp
+    private fun panelBodyHeightDp(): Int = layoutMetrics.panelBodyHeightDp
     private var syncingComposition = false
-    private var t9Filter = "T9"
     private var passwordField = false
     private var inlineEditTarget: EditText? = null
-    private val panelChipScrollPositions = mutableMapOf<String, Int>()
-    private val panelVerticalScrollPositions = mutableMapOf<String, Int>()
 
     private lateinit var mainDock: LinearLayout
     private lateinit var keyboardHost: FrameLayout
-    private lateinit var topZone: LinearLayout
-    private lateinit var toolbarRow: LinearLayout
-    private lateinit var composeZone: LinearLayout
-    private lateinit var composition: EditText
-    private lateinit var candidateField: LinearLayout
-    private lateinit var candidateRow: LinearLayout
-    private lateinit var associationRow: LinearLayout
-    private lateinit var candidateExpandBtn: TextView
-    private lateinit var candidateEmojiBtn: TextView
-    private lateinit var voiceInlineZone: LinearLayout
-    private lateinit var voiceInlineIcon: ImageView
-    private lateinit var voiceInlineStatus: TextView
-    private lateinit var floatingDragHandle: View
-    private val voiceInlineWaves = mutableListOf<View>()
+    private lateinit var topZone: ImeTopZone
+    private lateinit var candidateBarController: CandidateBarController
+    private val toolbarRow: LinearLayout get() = topZone.toolbarRow
+    private val composeZone: LinearLayout get() = topZone.composeZone
+    private val composition: EditText get() = topZone.composition
+    private val associationRow: LinearLayout get() = topZone.associationRow
     private val keyboardBody = LinearLayout(context)
     private val expandedPanel = LinearLayout(context)
     private val candidateOverlay = LinearLayout(context)
-    private var nineTapKey = ""
-    private var nineTapIndex = 0
-    private val nineTapReset = Runnable {
-        nineTapKey = ""
-        nineTapIndex = 0
+    private val emojiCellFactory: EmojiCellFactory by lazy {
+        EmojiCellFactory(
+            context = context,
+            onFeedback = ::feedback,
+            onEmojiSelected = listener::onEmojiSelected,
+        )
+    }
+    private val panelHeaderFactory: PanelHeaderFactory by lazy {
+        PanelHeaderFactory(
+            context = context,
+            toPx = ::dp,
+            previousPanel = { panelBackStack.lastOrNull() },
+            onBack = ::closePanelToKeyboard,
+            onFeedback = ::feedback,
+        )
+    }
+    private val panelRenderer: ImePanelRenderer by lazy {
+        ImePanelRenderer(
+            context = context,
+            expandedPanel = expandedPanel,
+            toPx = ::dp,
+            panelBodyHeightPx = { dp(panelBodyHeightDp()) },
+            imeHeightPx = { dp(imeHeightDp()) },
+            createHeader = panelHeaderFactory::create,
+            createKey = { text, function, textSize, onTap ->
+                key(
+                    text = text,
+                    func = function,
+                    secondary = null,
+                    mainTextSizeOverride = textSize,
+                    onTap = onTap,
+                )
+            },
+            createPanelButton = ::button,
+            createTitle = ::title,
+            createEmojiCell = emojiCellFactory::create,
+            gridCellParams = ::gridCellParams,
+            currentMode = { mode },
+            isPasswordField = { passwordField },
+            onModeSelected = { selected -> setMode(selected) },
+            onShowPanel = ::showPanel,
+            onEnableFloatingKeyboard = ::enableFloatingKeyboard,
+            onSymbolSelected = listener::onSymbolSelected,
+            onCharacter = listener::onCharacter,
+            onSpace = listener::onSpace,
+            onFeedback = ::feedback,
+            applyTheme = ::applyTheme,
+            onHierarchyRebuilt = ::onViewHierarchyRebuilt,
+        )
+    }
+    private val inlineVoicePresenter: InlineVoicePresenter by lazy {
+        InlineVoicePresenter(
+            handler = repeatHandler,
+            toPx = ::dp,
+            zone = { topZone.voiceInlineZone },
+            icon = { topZone.voiceInlineIcon },
+            status = { topZone.voiceInlineStatus },
+            waves = { topZone.voiceInlineWaves },
+            tokens = {
+                theme.tokens(
+                    appearance,
+                    isNight(),
+                    AccentPalette.parse(skinPrimaryColor),
+                )
+            },
+            isGestureSessionActive = { voiceGestureSession },
+            isComposing = { composition.text?.isNotEmpty() == true },
+            updateTopZone = ::updateTopZone,
+        )
+    }
+    private val voicePanelController: VoicePanelController by lazy {
+        VoicePanelController(
+            context = context,
+            expandedPanel = expandedPanel,
+            toPx = ::dp,
+            panelBodyHeightPx = { dp(panelBodyHeightDp()) },
+            createHeader = panelHeaderFactory::create,
+            createButton = ::button,
+            listener = listener,
+            isGestureSessionActive = { voiceGestureSession },
+            onInlineState = { message, cancelling, error, rms ->
+                inlineVoicePresenter.show(
+                    message = message,
+                    cancelling = cancelling,
+                    error = error,
+                    rms = rms,
+                )
+            },
+            onHideInlineLater = { delayMs ->
+                inlineVoicePresenter.hideLater(delayMs) {
+                    !voicePanelController.active
+                }
+            },
+            onFeedback = ::feedback,
+            onSessionTerminal = {
+                voiceGestureSession = false
+                inlineVoicePresenter.stopPulse()
+            },
+        )
+    }
+    private val settingsPanelController: SettingsPanelController by lazy {
+        SettingsPanelController(
+            context = context,
+            expandedPanel = expandedPanel,
+            toPx = ::dp,
+            createHeader = panelHeaderFactory::create,
+            createSectionTitle = ::sectionTitle,
+            createChipScroll = panelRenderer::panelChipScroll,
+            currentTheme = { theme },
+            currentAppearance = { appearance },
+            currentSound = { soundEnabled },
+            currentHaptic = { hapticEnabled },
+            currentPopup = { popupEnabled },
+            currentFuzzy = { fuzzyEnabled },
+            currentSkinOpacity = { skinOpacity },
+            currentSkinRadius = { skinRadius },
+            currentSkinFontSize = { skinFontSize },
+            currentSkinColor = { skinPrimaryColor },
+            onThemeSelected = ::setTheme,
+            onAppearanceSelected = { selected ->
+                setAppearance(selected)
+                listener.onAppearanceChanged(selected)
+            },
+            onToggleChanged = ::updateSettingToggle,
+            onSkinChanged = { opacity, radius, fontSize, color ->
+                skinOpacity = opacity
+                skinRadius = radius
+                skinFontSize = fontSize
+                skinPrimaryColor = AccentPalette.normalize(color)
+                listener.onSkinChanged(
+                    skinOpacity,
+                    skinRadius,
+                    skinFontSize,
+                    skinPrimaryColor,
+                )
+                applyTheme()
+            },
+            onShowFuzzySettings = { showPanel(Panel.FUZZY_SETTINGS) },
+            onFeedback = ::feedback,
+            applyTheme = ::applyTheme,
+            onHierarchyRebuilt = ::onViewHierarchyRebuilt,
+        )
+    }
+    private val clipboardPanelController: ClipboardPanelController by lazy {
+        ClipboardPanelController(
+            context = context,
+            expandedPanel = expandedPanel,
+            toPx = ::dp,
+            panelBodyHeightPx = { dp(panelBodyHeightDp()) },
+            createHeader = panelHeaderFactory::create,
+            createKey = { text, textSize, onTap ->
+                key(
+                    text = text,
+                    func = false,
+                    secondary = null,
+                    mainTextSizeOverride = textSize,
+                    onTap = onTap,
+                )
+            },
+            createPanelButton = ::button,
+            createSectionTitle = ::sectionTitle,
+            createChipScroll = panelRenderer::panelChipScroll,
+            createVerticalScroll = panelRenderer::panelVerticalScroll,
+            rememberVerticalScroll = panelRenderer::rememberPanelVerticalScroll,
+            onCharacter = listener::onCharacter,
+            onOpenQuickPhraseEditor = ::openQuickPhraseEditor,
+            onFeedback = ::feedback,
+            applyTheme = ::applyTheme,
+            onHierarchyRebuilt = ::onViewHierarchyRebuilt,
+            onContentLoaded = ::onClipboardContentLoaded,
+            focusEntryPoint = ::focusPanelEntryPoint,
+        )
+    }
+    private val textEditorPanelController: TextEditorPanelController by lazy {
+        TextEditorPanelController(
+            context = context,
+            expandedPanel = expandedPanel,
+            toPx = ::dp,
+            panelBodyHeightPx = { dp(panelBodyHeightDp()) },
+            createHeader = panelHeaderFactory::create,
+            createKey = { text, textSize, onTap ->
+                key(
+                    text = text,
+                    func = true,
+                    secondary = null,
+                    mainTextSizeOverride = textSize,
+                    onTap = onTap,
+                )
+            },
+            createPanelButton = ::button,
+            isPasswordField = { passwordField },
+            onTextEdit = listener::onTextEdit,
+            onFeedback = ::feedback,
+        )
+    }
+    private val pinyin26Renderer: Pinyin26KeyboardRenderer by lazy {
+        Pinyin26KeyboardRenderer(
+            context = context,
+            keyboardBody = keyboardBody,
+            toPx = ::dp,
+            keyRowHeightDp = ::keyRowHeightDp,
+            createKey = { text, function, secondary, textSize, iconRes, onTap ->
+                key(
+                    text = text,
+                    func = function,
+                    secondary = secondary,
+                    mainTextSizeOverride = textSize,
+                    iconRes = iconRes,
+                    onTap = onTap,
+                )
+            },
+            createBackspaceKey = ::backspaceKey,
+            createSpaceVoiceKey = { label, onTap ->
+                spaceVoiceKey(label, white = true, onTap = onTap)
+            },
+            onLetter = ::onKeyTapped,
+            onPinyinSegment = ::onPinyinSegment,
+            onShowChoicePopup = ::showChoicePopup,
+            onCommitCharacter = ::commitKeyboardCharacter,
+            onShift = ::cycleShift,
+            onDigits = { setMode(KeyboardMode.DIGITS) },
+            onModeSwitch = ::cycleMode,
+            onSpace = listener::onSpace,
+            onEnter = listener::onEnter,
+        )
     }
 
     init {
         tag = "ime_root"
+        setOnApplyWindowInsetsListener { _, insets ->
+            val reported = if (Build.VERSION.SDK_INT >= 30) {
+                insets.getInsets(WindowInsets.Type.navigationBars()).bottom
+            } else {
+                @Suppress("DEPRECATION")
+                insets.systemWindowInsetBottom
+            }
+            val next = ImeBottomInsetPolicy.clampInset(reported, dp(32))
+            if (next != navigationBottomInsetPx) {
+                navigationBottomInsetPx = next
+                requestLayout()
+            }
+            insets
+        }
         // Some IME windows inherit the host's disabled sound-effect flag.
         // Keep the view channel enabled; the preference still gates feedback().
         isSoundEffectsEnabled = true
@@ -497,17 +740,9 @@ open class ImeKeyboardView(
                 FrameLayout.LayoutParams.MATCH_PARENT,
             ),
         )
-        floatingDragHandle = FloatingDragHandleView(context).apply {
-            tag = "floating-drag-handle"
-            contentDescription = "拖动浮动键盘"
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
-            visibility = View.GONE
-            isClickable = true
-            setOnTouchListener { _, event -> handleFloatingDragTouch(event) }
-        }
         keyboardHost.addView(
-            floatingDragHandle,
-            FrameLayout.LayoutParams(dp(48), dp(24)).apply {
+            floatingKeyboardController.handle,
+            FrameLayout.LayoutParams(dp(ImeGeometryTokens.TOUCH_TARGET_DP), dp(24)).apply {
                 gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
                 bottomMargin = dp(4)
             },
@@ -533,7 +768,6 @@ open class ImeKeyboardView(
             ),
         )
         renderModeBody()
-        prepareVoiceController()
         applyTheme()
 
         setOnApplyWindowInsetsListener { _, insets ->
@@ -553,32 +787,6 @@ open class ImeKeyboardView(
         updateResponsiveGeometry(width)
     }
 
-    private fun handleFloatingDragTouch(event: MotionEvent): Boolean {
-        if (!floatingWindowMode || panel != Panel.NONE) return false
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                floatingDragLastX = event.rawX
-                floatingDragLastY = event.rawY
-                floatingDragActive = true
-                return true
-            }
-            MotionEvent.ACTION_MOVE -> {
-                if (!floatingDragActive) return true
-                val deltaX = event.rawX - floatingDragLastX
-                val deltaY = event.rawY - floatingDragLastY
-                floatingDragLastX = event.rawX
-                floatingDragLastY = event.rawY
-                listener.onFloatingKeyboardDragged(deltaX, deltaY)
-                return true
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                floatingDragActive = false
-                return true
-            }
-        }
-        return true
-    }
-
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
         if (appearance == ImeAppearance.SYSTEM) applyTheme()
@@ -592,13 +800,17 @@ open class ImeKeyboardView(
         appliedOrientation = newConfig.orientation
         appliedFontScale = newConfig.fontScale
         appliedDensityDpi = newConfig.densityDpi
+        layoutMetrics = KeyboardLayoutMetrics(
+            landscape = appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE,
+            fontScale = appliedFontScale,
+        )
         if (!geometryChanged) return
         // Do not yank the user out of an open panel.
         applyDynamicHeights()
         if (standalonePanel) return
         when {
             panel == Panel.NONE -> renderModeBody()
-            panel == Panel.VOICE && (voiceActive || voicePending || voiceGestureSession) -> {
+            panel == Panel.VOICE && (voicePanelController.active || voicePanelController.pending || voiceGestureSession) -> {
                 // Rebuilding the voice panel would replace the closures that
                 // own the active recognition session. Resize its body in place
                 // and let the session continue without a visual reset.
@@ -622,7 +834,20 @@ open class ImeKeyboardView(
             }
             return false
         }
-        return walk(this)
+        // Space owns a physical touch stream through its touch listener. Some
+        // Android versions clear View.isPressed while that stream is still
+        // active, so a pending row rebuild must also respect the gesture owner.
+        return spaceVoiceGestureController.trackingTouch || walk(this)
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        requestApplyInsets()
+    }
+
+    override fun onDetachedFromWindow() {
+        shutdown()
+        super.onDetachedFromWindow()
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -633,15 +858,26 @@ open class ImeKeyboardView(
         val desiredHeight = dp(imeHeightDp())
         val mode = MeasureSpec.getMode(heightMeasureSpec)
         val size = MeasureSpec.getSize(heightMeasureSpec)
-        val measuredHeight = when {
+        val baseHeight = when {
             mode == MeasureSpec.AT_MOST -> minOf(desiredHeight, size)
             mode == MeasureSpec.EXACTLY && size < desiredHeight -> size
             else -> desiredHeight
         }
         super.onMeasure(
             widthMeasureSpec,
-            MeasureSpec.makeMeasureSpec(measuredHeight, MeasureSpec.EXACTLY),
+            MeasureSpec.makeMeasureSpec(baseHeight, MeasureSpec.EXACTLY),
         )
+        if (navigationBottomInsetPx > 0) {
+            val targetHeight = ImeBottomInsetPolicy.measuredHeight(
+                baseHeightPx = measuredHeight,
+                bottomInsetPx = navigationBottomInsetPx,
+                measureMode = mode,
+                measureSizePx = size,
+            )
+            if (targetHeight != measuredHeight) {
+                setMeasuredDimension(measuredWidth, targetHeight)
+            }
+        }
     }
 
     /**
@@ -687,7 +923,7 @@ open class ImeKeyboardView(
      */
     private fun updateResponsiveGeometry(measuredWidthPx: Int) {
         if (measuredWidthPx <= 0) return
-        if (floatingWindowMode) {
+        if (floatingKeyboardController.enabled) {
             // A configuration pass can briefly report the physical display
             // width before WindowManager applies the floating window bounds.
             // Keep the normal keyboard's content inset local to its window.
@@ -706,8 +942,7 @@ open class ImeKeyboardView(
             }
             expandedPanel.setPadding(contentInsetPx, 0, contentInsetPx, 0)
             candidateOverlay.setPadding(contentInsetPx, 0, contentInsetPx, 0)
-            toolbarRow.setPadding(contentInsetPx + dp(10), 0, contentInsetPx + dp(10), 0)
-            composition.setPadding(contentInsetPx + dp(14), dp(3), contentInsetPx + dp(14), 0)
+            topZone.setContentInset(contentInsetPx)
             requestLayout()
             return
         }
@@ -731,340 +966,76 @@ open class ImeKeyboardView(
         }
         expandedPanel.setPadding(contentInsetPx, 0, contentInsetPx, 0)
         candidateOverlay.setPadding(contentInsetPx, 0, contentInsetPx, 0)
-        toolbarRow.setPadding(contentInsetPx + dp(10), 0, contentInsetPx + dp(10), 0)
-        composition.setPadding(contentInsetPx + dp(14), dp(3), contentInsetPx + dp(14), 0)
+        topZone.setContentInset(contentInsetPx)
         requestLayout()
     }
 
     /** Keep the top zone at one height so composing never relayouts the keyboard. */
     private fun buildTopZone() {
-        topZone = LinearLayout(context).apply {
-            tag = "ime_toolbar"
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_VERTICAL
-            minimumHeight = dp(ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP),
-            )
-        }
-        toolbarRow = LinearLayout(context).apply {
-            tag = "toolbar-row"
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(10), 0, dp(10), 0)
-            minimumHeight = dp(ImeGeometryTokens.TOOLBAR_HEIGHT_DP)
-        }
-        toolbarRow.addView(
-            toolbarIcon(R.drawable.ic_grid, "切换键盘", "keyboard-selector") { showPanel(Panel.KEYBOARD_SELECT) },
-            LinearLayout.LayoutParams(
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-            ),
-        )
-        toolbarRow.addView(
-            toolbarIcon(R.drawable.ic_clipboard, "剪贴板", "clipboard-toolbar") { showPanel(Panel.CLIPBOARD) },
-            LinearLayout.LayoutParams(
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-            ),
-        )
-        toolbarRow.addView(
-            toolbarIcon(R.drawable.ic_emoji, "表情", "toolbar") { showPanel(Panel.EMOJI) },
-            LinearLayout.LayoutParams(
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-            ),
-        )
-        toolbarRow.addView(
-            toolbarIcon(R.drawable.ic_symbols, "符号", "toolbar") { showPanel(Panel.SYMBOLS) },
-            LinearLayout.LayoutParams(
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-            ),
-        )
-        associationRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            tag = "association-row"
-        }
-        val associationScroll = HorizontalScrollView(context).apply {
-            tag = "association-scroll"
-            isHorizontalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
-            addView(
-                associationRow,
-                ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-                ),
-            )
-        }
-        toolbarRow.addView(
-            associationScroll,
-            LinearLayout.LayoutParams(
-                0,
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-                1f,
-            ).apply { marginStart = dp(4) },
-        )
-        toolbarRow.addView(
-            toolbarIcon(R.drawable.ic_keyboard_hide, "收起键盘", "keyboard-hide") { hideKeyboard() },
-            LinearLayout.LayoutParams(
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-            ),
-        )
-        // Keep the overflow action at the far right, as in the reference.
-        toolbarRow.addView(
-            toolbarIcon(R.drawable.ic_more, "更多", "toolbar") { showPanel(Panel.TOOLS) },
-            LinearLayout.LayoutParams(
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-            ),
-        )
-        topZone.addView(toolbarRow, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(ImeGeometryTokens.TOOLBAR_HEIGHT_DP),
-        ))
-
-        composeZone = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            visibility = View.GONE
-            tag = "compose-zone"
-        }
-        composition = EditText(context).apply {
-            tag = "pinyin-composition-editor"
-            contentDescription = "可编辑拼音预编辑"
-            textSize = 13f
-            gravity = Gravity.CENTER_VERTICAL or Gravity.START
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-            setSingleLine(true)
-            maxLines = 1
-            setHorizontallyScrolling(true)
-            isFocusable = true
-            isFocusableInTouchMode = true
-            isCursorVisible = true
-            showSoftInputOnFocus = false
-            setSelectAllOnFocus(false)
-            background = null
-            includeFontPadding = false
-            setPadding(dp(14), dp(3), dp(14), 0)
-            minimumHeight = dp(22)
-            addTextChangedListener(object : TextWatcher {
-                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
-                override fun afterTextChanged(s: Editable?) {
-                    if (!syncingComposition) onCompositionEdited(s?.toString().orEmpty())
-                }
-            })
-        }
-        composeZone.addView(composition, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(22),
-        ))
-        candidateField = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            tag = "candidate-field"
-        }
-        candidateRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        renderedStripCandidates = null
-        renderedStripComposition = null
-        val candScroll = HorizontalScrollView(context).apply {
-            isHorizontalScrollBarEnabled = false
-            addView(
-                candidateRow,
-                ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-                ),
-            )
-        }
-        candidateField.setPadding(dp(8), 0, dp(8), 0)
-        candidateField.addView(
-            candScroll,
-            LinearLayout.LayoutParams(0, dp(ImeGeometryTokens.TOUCH_TARGET_DP), 1f),
-        )
-        // Persistent emoji shortcut kept visible while composing, so the user can
-        // jump straight to the emoji panel without first committing/clearing.
-        candidateEmojiBtn = TextView(context).apply {
-            tag = "candidate-emoji"
-            text = "☺"
-            textSize = 17f
-            gravity = Gravity.CENTER
-            contentDescription = "表情"
-            setPadding(dp(7), 0, dp(7), 0)
-            isClickable = true
-            isFocusable = true
-            setOnClickListener {
-                feedback()
-                showPanel(Panel.EMOJI)
-            }
-        }
-        candidateField.addView(
-            candidateEmojiBtn,
-            LinearLayout.LayoutParams(
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-            ),
-        )
-        candidateExpandBtn = TextView(context).apply {
-            tag = "candidate-expand"
-            text = "⌄"
-            textSize = 15f
-            gravity = Gravity.CENTER
-            contentDescription = "展开更多候选"
-            setPadding(dp(7), 0, dp(7), 0)
-            isClickable = true
-            isFocusable = true
-            setOnClickListener {
-                feedback()
-                val open = candidateOverlay.visibility == View.GONE
-                renderExpanded(open)
+        topZone = ImeTopZone(
+            context = context,
+            toPx = ::dp,
+            onFeedback = ::feedback,
+            isCompositionSyncing = { syncingComposition },
+            onCompositionEdited = ::onCompositionEdited,
+            onKeyboardSelect = { showPanel(Panel.KEYBOARD_SELECT) },
+            onClipboard = { showPanel(Panel.CLIPBOARD) },
+            onEmoji = { showPanel(Panel.EMOJI) },
+            onSymbols = { showPanel(Panel.SYMBOLS) },
+            onHideKeyboard = ::hideKeyboard,
+            onTools = { showPanel(Panel.TOOLS) },
+            onExpandCandidates = {
+                val open = !candidateBarController.expandedOpen
+                candidateBarController.renderExpanded(
+                    open = open,
+                    candidates = currentCandidates,
+                    compositionPreview = composition.text.toString(),
+                )
+                updateTopZone(composition.text?.isNotEmpty() == true)
                 listener.onCandidateExpanded(open)
-            }
-        }
-        candidateField.addView(
-            candidateExpandBtn,
-            LinearLayout.LayoutParams(
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-            ),
-        )
-        candidateField.addView(
-            toolbarIcon(R.drawable.ic_keyboard_hide, "收起键盘", "keyboard-hide-composing") { hideKeyboard() },
-            LinearLayout.LayoutParams(
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-                dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-            ),
-        )
-        composeZone.addView(candidateField, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-        ))
-        topZone.addView(composeZone, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP),
-        ))
-
-        // Long-press voice stays inside the current keyboard. This fixed-height
-        // row replaces the toolbar in-place, so recording never opens another
-        // panel or changes the IME height while the finger is held down.
-        voiceInlineZone = LinearLayout(context).apply {
-            tag = "voice-inline-zone"
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            visibility = View.GONE
-            setPadding(dp(12), 0, dp(12), 0)
-        }
-        voiceInlineIcon = ImageView(context).apply {
-            tag = "voice-inline-icon"
-            contentDescription = null
-            setImageResource(R.drawable.ic_mic)
-            imageTintList = ColorStateList.valueOf(Color.WHITE)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-        }
-        voiceInlineZone.addView(
-            voiceInlineIcon,
-            LinearLayout.LayoutParams(dp(22), dp(22)).apply { marginEnd = dp(9) },
-        )
-        voiceInlineStatus = TextView(context).apply {
-            tag = "voice-inline-status"
-            text = "正在聆听…"
-            textSize = 14f
-            setTextColor(Color.WHITE)
-            includeFontPadding = false
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-            gravity = Gravity.CENTER_VERTICAL
-            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
-        }
-        voiceInlineZone.addView(
-            voiceInlineStatus,
-            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f),
-        )
-        val inlineWave = LinearLayout(context).apply {
-            tag = "voice-inline-waveform"
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-        }
-        repeat(6) { index ->
-            val bar = View(context).apply {
-                tag = "voice-inline-wave-$index"
-                background = rounded(Color.WHITE, dp(ImeGeometryTokens.PILL_RADIUS_DP))
-            }
-            voiceInlineWaves += bar
-            inlineWave.addView(
-                bar,
-                LinearLayout.LayoutParams(dp(3), dp(if (index % 2 == 0) 10 else 16)).apply {
-                    if (index > 0) marginStart = dp(3)
-                },
-            )
-        }
-        voiceInlineZone.addView(
-            inlineWave,
-            LinearLayout.LayoutParams(dp(42), LinearLayout.LayoutParams.MATCH_PARENT),
-        )
-        topZone.addView(
-            voiceInlineZone,
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)).apply {
-                setMargins(dp(8), dp(8), dp(8), dp(8))
             },
         )
-        mainDock.addView(topZone, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(64),
-        ))
-        syncCandidateExpandControl()
-    }
-
-    private fun toolbarIcon(iconRes: Int, desc: String, tagValue: String, onTap: () -> Unit): ImageView =
-        ImageView(context).apply {
-            contentDescription = desc
-            tag = tagValue
-            minimumWidth = dp(48)
-            minimumHeight = dp(48)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setImageResource(iconRes)
-            isClickable = true
-            isFocusable = true
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
-            setOnClickListener { feedback(); onTap() }
-        }
-
-    private inner class FloatingDragHandleView(context: Context) : View(context) {
-        private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.GRAY
-            style = Paint.Style.FILL
-        }
-
-        fun setDotColor(color: Int) {
-            dotPaint.color = color
-            invalidate()
-        }
-
-        override fun onDraw(canvas: Canvas) {
-            super.onDraw(canvas)
-            val radius = dp(2)
-            val gapX = dp(7)
-            val gapY = dp(7)
-            val startX = width / 2f - gapX
-            val startY = height / 2f - gapY / 2f
-            for (row in 0..1) {
-                for (column in 0..2) {
-                    canvas.drawCircle(
-                        startX + column * gapX,
-                        startY + row * gapY,
-                        radius.toFloat(),
-                        dotPaint,
-                    )
+        candidateBarController = CandidateBarController(
+            context = context,
+            row = topZone.candidateRow,
+            scroll = topZone.candidateScroll,
+            expandButton = topZone.candidateExpandButton,
+            overlay = candidateOverlay,
+            keyboardBody = keyboardBody,
+            toPx = ::dp,
+            keyRowHeightPx = { dp(keyRowHeightDp()) },
+            createHeader = { panelHeaderFactory.create("候选字词") },
+            createExpandedCandidate = { candidate ->
+                key(candidate, false, null, 1f, 15f) {
+                    listener.onCandidateSelected(candidate)
+                }.apply {
+                    allowTwoLineLabel()
+                    contentDescription = "候选:$candidate"
                 }
-            }
-        }
+            },
+            createEmptyLabel = { title("暂无候选", small = true) },
+            applyTheme = ::applyTheme,
+            tokens = {
+                theme.tokens(
+                    appearance,
+                    isNight(),
+                    AccentPalette.parse(skinPrimaryColor),
+                )
+            },
+            statefulBackground = ::statefulRounded,
+            onFeedback = ::feedback,
+            onCandidateSelected = listener::onCandidateSelected,
+        )
+        mainDock.addView(
+            topZone,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(64),
+            ),
+        )
+        candidateBarController.syncExpandControl(
+            hasCandidates = currentCandidates.isNotEmpty(),
+        )
     }
 
     private fun hideKeyboard() {
@@ -1082,94 +1053,92 @@ open class ImeKeyboardView(
             KeyboardMode.PINYIN_26, KeyboardMode.PINYIN_9 -> KeyboardMode.ENGLISH_26
             KeyboardMode.ENGLISH_26 -> preferredChineseMode
             KeyboardMode.DIGITS -> lastTextMode
-            KeyboardMode.ENGLISH_T9 -> preferredChineseMode
         }
         setMode(next)
     }
 
     fun setMode(newMode: KeyboardMode, notifyListener: Boolean = true) {
-        val effectiveMode = if (newMode == KeyboardMode.ENGLISH_T9) {
-            KeyboardMode.PINYIN_26
-        } else {
-            newMode
-        }
-        if (effectiveMode != KeyboardMode.DIGITS) {
-            lastTextMode = effectiveMode
-            if (effectiveMode == KeyboardMode.PINYIN_26 || effectiveMode == KeyboardMode.PINYIN_9) {
+        // Choice popups live directly under the root, outside keyboardBody.
+        // A mode switch can be triggered without a fresh touch (accessibility,
+        // programmatic editor policy), so it must explicitly retire any popup
+        // before rebuilding/removing its anchor.
+        hidePopup()
+        if (newMode != KeyboardMode.DIGITS) {
+            lastTextMode = newMode
+            if (newMode == KeyboardMode.PINYIN_26 || newMode == KeyboardMode.PINYIN_9) {
                 // Persist the 26/9-key choice so it survives process death.
-                if (preferredChineseMode != effectiveMode) {
-                    ImeSettingsRepository.savePreferredChineseMode(context, effectiveMode)
+                if (preferredChineseMode != newMode) {
+                    ImeSettingsRepository.savePreferredChineseMode(context, newMode)
                 }
-                preferredChineseMode = effectiveMode
+                preferredChineseMode = newMode
             }
         }
         if (panel != Panel.NONE) dismissPanelForModeSwitch()
-        repeatHandler.removeCallbacks(nineTapReset)
-        nineTapReset.run()
-        val layoutChanged = mode != effectiveMode
-        mode = effectiveMode
-        symbolCategory = when (effectiveMode) {
-            KeyboardMode.ENGLISH_26 -> "英文"
-            KeyboardMode.DIGITS -> "数学"
-            else -> "中文"
+        val layoutChanged = mode != newMode
+        if (
+            layoutChanged &&
+            (voiceGestureSession || voicePanelController.active || voicePanelController.pending)
+        ) {
+            // A mode change replaces the interaction surface. Inline/accessibility
+            // voice can be active without a pressed space key, so do not let the
+            // old recognition session continue behind the new keyboard mode.
+            stopVoiceIfActive()
         }
+        mode = newMode
+        panelRenderer.syncSymbolCategoryForMode(newMode)
         clearAssociationCandidates()
         pinyinBuffer.clear()
         lastNineDigits = ""
         lastNineCandidates = emptyList()
         lastNineSegmentPrefix = ""
         lastNinePinyinPaths = emptyList()
-        lastT9Digits = ""
         currentCandidates = emptyList()
-        currentItems = emptyList()
         // Rebuild the key rows (and play the switch fade) only when the layout
         // actually changes. Re-focusing another field in the same mode now reuses
         // the existing rows instead of recreating ~150 views on every focus.
-        if (layoutChanged || renderedMode != effectiveMode) {
+        if (layoutChanged || renderedMode != newMode) {
             keyboardBody.animate().cancel()
             keyboardBody.alpha = 0.96f
             renderModeBody()
-            keyboardBody.animate().alpha(1f).setDuration(100L).start()
+            keyboardBody.animate().alpha(1f).setDuration(ImeMotionTokens.SURFACE_FADE_MS).start()
         }
-        if (notifyListener) listener.onModeChanged(effectiveMode)
+        if (notifyListener) listener.onModeChanged(newMode)
     }
 
     fun showPanel(newPanel: Panel) {
         if (newPanel == Panel.NONE || newPanel == Panel.CANDIDATE_EXPANDED) return
-        if (passwordField && newPanel == Panel.VOICE) return
-        if (newPanel == Panel.GAMING) {
-            enableFloatingKeyboard()
-            return
+        if (passwordField && newPanel in setOf(Panel.CLIPBOARD, Panel.VOICE)) return
+        if (panel == Panel.CLIPBOARD && newPanel != Panel.CLIPBOARD) {
+            clipboardPanelController.invalidatePendingLoad()
         }
         hidePopup()
-        if (panel == Panel.VOICE && newPanel != Panel.VOICE) stopVoiceIfActive()
+        if (
+            newPanel != Panel.VOICE &&
+            (
+                panel == Panel.VOICE ||
+                    voiceGestureSession ||
+                    voicePanelController.active ||
+                    voicePanelController.pending
+            )
+        ) {
+            // Inline voice normally lives while panel == NONE. Replacing the
+            // keyboard surface with another panel must not leave that session
+            // recording behind a hidden space key.
+            stopVoiceIfActive()
+        }
         if (panel != Panel.NONE && panel != newPanel) panelBackStack += panel
         panel = newPanel
         mainDock.visibility = View.GONE
-        // Publish the page before rendering it. Opening a floating IME can
-        // cause InputMethodService to receive a window relayout immediately;
-        // the service must already know that GAMING is the active panel or it
-        // may restore the IME window to the bottom during that callback.
         listener.onPanelChanged(newPanel)
         renderPanel(newPanel)
         animatePanelEntrance()
-    }
-
-    /** Enable floating window bounds without changing the keyboard surface. */
-    fun enableFloatingKeyboardForLandscape() {
-        enableFloatingKeyboard()
-    }
-
-    /** Return to the normal IME window when an automatic landscape session ends. */
-    fun disableFloatingKeyboardForPortrait() {
-        floatingWindowMode = false
-        listener.onFloatingKeyboardChanged(false)
     }
 
     /** Enter floating mode from the tools page without replacing the keyboard. */
     private fun enableFloatingKeyboard() {
         hidePopup()
         if (panel != Panel.NONE) {
+            if (panel == Panel.CLIPBOARD) clipboardPanelController.invalidatePendingLoad()
             stopVoiceIfActive()
             panelBackStack.clear()
             panel = Panel.NONE
@@ -1180,35 +1149,30 @@ open class ImeKeyboardView(
             candidateOverlay.visibility = View.GONE
             listener.onPanelChanged(Panel.NONE)
         }
-        floatingWindowMode = true
+        floatingKeyboardController.setEnabled(true)
         listener.onFloatingKeyboardChanged(true)
     }
 
     /** Keep content geometry local when the service changes the window bounds. */
     fun setFloatingWindowMode(enabled: Boolean) {
-        floatingWindowMode = enabled
+        floatingKeyboardController.setEnabled(enabled)
         if (enabled) {
             contentInsetPx = dp(5)
             keyboardBody.setPadding(contentInsetPx, dp(6), contentInsetPx, dp(16))
             expandedPanel.setPadding(contentInsetPx, 0, contentInsetPx, 0)
             candidateOverlay.setPadding(contentInsetPx, 0, contentInsetPx, 0)
-            toolbarRow.setPadding(contentInsetPx + dp(10), 0, contentInsetPx + dp(10), 0)
-            composition.setPadding(contentInsetPx + dp(14), dp(3), contentInsetPx + dp(14), 0)
-            floatingDragHandle.visibility = View.VISIBLE
-            applyFloatingChromeTheme()
-            requestLayout()
+            topZone.setContentInset(contentInsetPx)
         } else {
-            floatingDragHandle.visibility = View.GONE
-            toolbarRow.visibility = if (voiceInlineActive || composeZone.visibility == View.VISIBLE) {
-                View.GONE
-            } else {
-                View.VISIBLE
-            }
+            updateTopZone(composition.text?.isNotEmpty() == true)
+            if (width > 0) updateResponsiveGeometry(width)
         }
+        floatingKeyboardController.applyTheme(currentThemeTokens())
+        requestLayout()
     }
 
     private fun dismissPanelForModeSwitch() {
         if (panel == Panel.NONE) return
+        if (panel == Panel.CLIPBOARD) clipboardPanelController.invalidatePendingLoad()
         stopVoiceIfActive()
         panelBackStack.clear()
         panel = Panel.NONE
@@ -1221,12 +1185,18 @@ open class ImeKeyboardView(
     }
 
     fun closePanelToKeyboard(): Boolean {
-        if (candidateExpandedOpen) {
-            renderExpanded(false)
+        if (candidateBarController.expandedOpen) {
+            candidateBarController.renderExpanded(
+                open = false,
+                candidates = currentCandidates,
+                compositionPreview = composition.text.toString(),
+            )
+            updateTopZone(composition.text?.isNotEmpty() == true)
             listener.onCandidateExpanded(false)
             return true
         }
         if (panel == Panel.NONE) return false
+        if (panel == Panel.CLIPBOARD) clipboardPanelController.invalidatePendingLoad()
         if (panelBackStack.isNotEmpty()) {
             stopVoiceIfActive()
             panel = panelBackStack.removeAt(panelBackStack.lastIndex)
@@ -1244,7 +1214,7 @@ open class ImeKeyboardView(
         keyboardBody.visibility = View.VISIBLE
         candidateOverlay.visibility = View.GONE
         mainDock.alpha = 0.96f
-        mainDock.animate().alpha(1f).setDuration(100L).start()
+        mainDock.animate().alpha(1f).setDuration(ImeMotionTokens.SURFACE_FADE_MS).start()
         listener.onPanelChanged(Panel.NONE)
         return true
     }
@@ -1259,7 +1229,7 @@ open class ImeKeyboardView(
         expandedPanel.animate()
             .translationX(0f)
             .alpha(1f)
-            .setDuration(160L)
+            .setDuration(ImeMotionTokens.STANDARD_TRANSITION_MS)
             .setInterpolator(DecelerateInterpolator(1.5f))
             .start()
     }
@@ -1269,10 +1239,16 @@ open class ImeKeyboardView(
         passwordField = state.passwordField
         voiceAllowed = !passwordField
         if (passwordStateChanged) {
-            if (!voiceAllowed && (voiceGestureSession || voiceActive || voicePending)) {
+            if (!voiceAllowed && (voiceGestureSession || voicePanelController.active || voicePanelController.pending)) {
                 cancelVoiceForManualInput()
             }
-            if (panel == Panel.TOOLS) {
+            if (passwordField && panel == Panel.CLIPBOARD) {
+                // A retained IME view can survive a focus change into a
+                // password field. Persistent history must disappear
+                // immediately instead of remaining visible until the user
+                // manually backs out of the panel.
+                closePanelToKeyboard()
+            } else if (panel == Panel.TOOLS) {
                 renderPanel(Panel.TOOLS)
             } else if (panel == Panel.TEXT_EDITOR) {
                 // The same IME view can survive an editor switch. Rebuild the
@@ -1289,7 +1265,6 @@ open class ImeKeyboardView(
             composition.selectionStart.takeIf { sameComposition && it >= 0 },
             composition.selectionEnd.takeIf { sameComposition && it >= 0 },
         )
-        currentItems = state.candidates
         currentCandidates = state.candidates
         if (state.composition.isEmpty()) {
             pinyinBuffer.clear()
@@ -1297,33 +1272,59 @@ open class ImeKeyboardView(
             lastNineCandidates = emptyList()
             lastNineSegmentPrefix = ""
             lastNinePinyinPaths = emptyList()
-            lastT9Digits = ""
-            if (candidateExpandedOpen) {
-                renderExpanded(false)
+            if (candidateBarController.expandedOpen) {
+                candidateBarController.renderExpanded(
+                    open = false,
+                    candidates = currentCandidates,
+                    compositionPreview = composition.text.toString(),
+                )
                 listener.onCandidateExpanded(false)
             }
         } else {
             pinyinBuffer.setLength(0)
             pinyinBuffer.append(state.composition)
-            if (mode == KeyboardMode.ENGLISH_T9) lastT9Digits = state.composition
-            if (candidateExpandedOpen) {
-                renderExpanded(true)
+            if (candidateBarController.expandedOpen) {
+                candidateBarController.renderExpanded(
+                    open = true,
+                    candidates = currentCandidates,
+                    compositionPreview = composition.text.toString(),
+                )
             }
         }
         updateTopZone(state.composition.isNotEmpty())
-        renderCandidateRow()
-        syncCandidateExpandControl()
+        candidateBarController.render(
+            candidates = currentCandidates,
+            compositionPreview = composition.text.toString(),
+            showCompositionWhenEmpty = composeZone.visibility == View.VISIBLE,
+        )
+        candidateBarController.syncExpandControl(
+            hasCandidates = currentCandidates.isNotEmpty(),
+        )
+        syncEnterKeyPresentation(state.editorInfo?.imeOptions)
     }
 
-    /** Keep the clipboard entry available in every editor, including passwords. */
+    private fun syncEnterKeyPresentation(imeOptions: Int?) {
+        val options = imeOptions ?: return
+        val enter = findViewWithTag<ImeKeyView>("key-enter") ?: return
+        val label = enterKeyPresentationFor(options).label
+        enter.setMainText(label)
+        enter.contentDescription = label
+    }
+
+    /** Keep sensitive editors from exposing persistent clipboard history. */
     private fun syncSensitiveToolbar() {
         val clipboardButton = toolbarRow.findViewWithTag<View>("clipboard-toolbar") ?: return
-        clipboardButton.isEnabled = true
-        clipboardButton.isClickable = true
-        clipboardButton.alpha = 1f
-        clipboardButton.contentDescription = "剪贴板"
+        val available = !passwordField
+        clipboardButton.isEnabled = available
+        clipboardButton.isClickable = available
+        clipboardButton.alpha = if (available) 1f else 0.38f
+        clipboardButton.contentDescription = if (available) {
+            "剪贴板"
+        } else {
+            "剪贴板，密码输入中不可用"
+        }
         if (Build.VERSION.SDK_INT >= 30) {
-            clipboardButton.stateDescription = "可用"
+            clipboardButton.stateDescription = if (available) "可用" else "密码输入中不可用"
         }
     }
 
@@ -1341,27 +1342,13 @@ open class ImeKeyboardView(
         }
     }
 
-    /** Keep the overflow affordance honest when the current composition has no candidates. */
-    private fun syncCandidateExpandControl() {
-        if (!::candidateExpandBtn.isInitialized) return
-        val canExpandOrClose = candidateExpandedOpen || currentCandidates.isNotEmpty()
-        candidateExpandBtn.isEnabled = canExpandOrClose
-        candidateExpandBtn.alpha = if (canExpandOrClose) 1f else 0.38f
-        if (!canExpandOrClose) {
-            candidateExpandBtn.contentDescription = "暂无更多候选"
-            if (Build.VERSION.SDK_INT >= 30) candidateExpandBtn.stateDescription = "不可用"
-        } else if (Build.VERSION.SDK_INT >= 30) {
-            candidateExpandBtn.stateDescription = if (candidateExpandedOpen) "已展开" else "可展开"
-        }
-    }
-
     fun setAssociationCandidates(candidates: List<String>) {
         associationRow.removeAllViews()
         candidates.distinct().take(8).forEach { candidate ->
             associationRow.addView(
                 TextView(context).apply {
                     text = candidate
-                    textSize = 12f
+                    textSize = ImeTypographyTokens.CANDIDATE_SP
                     gravity = Gravity.CENTER
                     maxLines = 1
                     ellipsize = TextUtils.TruncateAt.END
@@ -1375,7 +1362,7 @@ open class ImeKeyboardView(
                 },
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
-                    dp(48),
+                    dp(ImeGeometryTokens.TOUCH_TARGET_DP),
                 ).apply { marginEnd = dp(5) },
             )
         }
@@ -1383,7 +1370,7 @@ open class ImeKeyboardView(
     }
 
     fun clearAssociationCandidates() {
-        if (::associationRow.isInitialized) associationRow.removeAllViews()
+        if (::topZone.isInitialized) associationRow.removeAllViews()
     }
 
     fun setTheme(newTheme: ImeTheme) {
@@ -1486,31 +1473,22 @@ open class ImeKeyboardView(
     }
 
     open fun shutdown() {
+        if (panel == Panel.CLIPBOARD) clipboardPanelController.invalidatePendingLoad()
         stopVoiceIfActive()
-        // Drop every pending callback, not just the repeat one. A surviving
-        // backspace/voice runnable fires after the editor changed and would
-        // delete or compose into whichever InputConnection is current then.
+        // View.removeCallbacks(null) is a no-op; cancel the root-owned
+        // named runnable explicitly. Gesture/controllers below invalidate their
+        // own delayed work, while the posted voice-start lambda is guarded by
+        // voiceGestureSession, which stopVoiceIfActive() cleared above.
         repeatHandler.removeCallbacksAndMessages(null)
-        removeCallbacks(null)
-        backspaceRepeatStartAction?.let { repeatHandler.removeCallbacks(it) }
-        backspaceRepeatStartAction = null
-        backspaceGestureActive = false
-        backspaceClearArmed = false
-        backspaceRepeatStarted = false
-        backspaceAnchor?.isPressed = false
-        backspaceAnchor = null
-        backspaceClearUiAction = null
-        spaceVoiceGestureActive = false
-        spaceVoiceGestureCancel = false
+        removeCallbacks(pendingRowRebuildPoll)
+        backspaceGestureController.shutdown()
+        spaceVoiceGestureController.shutdown()
+        floatingKeyboardController.reset()
         pendingRowRebuild = false
-        voiceInlineActive = false
-        voiceInlineCancel = false
-        voiceInlineError = false
-        voiceStopRequested = false
         hidePopup()
     }
 
-    internal fun isVoiceActive(): Boolean = voiceActive
+    internal fun isVoiceActive(): Boolean = voicePanelController.active
 
     internal fun findTestTarget(query: String): View? {
         findViewWithTag<View>(query)?.let { return it }
@@ -1548,9 +1526,9 @@ open class ImeKeyboardView(
         anchor.getLocationOnScreen(location)
         val rawX = location[0] + anchor.width / 2f
         val rawY = location[1] + anchor.height / 2f
-        beginBackspaceGesture(anchor, rawX, rawY) { }
-        updateBackspaceGesture(rawX, rawY - dp(48))
-        finishBackspaceGesture(commit = true)
+        backspaceGestureController.begin(anchor, pointerId = 0, rawX, rawY) { }
+        backspaceGestureController.update(rawX, rawY - dp(48))
+        backspaceGestureController.finish(commit = true)
         return true
     }
 
@@ -1616,211 +1594,17 @@ open class ImeKeyboardView(
             contentInsetPx,
             dp(16),
         )
-        if (voiceInlineActive) {
-            toolbarRow.visibility = View.GONE
-            composeZone.visibility = View.GONE
-            voiceInlineZone.visibility = View.VISIBLE
-            return
+        val state = when {
+            inlineVoicePresenter.active -> ImeTopZoneState.VOICE_INLINE
+            candidateBarController.expandedOpen -> ImeTopZoneState.CANDIDATE_EXPANDED
+            composing -> ImeTopZoneState.COMPOSING
+            else -> ImeTopZoneState.IDLE
         }
-        voiceInlineZone.visibility = View.GONE
-        toolbarRow.visibility = if (composing) View.GONE else View.VISIBLE
-        composeZone.visibility = if (composing) View.VISIBLE else View.GONE
-        // Chinese composition uses two semantic lines (pinyin + candidates).
-        // English composition is already the final text stream, so only keep
-        // the single candidate strip and never show a second pinyin editor.
-        composition.visibility = if (composing && mode != KeyboardMode.ENGLISH_26) {
-            View.VISIBLE
-        } else {
-            View.GONE
-        }
-        candidateField.visibility = if (composing) View.VISIBLE else View.GONE
-    }
-
-    private fun conciseVoiceError(message: String): String = when {
-        message.contains("模型") -> "语音不可用 · 请检查本地模型"
-        message.contains("麦克风") || message.contains("权限") -> "语音不可用 · 请检查麦克风权限"
-        else -> "语音失败 · 长按空格重试"
-    }
-
-    private fun showInlineVoiceState(
-        message: String,
-        cancelling: Boolean = false,
-        error: Boolean = false,
-        rms: Float? = null,
-    ) {
-        voiceInlineActive = true
-        voiceInlineCancel = cancelling
-        voiceInlineError = error
-        if (voiceInlineStatus.text.toString() != message) {
-            voiceInlineStatus.text = message
-            voiceInlineZone.contentDescription = message
-        }
-        if (rms != null) {
-            voiceInlineHasLiveRms = true
-            repeatHandler.removeCallbacks(voiceInlinePulseAction)
-            val strength = (rms * 9f).coerceIn(0.08f, 1f)
-            voiceInlineWaves.forEachIndexed { index, bar ->
-                val shape = if (index in 2..3) 1f else if (index in 1..4) 0.72f else 0.48f
-                val params = bar.layoutParams
-                val height = dp((6f + 22f * strength * shape).toInt().coerceIn(6, 28))
-                if (params.height != height) {
-                    params.height = height
-                    bar.layoutParams = params
-                }
-            }
-        }
-        applyInlineVoicePalette()
-        updateTopZone(false)
-    }
-
-    private fun startInlineVoicePulse() {
-        voiceInlineHasLiveRms = false
-        voiceInlinePulseFrame = 0
-        repeatHandler.removeCallbacks(voiceInlinePulseAction)
-        repeatHandler.post(voiceInlinePulseAction)
-    }
-
-    private fun stopInlineVoicePulse() {
-        repeatHandler.removeCallbacks(voiceInlinePulseAction)
-    }
-
-    private fun applyInlineVoicePalette() {
-        if (!::voiceInlineZone.isInitialized) return
-        val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-            android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val tokens = theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor))
-        val backgroundColor = if (voiceInlineCancel || voiceInlineError) {
-            tokens.destructive
-        } else {
-            tokens.primary
-        }
-        if (inlineVoicePaletteColor == backgroundColor) return
-        inlineVoicePaletteColor = backgroundColor
-        voiceInlineZone.background = rounded(
-            backgroundColor,
-            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
+        topZone.renderState(
+            state = state,
+            showCompositionEditor = (composing || candidateBarController.expandedOpen) &&
+                mode != KeyboardMode.ENGLISH_26,
         )
-        val foregroundColor = contrastText(backgroundColor)
-        voiceInlineIcon.imageTintList = ColorStateList.valueOf(foregroundColor)
-        voiceInlineStatus.setTextColor(foregroundColor)
-        voiceInlineWaves.forEach {
-            it.background = rounded(foregroundColor, dp(ImeGeometryTokens.PILL_RADIUS_DP))
-        }
-    }
-
-    private fun hideInlineVoiceState() {
-        stopInlineVoicePulse()
-        voiceInlineActive = false
-        voiceInlineCancel = false
-        voiceInlineError = false
-        if (::voiceInlineZone.isInitialized) voiceInlineZone.visibility = View.GONE
-        updateTopZone(composition.text?.isNotEmpty() == true)
-    }
-
-    private fun hideInlineVoiceStateLater(delayMs: Long) {
-        val generation = voiceInlineGeneration
-        postDelayed({
-            if (generation == voiceInlineGeneration && !voiceActive) hideInlineVoiceState()
-        }, delayMs)
-    }
-
-    private fun renderCandidateRow() {
-        val visibleCandidates = currentCandidates.take(CANDIDATE_STRIP_LIMIT)
-        val preview = composition.text.toString()
-        if (renderedStripCandidates == visibleCandidates && renderedStripComposition == preview) return
-        val scroll = candidateRow.parent as? HorizontalScrollView
-        val keepScroll = renderedStripComposition == preview
-        val previousScrollX = if (keepScroll) scroll?.scrollX ?: 0 else 0
-        renderedStripCandidates = visibleCandidates.toList()
-        renderedStripComposition = preview
-        if (currentCandidates.isEmpty()) {
-            if (candidateRow.childCount != 1 || candidateRow.getChildAt(0) !is TextView ||
-                candidateRow.getChildAt(0).tag != "candidate-empty"
-            ) {
-                candidateRow.removeAllViews()
-                candidateRow.addView(
-                    TextView(context).apply {
-                        tag = "candidate-empty"
-                        textSize = 12f
-                        setPadding(dp(10), 0, dp(10), 0)
-                    },
-                    wrapParams(),
-                )
-            }
-            (candidateRow.getChildAt(0) as TextView).text =
-                if (composeZone.visibility == View.VISIBLE) composition.text else ""
-            if (!keepScroll) scroll?.scrollTo(0, 0)
-            return
-        }
-        if (candidateRow.childCount == 1 && candidateRow.getChildAt(0).tag == "candidate-empty") {
-            candidateRow.removeAllViews()
-        }
-        val extra = candidateRow.childCount - visibleCandidates.size
-        if (extra > 0) candidateRow.removeViews(visibleCandidates.size, extra)
-        visibleCandidates.forEachIndexed { index, cand ->
-            val existing = candidateRow.getChildAt(index) as? LinearLayout
-            if (existing == null) {
-                candidateRow.addView(
-                    candidateItemView(index, cand),
-                    LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                        dp(48),
-                    ).apply { marginEnd = dp(6) },
-                )
-            } else {
-                bindCandidateItem(existing, index, cand)
-            }
-        }
-        if (keepScroll && previousScrollX > 0) {
-            scroll?.post { scroll.scrollTo(previousScrollX.coerceAtMost(candidateRow.width), 0) }
-        } else {
-            scroll?.scrollTo(0, 0)
-        }
-    }
-
-    private fun candidateItemView(index: Int, cand: String): LinearLayout {
-        return LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            minimumHeight = dp(48)
-            isFocusable = true
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
-            isClickable = true
-            addView(
-                TextView(context).apply {
-                    textSize = 14f
-                    maxLines = 1
-                    includeFontPadding = false
-                    setPadding(dp(12), 0, dp(12), 0)
-                    isClickable = false
-                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                },
-                wrapParams(),
-            )
-            bindCandidateItem(this, index, cand)
-        }
-    }
-
-    private fun bindCandidateItem(row: LinearLayout, index: Int, cand: String) {
-        row.tag = if (index == 0) "candidate-first-row" else "candidate-row"
-        row.contentDescription = "候选:$cand"
-        val word = row.getChildAt(0) as TextView
-        if (word.text.toString() != cand) word.text = cand
-        word.tag = if (index == 0) "candidate-first" else "candidate-word"
-        word.typeface = if (index == 0) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
-        val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-            android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val t = theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor))
-        word.setTextColor(if (index == 0) t.keyText else t.candidateText)
-        row.background = statefulRounded(
-            if (index == 0) t.keyBackground else Color.TRANSPARENT,
-            t.keyPressedBackground,
-            dp(8),
-        )
-        row.setOnClickListener {
-            feedback()
-            listener.onCandidateSelected(cand)
-        }
     }
 
     private fun renderModeBody() {
@@ -1832,19 +1616,19 @@ open class ImeKeyboardView(
             return
         }
         pendingRowRebuild = false
-        // Corner hints default on (9-key needs them); renderPinyin26 opts out.
+        // Corner hints default on for host-built surfaces such as 9-key.
         showSecondaryHints = true
         mainDock.visibility = View.VISIBLE
         keyboardBody.removeAllViews()
         keyboardBody.visibility = View.VISIBLE
         expandedPanel.visibility = View.GONE
         candidateOverlay.visibility = View.GONE
-        candidateExpandedOpen = false
+        candidateBarController.resetExpandedState()
+        candidateBarController.syncExpandControl(currentCandidates.isNotEmpty())
         when (mode) {
             KeyboardMode.PINYIN_26 -> renderPinyin26()
             KeyboardMode.ENGLISH_26 -> renderEnglish26()
             KeyboardMode.PINYIN_9 -> renderPinyin9()
-            KeyboardMode.ENGLISH_T9 -> renderEnglish9()
             KeyboardMode.DIGITS -> renderDigits()
         }
         updateTopZone(composition.text?.isNotEmpty() == true)
@@ -1869,7 +1653,6 @@ open class ImeKeyboardView(
             KeyboardMode.PINYIN_26, KeyboardMode.PINYIN_9 -> "英文 26 键"
             KeyboardMode.ENGLISH_26 -> if (preferredChineseMode == KeyboardMode.PINYIN_9) "中文九键" else "中文 26 键"
             KeyboardMode.DIGITS -> "文字键盘"
-            KeyboardMode.ENGLISH_T9 -> "中文键盘"
         }
         modeKey.contentDescription = when (mode) {
             KeyboardMode.DIGITS -> "返回文字键盘"
@@ -1881,112 +1664,25 @@ open class ImeKeyboardView(
                 KeyboardMode.PINYIN_9 -> "当前中文九键"
                 KeyboardMode.ENGLISH_26 -> "当前英文 26 键"
                 KeyboardMode.DIGITS -> "当前数字键盘"
-                KeyboardMode.ENGLISH_T9 -> "当前英文九键"
             }
         }
     }
 
     private fun renderPinyin26() {
-        // Keep the 26-key surface clean: long-press digits still work, but the
-        // small corner numerals are not painted by default.
-        showSecondaryHints = false
-        val rows = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
-        val hints = mapOf(
-            'q' to "1", 'w' to "2", 'e' to "3", 'r' to "4", 't' to "5",
-            'y' to "6", 'u' to "7", 'i' to "8", 'o' to "9", 'p' to "0",
+        pinyin26Renderer.render(
+            english = false,
+            shiftState = shiftState,
+            enterLabel = enterKeyLabel(false),
         )
-        rows.forEachIndexed { rowIndex, rowText ->
-            val row = rowHost().apply {
-                if (rowIndex == 1) tag = "key-row-secondary"
-            }
-            if (rowIndex == 2) {
-                val leadingKey = if (mode == KeyboardMode.PINYIN_26) {
-                    key("分词", true, "@#/", 1f, 12f) { onPinyinSegment() }.apply {
-                        tag = "key-segment"
-                        contentDescription = "分词，长按输入@井号或斜杠"
-                        setOnLongClickListener {
-                            showChoicePopup(this, listOf("@", "#", "/"))
-                            true
-                        }
-                    }
-                } else {
-                    val iconRes = if (shiftState == ShiftState.CAPS_LOCK) R.drawable.ic_caps_lock else R.drawable.ic_shift
-                    key("", true, null, 1f, iconRes = iconRes) { cycleShift() }.apply {
-                        tag = if (shiftState == ShiftState.CAPS_LOCK) {
-                            "key-shift-caps"
-                        } else if (shiftState == ShiftState.SHIFT_ONCE) {
-                            "key-shift-active"
-                        } else {
-                            "key-shift"
-                        }
-                    }
-                }
-                row.addView(leadingKey, flexKeyParams(1.25f))
-            }
-            rowText.forEach { ch ->
-                val main = if (mode == KeyboardMode.ENGLISH_26 && shiftState != ShiftState.LOWERCASE) {
-                    ch.uppercaseChar()
-                } else {
-                    ch
-                }.toString()
-                val secondary = if (mode == KeyboardMode.PINYIN_26) hints[ch] else null
-                val base = ch.toString()
-                val k = key(main, false, secondary, 1f, 20f) { onKeyTapped(base) }.apply {
-                    tag = "key:$base"
-                }
-                if (secondary != null) {
-                    k.setOnLongClickListener {
-                        commitKeyboardCharacter(secondary)
-                        true
-                    }
-                }
-                row.addView(k, flexKeyParams())
-            }
-            if (rowIndex == 2) {
-                row.addView(backspaceKey(), flexKeyParams(1.25f))
-            }
-            keyboardBody.addView(row, rowParams())
-        }
-        val bottom = rowHost()
-        // Balance the two outer keys around the centered space so it is optically
-        // centered on the first frame (same result ProductionKeyPolicy/V2 used to
-        // apply in a post pass).
-        val outerLeft0 = 1.3f
-        val innerLeft = 0.95f
-        val innerRight = 1.05f
-        val outerRight0 = 1.8f
-        val balanced = ProductionKeyPolicy.balancedOuterWeights(
-            leftTotal = outerLeft0 + innerLeft,
-            rightTotal = innerRight + outerRight0,
-            leftOuter = outerLeft0,
-            rightOuter = outerRight0,
-        )
-        bottom.addView(key("123", true, null, 1f, 15f) { setMode(KeyboardMode.DIGITS) }, flexKeyParams(balanced.leftOuter))
-        bottom.addView(
-            key(if (mode == KeyboardMode.ENGLISH_26) "." else "，", true, null, 1f, 15f) {
-                commitKeyboardCharacter(if (mode == KeyboardMode.ENGLISH_26) "." else "，")
-            },
-            flexKeyParams(innerLeft),
-        )
-        bottom.addView(
-            spaceVoiceKey(if (mode == KeyboardMode.ENGLISH_26) "space" else "空格", white = true) {
-                listener.onSpace()
-            },
-            flexKeyParams(3.4f),
-        )
-        bottom.addView(
-            key("中/英", true, null, 1f, 14f) { cycleMode() }.apply { tag = "key:mode" },
-            flexKeyParams(innerRight),
-        )
-        bottom.addView(
-            key(enterKeyLabel(mode == KeyboardMode.ENGLISH_26), true, null, 1f, 15f) { listener.onEnter() }
-                .apply { tag = "key-enter" },
-            flexKeyParams(balanced.rightOuter),
-        )
-        keyboardBody.addView(bottom, rowParams(includeBottomGap = false))
     }
 
-    private fun renderEnglish26() = renderPinyin26()
+    private fun renderEnglish26() {
+        pinyin26Renderer.render(
+            english = true,
+            shiftState = shiftState,
+            enterLabel = enterKeyLabel(true),
+        )
+    }
 
     /**
      * Resolve the Enter label from the bound editor at render time so the key is
@@ -2000,328 +1696,26 @@ open class ImeKeyboardView(
         return fallback ?: if (english) "Go" else "确定"
     }
 
-    private fun rowHost(): LinearLayout = LinearLayout(context).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER
-        layoutParams = rowParams()
+    private fun renderPinyin9() {
+        pinyin9Renderer.render(enterLabel = enterKeyLabel(false))
     }
 
-    private fun renderPinyin9() = renderNine(true)
-
-    private fun renderEnglish9() = renderNine(false)
-
-    /** Nine key / T9 layout. Column widths are weights, not prototype pixels. */
-    private fun renderNine(chinese: Boolean) {
-        val container = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            tag = if (chinese) "pinyin9-layout" else "t9-layout"
-        }
-
-        val left = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        if (chinese) {
-            left.addView(punctStack(), LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(nineGridHeightDp()),
-            ))
-        } else {
-            val filters = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                tag = "t9-filter-container"
-            }
-            listOf("T9", "abc", "ABC").forEach { f ->
-                filters.addView(
-                    filterChip(f, f == t9Filter) {
-                        t9Filter = f
-                        renderModeBody()
-                        publishComposition(lastT9Digits, candidatesForComposition(lastT9Digits))
-                    },
-                    LinearLayout.LayoutParams(
-                        0,
-                        dp(keyRowHeightDp()),
-                        1f,
-                    ).apply {
-                        marginStart = dp(2)
-                        marginEnd = dp(2)
-                    },
-                )
-            }
-            left.addView(filters, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(keyRowHeightDp()),
-            ))
-        }
-        left.addView(
-            key("符号", true, null, 1f, 13f) { showPanel(Panel.SYMBOLS) }
-                .apply { setTag(MARK_SIDE_KEY, true) },
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(keyRowHeightDp()),
-            ).apply { topMargin = dp(ImeGeometryTokens.KEY_ROW_GAP_DP) },
-        )
-        container.addView(left, adaptiveColumnParams(1f))
-
-        val center = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        center.addView(
-            nineGrid(chinese).apply { tag = if (chinese) "pinyin9-grid" else "t9-grid" },
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(nineGridHeightDp()),
-            ),
-        )
-        val centerBottom = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        centerBottom.addView(
-            key("123", true, null, 1f, 13f) { setMode(KeyboardMode.DIGITS) }
-                .apply { setTag(MARK_SIDE_KEY, true) },
-            flexKeyParams(0.9f, gapDp = 2),
-        )
-        centerBottom.addView(
-            spaceVoiceKey("空格", white = true) { commitFirstCandidateOrSpace() },
-            flexKeyParams(3.4f, gapDp = 2),
-        )
-        centerBottom.addView(
-            key("中/英", true, null, 1f, 13f) { cycleMode() }.apply {
-                tag = "key:mode"
-                setTag(MARK_SIDE_KEY, true)
-            },
-            flexKeyParams(0.95f, gapDp = 2),
-        )
-        center.addView(centerBottom, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(keyRowHeightDp()),
-        ).apply { topMargin = dp(ImeGeometryTokens.KEY_ROW_GAP_DP) })
-        container.addView(center, adaptiveColumnParams(3.7f))
-
-        val side = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            tag = if (chinese) "pinyin9-actions" else "t9-actions"
-        }
-        side.addView(
-            backspaceKey().apply { setTag(MARK_SIDE_KEY, true) },
-            sideKeyParams(keyRowHeightDp(), true),
-        )
-        side.addView(
-            key("重输", true, null, 1f, 13f) {
-                publishComposition("", emptyList())
-            }.apply { setTag(MARK_SIDE_KEY, true) },
-            sideKeyParams(keyRowHeightDp(), true),
-        )
-        side.addView(
-            key(enterKeyLabel(!chinese), true, null, 1f, 13f) {
-                listener.onEnter()
-            }.apply {
-                tag = "key-enter"
-                setTag(MARK_SIDE_KEY, true)
-            },
-            sideKeyParams(doubleKeyHeightDp()),
-        )
-        container.addView(side, adaptiveColumnParams(1f))
-        keyboardBody.addView(container, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(nineBodyHeightDp()),
-        ))
-    }
-
-    /** Adaptive-width gray punct column（，。？！）, tap commits the character. */
-    private fun punctStack(): LinearLayout {
-        val stack = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            tag = "nine-punct-stack"
-        }
-        listOf("，", "。", "？", "！").forEach { p ->
-            stack.addView(TextView(context).apply {
-                text = p
-                textSize = 17f
-                gravity = Gravity.CENTER
-                tag = "punct:$p"
-                contentDescription = p
-                isClickable = true
-                isFocusable = true
-                setOnClickListener {
-                    feedback()
-                    commitKeyboardCharacter(p)
-                }
-            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
-        }
-        return stack
-    }
-
-    /** 3x3 white grid with letter labels; contentDescription/tag key-9:<digit>. */
-    private fun nineGrid(chinese: Boolean): LinearLayout {
-        val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        listOf(
-            listOf("1" to "@#", "2" to "ABC", "3" to "DEF"),
-            listOf("4" to "GHI", "5" to "JKL", "6" to "MNO"),
-            listOf("7" to "PQRS", "8" to "TUV", "9" to "WXYZ"),
-        ).forEachIndexed { rowIndex, rowDef ->
-            val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            rowDef.forEach { (num, sub) ->
-                val display = if (chinese && num == "1") "分词" else sub
-                val secondary = if (chinese && num == "1") "@#/" else null
-                row.addView(
-                    key(display, false, secondary, 1f, if (num == "1" && chinese) 12f else 17f) {
-                        if (chinese && num == "1") onPinyinSegment() else onNineKey(num)
-                    }.apply {
-                        tag = "key-9:$num"
-                        contentDescription = if (chinese && num == "1") "1，分词" else num
-                        setTag(MARK_WHITE_KEY, true)
-                        if (chinese && num == "1") {
-                            setOnLongClickListener {
-                                // The segmentation key keeps its tap action;
-                                // long press opens the same transient selector
-                                // interaction as the clear gesture, then the
-                                // user can choose @, # or / horizontally.
-                                showChoicePopup(this, listOf("@", "#", "/"))
-                                true
-                            }
-                        } else if (chinese && ImeData.keypad9Map[num].orEmpty().any {
-                                it.length == 1 && it[0] in 'a'..'z'
-                            }) {
-                            setOnLongClickListener {
-                                // A long press keeps the 9-key surface useful for
-                                // literal digits without making digits the default
-                                // Chinese Pinyin composition.
-                                commitKeyboardCharacter(num)
-                                true
-                            }
-                        }
-                    },
-                    flexKeyParams(gapDp = 2),
-                )
-            }
-            grid.addView(row, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(keyRowHeightDp()),
-            ).apply {
-                if (rowIndex < 2) bottomMargin = dp(ImeGeometryTokens.KEY_ROW_GAP_DP)
-            })
-        }
-        return grid
+    private fun requireNineKeySymbolRailController(): NineKeySymbolRailController {
+        return nineKeySymbolRailController ?: NineKeySymbolRailController(
+            context = context,
+            composition = composition,
+            onCommit = listener::onCharacter,
+            onFeedback = ::feedback,
+        ).also { nineKeySymbolRailController = it }
     }
 
     private fun renderDigits() {
-        val container = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            tag = "digits-layout"
-        }
-        val symStack = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            tag = "digits-symbol-stack"
-        }
-        listOf("%", "+", "−", "＊").forEach { s ->
-            symStack.addView(TextView(context).apply {
-                text = s
-                textSize = 17f
-                gravity = Gravity.CENTER
-                tag = "digit-symbol:$s"
-                contentDescription = s
-                isClickable = true
-                isFocusable = true
-                setOnClickListener {
-                    feedback()
-                    commitKeyboardCharacter(s)
-                }
-            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
-        }
-        val left = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        left.addView(symStack, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(nineGridHeightDp()),
-        ))
-        left.addView(
-            key("符号", true, null, 1f, 13f) { showPanel(Panel.SYMBOLS) }
-                .apply { setTag(MARK_SIDE_KEY, true) },
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(keyRowHeightDp()),
-            ).apply { topMargin = dp(ImeGeometryTokens.KEY_ROW_GAP_DP) },
+        val info = (context as? android.inputmethodservice.InputMethodService)
+            ?.currentInputEditorInfo
+        numericKeyboardRenderer.render(
+            editorKind = EditorInfoAdapter.kind(info),
+            enterLabel = enterKeyLabel(false, "换行"),
         )
-        container.addView(left, adaptiveColumnParams(1f))
-
-        val grid = LinearLayout(context).apply {
-            tag = "digits-grid"
-            orientation = LinearLayout.VERTICAL
-        }
-        listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("7", "8", "9")).forEachIndexed { rowIndex, chunk ->
-            val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            chunk.forEach { d ->
-                row.addView(
-                    key(d, false, null, 1f, 22f) { commitKeyboardCharacter(d) }.apply {
-                        tag = "key:$d"
-                        setTag(MARK_WHITE_KEY, true)
-                    },
-                    flexKeyParams(gapDp = 2),
-                )
-            }
-            grid.addView(row, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(keyRowHeightDp()),
-            ).apply {
-                if (rowIndex < 2) bottomMargin = dp(ImeGeometryTokens.KEY_ROW_GAP_DP)
-            })
-        }
-        val center = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        center.addView(grid, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(nineGridHeightDp()),
-        ))
-        val centerBottom = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        centerBottom.addView(
-            key("返回", true, null, 1f, 14f) { setMode(lastTextMode) }.apply {
-                tag = "key:mode"
-                setTag(MARK_SIDE_KEY, true)
-            },
-            flexKeyParams(),
-        )
-        centerBottom.addView(
-            spaceVoiceKey("空格", white = true) { listener.onSpace() }.apply {
-                setTag(MARK_WHITE_KEY, true)
-            },
-            flexKeyParams(),
-        )
-        centerBottom.addView(
-            key(".", false, null, 1f, 22f) { commitKeyboardCharacter(".") }.apply {
-                tag = "key:."
-                setTag(MARK_WHITE_KEY, true)
-            },
-            flexKeyParams(),
-        )
-        center.addView(centerBottom, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(keyRowHeightDp()),
-        ).apply { topMargin = dp(ImeGeometryTokens.KEY_ROW_GAP_DP) })
-        container.addView(center, adaptiveColumnParams(3.7f))
-
-        val side = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            tag = "digits-actions"
-        }
-        side.addView(
-            backspaceKey().apply { setTag(MARK_SIDE_KEY, true) },
-            sideKeyParams(keyRowHeightDp(), true),
-        )
-        side.addView(
-            key("0", false, null, 1f, 22f) { commitKeyboardCharacter("0") }.apply {
-                tag = "key:0"
-                setTag(MARK_SIDE_KEY, true)
-            },
-            sideKeyParams(keyRowHeightDp(), true),
-        )
-        side.addView(
-            key("@", true, null, 1f, 15f) { commitKeyboardCharacter("@") }
-                .apply { setTag(MARK_SIDE_KEY, true) },
-            sideKeyParams(keyRowHeightDp(), true),
-        )
-        side.addView(
-            key(enterKeyLabel(false, "换行"), true, null, 1f, 13f) { listener.onEnter() }
-                .apply { tag = "key-enter"; setTag(MARK_SIDE_KEY, true) },
-            sideKeyParams(keyRowHeightDp()),
-        )
-        container.addView(side, adaptiveColumnParams(1f))
-        keyboardBody.addView(container, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(nineBodyHeightDp()),
-        ))
     }
 
     private fun commitFirstCandidateOrSpace() {
@@ -2339,57 +1733,49 @@ open class ImeKeyboardView(
      */
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-            popupView?.let { popup ->
-                if (event.x < popup.left || event.x >= popup.right ||
-                    event.y < popup.top || event.y >= popup.bottom) hidePopup()
-            }
+            keyPopupController.hideIfOutside(event.x, event.y)
         }
         val handled = super.dispatchTouchEvent(event)
-        if (backspaceGestureActive) {
+        if (backspaceGestureController.active) {
             when (event.actionMasked) {
                 MotionEvent.ACTION_MOVE -> {
-                    val index = event.findPointerIndex(backspacePointerId)
-                    if (index >= 0) updateBackspaceGesture(
+                    val index = event.findPointerIndex(backspaceGestureController.pointerId)
+                    if (index >= 0) backspaceGestureController.update(
                         event.rawX + event.getX(index) - event.x,
                         event.rawY + event.getY(index) - event.y,
                     )
                 }
-                MotionEvent.ACTION_POINTER_UP -> if (event.getPointerId(event.actionIndex) == backspacePointerId) {
-                    finishBackspaceGesture(commit = true)
+                MotionEvent.ACTION_POINTER_UP -> if (
+                    event.getPointerId(event.actionIndex) == backspaceGestureController.pointerId
+                ) {
+                    backspaceGestureController.finish(commit = true)
                 }
-                MotionEvent.ACTION_UP -> finishBackspaceGesture(commit = true)
-                MotionEvent.ACTION_CANCEL -> finishBackspaceGesture(commit = false)
+                MotionEvent.ACTION_UP -> backspaceGestureController.finish(commit = true)
+                MotionEvent.ACTION_CANCEL -> backspaceGestureController.finish(commit = false)
             }
         }
-        if (spaceVoiceGestureActive) {
+        if (spaceVoiceGestureController.active) {
             when (event.actionMasked) {
                 MotionEvent.ACTION_MOVE -> {
-                    val index = event.findPointerIndex(spaceVoicePointerId)
+                    val index = event.findPointerIndex(spaceVoiceGestureController.pointerId)
                     if (index < 0) return handled
                     val pointerY = event.rawY + event.getY(index) - event.y
-                    val cancelNow = spaceVoiceDownY - pointerY >= dp(48)
-                    if (cancelNow != spaceVoiceGestureCancel) {
-                        spaceVoiceGestureCancel = cancelNow
-                        voiceCancelPreviewAction?.invoke(cancelNow)
-                    }
+                    spaceVoiceGestureController.move(pointerY)
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_UP -> {
                     if (event.actionMasked == MotionEvent.ACTION_POINTER_UP &&
-                        event.getPointerId(event.actionIndex) != spaceVoicePointerId) return handled
-                    val isCancel = spaceVoiceGestureCancel || event.actionMasked == MotionEvent.ACTION_CANCEL
-                    spaceVoiceGestureActive = false
-                    spaceVoiceGestureCancel = false
-                    if (isCancel) {
-                        if (voiceCancelAction != null) {
-                            voiceCancelAction?.invoke()
-                        } else {
-                            cancelVoiceGesture()
-                        }
-                    } else {
-                        listener.onVoicePressChanged(false)
+                        event.getPointerId(event.actionIndex) != spaceVoiceGestureController.pointerId
+                    ) {
+                        return handled
                     }
+                    spaceVoiceGestureController.finish(
+                        cancelled = event.actionMasked == MotionEvent.ACTION_CANCEL,
+                    )
                 }
             }
+        }
+        if (event.actionMasked == MotionEvent.ACTION_UP) {
+            nineKeySegmentRepairController.repairIfNeeded()
         }
         return handled
     }
@@ -2399,122 +1785,24 @@ open class ImeKeyboardView(
         label: String = "空格",
         white: Boolean = false,
         onTap: () -> Unit,
-    ): ImeKeyView = key(
-        label,
-        true,
-        null,
-        1f,
-        14f,
-        iconRes = R.drawable.ic_mic,
-        onTap = { if (!insertIntoInlineEditor(" ")) onTap() },
-    ).apply {
-        tag = "key-space"
-        contentDescription = "$label，点击空格，长按语音输入"
-        var voiceLongPressed = false
-        setOnLongClickListener {
-            if (!voiceAllowed) return@setOnLongClickListener true
-            if (voiceLongPressed) return@setOnLongClickListener true
-            // Accessibility actions do not deliver a touch DOWN/UP sequence.
-            when {
-                voiceActive -> stopVoiceFromSpace()
-                voicePending -> cancelVoiceForManualInput()
-                else -> listener.onVoiceToggle()
-            }
-            true
-        }
-        if (white) setTag(MARK_WHITE_KEY, true)
-        var voiceCancelPreview = false
-        var voiceDownY = 0f
-        val voiceTrigger = Runnable {
-            if (!voiceAllowed) return@Runnable
-            if (!voiceLongPressed) {
-                voiceLongPressed = true
-                spaceVoiceGestureActive = true
-                spaceVoiceGestureCancel = false
-                spaceVoiceDownY = voiceDownY
-                // Tactile confirmation the moment voice actually arms.
-                hapticFeedback()
-                listener.onVoicePressChanged(true)
-            }
-        }
-        setOnTouchListener { _, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    feedback()
-                    voiceDownY = event.rawY
-                    spaceVoicePointerId = event.getPointerId(event.actionIndex)
-                    voiceCancelPreview = false
-                    spaceVoiceDownY = event.rawY
-                    spaceVoiceGestureActive = false
-                    spaceVoiceGestureCancel = false
-                    repeatHandler.postDelayed(voiceTrigger, spaceVoiceTriggerMs)
-                    false
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val cancelNow = voiceLongPressed && voiceDownY - event.rawY >= dp(48)
-                    if (voiceLongPressed && cancelNow != voiceCancelPreview) {
-                        voiceCancelPreview = cancelNow
-                        spaceVoiceGestureCancel = cancelNow
-                        voiceCancelPreviewAction?.invoke(cancelNow)
-                    }
-                    voiceLongPressed
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    repeatHandler.removeCallbacks(voiceTrigger)
-                    if (voiceLongPressed) {
-                        isPressed = false
-                        voiceLongPressed = false
-                        spaceVoiceGestureActive = false
-                        spaceVoiceGestureCancel = false
-                        val isCancel = voiceCancelPreview || event.actionMasked == MotionEvent.ACTION_CANCEL
-                        if (isCancel) {
-                            if (voiceCancelAction != null) {
-                                voiceCancelAction?.invoke()
-                            } else {
-                                cancelVoiceGesture()
-                            }
-                        } else {
-                            listener.onVoicePressChanged(false)
-                        }
-                        true
-                    } else {
-                        false
-                    }
-                }
-                else -> false
-            }
-        }
-    }
-
-    /** Compatibility entry for older test hosts; the production gesture is long-press space. */
-    fun toggleVoiceFromSpace() {
-        startVoiceFromSpace()
-    }
+    ): ImeKeyView =
+        spaceVoiceKeyFactory.build(
+            label = label,
+            white = white,
+            onTap = onTap,
+        )
 
     /** Starts recording after the combined space key crosses the long-press threshold. */
     fun startVoiceFromSpace() {
         if (!voiceAllowed) return
-        prepareVoiceController()
         voiceGestureSession = true
-        lockVoiceLanguageForGesture()
-        voiceInlineGeneration++
-        showInlineVoiceState("正在准备麦克风…")
-        startInlineVoicePulse()
+        voicePanelController.lockLanguageForGesture()
+        inlineVoicePresenter.invalidateGeneration()
+        inlineVoicePresenter.show("正在准备麦克风…")
+        inlineVoicePresenter.startPulse()
         // Let the in-place state row draw before model/session startup begins.
         post {
-            if (voiceGestureSession) voiceStartAction?.invoke()
-        }
-    }
-
-    /** Lock language selection as soon as a voice gesture starts, before model startup is posted. */
-    private fun lockVoiceLanguageForGesture() {
-        val language = expandedPanel.findViewWithTag<View>("voice-language") ?: return
-        language.isEnabled = false
-        language.isClickable = false
-        language.alpha = 0.52f
-        language.contentDescription = "语音语言：${if (voiceLanguageIndex == 0) "普通话" else "英文"}，识别进行中不可切换"
-        if (Build.VERSION.SDK_INT >= 30) {
-            language.stateDescription = "当前${if (voiceLanguageIndex == 0) "普通话" else "英文"}，识别进行中不可切换"
+            if (voiceGestureSession) voicePanelController.start()
         }
     }
 
@@ -2522,32 +1810,30 @@ open class ImeKeyboardView(
     fun stopVoiceFromSpace() {
         if (!voiceGestureSession) return
         voiceGestureSession = false
-        stopInlineVoicePulse()
-        showInlineVoiceState("正在识别…")
-        voiceStopAction?.invoke()
-        // Keep progress visible until a terminal callback or explicit cancel.
+        inlineVoicePresenter.stopPulse()
+        inlineVoicePresenter.show("正在识别…")
+        voicePanelController.stop()
     }
 
     private fun cancelVoiceGesture() {
-        voicePending = false
         voiceGestureSession = false
-        voiceActive = false
-        voiceStopRequested = false
-        spaceVoiceGestureActive = false
-        spaceVoiceGestureCancel = false
-        voiceInlineGeneration++
-        stopInlineVoicePulse()
-        showInlineVoiceState("已取消")
-        hideInlineVoiceStateLater(260L)
-        listener.cancelVoiceRecognition()
-        listener.onVoiceCancel()
+        spaceVoiceGestureController.reset()
+        inlineVoicePresenter.invalidateGeneration()
+        inlineVoicePresenter.stopPulse()
+        voicePanelController.cancel()
     }
 
     /** Revoke recognition ownership before the editor accepts manual input. */
     fun cancelVoiceForManualInput() {
-        if (!voicePending && !voiceActive && !voiceGestureSession) return
-        voiceCancelAction?.invoke() ?: cancelVoiceGesture()
-        hideInlineVoiceState()
+        if (
+            !voicePanelController.pending &&
+            !voicePanelController.active &&
+            !voiceGestureSession
+        ) {
+            return
+        }
+        cancelVoiceGesture()
+        inlineVoicePresenter.hide()
     }
 
     private fun renderPanel(panel: Panel) {
@@ -2556,18 +1842,19 @@ open class ImeKeyboardView(
         keyboardBody.visibility = View.GONE
         expandedPanel.removeAllViews()
         expandedPanel.visibility = View.VISIBLE
-        candidateExpandedOpen = false
+        candidateBarController.resetExpandedState()
+        voicePanelController.detachView()
         when (panel) {
-            Panel.TOOLS -> renderTools()
-            Panel.KEYBOARD_SELECT -> renderKeyboardSelect()
-            Panel.SYMBOLS -> renderSymbols()
-            Panel.EMOJI -> renderEmoji()
-            Panel.HANDWRITING -> renderHandwriting()
-            Panel.VOICE -> renderVoice()
+            Panel.TOOLS -> panelRenderer.renderTools()
+            Panel.KEYBOARD_SELECT -> panelRenderer.renderKeyboardSelect()
+            Panel.SYMBOLS -> panelRenderer.renderSymbols()
+            Panel.EMOJI -> panelRenderer.renderEmoji()
+            Panel.HANDWRITING -> panelRenderer.renderHandwriting()
+            Panel.VOICE -> voicePanelController.render()
             Panel.CLIPBOARD -> renderClipboard()
-            Panel.TEXT_EDITOR -> renderTextEditor()
-            Panel.SETTINGS -> renderSettings()
-            Panel.FUZZY_SETTINGS -> renderFuzzySettings()
+            Panel.TEXT_EDITOR -> textEditorPanelController.render()
+            Panel.SETTINGS -> settingsPanelController.renderSettings()
+            Panel.FUZZY_SETTINGS -> settingsPanelController.renderFuzzySettings()
             else -> closePanelToKeyboard()
         }
         applyTheme()
@@ -2583,1289 +1870,28 @@ open class ImeKeyboardView(
         }
     }
 
-    /** Build the voice controller while it remains hidden, so a space gesture does not relayout the IME. */
-    private fun prepareVoiceController() {
-        if (voiceStartAction != null) return
-        expandedPanel.removeAllViews()
-        expandedPanel.visibility = View.GONE
-        renderVoice()
-        expandedPanel.visibility = View.GONE
-        applyTheme()
-    }
-
-    private fun panelHead(name: String): LinearLayout {
-        val backTarget = panelBackStack.lastOrNull()?.let(::panelTitle) ?: "键盘"
-        val nav = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(10), 0, dp(10), 0)
-            minimumHeight = dp(48)
-            tag = "panel-head"
-        }
-        nav.addView(
-            ImageView(context).apply {
-                tag = "key-panel-back"
-                setImageResource(R.drawable.ic_arrow_back)
-                scaleType = ImageView.ScaleType.CENTER_INSIDE
-                isClickable = true
-                isFocusable = true
-                minimumHeight = dp(48)
-                minimumWidth = dp(48)
-                contentDescription = "返回$backTarget"
-                setOnTouchListener { _, event ->
-                    if (event.actionMasked == MotionEvent.ACTION_DOWN) feedback()
-                    false
-                }
-                setOnClickListener {
-                    feedback()
-                    closePanelToKeyboard()
-                }
-            },
-            LinearLayout.LayoutParams(dp(48), dp(48)),
-        )
-        nav.addView(TextView(context).apply {
-            text = name
-            textSize = 13f
-            setPadding(dp(8), 0, 0, 0)
-            tag = "panel-title"
-        }, wrapParams())
-        return nav
-    }
-
-    private fun panelTitle(value: Panel): String = when (value) {
-        Panel.TOOLS -> "更多"
-        Panel.KEYBOARD_SELECT -> "切换键盘"
-        Panel.SYMBOLS -> "符号"
-        Panel.EMOJI -> "表情"
-        Panel.HANDWRITING -> "手写输入"
-        Panel.VOICE -> "语音"
-        Panel.CLIPBOARD -> "剪贴板"
-        Panel.TEXT_EDITOR -> "文本编辑"
-        Panel.SETTINGS -> "设置"
-        Panel.FUZZY_SETTINGS -> "模糊音纠错"
-        Panel.GAMING -> "浮动键盘"
-        Panel.NONE, Panel.CANDIDATE_EXPANDED -> "键盘"
-    }
-
-    private fun addPanelHead(name: String) {
-        expandedPanel.addView(panelHead(name), LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(48),
-        ))
-    }
-
-    private fun renderKeyboardSelect() {
-        addPanelHead("切换键盘")
-        val body = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            tag = "keyboard-select-panel"
-        }
-        body.addView(TextView(context).apply {
-            text = "选择输入布局"
-            textSize = 13f
-            setPadding(dp(4), 0, 0, dp(8))
-            tag = "panel-section-title"
-        }, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(28),
-        ))
-        val modes = listOf(
-            KeyboardMode.PINYIN_26 to "拼音 26 键",
-            KeyboardMode.PINYIN_9 to "拼音 9 键",
-            KeyboardMode.ENGLISH_26 to "英文 26 键",
-            KeyboardMode.DIGITS to "数字键盘",
-        )
-        modes.chunked(2).forEach { chunk ->
-            val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            chunk.forEach { (modeValue, label) ->
-                row.addView(
-                    key(label, true, null, 1f, 13f) {
-                        setMode(modeValue)
-                    }.apply {
-                        val selected = mode == modeValue
-                        tag = if (selected) "tab-active" else "keyboard-choice"
-                        contentDescription = "$label，${if (selected) "已选中" else "未选中"}"
-                        if (Build.VERSION.SDK_INT >= 30) {
-                            stateDescription = if (selected) "已选中" else "未选中"
-                        }
-                    },
-                    LinearLayout.LayoutParams(0, dp(50), 1f).apply { marginEnd = dp(7) },
-                )
-            }
-            if (chunk.size == 1) {
-                row.addView(View(context), LinearLayout.LayoutParams(0, dp(50), 1f))
-            }
-            body.addView(row, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(50),
-            ).apply { bottomMargin = dp(7) })
-        }
-        expandedPanel.addView(body, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(imeHeightDp() - 48),
-        ))
-    }
-
-    private fun filterChip(label: String, active: Boolean, onTap: () -> Unit): TextView =
-        TextView(context).apply {
-            text = label
-            textSize = 11f
-            gravity = Gravity.CENTER
-            includeFontPadding = false
-            minWidth = dp(48)
-            minimumHeight = dp(48)
-            setPadding(dp(10), 0, dp(10), 0)
-            tag = if (active) "tab-active" else "panel-tab"
-            contentDescription = "$label，${if (active) "已选中" else "未选中"}"
-            if (Build.VERSION.SDK_INT >= 30) {
-                stateDescription = if (active) "已选中" else "未选中"
-            }
-            isClickable = true
-            isFocusable = true
-            setOnClickListener { feedback(); onTap() }
-        }
-
-    private fun panelChipScroll(
-        labels: List<String>,
-        selected: String,
-        onSelected: (String) -> Unit,
-    ): HorizontalScrollView = HorizontalScrollView(context).apply {
-        isHorizontalScrollBarEnabled = false
-        isFillViewport = false
-        overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
-        val scrollKey = labels.joinToString("\u001f")
-        val row = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        var selectedView: View? = null
-        labels.forEach { label ->
-            val chip = filterChip(label, label == selected) { onSelected(label) }
-            if (label == selected) selectedView = chip
-            row.addView(
-                chip,
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    dp(48),
-                ).apply { marginEnd = dp(6) },
-            )
-        }
-        addView(row, ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48)))
-        setOnScrollChangeListener { _, scrollX, _, _, _ ->
-            panelChipScrollPositions[scrollKey] = scrollX
-        }
-        post {
-            val remembered = panelChipScrollPositions[scrollKey]
-            if (remembered != null) {
-                scrollTo(remembered, 0)
-            } else {
-                selectedView?.let { active ->
-                    val target = (active.left - (width - active.width) / 2).coerceAtLeast(0)
-                    scrollTo(target, 0)
-                    panelChipScrollPositions[scrollKey] = scrollX
-                }
-            }
-        }
-    }
-
-    private fun panelVerticalScroll(content: View, tagValue: String): ScrollView =
-        ScrollView(context).apply {
-            tag = tagValue
-            isFillViewport = true
-            isVerticalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
-            addView(
-                content,
-                ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                ),
-            )
-        }
-
-    private fun rememberPanelVerticalScroll(scroll: ScrollView, scrollKey: String) {
-        scroll.setOnScrollChangeListener { _, _, scrollY, _, _ ->
-            panelVerticalScrollPositions[scrollKey] = scrollY
-        }
-        scroll.post {
-            panelVerticalScrollPositions[scrollKey]?.let { remembered ->
-                scroll.scrollTo(0, remembered)
-            }
-        }
-    }
-
-    private fun renderTools() {
-        addPanelHead("工具")
-        val body = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), dp(10), dp(10), dp(10))
-            tag = "tools-panel"
-        }
-        val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        data class ToolEntry(
-            val label: String,
-            val target: Panel,
-            val iconRes: Int? = null,
-            val glyph: String? = null,
-            val enabled: Boolean = true,
-        )
-        // When no handwriting recognizer is configured, hide the entry entirely
-        // instead of showing a dead grey card (V2 used to patch this in a post pass).
-        val handwritingAvailable = HandwritingFeaturePolicy.entryEnabled(UnavailableHandwritingProvider)
-        val cards = listOf(
-            ToolEntry("表情", Panel.EMOJI, R.drawable.ic_emoji),
-            ToolEntry("剪贴板", Panel.CLIPBOARD, R.drawable.ic_clipboard),
-            ToolEntry("手写输入", Panel.HANDWRITING, R.drawable.ic_handwriting, enabled = handwritingAvailable),
-            ToolEntry("符号", Panel.SYMBOLS, R.drawable.ic_symbols),
-            ToolEntry("切换键盘", Panel.KEYBOARD_SELECT, R.drawable.ic_grid),
-            ToolEntry("文本编辑", Panel.TEXT_EDITOR, R.drawable.ic_keyboard),
-            ToolEntry("浮动键盘", Panel.GAMING, R.drawable.ic_game),
-            ToolEntry("设置", Panel.SETTINGS, R.drawable.ic_settings),
-        ).filter { it.enabled }
-        cards.chunked(4).forEach { chunk ->
-            val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            chunk.forEach { entry ->
-                val toolEntryView = if (entry.glyph != null) {
-                    toolGlyphCard(entry.glyph, entry.label) { showPanel(entry.target) }
-                } else {
-                    toolCard(entry.iconRes ?: R.drawable.ic_settings, entry.label) {
-                        showPanel(entry.target)
-                    }
-                }
-                row.addView(
-                    toolEntryView,
-                    LinearLayout.LayoutParams(0, dp(ImeGeometryTokens.TOOL_CARD_HEIGHT_DP), 1f).apply { marginEnd = dp(8) },
-                )
-            }
-            repeat(4 - chunk.size) {
-                row.addView(View(context), LinearLayout.LayoutParams(0, dp(ImeGeometryTokens.TOOL_CARD_HEIGHT_DP), 1f).apply { marginEnd = dp(8) })
-            }
-            grid.addView(row, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(ImeGeometryTokens.TOOL_CARD_HEIGHT_DP),
-            ).apply { bottomMargin = dp(8) })
-        }
-        body.addView(grid, matchParams())
-        val toolsScroll = panelVerticalScroll(body, "tools-scroll")
-        rememberPanelVerticalScroll(toolsScroll, "tools")
-        expandedPanel.addView(
-            toolsScroll,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1f,
-            ),
-        )
-    }
-
-    private fun toolCard(iconRes: Int, label: String, onTap: () -> Unit): LinearLayout {
-        val card = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(0, dp(8), 0, dp(6))
-            tag = "tool:$label"
-            contentDescription = label
-            isClickable = true
-            isFocusable = true
-            setOnClickListener { feedback(); onTap() }
-        }
-        card.addView(ImageView(context).apply {
-            setImageResource(iconRes)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            contentDescription = null
-        }, LinearLayout.LayoutParams(dp(20), dp(20)).apply { bottomMargin = dp(6) })
-        card.addView(TextView(context).apply {
-            text = label
-            textSize = 11f
-            gravity = Gravity.CENTER
-            includeFontPadding = false
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-        }, wrapParams())
-        return card
-    }
-
-    private fun toolGlyphCard(glyph: String, label: String, onTap: () -> Unit): LinearLayout {
-        val card = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(0, dp(8), 0, dp(6))
-            tag = "tool:$label"
-            contentDescription = label
-            isClickable = true
-            isFocusable = true
-            setOnClickListener { feedback(); onTap() }
-        }
-        card.addView(TextView(context).apply {
-            text = glyph
-            textSize = if (glyph == "Aa") 15f else 16f
-            gravity = Gravity.CENTER
-            includeFontPadding = false
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-        }, LinearLayout.LayoutParams(dp(20), dp(20)).apply { bottomMargin = dp(6) })
-        card.addView(TextView(context).apply {
-            text = label
-            textSize = 11f
-            gravity = Gravity.CENTER
-            includeFontPadding = false
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-        }, wrapParams())
-        return card
-    }
-
-    private fun renderSymbols() {
-        addPanelHead("符号")
-        val body = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), dp(10), dp(10), dp(10))
-            tag = "symbols-panel"
-        }
-        expandedPanel.addView(body, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(panelBodyHeightDp()),
-        ))
-
-        fun renderContent(notifyRebuilt: Boolean) {
-            body.removeAllViews()
-            val cats = listOf("常用", "中文", "英文", "数学", "序号", "单位", "特殊", "编程", "自定义")
-            val tabs = panelChipScroll(cats, symbolCategory) { cat ->
-                if (cat != symbolCategory) {
-                    symbolCategory = cat
-                    renderContent(true)
-                }
-            }
-            body.addView(tabs, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(48),
-            ).apply { bottomMargin = dp(8) })
-            if (symbolCategory == "自定义") {
-                body.addView(button("管理自定义符号", 12f, true).apply {
-                    contentDescription = "管理自定义符号"
-                    isClickable = true
-                    setOnClickListener {
-                        feedback()
-                        context.startActivity(
-                            Intent(context, SymbolManagerActivity::class.java)
-                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                        )
-                    }
-                }, LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    dp(48),
-                ).apply { bottomMargin = dp(8) })
-            }
-            val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-            val items = symbolItems(symbolCategory)
-            if (items.isEmpty()) {
-                grid.addView(TextView(context).apply {
-                    text = "还没有自定义符号；点击上方按钮添加第一个。"
-                    textSize = 12f
-                    gravity = Gravity.CENTER
-                    tag = "panel-note"
-                }, LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    dp(56),
-                ))
-            }
-            items.chunked(6).forEach { chunk ->
-                val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-                chunk.forEach { s ->
-                    row.addView(
-                        key(s, false, null, 1f, if (s.length > 2) 12f else 17f) {
-                            listener.onSymbolSelected(s)
-                        },
-                        gridCellParams(48, 6, 6),
-                    )
-                }
-                repeat(6 - chunk.size) {
-                    row.addView(View(context), gridCellParams(48, 6, 6))
-                }
-                grid.addView(row, LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    dp(48),
-                ).apply { bottomMargin = dp(6) })
-            }
-            val symbolsScroll = panelVerticalScroll(grid, "symbols-scroll")
-            rememberPanelVerticalScroll(symbolsScroll, "symbols:$symbolCategory")
-            body.addView(
-                symbolsScroll,
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    0,
-                    1f,
-                ),
-            )
-            applyTheme()
-            if (notifyRebuilt) onViewHierarchyRebuilt()
-        }
-
-        renderContent(false)
-    }
-
-    private fun renderEmoji() {
-        addPanelHead("表情")
-        val body = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(12), dp(12), dp(12))
-            tag = "emoji-panel"
-        }
-        expandedPanel.addView(body, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(panelBodyHeightDp()),
-        ))
-
-        fun renderContent(notifyRebuilt: Boolean) {
-            body.removeAllViews()
-            val cats = listOf("最近") + ImeData.fluentSmileysByCategory.keys.toList()
-            val tabs = panelChipScroll(cats, emojiCategory) { cat ->
-                if (cat != emojiCategory) {
-                    emojiCategory = cat
-                    renderContent(true)
-                }
-            }
-            body.addView(tabs, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(48),
-            ).apply { bottomMargin = dp(10) })
-            val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-            val emojiItems = if (emojiCategory == "最近") {
-                EmojiRecentRepository.load(context)
-            } else {
-                ImeData.fluentSmileysByCategory[emojiCategory].orEmpty()
-            }
-            if (emojiItems.isEmpty() && emojiCategory == "最近") {
-                grid.addView(TextView(context).apply {
-                    text = "最近使用的表情会显示在这里"
-                    textSize = 12f
-                    gravity = Gravity.CENTER
-                    tag = "panel-note"
-                }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)))
-            }
-            emojiItems.chunked(8).forEach { chunk ->
-                val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-                chunk.forEach { e ->
-                    row.addView(
-                        emojiCell(e),
-                        gridCellParams(48, 8, 4),
-                    )
-                }
-                grid.addView(row, LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    dp(48),
-                ).apply { bottomMargin = dp(4) })
-            }
-            val emojiScroll = panelVerticalScroll(grid, "emoji-scroll")
-            rememberPanelVerticalScroll(emojiScroll, "emoji:$emojiCategory")
-            body.addView(
-                emojiScroll,
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    0,
-                    1f,
-                ),
-            )
-            applyTheme()
-            if (notifyRebuilt) onViewHierarchyRebuilt()
-        }
-
-        renderContent(false)
-    }
-
-    private fun renderHandwriting() {
-        addPanelHead("手写输入")
-        val body = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), dp(10), dp(10), dp(10))
-        }
-        val candRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        candRow.addView(title("在下方区域落笔手写...", small = true), wrapParams())
-        body.addView(candRow, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(48),
-        ).apply { bottomMargin = dp(7) })
-        var undoButton: ImeKeyView? = null
-        var clearButton: ImeKeyView? = null
-        fun refreshStrokeActions(hasStrokes: Boolean) {
-            listOf(
-                undoButton to "撤销",
-                clearButton to "清空",
-            ).forEach { (button, label) ->
-                button ?: return@forEach
-                button.isEnabled = hasStrokes
-                button.alpha = if (hasStrokes) 1f else 0.42f
-                button.contentDescription = if (hasStrokes) label else "$label（暂无笔画）"
-                if (Build.VERSION.SDK_INT >= 30) {
-                    button.stateDescription = if (hasStrokes) "可用" else "不可用"
-                }
-            }
-        }
-        val pad = HandwritingPadView(context) { strokes ->
-            refreshStrokeActions(strokes.isNotEmpty())
-            candRow.removeAllViews()
-            val result = UnavailableHandwritingProvider.recognize(strokes)
-            if (result is HandwritingResult.NotConfigured) {
-                candRow.addView(title("当前未配置手写识别引擎", small = true), wrapParams())
-            } else {
-                (result as? HandwritingResult.Success)?.candidates?.forEach { c ->
-                    candRow.addView(key(c, false, null, 1f, 15f) { listener.onCharacter(c) }, wrapParams())
-                }
-            }
-        }
-        pad.tag = "handwriting-canvas"
-        body.addView(pad, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(140),
-        ).apply { bottomMargin = dp(7) })
-        val actions = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        undoButton = key("撤销", true, null, 1f, 13f) { pad.undo() }
-        clearButton = key("清空", true, null, 1f, 13f) { pad.clear() }
-        actions.addView(undoButton!!, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(6) })
-        actions.addView(clearButton!!, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(6) })
-        actions.addView(key("空格", true, null, 1f, 13f) { listener.onSpace() }, LinearLayout.LayoutParams(0, dp(48), 1f))
-        refreshStrokeActions(false)
-        body.addView(actions, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(48),
-        ))
-        val handwritingScroll = panelVerticalScroll(body, "handwriting-scroll")
-        rememberPanelVerticalScroll(handwritingScroll, "handwriting")
-        expandedPanel.addView(
-            handwritingScroll,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(panelBodyHeightDp()),
-            ),
-        )
-    }
-
-    private fun renderVoice() {
-        addPanelHead("语音输入")
-        val body = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-        }
-        val initialModelState = listener.voiceModelState()
-        val modelReady = initialModelState in setOf(
-            VoiceModelLifecycleState.HOT,
-            VoiceModelLifecycleState.RECORDING,
-            VoiceModelLifecycleState.COOLDOWN,
-        )
-        val modelStatus = TextView(context).apply {
-            text = if (modelReady) {
-                "离线模型已就绪 · 音频不出设备"
-            } else {
-                "离线模型后台准备中 · 未启用联网识别"
-            }
-            textSize = 11f
-            includeFontPadding = false
-            gravity = Gravity.CENTER_VERTICAL
-            tag = "voice-model-status"
-            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
-        }
-        body.addView(modelStatus, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(22),
-        ))
-        val transcript = TextView(context).apply {
-            text = "只需长按空格；松开自动上屏，上滑取消"
-            textSize = 16f
-            gravity = Gravity.CENTER_VERTICAL
-            maxLines = 2
-            ellipsize = TextUtils.TruncateAt.END
-            setPadding(dp(12), 0, dp(12), 0)
-            tag = "voice-transcript"
-            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
-        }
-        body.addView(transcript, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(52),
-        ))
-        val waveBar = LinearLayout(context).apply {
-            tag = "voice-waveform"
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-        }
-        val waves = (0 until 10).map { _ ->
-            View(context).apply {
-                tag = "voice-wave-bar"
-                layoutParams = LinearLayout.LayoutParams(dp(4), dp(12))
-            }
-        }
-        waves.forEach { waveBar.addView(it, LinearLayout.LayoutParams(dp(4), dp(12)).apply {
-            marginEnd = dp(5)
-        }) }
-        body.addView(waveBar, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(52),
-        ))
-        val controls = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        // The bundled model is bilingual Mandarin + English. Do not expose
-        // dialect buttons that the packaged model cannot actually recognize.
-        val languages = listOf("普通话" to "zh-CN", "英文" to "en-US")
-        var recognizedText = ""
-        var voiceCancelled = false
-        var cancelPreview = false
-        var modelPrepared = false
-        val langButton = button(languages[voiceLanguageIndex].first, 13f, true).apply {
-            tag = "voice-language"
-            contentDescription = "语音语言：${languages[voiceLanguageIndex].first}，点击切换"
-            if (Build.VERSION.SDK_INT >= 30) {
-                stateDescription = languages[voiceLanguageIndex].first
-            }
-            setOnClickListener {
-                feedback()
-                voiceLanguageIndex = (voiceLanguageIndex + 1) % languages.size
-                val selectedLanguage = languages[voiceLanguageIndex].first
-                text = selectedLanguage
-                contentDescription = "语音语言：$selectedLanguage，点击切换"
-                if (Build.VERSION.SDK_INT >= 30) stateDescription = selectedLanguage
-            }
-        }
-        fun refreshLanguageControl() {
-            val selectedLanguage = languages[voiceLanguageIndex].first
-            val locked = voiceGestureSession || voiceActive || voicePending
-            langButton.isEnabled = !locked
-            langButton.isClickable = !locked
-            langButton.alpha = if (locked) 0.52f else 1f
-            langButton.contentDescription = if (locked) {
-                "语音语言：$selectedLanguage，识别进行中不可切换"
-            } else {
-                "语音语言：$selectedLanguage，点击切换"
-            }
-            if (Build.VERSION.SDK_INT >= 30) {
-                langButton.stateDescription = if (locked) {
-                    "当前$selectedLanguage，识别进行中不可切换"
-                } else {
-                    "当前$selectedLanguage"
-                }
-            }
-        }
-        refreshLanguageControl()
-        controls.addView(langButton, LinearLayout.LayoutParams(0, dp(ImeGeometryTokens.VOICE_CONTROL_HEIGHT_DP), 1f))
-        val micButton = button("🎤", 18f, false).apply {
-            tag = "voice-mic"
-            isEnabled = false
-            contentDescription = "语音状态，当前未开始，仅支持长按空格启动"
-        }
-        controls.addView(
-            micButton,
-            LinearLayout.LayoutParams(
-                dp(ImeGeometryTokens.VOICE_CONTROL_HEIGHT_DP),
-                dp(ImeGeometryTokens.VOICE_CONTROL_HEIGHT_DP),
-            ),
-        )
-        val gestureHint = button("长按空格开始", 13f, true).apply {
-            tag = "voice-gesture-hint"
-            isEnabled = false
-            contentDescription = "长按空格开始语音，松开自动上屏，上滑取消"
-        }
-        controls.addView(gestureHint, LinearLayout.LayoutParams(0, dp(ImeGeometryTokens.VOICE_CONTROL_HEIGHT_DP), 1f))
-        fun setMicState(icon: String, description: String) {
-            micButton.text = icon
-            micButton.contentDescription = description
-        }
-        fun setGestureHint(label: String, description: String) {
-            gestureHint.text = label
-            gestureHint.contentDescription = description
-        }
-        body.addView(controls, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(ImeGeometryTokens.VOICE_CONTROL_HEIGHT_DP),
-        ))
-        expandedPanel.addView(body, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(panelBodyHeightDp()),
-        ))
-        fun startVoice() {
-            if (voiceActive) return
-            val eventGeneration = ++voiceEventGeneration
-            recognizedText = ""
-            voiceCancelled = false
-            cancelPreview = false
-            modelPrepared = false
-            voiceActive = true
-            voicePending = true
-            voiceStopRequested = false
-            refreshLanguageControl()
-            showInlineVoiceState("正在准备麦克风…")
-            setMicState("⏹", "语音输入进行中，松开空格结束，上滑取消")
-            setGestureHint("松开空格上屏 · 上滑取消", "松开空格结束语音并自动上屏，上滑取消")
-            modelStatus.text = "正在使用离线模型 · 音频不出设备"
-            transcript.text = "正在聆听… 松开空格结束"
-            listener.onVoiceSessionStarted(true)
-            listener.startVoiceRecognition(languages[voiceLanguageIndex].second, object : VoiceRecognitionEvents {
-                private val rmsQueued = java.util.concurrent.atomic.AtomicBoolean(false)
-                @Volatile private var latestRms = 0f
-                override fun onPartial(text: String) {
-                    // AudioRecord inference callbacks arrive from the voice
-                    // worker thread; keep view and InputConnection mutations
-                    // on the IME main thread.
-                    post {
-                        if (eventGeneration != voiceEventGeneration) return@post
-                        if (!voiceActive || voiceCancelled) return@post
-                        if (cancelPreview) return@post
-                        modelPrepared = true
-                        if (text.isNotBlank()) recognizedText = text
-                        transcript.text = text
-                        if (voiceStopRequested) {
-                            modelStatus.text = "正在整理识别结果…"
-                            setMicState("⏹", "正在整理语音识别结果，请稍候")
-                            setGestureHint("整理识别结果…", "正在整理语音识别结果，请稍候")
-                            showInlineVoiceState("正在识别…")
-                        } else {
-                            modelStatus.text = "正在聆听 · 松开空格结束"
-                            setMicState("⏹", "语音输入进行中，松开空格结束，上滑取消")
-                            setGestureHint("松开空格上屏 · 上滑取消", "松开空格结束语音并自动上屏，上滑取消")
-                            showInlineVoiceState(text.ifBlank { "正在聆听…" })
-                        }
-                        listener.onVoicePartial(text)
-                    }
-                }
-                override fun onFinal(text: String) {
-                    post {
-                        if (eventGeneration != voiceEventGeneration) return@post
-                        if (voiceCancelled || cancelPreview) return@post
-                        if (text.isNotBlank()) recognizedText = text
-                        transcript.text = text
-                        setMicState("🎤", "语音状态，已完成识别，仅支持长按空格启动")
-                        setGestureHint("长按空格开始", "长按空格开始语音，松开自动上屏，上滑取消")
-                        voiceActive = false
-                        voicePending = false
-                        voiceStopRequested = false
-                        refreshLanguageControl()
-                        modelStatus.text = "离线识别完成 · 已自动上屏"
-                        listener.onVoiceFinal(text)
-                        showInlineVoiceState(if (text.isBlank()) "没有识别到语音" else "已上屏")
-                        hideInlineVoiceStateLater(if (text.isBlank()) 900L else 280L)
-                    }
-                }
-                override fun onRms(rms: Float) {
-                    latestRms = rms
-                    if (!rmsQueued.compareAndSet(false, true)) return
-                    postDelayed({
-                        rmsQueued.set(false)
-                        if (eventGeneration != voiceEventGeneration) return@postDelayed
-                        if (!voiceActive || voiceStopRequested || voiceCancelled || cancelPreview) return@postDelayed
-                        val level = latestRms
-                        val h = dp((8 + (level * 4f).coerceIn(0f, 52f)).toInt())
-                        if (waveBar.isShown) waves.forEach { bar ->
-                            if (bar.layoutParams.height != h) {
-                                bar.layoutParams = bar.layoutParams.apply { height = h }
-                            }
-                        }
-                        showInlineVoiceState(
-                            if (modelPrepared) "正在聆听…" else "正在录音 · 模型准备中…",
-                            rms = level,
-                        )
-                    }, 32L)
-                }
-                override fun onError(message: String) {
-                    post {
-                        if (eventGeneration != voiceEventGeneration) return@post
-                        if (voiceCancelled) return@post
-                        recognizedText = ""
-                        transcript.text = message
-                        setMicState("🎤", "语音状态，识别失败，仅支持长按空格重试")
-                        setGestureHint("长按空格开始", "长按空格重新开始语音，松开自动上屏，上滑取消")
-                        voiceActive = false
-                        voicePending = false
-                        voiceStopRequested = false
-                        refreshLanguageControl()
-                        modelStatus.text = "语音未完成 · 请检查本地模型和麦克风权限"
-                        listener.onVoiceError(message)
-                        showInlineVoiceState(
-                            conciseVoiceError(message.ifBlank { "语音输入失败" }),
-                            error = true,
-                        )
-                        hideInlineVoiceStateLater(1_500L)
-                    }
-                }
-                override fun onReady() {
-                    post {
-                        if (eventGeneration != voiceEventGeneration) return@post
-                        if (voiceCancelled) return@post
-                        if (voiceActive && !voiceStopRequested) {
-                            setMicState("⏹", "语音输入进行中，松开空格结束，上滑取消")
-                            setGestureHint("松开空格上屏 · 上滑取消", "松开空格结束语音并自动上屏，上滑取消")
-                            modelStatus.text = "正在录音 · 本地模型准备中"
-                            showInlineVoiceState("正在录音 · 模型准备中…")
-                        } else {
-                            setMicState("⏹", "正在整理语音识别结果，请稍候")
-                            setGestureHint("整理识别结果…", "正在整理语音识别结果，请稍候")
-                            modelStatus.text = "正在整理识别结果…"
-                            showInlineVoiceState("正在识别…")
-                        }
-                    }
-                }
-                override fun onModelReady() {
-                    post {
-                        if (eventGeneration != voiceEventGeneration) return@post
-                        if (!voiceActive || voiceStopRequested || voiceCancelled || cancelPreview) return@post
-                        modelPrepared = true
-                        setMicState("⏹", "语音输入进行中，松开空格结束，上滑取消")
-                        setGestureHint("松开空格上屏 · 上滑取消", "松开空格结束语音并自动上屏，上滑取消")
-                        modelStatus.text = "正在识别 · 松开空格结束"
-                        showInlineVoiceState("正在聆听…")
-                    }
-                }
-            })
-        }
-        fun stopVoice() {
-            if (!voiceActive || voiceStopRequested) return
-            listener.stopVoiceRecognition()
-            setMicState("🎤", "正在整理语音识别结果，请稍候")
-            setGestureHint("整理识别结果…", "正在整理语音识别结果，请稍候")
-            voiceStopRequested = true
-            refreshLanguageControl()
-            modelStatus.text = "正在整理识别结果…"
-            showInlineVoiceState("正在识别…")
-        }
-        fun cancelVoice() {
-            if (voiceCancelled) return
-            voiceEventGeneration++
-            voiceCancelled = true
-            voicePending = false
-            cancelPreview = false
-            voiceActive = false
-            voiceStopRequested = false
-            refreshLanguageControl()
-            listener.cancelVoiceRecognition()
-            recognizedText = ""
-            setMicState("🎤", "语音状态，已取消，仅支持长按空格启动")
-            setGestureHint("长按空格开始", "长按空格开始语音，松开自动上屏，上滑取消")
-            listener.onVoiceCancel()
-            transcript.text = "已取消语音输入"
-            modelStatus.text = "语音已取消 · 音频未保存"
-            showInlineVoiceState("已取消")
-            hideInlineVoiceStateLater(260L)
-        }
-        voiceStartAction = { startVoice() }
-        voiceStopAction = { stopVoice() }
-        voiceCancelAction = {
-            voiceGestureSession = false
-            cancelVoice()
-        }
-        voiceCancelPreviewAction = { cancelling ->
-            cancelPreview = cancelling
-            if (cancelling) {
-                setMicState("⏹", "取消语音输入中，松开将丢弃本次语音")
-                setGestureHint("上滑取消 · 松开丢弃", "继续上滑取消语音，松开将丢弃本次语音")
-                transcript.text = "上滑取消 · 松开丢弃本次语音"
-                modelStatus.text = "取消状态 · 松开将丢弃"
-                showInlineVoiceState("松开取消", cancelling = true)
-            } else {
-                setMicState("⏹", "语音输入进行中，松开空格结束，上滑取消")
-                setGestureHint("松开空格上屏 · 上滑取消", "松开空格结束语音并自动上屏，上滑取消")
-                transcript.text = recognizedText.ifBlank { "正在聆听… 松开空格结束" }
-                modelStatus.text = "正在聆听 · 松开空格结束"
-                showInlineVoiceState(recognizedText.ifBlank { "正在聆听…" })
-            }
-        }
-    }
-
     private fun stopVoiceIfActive() {
-        val hadVoice = voicePending || voiceActive || voiceGestureSession
-        voicePending = false
-        voiceStopRequested = false
-        voiceEventGeneration++
-        listener.cancelVoiceRecognition()
-        voiceActive = false
+        val hadVoice =
+            voicePanelController.active ||
+                voicePanelController.pending ||
+                voiceGestureSession
         voiceGestureSession = false
-        spaceVoiceGestureActive = false
-        spaceVoiceGestureCancel = false
-        voiceInlineGeneration++
-        hideInlineVoiceState()
-        if (hadVoice || panel == Panel.VOICE) listener.onVoiceCancel()
-        voiceStartAction = null
-        voiceStopAction = null
-        voiceCancelAction = null
-        voiceCancelPreviewAction = null
-    }
-
-    private fun clipboardHistoryCard(entry: ClipboardEntry): LinearLayout {
-        val card = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(10), dp(12), dp(8))
-            minimumHeight = dp(70)
-            tag = "clip-card"
-            contentDescription = "剪贴板：${entry.text}，点击使用"
-            if (Build.VERSION.SDK_INT >= 30) {
-                stateDescription = if (entry.pinned) "已置顶" else "未置顶"
-            }
-            isClickable = true
-            isFocusable = true
-            setOnClickListener {
-                feedback()
-                listener.onCharacter(entry.text)
-            }
+        voicePanelController.resetAndCancel()
+        spaceVoiceGestureController.reset()
+        inlineVoicePresenter.invalidateGeneration()
+        inlineVoicePresenter.hide()
+        if (hadVoice || panel == Panel.VOICE) {
+            listener.onVoiceCancel()
         }
-        card.addView(TextView(context).apply {
-            text = entry.text
-            textSize = 13f
-            maxLines = 2
-            ellipsize = TextUtils.TruncateAt.END
-        }, wrapParams())
-        val meta = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        meta.addView(TextView(context).apply {
-            text = if (entry.pinned) "已置顶" else android.text.format.DateUtils.getRelativeTimeSpanString(
-                entry.timestamp, System.currentTimeMillis(), android.text.format.DateUtils.MINUTE_IN_MILLIS,
-            )
-            textSize = 11f
-        }, weightParams(1f))
-        meta.addView(button(if (entry.pinned) "取消置顶" else "置顶", 10f, true).apply {
-            tag = "clip-pin:${entry.text}"
-            setOnClickListener {
-                feedback()
-                ClipboardHistoryRepository.togglePin(context, entry.text)
-                renderClipboard(reusePanel = true)
-            }
-        }, wrapParams())
-        meta.addView(button("使用", 10f, true).apply {
-            tag = "clip-use:${entry.text}"
-            setOnClickListener {
-                feedback()
-                listener.onCharacter(entry.text)
-            }
-        }, wrapParams())
-        card.addView(meta, wrapParams())
-        return card
     }
 
     protected fun renderClipboard(reusePanel: Boolean = false) {
         inlineEditTarget = null
-        if (!reusePanel || expandedPanel.childCount == 0) {
-            expandedPanel.removeAllViews()
-            addPanelHead("剪贴板")
-        } else {
-            while (expandedPanel.childCount > 1) {
-                expandedPanel.removeViewAt(expandedPanel.childCount - 1)
-            }
-        }
-        val body = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), dp(10), dp(10), dp(10))
-            tag = "clipboard-panel"
-        }
-        val tabs = panelChipScroll(listOf("剪贴板", "常用语"), if (clipboardTab == 0) "剪贴板" else "常用语") { label ->
-            clipboardTab = if (label == "剪贴板") 0 else 1
-            renderClipboard(reusePanel = true)
-        }
-        body.addView(tabs, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(48),
-        ).apply { bottomMargin = dp(8) })
-        val col = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        if (clipboardTab == 0) {
-            // Reading the system clipboard + parsing the history JSON is disk/I/O
-            // work; do it off the UI thread and render once it returns.
-            col.addView(sectionTitle("最近复制"), wrapParams())
-            val loadingHint = TextView(context).apply {
-                text = "正在读取剪贴板…"
-                textSize = 13f
-                setPadding(dp(4), dp(6), dp(4), 0)
-                tag = "panel-note"
-            }
-            col.addView(loadingHint, wrapParams())
-            val gen = ++clipboardLoadGen
-            Thread {
-                val historyResult = runCatching {
-                    ClipboardHistoryRepository.capturePrimary(context)
-                    ClipboardHistoryRepository.load(context)
-                }
-                post {
-                    if (gen != clipboardLoadGen || clipboardTab != 0 || col.parent == null) return@post
-                    (loadingHint.parent as? ViewGroup)?.removeView(loadingHint)
-                    fun addRefreshAction() {
-                        col.addView(button("重新读取", 12f, true).apply {
-                            tag = "clipboard-refresh"
-                            contentDescription = "重新读取剪贴板"
-                            setOnClickListener {
-                                feedback()
-                                renderClipboard(reusePanel = true)
-                            }
-                        }, LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.WRAP_CONTENT,
-                            dp(48),
-                        ).apply {
-                            topMargin = dp(8)
-                        })
-                    }
-                    if (historyResult.isFailure) {
-                        col.addView(TextView(context).apply {
-                            text = "暂时无法读取剪贴板，请重试。"
-                            textSize = 13f
-                            setPadding(dp(4), dp(6), dp(4), 0)
-                            tag = "panel-error"
-                        }, wrapParams())
-                        addRefreshAction()
-                    } else if (historyResult.getOrThrow().isEmpty()) {
-                        col.addView(TextView(context).apply {
-                            text = "暂无剪贴历史；复制文本后重新打开这里即可看到。"
-                            textSize = 13f
-                            setPadding(dp(4), dp(6), dp(4), 0)
-                            tag = "panel-note"
-                        }, wrapParams())
-                        addRefreshAction()
-                    } else {
-                        historyResult.getOrThrow().forEach { entry -> col.addView(clipboardHistoryCard(entry), LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT,
-                        ).apply { bottomMargin = dp(7) }) }
-                        addClipboardRetentionControls(body)
-                    }
-                    onClipboardContentLoaded()
-                }
-            }.apply { isDaemon = true }.start()
-        } else {
-            col.addView(button("新增常用语", 13f, true).apply {
-                tag = "quick-phrase-add"
-                setOnClickListener {
-                    feedback()
-                    openQuickPhraseEditor(null)
-                }
-            }, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(48),
-            ).apply { bottomMargin = dp(8) })
-
-            val phrases = QuickPhraseRepository.load(context)
-            if (phrases.isEmpty()) {
-                col.addView(TextView(context).apply {
-                    text = "还没有常用语；点击上方按钮添加后即可一键输入。"
-                    textSize = 12f
-                    setPadding(dp(4), dp(6), dp(4), 0)
-                    tag = "panel-note"
-                }, wrapParams())
-            }
-            phrases.groupBy { it.category }
-                .forEach { (category, phrases) ->
-                    col.addView(sectionTitle(category), wrapParams())
-                    phrases.forEach { phrase ->
-                        val row = LinearLayout(context).apply {
-                            orientation = LinearLayout.HORIZONTAL
-                            tag = "phrase-card"
-                        }
-                        row.addView(
-                            key(phrase.text, false, null, 1f, 13f) {
-                                listener.onCharacter(phrase.text)
-                            }.apply {
-                                setPadding(dp(12), 0, dp(12), 0)
-                                tag = "phrase:${phrase.id}"
-                            },
-                            LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(5) },
-                        )
-                        row.addView(button("编辑", 11f, true).apply {
-                            tag = "phrase-edit:${phrase.id}"
-                            setOnClickListener {
-                                feedback()
-                                openQuickPhraseEditor(phrase)
-                            }
-                        }, LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginEnd = dp(5) })
-                        row.addView(button("删除", 11f, true).apply {
-                            tag = "phrase-delete:${phrase.id}"
-                            setOnClickListener {
-                                feedback()
-                                val dialog = android.app.AlertDialog.Builder(context)
-                                    .setTitle("删除常用语？")
-                                    .setMessage(phrase.text)
-                                    .setNegativeButton("取消", null)
-                                    .setPositiveButton("删除") { _, _ ->
-                                        QuickPhraseRepository.remove(context, phrase.id)
-                                        renderClipboard(reusePanel = true)
-                                    }
-                                    .create()
-                                dialog.setOnShowListener {
-                                    SetupUi.styleDialog(dialog, context, destructivePositive = true)
-                                }
-                                dialog.show()
-                            }
-                        }, LinearLayout.LayoutParams(dp(48), dp(48)))
-                        col.addView(row, LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT,
-                            dp(48),
-                        ).apply { bottomMargin = dp(7) })
-                    }
-                }
-        }
-        val clipboardScroll = panelVerticalScroll(col, "clipboard-scroll")
-        rememberPanelVerticalScroll(clipboardScroll, "clipboard:$clipboardTab")
-        body.addView(
-            clipboardScroll,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1f,
-            ),
-        )
-        // Keep history management reachable while the clipboard is loading or
-        // already empty. Rebuilding the async content must not make the
-        // destructive-action entry point disappear for a frame.
-        if (clipboardTab == 0) addClipboardRetentionControls(body)
-        expandedPanel.addView(body, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(panelBodyHeightDp()),
-        ))
-        expandedPanel.post { requestLayout() }
-        applyTheme()
-        onViewHierarchyRebuilt()
-    }
-
-    /** Keep clipboard retention actions available in every keyboard-view entry point. */
-    private fun addClipboardRetentionControls(body: LinearLayout) {
-        if (body.findViewWithTag<View>("clipboard-retention-actions") != null) return
-        val row = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            tag = "clipboard-retention-actions"
-        }
-        row.addView(
-            clipboardRetentionAction("清除未固定", destructive = false) {
-                ClipboardHistoryRepository.clearUnpinned(context)
-                renderClipboard(reusePanel = true)
-                focusPanelEntryPoint()
-            },
-            LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(6) },
-        )
-        row.addView(
-            clipboardRetentionAction("清空全部", destructive = true) {
-                confirmClearClipboardHistory()
-            },
-            LinearLayout.LayoutParams(0, dp(48), 1f),
-        )
-        body.addView(
-            row,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(48),
-            ).apply { topMargin = dp(6) },
-        )
-        applyTheme()
-    }
-
-    private fun confirmClearClipboardHistory() {
-        val dialog = android.app.AlertDialog.Builder(context)
-            .setTitle("清空全部剪贴历史？")
-            .setMessage("已固定的内容也会删除，且无法恢复。")
-            .setNegativeButton("取消", null)
-            .setPositiveButton("清空全部", null)
-            .create()
-        dialog.setOnShowListener {
-            SetupUi.styleDialog(dialog, context, destructivePositive = true)
-            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setOnClickListener {
-                ClipboardHistoryRepository.clearAll(context)
-                dialog.dismiss()
-                renderClipboard(reusePanel = true)
-                focusPanelEntryPoint()
-            }
-        }
-        dialog.show()
-    }
-
-    private fun clipboardRetentionAction(
-        label: String,
-        destructive: Boolean,
-        onClick: () -> Unit,
-    ): TextView = TextView(context).apply {
-        text = label
-        textSize = 12f
-        gravity = Gravity.CENTER
-        minHeight = dp(48)
-        minimumHeight = dp(48)
-        isClickable = true
-        isFocusable = true
-        tag = if (destructive) "clipboard-retention-destructive" else "clipboard-retention-action"
-        contentDescription = if (destructive) {
-            "$label，删除全部剪贴历史"
-        } else {
-            "$label，保留已固定内容"
-        }
-        setOnClickListener {
-            feedback()
-            onClick()
-        }
+        clipboardPanelController.render(reusePanel)
     }
 
     /** Called on the UI thread after the asynchronous clipboard body is populated. */
     protected open fun onClipboardContentLoaded() = Unit
-
-    private fun emojiCell(emoji: String): View {
-        val cell = FrameLayout(context).apply {
-            tag = "emoji-cell"
-            contentDescription = emoji
-            isClickable = true
-            isFocusable = true
-            background = null
-        }
-        val fallback = TextView(context).apply {
-            text = emoji
-            textSize = 21f
-            gravity = Gravity.CENTER
-            includeFontPadding = false
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-        }
-        cell.addView(fallback, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT,
-        ))
-        FluentEmojiAssetRepository.pathFor(context, emoji)?.let { assetPath ->
-            val image = ImageView(context).apply {
-                scaleType = ImageView.ScaleType.FIT_CENTER
-                visibility = View.INVISIBLE
-                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                tag = assetPath
-            }
-            cell.addView(image, FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT,
-            ))
-            requestEmojiBitmap(context, assetPath) { bitmap ->
-                if (image.tag == assetPath) {
-                    image.setImageBitmap(bitmap)
-                    image.visibility = View.VISIBLE
-                    fallback.visibility = View.INVISIBLE
-                }
-            }
-        }
-        cell.setOnClickListener {
-            feedback()
-            listener.onEmojiSelected(emoji)
-        }
-        return cell
-    }
-
-    private fun symbolItems(category: String): List<String> = when (category) {
-        "中文" -> ImeData.symbols["中文标点"].orEmpty()
-        "英文" -> ImeData.symbols["英文标点"].orEmpty()
-        "数学" -> listOf(
-            ImeData.symbols["数学运算"].orEmpty(),
-            ImeData.symbols["更多数学"].orEmpty(),
-            ImeData.symbols["希腊字母"].orEmpty(),
-            ImeData.symbols["上下标"].orEmpty(),
-        ).flatten()
-        "序号" -> listOf(
-            ImeData.symbols["数字序号"].orEmpty(),
-            ImeData.symbols["数字扩展"].orEmpty(),
-        ).flatten()
-        "单位" -> listOf(
-            ImeData.symbols["货币单位"].orEmpty(),
-            ImeData.symbols["单位符号"].orEmpty(),
-        ).flatten()
-        "编程" -> ImeData.symbols["技术编程"].orEmpty()
-        "特殊" -> listOf(
-            ImeData.symbols["数字序号"].orEmpty(),
-            ImeData.symbols["特殊图形"].orEmpty(),
-            ImeData.symbols["几何图形"].orEmpty(),
-            ImeData.symbols["箭头线条"].orEmpty(),
-            ImeData.symbols["括号边框"].orEmpty(),
-            ImeData.symbols["网络颜文字"].orEmpty(),
-        ).flatten()
-        "自定义" -> CustomSymbolRepository.load(context).map { it.symbol }
-        else -> listOf(
-            ImeData.symbols["常用"].orEmpty(),
-            ImeData.symbols["中文标点"].orEmpty().take(12),
-            ImeData.symbols["数学运算"].orEmpty().take(12),
-        ).flatten().distinct()
-    }
 
     private fun openQuickPhraseEditor(phrase: QuickPhrase?) {
         val intent = Intent(context, QuickPhraseEditActivity::class.java)
@@ -3876,275 +1902,16 @@ open class ImeKeyboardView(
         context.startActivity(intent)
     }
 
-    private fun renderTextEditor() {
-        addPanelHead("文本编辑")
-        val body = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), dp(10), dp(10), dp(10))
-            tag = "text_editor_panel"
-        }
-        val quick = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        listOf("全选" to "select-all", "复制" to "copy", "剪切" to "cut", "粘贴" to "paste", "撤销" to "undo")
-            .forEach { (label, action) ->
-                quick.addView(
-                    key(label, true, null, 1f, 10f) { listener.onTextEdit(action) }.apply {
-                        tag = "textedit-action:$action"
-                    },
-                    LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(5) },
-                )
-            }
-        body.addView(quick, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(48),
-        ).apply { bottomMargin = dp(10) })
-        val cross = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            tag = "textedit-cross"
-        }
-        fun cell(label: String? = null, action: String? = null, center: Boolean = false): TextView =
-            button(label ?: "", if (center) 9f else 14f, !center).apply {
-                if (action != null) {
-                    setOnClickListener {
-                        feedback()
-                        listener.onTextEdit(action)
-                    }
-                } else {
-                    tag = "textedit-spacer"
-                    isClickable = false
-                    isFocusable = false
-                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                    contentDescription = null
-                }
-                if (center) text = "光标"
-            }
-        listOf(
-            listOf(cell(), cell("▲", "up"), cell()),
-            listOf(cell("◀", "left"), cell(center = true), cell("▶", "right")),
-            listOf(cell(), cell("▼", "down"), cell()),
-        ).forEach { rowItems ->
-            val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            rowItems.forEach { c -> row.addView(c, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(5) }) }
-            cross.addView(row, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(48),
-            ).apply { bottomMargin = dp(5) })
-        }
-        body.addView(cross, LinearLayout.LayoutParams(dp(158), dp(150)).apply {
-            gravity = Gravity.CENTER_HORIZONTAL
-        })
-        expandedPanel.addView(body, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(panelBodyHeightDp()),
-        ))
-        applyTextEditControlAvailability(body)
-    }
-
-    /** Keep controls that cannot be implemented for arbitrary editors visibly unavailable. */
-    private fun applyTextEditControlAvailability(root: View) {
-        fun visit(view: View) {
-            val label = when (view) {
-                is ImeKeyView -> view.contentDescription?.toString().orEmpty()
-                is TextView -> view.text.toString()
-                else -> ""
-            }
-            if (label.isNotEmpty() && TextEditControlPolicy.isUnavailableLabel(label, passwordField)) {
-                val reason = TextEditControlPolicy.unavailableReason(label, passwordField)
-                view.isEnabled = false
-                view.isClickable = false
-                view.alpha = 0.38f
-                view.contentDescription = label
-                if (Build.VERSION.SDK_INT >= 30) view.stateDescription = reason
-            }
-            if (view is ViewGroup) {
-                for (index in 0 until view.childCount) visit(view.getChildAt(index))
-            }
-        }
-        visit(root)
-    }
-
     /** Keep copy/cut/paste honest as the target editor selection changes. */
     internal fun refreshTextEditAvailability(
         selectionAvailable: Boolean,
         clipboardAvailable: Boolean,
     ) {
         if (panel != Panel.TEXT_EDITOR) return
-
-        fun visit(view: View) {
-            val action = (view.tag as? String)
-                ?.takeIf { it.startsWith("textedit-action:") }
-                ?.substringAfter(':')
-            if (action != null && (view is ImeKeyView || view is TextView)) {
-                val label = when (view) {
-                    is ImeKeyView -> view.contentDescription?.toString().orEmpty()
-                    is TextView -> view.text.toString()
-                    else -> ""
-                }
-                val policyUnavailable = TextEditControlPolicy.isUnavailableLabel(label, passwordField)
-                val dynamicReason = when {
-                    passwordField && label in setOf("全选", "复制", "剪切") -> "密码输入中不可用"
-                    label in setOf("复制", "剪切") && !selectionAvailable -> "请先选择文本"
-                    label == "粘贴" && !clipboardAvailable -> "剪贴板暂无文本"
-                    else -> null
-                }
-                val unavailable = policyUnavailable || dynamicReason != null
-                view.isEnabled = !unavailable
-                view.isClickable = !unavailable
-                view.alpha = if (unavailable) 0.38f else 1f
-                val reason = dynamicReason ?: "当前编辑器暂不支持"
-                view.contentDescription = if (unavailable && Build.VERSION.SDK_INT < 30) {
-                    "$label，不可用：$reason"
-                } else {
-                    label
-                }
-                if (Build.VERSION.SDK_INT >= 30) {
-                    view.stateDescription = if (unavailable) {
-                        reason
-                    } else {
-                        "可用"
-                    }
-                }
-            }
-            if (view is ViewGroup) {
-                for (index in 0 until view.childCount) visit(view.getChildAt(index))
-            }
-        }
-        visit(expandedPanel)
-    }
-
-    private fun renderSettings(reusePanel: Boolean = false) {
-        val previousFocusKey = if (reusePanel) semanticFocusKey(expandedPanel.findFocus()) else null
-        val previousScrollY = if (reusePanel && expandedPanel.childCount > 1) {
-            (expandedPanel.getChildAt(1) as? ScrollView)?.scrollY ?: settingsScrollY
-        } else {
-            settingsScrollY
-        }
-        if (!reusePanel || expandedPanel.childCount == 0) {
-            addPanelHead("偏好设置")
-        } else {
-            while (expandedPanel.childCount > 1) {
-                expandedPanel.removeViewAt(expandedPanel.childCount - 1)
-            }
-        }
-        val scroll = ScrollView(context).apply {
-            tag = "settings-scroll"
-            isFillViewport = true
-            isVerticalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
-            setOnScrollChangeListener { _, _, scrollY, _, _ -> settingsScrollY = scrollY }
-        }
-        val content = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(12), dp(12), dp(18))
-            tag = "settings-panel"
-        }
-        content.addView(sectionTitle("键盘主题"), wrapParams())
-        content.addView(panelChipScroll(ImeTheme.entries.map { it.label }, theme.label) { label ->
-            ImeTheme.entries.firstOrNull { it.label == label }?.let { selectedTheme ->
-                setTheme(selectedTheme)
-                renderSettings(reusePanel = true)
-            }
-        }, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(48),
-        ).apply { bottomMargin = dp(12) })
-        content.addView(sectionTitle("外观"), wrapParams())
-        content.addView(panelChipScroll(ImeAppearance.entries.map { it.label }, appearance.label) { label ->
-            appearance = ImeAppearance.entries.first { it.label == label }
-            setAppearance(appearance)
-            listener.onAppearanceChanged(appearance)
-            renderSettings(reusePanel = true)
-        }, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(48),
-        ).apply { bottomMargin = dp(12) })
-        content.addView(sectionTitle("强调色"), wrapParams())
-        content.addView(
-            accentColorRow(),
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { bottomMargin = dp(12) },
+        textEditorPanelController.refreshAvailability(
+            selectionAvailable = selectionAvailable,
+            clipboardAvailable = clipboardAvailable,
         )
-        content.addView(sectionTitle("按键皮肤"), wrapParams())
-        content.addView(
-            settingGroup(
-                settingsSlider("圆角", 0, 24, skinRadius) { v ->
-                    skinRadius = v; listener.onSkinChanged(skinOpacity, skinRadius, skinFontSize, skinPrimaryColor)
-                    applyTheme()
-                },
-                settingsSlider("不透明度", 70, 100, skinOpacity) { v ->
-                    skinOpacity = v; listener.onSkinChanged(skinOpacity, skinRadius, skinFontSize, skinPrimaryColor)
-                    applyTheme()
-                },
-                settingsSlider("按键字号", 14, 22, skinFontSize) { v ->
-                    skinFontSize = v; listener.onSkinChanged(skinOpacity, skinRadius, skinFontSize, skinPrimaryColor)
-                    applyTheme()
-                },
-            ),
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { bottomMargin = dp(12) },
-        )
-        content.addView(sectionTitle("按键与输入"), wrapParams())
-        content.addView(
-            settingGroup(
-                settingToggleRow("按键音效", "机械轴敲击反馈"),
-                settingToggleRow("触感震动", "轻微触感反馈"),
-                settingToggleRow("按键气泡", "可选字母预览，默认仅按键变色"),
-            ),
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { bottomMargin = dp(12) },
-        )
-        content.addView(sectionTitle("智能输入"), wrapParams())
-        content.addView(
-            settingGroup(
-                settingNavigationRow(
-                    "模糊音与智能纠错",
-                    "进入后配置 z/zh、c/ch、s/sh 等规则",
-                ) { showPanel(Panel.FUZZY_SETTINGS) },
-            ),
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { bottomMargin = dp(12) },
-        )
-        scroll.addView(content, ViewGroup.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-        ))
-        expandedPanel.addView(scroll, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            0,
-            1f,
-        ))
-        scroll.post {
-            scroll.scrollTo(0, previousScrollY)
-            previousFocusKey?.let { key -> findSemanticFocusTarget(expandedPanel, key)?.requestFocus() }
-        }
-        if (reusePanel) {
-            applyTheme()
-            onViewHierarchyRebuilt()
-        }
-    }
-
-    private fun semanticFocusKey(view: View?): String? {
-        val description = view?.contentDescription?.toString()
-            ?.substringBefore('，')
-            ?.takeIf { it.isNotBlank() }
-        return description ?: (view?.tag as? String)?.takeIf { it.isNotBlank() }
-    }
-
-    private fun findSemanticFocusTarget(root: View, key: String): View? {
-        if (semanticFocusKey(root) == key && root.isFocusable) return root
-        if (root is ViewGroup) {
-            for (index in 0 until root.childCount) {
-                findSemanticFocusTarget(root.getChildAt(index), key)?.let { return it }
-            }
-        }
-        return null
     }
 
     private fun sectionTitle(textValue: String): TextView = TextView(context).apply {
@@ -4155,247 +1922,6 @@ open class ImeKeyboardView(
         tag = "panel-section-title"
     }
 
-    private fun settingGroup(vararg rows: View): LinearLayout = LinearLayout(context).apply {
-        orientation = LinearLayout.VERTICAL
-        tag = "setting-group"
-        rows.forEachIndexed { index, row ->
-            if (index > 0) {
-                addView(View(context).apply { tag = "setting-divider" }, LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    dp(1),
-                ).apply {
-                    marginStart = dp(44)
-                    marginEnd = dp(12)
-                })
-            }
-            addView(row, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                if (row is TextView) dp(54) else LinearLayout.LayoutParams.WRAP_CONTENT,
-            ))
-        }
-    }
-
-    private fun settingIcon(label: String): ImageView = ImageView(context).apply {
-        setImageResource(
-            when (label) {
-                "按键音效" -> R.drawable.ic_volume
-                "触感震动" -> R.drawable.ic_vibration
-                "按键气泡" -> R.drawable.ic_bubble
-                "模糊音与智能纠错", "启用模糊音" -> R.drawable.ic_tune
-                else -> R.drawable.ic_tune
-            },
-        )
-        scaleType = ImageView.ScaleType.CENTER
-        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-        tag = "setting-icon"
-    }
-
-    private fun settingToggleRow(label: String, sub: String): LinearLayout {
-        val row = LinearLayout(context)
-        fun updateRowAccessibility(enabled: Boolean) {
-            row.contentDescription = "$label，$sub，${if (enabled) "已开启" else "已关闭"}"
-            if (Build.VERSION.SDK_INT >= 30) {
-                row.stateDescription = if (enabled) "已开启" else "已关闭"
-            }
-        }
-        val toggleView = toggle(label, ::updateRowAccessibility).apply {
-            // The row is the single accessibility/control target. Keep the
-            // visual switch touchable, but do not expose a duplicate node.
-            isFocusable = false
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
-        }
-        row.apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), 0, dp(14), 0)
-            tag = "setting-row"
-            minimumHeight = dp(ImeGeometryTokens.SETTING_ROW_HEIGHT_DP)
-            isClickable = true
-            isFocusable = true
-            setOnClickListener { toggleView.performClick() }
-            addView(settingIcon(label), LinearLayout.LayoutParams(dp(26), dp(26)).apply {
-                marginEnd = dp(8)
-            })
-            addView(LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER_VERTICAL
-                addView(TextView(context).apply {
-                    text = label
-                    textSize = 14f
-                    includeFontPadding = false
-                }, wrapParams())
-                addView(TextView(context).apply {
-                    text = sub
-                    textSize = 11f
-                    includeFontPadding = false
-                    setPadding(0, dp(3), 0, 0)
-                }, wrapParams())
-                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            }, weightParams(1f))
-            addView(toggleView, wrapParams())
-        }
-        updateRowAccessibility(onState(label))
-        return row
-    }
-
-    private fun settingNavigationRow(label: String, sub: String, onTap: () -> Unit): LinearLayout =
-        LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), 0, dp(14), 0)
-            tag = "setting-row"
-            contentDescription = "$label，$sub，点击进入"
-            minimumHeight = dp(ImeGeometryTokens.SETTING_ROW_HEIGHT_DP)
-            isClickable = true
-            isFocusable = true
-            setOnClickListener { feedback(); onTap() }
-            addView(settingIcon(label), LinearLayout.LayoutParams(dp(26), dp(26)).apply {
-                marginEnd = dp(8)
-            })
-            addView(LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER_VERTICAL
-                addView(TextView(context).apply {
-                    text = label
-                    textSize = 14f
-                    includeFontPadding = false
-                }, wrapParams())
-                addView(TextView(context).apply {
-                    text = sub
-                    textSize = 11f
-                    includeFontPadding = false
-                    setPadding(0, dp(3), 0, 0)
-                }, wrapParams())
-                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            }, weightParams(1f))
-            addView(TextView(context).apply {
-                text = "›"
-                textSize = 18f
-                gravity = Gravity.CENTER
-                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                tag = "setting-chevron"
-            }, LinearLayout.LayoutParams(dp(28), dp(44)))
-        }
-
-    private fun renderFuzzySettings() {
-        addPanelHead("模糊音纠错")
-        val scroll = ScrollView(context).apply {
-            isFillViewport = true
-            isVerticalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
-        }
-        val content = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(12), dp(12), dp(18))
-            tag = "fuzzy-settings-panel"
-        }
-        content.addView(TextView(context).apply {
-            text = "用于处理常见的近音输入。开启后，候选会同时尝试相近声母，不会改变用户已经输入的拼音。"
-            textSize = 13f
-            setLineSpacing(0f, 1.15f)
-            tag = "panel-note"
-        }, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(54),
-        ).apply { bottomMargin = dp(10) })
-        content.addView(
-            settingGroup(settingToggleRow("启用模糊音", "z/zh · c/ch · s/sh · l/n")),
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { bottomMargin = dp(14) },
-        )
-        content.addView(sectionTitle("当前规则"), wrapParams())
-        content.addView(TextView(context).apply {
-            text = "z / zh · c / ch · s / sh · l / n · en / eng · in / ing"
-            textSize = 13f
-            setPadding(0, dp(6), 0, dp(6))
-        }, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-        ).apply { bottomMargin = dp(14) })
-        content.addView(TextView(context).apply {
-            text = "规则由输入法自动参与候选计算，暂不单独修改每一组映射。"
-            textSize = 12f
-            tag = "panel-note"
-        }, wrapParams())
-        scroll.addView(content, ViewGroup.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-        ))
-        expandedPanel.addView(scroll, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            0,
-            1f,
-        ))
-    }
-
-    private fun toggle(seed: String, onChanged: (Boolean) -> Unit = {}): View {
-        val on = when (seed) {
-            "按键音效" -> soundEnabled
-            "触感震动" -> hapticEnabled
-            "模糊音纠错" -> fuzzyEnabled
-            "按键气泡" -> popupEnabled
-            else -> true
-        }
-        val isOn = onState(seed)
-        val knob = View(context).apply {
-            layoutParams = FrameLayout.LayoutParams(
-                dp(ImeGeometryTokens.SWITCH_KNOB_DP),
-                dp(ImeGeometryTokens.SWITCH_KNOB_DP),
-            ).apply {
-                gravity = Gravity.START or Gravity.CENTER_VERTICAL
-            }
-            background = rounded(Color.WHITE, dp(ImeGeometryTokens.PILL_RADIUS_DP))
-            translationX = if (isOn) dp(ImeGeometryTokens.SWITCH_KNOB_TRAVEL_DP).toFloat() else 0f
-        }
-        return FrameLayout(context).apply {
-            setPadding(
-                dp(ImeGeometryTokens.SWITCH_PADDING_DP),
-                dp(ImeGeometryTokens.SWITCH_PADDING_DP),
-                dp(ImeGeometryTokens.SWITCH_PADDING_DP),
-                dp(ImeGeometryTokens.SWITCH_PADDING_DP),
-            )
-            minimumWidth = dp(ImeGeometryTokens.SWITCH_WIDTH_DP)
-            minimumHeight = dp(ImeGeometryTokens.SWITCH_HEIGHT_DP)
-            tag = "toggle"
-            isClickable = true
-            isFocusable = true
-            fun updateAccessibilityState(enabled: Boolean) {
-                contentDescription = "$seed，${if (enabled) "已开启" else "已关闭"}"
-                if (android.os.Build.VERSION.SDK_INT >= 30) {
-                    stateDescription = if (enabled) "已开启" else "已关闭"
-                }
-            }
-            updateAccessibilityState(isOn)
-            addView(knob)
-            setOnClickListener {
-                feedback()
-                val next = !onState(seed)
-                toggleCallback(seed)?.invoke(next)
-                updateAccessibilityState(next)
-                onChanged(next)
-                val knobView = getChildAt(0)
-                knobView.layoutParams = FrameLayout.LayoutParams(
-                    dp(ImeGeometryTokens.SWITCH_KNOB_DP),
-                    dp(ImeGeometryTokens.SWITCH_KNOB_DP),
-                ).apply {
-                    gravity = Gravity.START or Gravity.CENTER_VERTICAL
-                }
-                knobView.animate()
-                    .cancel()
-                knobView.animate()
-                    .translationX(
-                        if (next) dp(ImeGeometryTokens.SWITCH_KNOB_TRAVEL_DP).toFloat() else 0f,
-                    )
-                    .setDuration(160L)
-                    .setInterpolator(DecelerateInterpolator(1.5f))
-                    .start()
-                applyTheme()
-            }
-        }
-    }
-
     private fun onState(seed: String): Boolean = when (seed) {
         "按键音效" -> soundEnabled
         "触感震动" -> hapticEnabled
@@ -4404,214 +1930,30 @@ open class ImeKeyboardView(
         else -> true
     }
 
-    private fun toggleCallback(seed: String): ((Boolean) -> Unit)? = when (seed) {
-        "按键音效" -> { { soundEnabled = it; listener.onSoundChanged(it) } }
-        "触感震动" -> { { hapticEnabled = it; listener.onHapticChanged(it) } }
-        "模糊音纠错", "启用模糊音" -> { { fuzzyEnabled = it; listener.onFuzzyChanged(it) } }
-        "按键气泡" -> { { popupEnabled = it; listener.onPopupChanged(it) } }
-        else -> null
-    }
-
-
-    private fun accentColorRow(): LinearLayout {
-        val current = AccentPalette.normalize(skinPrimaryColor)
-        val row = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            tag = "setting-group"
-            setPadding(dp(12), dp(12), dp(12), dp(12))
-        }
-        val swatchGrid = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-        }
-        AccentPalette.presets.chunked(6).forEach { presetRow ->
-            val swatchRow = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
+    private fun updateSettingToggle(seed: String, enabled: Boolean) {
+        when (seed) {
+            "按键音效" -> {
+                soundEnabled = enabled
+                listener.onSoundChanged(enabled)
             }
-            presetRow.forEach { (hex, label) ->
-                val selected = AccentPalette.normalize(hex) == current
-                swatchRow.addView(
-                    FrameLayout(context).apply {
-                        tag = "accent-swatch"
-                        contentDescription = "强调色$label，${if (selected) "已选中" else "未选中"}"
-                        if (Build.VERSION.SDK_INT >= 30) {
-                            stateDescription = if (selected) "已选中" else "未选中"
-                        }
-                        isClickable = true
-                        isFocusable = true
-                        addView(View(context).apply {
-                            background = GradientDrawable().apply {
-                                shape = GradientDrawable.OVAL
-                                setColor(AccentPalette.parse(hex))
-                                if (selected) setStroke(dp(2), contrastText(AccentPalette.parse(hex)))
-                            }
-                        }, FrameLayout.LayoutParams(dp(28), dp(28)).apply {
-                            gravity = Gravity.CENTER
-                        })
-                        if (selected) {
-                            addView(TextView(context).apply {
-                                text = "✓"
-                                textSize = 13f
-                                gravity = Gravity.CENTER
-                                includeFontPadding = false
-                                tag = "accent-selected-mark:$hex"
-                                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                            }, FrameLayout.LayoutParams(dp(28), dp(28)).apply {
-                                gravity = Gravity.CENTER
-                            })
-                        }
-                        setOnClickListener { feedback(); applyAccentColor(hex) }
-                    },
-                    LinearLayout.LayoutParams(dp(48), dp(48)),
-                )
+            "触感震动" -> {
+                hapticEnabled = enabled
+                listener.onHapticChanged(enabled)
             }
-            swatchGrid.addView(swatchRow, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                dp(48),
-            ))
-        }
-        row.addView(swatchGrid, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(144),
-        ))
-        val customSelected = AccentPalette.presets.none { AccentPalette.normalize(it.first) == current }
-        row.addView(TextView(context).apply {
-            text = if (customSelected) "自定义 · $current" else "自定义颜色"
-            textSize = 12f
-            gravity = Gravity.CENTER
-            includeFontPadding = false
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-            setPadding(dp(10), 0, dp(10), 0)
-            tag = "accent-custom"
-            minHeight = dp(48)
-            minimumHeight = dp(48)
-            isClickable = true
-            isFocusable = true
-            contentDescription = "自定义强调色，${if (customSelected) "已选中" else "未选中"}"
-            if (Build.VERSION.SDK_INT >= 30) stateDescription = if (customSelected) "已选中" else "未选中"
-            setOnClickListener { feedback(); showCustomAccentDialog() }
-        }, LinearLayout.LayoutParams(dp(132), dp(48)).apply {
-            topMargin = dp(6)
-        })
-        row.addView(TextView(context).apply {
-            text = AccentPalette.presets.firstOrNull { AccentPalette.normalize(it.first) == current }?.second ?: current
-            textSize = 12f
-            setPadding(0, dp(8), 0, 0)
-            tag = "panel-note"
-        }, wrapParams())
-        return row
-    }
-
-    private fun applyAccentColor(hex: String) {
-        skinPrimaryColor = AccentPalette.normalize(hex)
-        listener.onSkinChanged(skinOpacity, skinRadius, skinFontSize, skinPrimaryColor)
-        applyTheme()
-        if (panel == Panel.SETTINGS) renderSettings(reusePanel = true)
-    }
-
-    private fun showCustomAccentDialog() {
-        val field = EditText(context).apply {
-            setText(AccentPalette.normalize(skinPrimaryColor).removePrefix("#"))
-            hint = "RRGGBB"
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE
-            setSingleLine(true)
-            setSelectAllOnFocus(true)
-            filters = arrayOf(android.text.InputFilter.LengthFilter(6))
-        }
-        val dialog = android.app.AlertDialog.Builder(context)
-            .setTitle("自定义强调色")
-            .setMessage("输入 6 位十六进制颜色，例如 5B6B7A")
-            .setView(field)
-            .setPositiveButton("应用", null)
-            .setNegativeButton("取消", null)
-            .create()
-        dialog.setOnShowListener {
-            SetupUi.styleDialog(dialog, context)
-            val accent = AccentPalette.parse(skinPrimaryColor)
-            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setTextColor(accent)
-            dialog.getButton(android.content.DialogInterface.BUTTON_NEGATIVE).setTextColor(accent)
-            field.backgroundTintList = ColorStateList.valueOf(accent)
-            SetupUi.styleCursor(context, field)
-            field.setOnEditorActionListener { _, actionId, _ ->
-                if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
-                    dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick()
-                    true
-                } else {
-                    false
-                }
+            "模糊音纠错", "启用模糊音" -> {
+                fuzzyEnabled = enabled
+                listener.onFuzzyChanged(enabled)
             }
-            field.requestFocus()
-            field.selectAll()
-            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setOnClickListener {
-                val value = field.text.toString().trim().removePrefix("#")
-                if (!value.matches(Regex("[0-9a-fA-F]{6}"))) {
-                    field.error = "请输入 6 位十六进制颜色"
-                    field.requestFocus()
-                    return@setOnClickListener
-                }
-                applyAccentColor("#$value")
-                dialog.dismiss()
+            "按键气泡" -> {
+                popupEnabled = enabled
+                listener.onPopupChanged(enabled)
             }
         }
-        dialog.show()
     }
 
     private fun isNight(): Boolean =
         (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
-
-    private fun settingsSlider(labelText: String, min: Int, max: Int, initial: Int, onChange: (Int) -> Unit): LinearLayout {
-        val row = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(10), dp(4), dp(10), dp(4))
-            tag = "setting-row"
-            minimumHeight = dp(ImeGeometryTokens.SETTING_ROW_HEIGHT_DP)
-        }
-        row.addView(TextView(context).apply { text = labelText; textSize = 13f }, weightParams(1f))
-        val valueView = TextView(context).apply {
-            textSize = 12f
-            gravity = Gravity.CENTER
-            includeFontPadding = false
-            minWidth = dp(48)
-            contentDescription = "$labelText 当前值"
-        }
-        val suffix = when (labelText) {
-            "圆角" -> " dp"
-            "不透明度" -> "%"
-            "按键字号" -> " sp"
-            else -> ""
-        }
-        val seekBar = SeekBar(context).apply {
-            this.min = min
-            this.max = max
-            progress = initial.coerceIn(min, max)
-            minimumHeight = dp(48)
-            isFocusable = true
-            tag = "settings-slider:$labelText"
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
-                    val description = "$labelText，$progress$suffix"
-                    valueView.text = "$progress$suffix"
-                    contentDescription = description
-                    if (Build.VERSION.SDK_INT >= 30) stateDescription = description
-                    if (fromUser) onChange(progress)
-                }
-                override fun onStartTrackingTouch(seekBar: SeekBar) {}
-                override fun onStopTrackingTouch(seekBar: SeekBar) {}
-            })
-        }
-        row.addView(seekBar, weightParams(2f))
-        row.addView(valueView, LinearLayout.LayoutParams(dp(48), dp(48)))
-        val initialDescription = "$labelText，${seekBar.progress}$suffix"
-        valueView.text = "${seekBar.progress}$suffix"
-        seekBar.contentDescription = initialDescription
-        if (Build.VERSION.SDK_INT >= 30) seekBar.stateDescription = initialDescription
-        return row
-    }
 
     /** Route the keyboard's own keys into an inline quick-phrase editor. */
     fun insertIntoInlineEditor(text: String): Boolean {
@@ -4682,11 +2024,7 @@ open class ImeKeyboardView(
             listener.onCharacter(num)
             return
         }
-        if (mode == KeyboardMode.ENGLISH_T9) {
-            val (digits, selection) = replaceCompositionSelection(num)
-            lastT9Digits = digits
-            publishComposition(digits, candidatesForComposition(digits), selection)
-        } else if (mode == KeyboardMode.PINYIN_9) {
+        if (mode == KeyboardMode.PINYIN_9) {
             val current = composition.text.toString()
             val rawStart = composition.selectionStart.takeIf { it >= 0 }?.coerceIn(0, current.length) ?: current.length
             val rawEnd = composition.selectionEnd.takeIf { it >= 0 }?.coerceIn(0, current.length) ?: rawStart
@@ -4758,7 +2096,11 @@ open class ImeKeyboardView(
         pinyinBuffer.append(preview)
         currentCandidates = candidates
         updateTopZone(preview.isNotEmpty())
-        renderCandidateRow()
+        candidateBarController.render(
+            candidates = currentCandidates,
+            compositionPreview = composition.text.toString(),
+            showCompositionWhenEmpty = composeZone.visibility == View.VISIBLE,
+        )
         listener.onNineKeyCompositionChanged(
             composition = preview,
             digitBuffer = digits,
@@ -4788,7 +2130,11 @@ open class ImeKeyboardView(
         pinyinBuffer.append(text)
         currentCandidates = candidates
         updateTopZone(text.isNotEmpty())
-        renderCandidateRow()
+        candidateBarController.render(
+            candidates = currentCandidates,
+            compositionPreview = composition.text.toString(),
+            showCompositionWhenEmpty = composeZone.visibility == View.VISIBLE,
+        )
         listener.onCompositionChanged(text, candidates)
     }
 
@@ -4825,13 +2171,16 @@ open class ImeKeyboardView(
                 }
                 lastNinePinyinPaths = emptyList()
             }
-            KeyboardMode.ENGLISH_T9 -> lastT9Digits = text
             else -> Unit
         }
         val candidates = candidatesForComposition(text)
         currentCandidates = candidates
         updateTopZone(text.isNotEmpty())
-        renderCandidateRow()
+        candidateBarController.render(
+            candidates = currentCandidates,
+            compositionPreview = composition.text.toString(),
+            showCompositionWhenEmpty = composeZone.visibility == View.VISIBLE,
+        )
         listener.onCompositionChanged(text, candidates)
     }
 
@@ -4994,18 +2343,15 @@ open class ImeKeyboardView(
         val target = shift ?: return
         val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
-        applyThemeRecursive(target, theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor)))
+        themeApplier.apply(target, theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor)))
     }
 
     private fun applyAssociationTheme() {
-        if (!::associationRow.isInitialized) return
+        if (!::topZone.isInitialized) return
         val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
-        applyThemeRecursive(associationRow, theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor)))
+        themeApplier.apply(associationRow, theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor)))
     }
-
-    private fun firstCandidateOrComposition(): String =
-        currentCandidates.firstOrNull() ?: composition.text.toString()
 
     protected fun feedback() {
         if (hapticEnabled) performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
@@ -5032,104 +2378,6 @@ open class ImeKeyboardView(
     /** Key main-text size is scaled around the 17sp default from the skin font slider. */
     private fun skinFontScale(): Float = skinFontSize / 17f.coerceAtLeast(1f)
 
-    private fun renderExpanded(open: Boolean) {
-        if (!open) {
-            candidateExpandBtn.text = "⌄"
-            candidateExpandBtn.contentDescription = "展开更多候选"
-            candidateOverlay.animate().cancel()
-            keyboardBody.animate().cancel()
-            candidateOverlay.visibility = View.GONE
-            candidateOverlay.alpha = 1f
-            candidateOverlay.translationY = 0f
-            keyboardBody.visibility = View.VISIBLE
-            keyboardBody.alpha = 0.96f
-            keyboardBody.animate()
-                .alpha(1f)
-                .setDuration(120L)
-                .setInterpolator(DecelerateInterpolator(1.5f))
-                .start()
-            candidateExpandedOpen = false
-            renderedExpandedCandidates = null
-            renderedExpandedComposition = null
-            syncCandidateExpandControl()
-            return
-        }
-        val preview = composition.text.toString()
-        if (candidateExpandedOpen && candidateOverlay.visibility == View.VISIBLE &&
-            renderedExpandedCandidates == currentCandidates && renderedExpandedComposition == preview
-        ) return
-        val previousScroll = if (renderedExpandedComposition == preview) {
-            (candidateOverlay.getChildAt(1) as? ScrollView)?.scrollY ?: 0
-        } else 0
-        renderedExpandedCandidates = currentCandidates.toList()
-        renderedExpandedComposition = preview
-        candidateExpandedOpen = true
-        candidateExpandBtn.text = "⌃"
-        candidateExpandBtn.contentDescription = "收起候选"
-        if (Build.VERSION.SDK_INT >= 30) candidateExpandBtn.stateDescription = "已展开"
-        keyboardBody.visibility = View.GONE
-        keyboardBody.alpha = 1f
-        candidateOverlay.visibility = View.VISIBLE
-        candidateOverlay.alpha = 0f
-        candidateOverlay.translationY = dp(8).toFloat()
-        candidateOverlay.removeAllViews()
-        candidateOverlay.addView(
-            panelHead("候选字词"),
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(48),
-            ),
-        )
-        val scroll = ScrollView(context)
-        val col = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        if (currentCandidates.isEmpty()) {
-            col.addView(title("暂无候选", small = true), wrapParams())
-        } else {
-            expandedCandidateRows(currentCandidates).forEach { chunk ->
-                val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-                chunk.forEach { cand ->
-                    row.addView(
-                        key(cand, false, null, 1f, 15f) { listener.onCandidateSelected(cand) }.apply {
-                            allowTwoLineLabel()
-                            contentDescription = "候选:$cand"
-                        },
-                        LinearLayout.LayoutParams(
-                            0,
-                            dp(keyRowHeightDp()),
-                            candidateColumnSpan(cand).toFloat(),
-                        ).apply { marginEnd = dp(5) },
-                    )
-                }
-                val remaining = 4 - chunk.sumOf(::candidateColumnSpan)
-                if (remaining > 0) row.addView(View(context), LinearLayout.LayoutParams(0, 1, remaining.toFloat()))
-                col.addView(
-                    row,
-                    LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        dp(keyRowHeightDp()),
-                    ),
-                )
-            }
-        }
-        scroll.addView(col, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        candidateOverlay.addView(
-            scroll,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1f,
-            ),
-        )
-        applyTheme()
-        if (previousScroll > 0) scroll.post { scroll.scrollTo(0, previousScroll) }
-        candidateOverlay.animate()
-            .alpha(1f)
-            .translationY(0f)
-            .setDuration(160L)
-            .setInterpolator(DecelerateInterpolator(1.5f))
-            .start()
-    }
-
     private fun key(
         text: String,
         func: Boolean,
@@ -5151,7 +2399,7 @@ open class ImeKeyboardView(
             setTag(MARK_FUNCTION_KEY, func)
             contentDescription = if (text.isNotEmpty()) text else if (iconRes != 0) "功能键" else " "
             if (!func && secondary != null && !showSecondaryHints) setSecondaryVisible(false)
-            minimumHeight = dp(48)
+            minimumHeight = dp(ImeGeometryTokens.TOUCH_TARGET_DP)
             setOnClickListener {
                 if (!consumeTouchFeedback()) feedback()
                 onTap()
@@ -5169,9 +2417,7 @@ open class ImeKeyboardView(
                         }
                         MotionEvent.ACTION_UP,
                         MotionEvent.ACTION_CANCEL,
-                        -> if (keepPopupAfterKeyUp) {
-                            keepPopupAfterKeyUp = false
-                        } else {
+                        -> if (!keyPopupController.consumeKeepAfterKeyUp()) {
                             hidePopup()
                         }
                     }
@@ -5188,8 +2434,8 @@ open class ImeKeyboardView(
         tag = "panel-button"
         gravity = Gravity.CENTER
         includeFontPadding = false
-        minHeight = dp(48)
-        minimumHeight = dp(48)
+        minHeight = dp(ImeGeometryTokens.TOUCH_TARGET_DP)
+        minimumHeight = dp(ImeGeometryTokens.TOUCH_TARGET_DP)
         isClickable = true
         isFocusable = true
         setOnTouchListener { _, event ->
@@ -5202,193 +2448,8 @@ open class ImeKeyboardView(
         if (!deleteCompositionAtCursor()) listener.onBackspace()
     }
 
-    private fun beginBackspaceGesture(
-        anchor: View,
-        rawX: Float,
-        rawY: Float,
-        clearUiAction: (Boolean) -> Unit,
-    ) {
-        if (backspaceGestureActive) finishBackspaceGesture(commit = false)
-        repeatHandler.removeCallbacks(repeatAction)
-        backspaceRepeatStartAction?.let(repeatHandler::removeCallbacks)
-        backspaceGestureActive = true
-        backspaceClearArmed = false
-        backspaceRepeatStarted = false
-        backspaceRepeatSuspended = false
-        backspaceStartX = rawX
-        backspaceStartY = rawY
-        backspaceAnchor = anchor
-        backspaceClearUiAction = clearUiAction
-        anchor.isPressed = true
-        anchor.parent?.requestDisallowInterceptTouchEvent(true)
-        clearUiAction(false)
-        hidePopup()
-        feedback()
-        val startRepeat = Runnable {
-            if (backspaceGestureActive && !backspaceClearArmed) repeatAction.run()
-        }
-        backspaceRepeatStartAction = startRepeat
-        repeatHandler.postDelayed(startRepeat, ViewConfiguration.getLongPressTimeout().toLong())
-    }
-
-    private fun updateBackspaceGesture(rawX: Float, rawY: Float) {
-        if (!backspaceGestureActive) return
-        val upward = backspaceStartY - rawY
-        val horizontal = kotlin.math.abs(rawX - backspaceStartX)
-        // As soon as the motion clearly points upward, suspend repeat-delete
-        // while waiting for the clear threshold. A slow swipe must not erase
-        // characters one by one before it becomes an atomic clear.
-        if (upward >= dp(8) && horizontal <= dp(96)) {
-            backspaceRepeatSuspended = true
-            backspaceRepeatStartAction?.let(repeatHandler::removeCallbacks)
-            repeatHandler.removeCallbacks(repeatAction)
-        } else if (backspaceRepeatSuspended) {
-            backspaceRepeatSuspended = false
-            backspaceRepeatStartAction?.let {
-                repeatHandler.postDelayed(it, if (backspaceRepeatStarted) 60L else ViewConfiguration.getLongPressTimeout().toLong())
-            }
-        }
-        val shouldArm = if (backspaceClearArmed) {
-            upward > dp(16) && horizontal <= dp(120)
-        } else {
-            upward >= dp(36) && horizontal <= dp(96)
-        }
-        if (shouldArm == backspaceClearArmed) return
-        backspaceClearArmed = shouldArm
-        backspaceClearUiAction?.invoke(shouldArm)
-        if (shouldArm) {
-            backspaceRepeatStartAction?.let(repeatHandler::removeCallbacks)
-            repeatHandler.removeCallbacks(repeatAction)
-            backspaceAnchor?.let { showPopup(it, "清空") }
-            repeatHandler.removeCallbacks(popupHideRunnable)
-            // Tactile confirmation that the gesture crossed into "clear all".
-            hapticFeedback()
-        } else {
-            hidePopup()
-            // Matching light tick when sliding back out of the armed clear tier.
-            hapticFeedback()
-        }
-    }
-
-    private fun finishBackspaceGesture(commit: Boolean) {
-        if (!backspaceGestureActive) return
-        val clearAll = commit && backspaceClearArmed
-        val deleteOnce = commit && !backspaceClearArmed && !backspaceRepeatStarted
-        repeatHandler.removeCallbacks(repeatAction)
-        backspaceRepeatStartAction?.let(repeatHandler::removeCallbacks)
-        backspaceRepeatStartAction = null
-        backspaceAnchor?.apply {
-            isPressed = false
-            parent?.requestDisallowInterceptTouchEvent(false)
-        }
-        backspaceGestureActive = false
-        backspaceClearUiAction?.invoke(false)
-        backspaceClearArmed = false
-        backspaceRepeatStarted = false
-        backspaceAnchor = null
-        backspaceClearUiAction = null
-        hidePopup()
-        when {
-            clearAll -> {
-                // One callback performs one batch clear. Never emulate this by
-                // dispatching hundreds of backspace events.
-                hapticFeedback()
-                listener.onClearAll()
-            }
-            deleteOnce -> {
-                hidePopup()
-                performBackspaceOnce()
-            }
-            else -> hidePopup()
-        }
-    }
-
-    private fun backspaceKey(): ImeKeyView = key("", true, null, 1f, 15f, iconRes = R.drawable.ic_backspace) {
-        performBackspaceOnce()
-    }.apply {
-        tag = "key-backspace"
-        contentDescription = "删除，向上滑清空"
-        accessibilityDelegate = object : View.AccessibilityDelegate() {
-            override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfo) {
-                super.onInitializeAccessibilityNodeInfo(host, info)
-                info.addAction(
-                    AccessibilityNodeInfo.AccessibilityAction(
-                        R.id.accessibility_clear_all,
-                        "清空全部",
-                    ),
-                )
-            }
-
-            override fun performAccessibilityAction(host: View, action: Int, args: android.os.Bundle?): Boolean {
-                if (action == R.id.accessibility_clear_all) {
-                    if (!host.isEnabled) return false
-                    feedback()
-                    listener.onClearAll()
-                    return true
-                }
-                return super.performAccessibilityAction(host, action, args)
-            }
-        }
-        val clearHint = TextView(context).apply {
-            text = "↑ 清空"
-            textSize = 7.5f
-            gravity = Gravity.CENTER
-            includeFontPadding = false
-            alpha = 0.72f
-            setTextColor(Color.GRAY)
-            isClickable = false
-            isFocusable = false
-            tag = "backspace-clear-hint"
-            contentDescription = null
-            visibility = View.INVISIBLE
-        }
-        addView(clearHint, FrameLayout.LayoutParams(dp(30), dp(14)).apply {
-            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            topMargin = dp(2)
-        })
-        fun setClearHintActive(active: Boolean) {
-            clearHint.visibility = if (backspaceGestureActive) View.VISIBLE else View.INVISIBLE
-            if (active) {
-                val destructive = theme.tokens(
-                    appearance,
-                    isNight(),
-                    AccentPalette.parse(skinPrimaryColor),
-                ).destructive
-                clearHint.text = "清空"
-                clearHint.setTextColor(contrastText(destructive))
-                clearHint.background = rounded(destructive, dp(ImeGeometryTokens.BADGE_RADIUS_DP))
-                clearHint.alpha = 1f
-            } else {
-                val secondary = theme.tokens(
-                    appearance,
-                    isNight(),
-                    AccentPalette.parse(skinPrimaryColor),
-                ).keySecondaryText
-                clearHint.text = "↑ 清空"
-                clearHint.setTextColor(secondary)
-                clearHint.background = null
-                clearHint.alpha = 0.72f
-            }
-        }
-        setOnTouchListener { view, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    clearHint.alpha = 1f
-                    beginBackspaceGesture(view, event.rawX, event.rawY, ::setClearHintActive)
-                    backspacePointerId = event.getPointerId(event.actionIndex)
-                    if (debugLogging) Log.d("OpenIme", "backspace-touch-down x=${event.rawX} y=${event.rawY}")
-                    true
-                }
-                // The keyboard root owns MOVE/UP so the gesture survives even
-                // when the finger leaves this key's rectangle.
-                MotionEvent.ACTION_MOVE,
-                MotionEvent.ACTION_UP,
-                MotionEvent.ACTION_CANCEL,
-                -> true
-                else -> true
-            }
-        }
-    }
+    private fun backspaceKey(): ImeKeyView =
+        backspaceKeyFactory.build()
 
     private fun title(text: String, small: Boolean = false) = TextView(context).apply {
         this.text = text
@@ -5396,527 +2457,57 @@ open class ImeKeyboardView(
         setPadding(0, 0, 0, dp(4))
     }
 
-    @SuppressLint("ClickableViewAccessibility")
     private fun showPopup(anchor: View, char: String) {
-        hidePopup()
-        keepPopupAfterKeyUp = false
-        val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-            android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val t = theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor))
-        val popupWidth = (anchor.width * 1.08f).toInt().coerceIn(dp(40), dp(64))
-        val popupHeight = dp(if (char == "清空") 36 else 48)
-        val p = TextView(context).apply {
-            text = char
-            textSize = if (char.length > 1) 13f else 16f
-            includeFontPadding = false
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-            gravity = Gravity.CENTER
-            setPadding(dp(8), dp(6), dp(8), dp(6))
-            val popupBackground = if (char == "清空") t.destructive else t.keyBackground
-            setTextColor(if (char == "清空") contrastText(popupBackground) else t.keyText)
-            background = rounded(
-                popupBackground,
-                dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-            )
-            elevation = dp(2).toFloat()
-        }
-        val anchorLocation = IntArray(2)
-        val rootLocation = IntArray(2)
-        anchor.getLocationOnScreen(anchorLocation)
-        getLocationOnScreen(rootLocation)
-        val anchorLeft = anchorLocation[0] - rootLocation[0]
-        val anchorTop = anchorLocation[1] - rootLocation[1]
-        val centeredLeft = anchorLeft + (anchor.width - popupWidth) / 2
-        val maxLeft = (width - popupWidth - contentInsetPx).coerceAtLeast(contentInsetPx)
-        val left = centeredLeft.coerceIn(contentInsetPx, maxLeft)
-        val top = (anchorTop - popupHeight - dp(8)).coerceAtLeast(dp(4))
-        addView(p, LayoutParams(popupWidth, popupHeight).apply {
-            gravity = Gravity.TOP or Gravity.START
-            leftMargin = left
-            topMargin = top
-        })
-        popupView = p
+        keyPopupController.show(anchor, char)
     }
 
     /** Horizontal long-press selector for symbols that share one key. */
-    @SuppressLint("ClickableViewAccessibility")
     private fun showChoicePopup(anchor: View, choices: List<String>) {
-        hidePopup()
-        keepPopupAfterKeyUp = true
-        val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-            android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val t = theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor))
-        val row = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(dp(5), dp(5), dp(5), dp(5))
-            background = rounded(t.keyBackground, dp(ImeGeometryTokens.CONTROL_RADIUS_DP))
-            elevation = dp(2).toFloat()
-            contentDescription = "长按符号选择"
-        }
-        choices.forEach { symbol ->
-            row.addView(TextView(context).apply {
-                text = symbol
-                textSize = 16f
-                includeFontPadding = false
-                gravity = Gravity.CENTER
-                setTextColor(t.keyText)
-                background = statefulRounded(
-                    Color.TRANSPARENT,
-                    t.keyPressedBackground,
-                    dp(ImeGeometryTokens.KEY_RADIUS_DP),
-                )
-                isClickable = true
-                isFocusable = true
-                contentDescription = "输入$symbol"
-                setPadding(dp(11), 0, dp(11), 0)
-                setOnClickListener {
-                    hidePopup()
-                    feedback()
-                    listener.onCharacter(symbol)
-                }
-            }, LinearLayout.LayoutParams(dp(48), dp(48)))
-        }
-        val anchorLocation = IntArray(2)
-        val rootLocation = IntArray(2)
-        anchor.getLocationOnScreen(anchorLocation)
-        getLocationOnScreen(rootLocation)
-        val popupWidth = dp(48 * choices.size + 10)
-        val popupHeight = dp(58)
-        val anchorLeft = anchorLocation[0] - rootLocation[0]
-        val anchorTop = anchorLocation[1] - rootLocation[1]
-        val centeredLeft = anchorLeft + (anchor.width - popupWidth) / 2
-        val maxLeft = (width - popupWidth - contentInsetPx).coerceAtLeast(contentInsetPx)
-        val left = centeredLeft.coerceIn(contentInsetPx, maxLeft)
-        val top = (anchorTop - popupHeight - dp(8)).coerceAtLeast(dp(4))
-        addView(row, LayoutParams(popupWidth, popupHeight).apply {
-            gravity = Gravity.TOP or Gravity.START
-            leftMargin = left
-            topMargin = top
-        })
-        popupView = row
+        keyPopupController.showChoices(anchor, choices)
     }
 
     private fun hidePopup() {
-        repeatHandler.removeCallbacks(popupHideRunnable)
-        popupView?.let { removeView(it) }
-        popupView = null
-        keepPopupAfterKeyUp = false
+        keyPopupController.hide()
     }
 
+    private fun currentThemeTokens(): ImeTheme.Tokens =
+        theme.tokens(
+            appearance,
+            isNight(),
+            AccentPalette.parse(skinPrimaryColor),
+        )
+
     protected fun applyTheme() {
-        val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-            android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val t = theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor))
+        val t = currentThemeTokens()
         setBackgroundColor(t.keyboardBackground)
         mainDock.setBackgroundColor(t.expandedBackground)
         keyboardBody.setBackgroundColor(t.keyboardBackground)
         topZone.setBackgroundColor(t.toolbarBackground)
         expandedPanel.setBackgroundColor(t.expandedBackground)
         candidateOverlay.setBackgroundColor(t.expandedBackground)
-        applyThemeRecursive(this, t)
+        themeApplier.apply(this, t)
         composition.setTextColor(t.keySecondaryText)
-        candidateExpandBtn.setTextColor(t.keySecondaryText)
-        candidateEmojiBtn.setTextColor(t.keySecondaryText)
-        applyFloatingChromeTheme(t)
-        if (voiceInlineActive) applyInlineVoicePalette()
+        topZone.candidateExpandButton.setTextColor(t.keySecondaryText)
+        topZone.candidateEmojiButton.setTextColor(t.keySecondaryText)
+        floatingKeyboardController.applyTheme(t)
+        inlineVoicePresenter.refreshPalette()
     }
 
     /** Reuse the renderer's design tokens for views added by production decorators. */
     internal fun applyThemeToSubtree(target: View) {
         val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
-        applyThemeRecursive(target, theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor)))
+        themeApplier.apply(target, theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor)))
     }
 
-    private fun applyFloatingChromeTheme(tokens: ImeTheme.Tokens? = null) {
-        if (!::floatingDragHandle.isInitialized) return
-        val night = isNight()
-        val t = tokens ?: theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor))
-        (floatingDragHandle as? FloatingDragHandleView)?.setDotColor(t.border)
-        if (floatingWindowMode) {
-            mainDock.background = rounded(t.keyboardBackground, dp(ImeGeometryTokens.CARD_RADIUS_DP))
-            mainDock.clipToOutline = true
-        } else {
-            mainDock.setBackgroundColor(t.expandedBackground)
-            mainDock.clipToOutline = false
-        }
-    }
-
-    private fun applyThemeRecursive(view: View, t: ImeTheme.Tokens) {
-        when (view) {
-            is ImeKeyView -> {
-                val side = view.getTag(MARK_SIDE_KEY) == true ||
-                    (view.parent as? View)?.tag in setOf("pinyin9-actions", "t9-actions", "digits-actions")
-                val label = view.contentDescription?.toString().orEmpty()
-                // Function styling is driven by the explicit semantic tag set in
-                // key(), never by matching localized label substrings.
-                val function = view.getTag(MARK_FUNCTION_KEY) == true
-                // Numeric glyphs are white grid keys only when they are real
-                // number keys. Function labels such as 123 must stay gray.
-                val white = !side && (
-                    view.getTag(MARK_WHITE_KEY) == true ||
-                        (!function && DIGITS_ONLY.matches(label))
-                    )
-                val primary = !side && (view.tag == "tab-active" ||
-                    view.tag == "key-shift-caps" ||
-                    view.tag == "key-shift-active" ||
-                    view.tag == "key-enter")
-                val color = when {
-                    primary -> t.primary
-                    white -> t.lightKeyBackground
-                    side -> t.sideKeyBackground
-                    function -> t.functionKeyBackground
-                    else -> t.keyBackground
-                }
-                val pressedColor = when {
-                    primary -> dim(color, 0.88f)
-                    side -> dim(t.sideKeyBackground, 0.88f)
-                    function -> dim(t.functionKeyBackground, 0.88f)
-                    else -> t.keyPressedBackground
-                }
-                view.applyMainTextScale(skinFontScale())
-                view.background = statefulRounded(color, pressedColor, dp(skinRadius))
-                // Skin opacity slider fades key backgrounds toward transparency.
-                view.background?.alpha = (skinOpacity.coerceIn(70, 100) * 255 / 100)
-                view.elevation = 0f
-                when {
-                    primary -> {
-                        val onPrimary = contrastText(t.primary)
-                        view.setColors(onPrimary, onPrimary, onPrimary)
-                    }
-                    white -> view.setColors(t.lightKeyText, t.lightKeyText, t.lightKeyText)
-                    side -> view.setColors(t.sideKeyText, t.sideKeyText, t.sideKeyText)
-                    function -> view.setColors(t.functionKeyText, t.functionKeyText, t.functionKeyText)
-                    else -> view.setColors(t.keyText, t.keySecondaryText, t.keyText)
-                }
-            }
-            is LinearLayout -> {
-                when (view.tag) {
-                    "candidate-first-row" -> view.background = statefulRounded(
-                        t.keyBackground,
-                        t.keyPressedBackground,
-                        dp(ImeGeometryTokens.KEY_RADIUS_DP),
-                    )
-                    "candidate-row" -> view.background = statefulRounded(
-                        Color.TRANSPARENT,
-                        t.keyPressedBackground,
-                        dp(ImeGeometryTokens.KEY_RADIUS_DP),
-                    )
-                    "setting-row" -> if (view.isClickable) {
-                        view.background = statefulRounded(
-                            Color.TRANSPARENT,
-                            t.keyPressedBackground,
-                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                        )
-                    }
-                    "nine-punct-stack", "nine-symbol-scroll-content",
-                    "digits-symbol-stack", "digits-symbol-scroll-content", "digits-symbol-scroll" -> view.background = rounded(
-                        t.sideKeyBackground,
-                        dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                    )
-                    "setting-group" -> view.background = rounded(
-                        t.toolCardBackground,
-                        dp(ImeGeometryTokens.CARD_RADIUS_DP),
-                    )
-                    "clip-card" -> view.background = rounded(
-                        t.toolCardBackground,
-                        dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                    )
-                    "panel-head" -> view.background = rounded(
-                        t.panelHeadBackground,
-                        dp(ImeGeometryTokens.CARD_RADIUS_DP),
-                    )
-                    else -> if ((view.tag as? String)?.startsWith("tool:") == true && view.isClickable) {
-                        view.background = statefulRounded(
-                            t.toolCardBackground,
-                            t.keyPressedBackground,
-                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                        )
-                    }
-                }
-                if (view.contentDescription != null && view.isClickable && view.tag == null) {
-                    view.background = statefulRounded(
-                        t.toolCardBackground,
-                        t.keyPressedBackground,
-                        dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                    )
-                }
-            }
-            is ImageView -> {
-                if (view.tag == "setting-icon") {
-                    val icon = t.primary
-                    view.imageTintList = ColorStateList.valueOf(icon)
-                    val dark = contrastText(t.keyboardBackground) == Color.WHITE
-                    view.background = rounded(
-                        if (dark) Color.argb(42, Color.red(icon), Color.green(icon), Color.blue(icon))
-                        else Color.argb(24, Color.red(icon), Color.green(icon), Color.blue(icon)),
-                        dp(ImeGeometryTokens.KEY_RADIUS_DP),
-                    )
-                } else if (view.tag == "key-panel-back") {
-                    view.imageTintList = ColorStateList.valueOf(t.keyText)
-                    view.background = statefulRounded(
-                        t.panelHeadBackground,
-                        dim(t.panelHeadBackground),
-                        dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                    )
-                } else if ((view.parent is LinearLayout && (view.parent as LinearLayout).tag == "toolbar-row") ||
-                    hasAncestorTag(view, "tools-panel")) {
-                    view.imageTintList = ColorStateList.valueOf(t.keyText)
-                    if (view.isClickable) {
-                        view.background = statefulRounded(
-                            Color.TRANSPARENT,
-                            t.keyPressedBackground,
-                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                        )
-                    }
-                }
-            }
-            is SeekBar -> {
-                // Keep the value control in the same accent system as active
-                // tabs, primary keys, and selected swatches. The platform
-                // default tint is otherwise blue even after a custom accent
-                // has been chosen.
-                view.progressTintList = ColorStateList.valueOf(t.primary)
-                view.thumbTintList = ColorStateList.valueOf(t.primary)
-                view.progressBackgroundTintList = ColorStateList.valueOf(t.panelHeadBackground)
-            }
-            is TextView -> {
-                val tag = view.tag as? String
-                if (view.parent !is ImeKeyView) view.setTextColor(t.keyText)
-                when {
-                    tag == "backspace-clear-hint" -> {
-                        view.setTextColor(t.keySecondaryText)
-                    }
-                    tag == "candidate-first" -> {
-                        view.setTextColor(t.keyText)
-                    }
-                    tag == "candidate-word" -> {
-                        view.setTextColor(t.candidateText)
-                    }
-                    tag == "panel-note" -> {
-                        view.setTextColor(t.keySecondaryText)
-                    }
-                    tag == "panel-error" -> {
-                        val error = t.destructive
-                        view.setTextColor(error)
-                        view.background = rounded(
-                            Color.argb(
-                                28,
-                                Color.red(error),
-                                Color.green(error),
-                                Color.blue(error),
-                            ),
-                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                        )
-                    }
-                    tag == "tab-active" -> {
-                        view.setTextColor(contrastText(t.primary))
-                        view.background = statefulRounded(
-                            t.primary,
-                            dim(t.primary),
-                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                        )
-                    }
-                    tag == "panel-tab" -> {
-                        view.setTextColor(t.keySecondaryText)
-                        view.background = statefulRounded(
-                            t.panelHeadBackground,
-                            dim(t.panelHeadBackground),
-                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                        )
-                    }
-                    tag == "quick-phrase-add" -> {
-                        view.setTextColor(contrastText(t.primary))
-                        view.background = statefulRounded(
-                            t.primary,
-                            dim(t.primary),
-                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                        )
-                    }
-                    tag == "panel-button" ||
-                        tag == "clipboard-refresh" ||
-                        tag?.startsWith("clip-pin:") == true ||
-                        tag?.startsWith("clip-use:") == true ||
-                        tag?.startsWith("phrase-edit:") == true ||
-                        tag?.startsWith("phrase-delete:") == true -> {
-                        view.setTextColor(t.keyText)
-                        view.background = statefulRounded(
-                            t.panelHeadBackground,
-                            dim(t.panelHeadBackground),
-                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                        )
-                    }
-                    tag == "clipboard-retention-action" -> {
-                        view.setTextColor(t.keyText)
-                        view.background = statefulRounded(
-                            t.panelHeadBackground,
-                            dim(t.panelHeadBackground),
-                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                        )
-                    }
-                    tag == "clipboard-retention-destructive" -> {
-                        view.setTextColor(contrastText(t.destructive))
-                        view.background = statefulRounded(
-                            t.destructive,
-                            dim(t.destructive, 0.86f),
-                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                        )
-                    }
-                    tag?.startsWith("punct:") == true ||
-                        tag?.startsWith("digit-symbol:") == true -> {
-                        view.setTextColor(t.keyText)
-                        view.background = statefulRounded(
-                            Color.TRANSPARENT,
-                            t.keyPressedBackground,
-                            dp(ImeGeometryTokens.KEY_RADIUS_DP),
-                        )
-                    }
-                    tag == "nine-pinyin-path-filter" -> {
-                        view.setTextColor(contrastText(t.primary))
-                        view.background = statefulRounded(
-                            t.primary,
-                            dim(t.primary, 0.86f),
-                            dp(ImeGeometryTokens.KEY_RADIUS_DP),
-                        )
-                    }
-                    tag == "accent-custom" -> {
-                        val customSelected = AccentPalette.presets.none {
-                            AccentPalette.normalize(it.first) == AccentPalette.normalize(skinPrimaryColor)
-                        }
-                        view.setTextColor(if (customSelected) contrastText(t.primary) else t.keyText)
-                        view.background = if (customSelected) {
-                            statefulRounded(
-                                t.primary,
-                                dim(t.primary),
-                                dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                            )
-                        } else {
-                            statefulRounded(
-                                t.panelHeadBackground,
-                                dim(t.panelHeadBackground),
-                                dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                            )
-                        }
-                    }
-                    tag?.startsWith("accent-selected-mark:") == true -> {
-                        val hex = tag.substringAfter(':')
-                        view.setTextColor(contrastText(AccentPalette.parse(hex)))
-                    }
-                    tag == "key-panel-back" -> {
-                        view.setTextColor(t.keyText)
-                        view.background = statefulRounded(
-                            t.panelHeadBackground,
-                            dim(t.panelHeadBackground),
-                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                        )
-                    }
-                    tag == "panel-title" -> {
-                        view.setTextColor(t.keyText)
-                    }
-                    tag == "candidate-emoji" || tag == "candidate-expand" -> {
-                        view.setTextColor(t.keySecondaryText)
-                        view.background = statefulRounded(
-                            t.panelHeadBackground,
-                            dim(t.panelHeadBackground),
-                            dp(ImeGeometryTokens.KEY_RADIUS_DP),
-                        )
-                    }
-                    tag == "voice-transcript" -> {
-                        view.setTextColor(t.keyText)
-                        view.background = rounded(t.toolCardBackground, dp(ImeGeometryTokens.CARD_RADIUS_DP))
-                    }
-                    tag == "voice-model-status" -> {
-                        view.setTextColor(t.keySecondaryText)
-                    }
-                    tag == "association-candidate" -> {
-                        view.setTextColor(t.candidateText)
-                        view.background = statefulRounded(
-                            t.toolCardBackground,
-                            dim(t.toolCardBackground),
-                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                        )
-                    }
-                    tag == "tools-page-dots" -> {
-                        view.setTextColor(t.keySecondaryText)
-                    }
-                    tag == "voice-mic" -> {
-                        view.setTextColor(contrastText(t.primary))
-                        view.background = statefulRounded(
-                            t.primary,
-                            dim(t.primary, 0.88f),
-                            dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                        )
-                    }
-                    view.parent is LinearLayout &&
-                        ((view.parent as LinearLayout).tag == "nine-punct-stack" ||
-                            (view.parent as LinearLayout).tag == "nine-symbol-scroll-content" ||
-                            (view.parent as LinearLayout).tag == "digits-symbol-stack" ||
-                            (view.parent as LinearLayout).tag == "digits-symbol-scroll-content") -> {
-                        view.setTextColor(t.sideKeyText)
-                    }
-                }
-            }
-            is FrameLayout -> when (view.tag) {
-                "emoji-cell" -> view.background = statefulRounded(
-                    Color.TRANSPARENT,
-                    t.keyPressedBackground,
-                    dp(ImeGeometryTokens.KEY_RADIUS_DP),
-                )
-                "accent-swatch" -> view.background = statefulRounded(
-                    Color.TRANSPARENT,
-                    t.keyPressedBackground,
-                    dp(ImeGeometryTokens.KEY_RADIUS_DP),
-                )
-                "toggle" -> {
-                    val seed = view.contentDescription?.toString()
-                        ?.substringBefore('，')
-                        .orEmpty()
-                    val enabled = onState(seed)
-                    view.background = rounded(
-                        if (enabled) t.primary else t.panelHeadBackground,
-                        dp(ImeGeometryTokens.PILL_RADIUS_DP),
-                    )
-                }
-            }
-            else -> when (view.tag) {
-                "handwriting-canvas" -> view.background = rounded(
-                    t.canvasBackground,
-                    dp(ImeGeometryTokens.CARD_RADIUS_DP),
-                )
-                "voice-wave-bar" -> view.background = rounded(t.primary, dp(ImeGeometryTokens.PILL_RADIUS_DP))
-                "setting-divider" -> view.setBackgroundColor(t.border)
-            }
-        }
-        if (view is HandwritingPadView) {
-            view.setInkColor(t.primary)
-            view.setGridColor(
-                Color.argb(
-                    72,
-                    Color.red(t.border),
-                    Color.green(t.border),
-                    Color.blue(t.border),
-                ),
-            )
-        }
-        if (view is ViewGroup) {
-            for (i in 0 until view.childCount) applyThemeRecursive(view.getChildAt(i), t)
-        }
-    }
-
-    private fun rounded(color: Int, radius: Int, strokeColor: Int? = null) = GradientDrawable().apply {
-        shape = GradientDrawable.RECTANGLE
-        setColor(color)
-        cornerRadius = radius.toFloat()
-        strokeColor?.let { setStroke(dp(1), it) }
-    }
-
-    private fun statefulRounded(normal: Int, pressed: Int, radius: Int) = StateListDrawable().apply {
-        addState(intArrayOf(android.R.attr.state_pressed), rounded(pressed, radius))
-        addState(intArrayOf(android.R.attr.state_focused), rounded(normal, radius, focusStroke(normal)))
-        addState(intArrayOf(), rounded(normal, radius))
-    }
+    private fun statefulRounded(normal: Int, pressed: Int, radius: Int): StateListDrawable =
+        ImeDrawableFactory.statefulRounded(
+            normal = normal,
+            pressed = pressed,
+            radiusPx = radius,
+            focusStrokeColor = focusStroke(normal),
+            focusStrokeWidthPx = dp(1),
+        )
 
     private fun focusStroke(color: Int): Int {
         val background = if (Color.alpha(color) == 0) {
@@ -5931,66 +2522,7 @@ open class ImeKeyboardView(
         return ImeFocusRingPolicy.resolve(background, AccentPalette.parse(skinPrimaryColor))
     }
 
-    private fun dim(color: Int, factor: Float = 0.82f): Int = Color.argb(
-        Color.alpha(color),
-        (Color.red(color) * factor).toInt().coerceIn(0, 255),
-        (Color.green(color) * factor).toInt().coerceIn(0, 255),
-        (Color.blue(color) * factor).toInt().coerceIn(0, 255),
-    )
-
-    private fun contrastText(background: Int): Int = ImeContrastPolicy.contrastText(background)
-
-    private fun hasAncestorTag(view: View, tag: String): Boolean {
-        var parent = view.parent
-        while (parent is View) {
-            if (parent.tag == tag) return true
-            parent = parent.parent
-        }
-        return false
-    }
-
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
-    private fun sideKeyParams(heightDp: Int, includeBottomGap: Boolean = false) =
-        LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(heightDp),
-        ).apply {
-            if (includeBottomGap) bottomMargin = dp(ImeGeometryTokens.KEY_ROW_GAP_DP)
-        }
-    private fun adaptiveColumnParams(weight: Float) = LinearLayout.LayoutParams(
-        0,
-        dp(nineBodyHeightDp()),
-        weight,
-    ).apply {
-        marginStart = dp(2)
-        marginEnd = dp(2)
-    }
-    private fun matchParams() = LinearLayout.LayoutParams(
-        LinearLayout.LayoutParams.MATCH_PARENT,
-        LinearLayout.LayoutParams.WRAP_CONTENT,
-    )
-    private fun wrapParams() = LinearLayout.LayoutParams(
-        LinearLayout.LayoutParams.WRAP_CONTENT,
-        LinearLayout.LayoutParams.WRAP_CONTENT,
-    )
-    private fun rowParams(includeBottomGap: Boolean = true) = LinearLayout.LayoutParams(
-        LinearLayout.LayoutParams.MATCH_PARENT,
-        dp(keyRowHeightDp()),
-    ).apply {
-        if (includeBottomGap) bottomMargin = dp(6)
-    }
-    private fun flexKeyParams(
-        weight: Float = 1f,
-        heightDp: Int = keyRowHeightDp(),
-        gapDp: Int = 2,
-    ) = LinearLayout.LayoutParams(
-        0,
-        dp(heightDp),
-        weight,
-    ).apply {
-        marginStart = dp(gapDp)
-        marginEnd = dp(gapDp)
-    }
     private fun gridCellParams(
         heightDp: Int,
         columns: Int,
@@ -6009,11 +2541,5 @@ open class ImeKeyboardView(
             LinearLayout.LayoutParams(0, dp(heightDp), 1f).apply { marginEnd = gap }
         }
     }
-    private fun weightParams(weight: Float) = LinearLayout.LayoutParams(
-        0,
-        LinearLayout.LayoutParams.WRAP_CONTENT,
-        weight,
-    ).apply {
-        marginEnd = dp(3)
-    }
+
 }

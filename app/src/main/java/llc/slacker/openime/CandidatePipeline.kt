@@ -14,6 +14,10 @@ interface CandidateResolver {
         preferredSuffix: String?,
         fuzzy: Boolean,
     ): CandidatePipeline.NineKeyResolution
+
+    fun nineKeyPathsFor(code: String?): List<String>
+    fun selectedNineKeyPathFor(code: String?): String?
+    fun selectNineKeyPath(code: String, path: String)
 }
 
 /**
@@ -23,8 +27,10 @@ interface CandidateResolver {
  * CandidateEngine or candidate ordering rules. Rime is authoritative for
  * Chinese ranking; the local 9-key decoder provides only the immediate frame.
  */
-class CandidatePipeline(
+class CandidatePipeline internal constructor(
     private val engine: CandidateEngine,
+    private val nineKeyUiState: NineKeyUiState = NineKeyUiState(),
+    private val nineKeyFallbackRegistry: NineKeyFallbackRegistry = NineKeyFallbackRegistry(),
 ) : CandidateResolver {
     /**
      * [pinyinPaths] keeps its historical name for Listener compatibility. For
@@ -53,7 +59,6 @@ class CandidatePipeline(
         } else {
             emptyList()
         }
-        KeyboardMode.ENGLISH_T9 -> engine.getT9EnglishCandidates(composition)
         KeyboardMode.DIGITS -> emptyList()
     }
 
@@ -96,7 +101,7 @@ class CandidatePipeline(
             .filter { it in '2'..'9' }
             .take(NineKeyLocalDecoder.MAX_DIGITS)
         if (boundedDigits.isEmpty()) {
-            NineKeyUiState.clear()
+            nineKeyUiState.clear()
             return NineKeyResolution(
                 preview = segmentPrefix,
                 pinyinPaths = emptyList(),
@@ -107,7 +112,7 @@ class CandidatePipeline(
 
         val nativeInput = NineKeyLocalDecoder.nativeCode(segmentPrefix, boundedDigits)
         val effectivePreferred = preferredSuffix
-            ?: NineKeyUiState.preferredSuffixFor(nativeInput, segmentPrefix)
+            ?: nineKeyUiState.preferredSuffixFor(nativeInput, segmentPrefix)
         val local = nineKeyDecoder.resolve(
             digits = boundedDigits,
             preferredSuffix = effectivePreferred,
@@ -150,14 +155,27 @@ class CandidatePipeline(
             .distinct()
             .take(MAX_CANDIDATES)
 
-        NineKeyUiState.remember(nativeInput, displayPaths, segmentPrefix)
-        NineKeyFallbackRegistry.remember(nativeInput, candidates)
+        nineKeyUiState.remember(nativeInput, displayPaths, segmentPrefix)
+        nineKeyFallbackRegistry.remember(nativeInput, candidates)
         return NineKeyResolution(
             preview = preview,
             pinyinPaths = listOfNotNull(nativeInput),
             candidates = candidates,
             displayPinyinPaths = displayPaths,
         )
+    }
+
+    internal fun nineKeyFallbackCandidatesFor(code: String): List<String> =
+        nineKeyFallbackRegistry.candidatesFor(code)
+
+    override fun nineKeyPathsFor(code: String?): List<String> =
+        nineKeyUiState.pathsFor(code)
+
+    override fun selectedNineKeyPathFor(code: String?): String? =
+        nineKeyUiState.selectedPathFor(code)
+
+    override fun selectNineKeyPath(code: String, path: String) {
+        nineKeyUiState.select(code, path)
     }
 
     private fun roundRobin(batches: List<List<String>>, limit: Int): List<String> {

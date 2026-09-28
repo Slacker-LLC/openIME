@@ -1,12 +1,16 @@
 package llc.slacker.openime
 
 /**
- * Process-local bridge between the candidate pipeline and the thin 9-key UI.
- * It stores only ambiguity labels and one explicit user choice; candidate data
- * remains owned by CandidatePipeline/Rime.
+ * Session-scoped ambiguity state owned by one CandidatePipeline instance.
+ *
+ * It stores only display paths and one explicit user choice; candidate data
+ * remains owned by CandidatePipeline/Rime. Keeping this as an instance avoids
+ * leaking a 9-key choice across IME sessions or test instances.
  */
-internal object NineKeyUiState {
-    private const val MAX_CODES = 32
+internal class NineKeyUiState {
+    private companion object {
+        const val MAX_CODES = 32
+    }
 
     private data class Options(
         val paths: List<String>,

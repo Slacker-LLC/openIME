@@ -9,6 +9,7 @@ import android.view.View
 import android.view.MotionEvent
 import android.view.Gravity
 import android.view.ViewGroup
+import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
@@ -36,11 +37,32 @@ class ImeKeyView(
     private val baseMainTextSize = mainTextSize
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-            touchGeneration++
-            touchFeedbackPending = isEnabled
-        } else if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
-            touchFeedbackPending = false
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                touchGeneration++
+                touchFeedbackPending = isEnabled
+                animate().cancel()
+                if (isEnabled) {
+                    animate()
+                        .scaleX(0.94f)
+                        .scaleY(0.94f)
+                        .setDuration(60L)
+                        .setInterpolator(null)
+                        .start()
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                    touchFeedbackPending = false
+                }
+                animate().cancel()
+                animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(90L)
+                    .setInterpolator(DecelerateInterpolator(1.5f))
+                    .start()
+            }
         }
         val handled = super.dispatchTouchEvent(event)
         if (event.actionMasked == MotionEvent.ACTION_UP) {
@@ -59,6 +81,9 @@ class ImeKeyView(
     override fun onDetachedFromWindow() {
         touchGeneration++
         touchFeedbackPending = false
+        animate().cancel()
+        scaleX = 1f
+        scaleY = 1f
         super.onDetachedFromWindow()
     }
     private val mainTextView: TextView?

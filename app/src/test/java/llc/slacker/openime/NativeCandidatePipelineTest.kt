@@ -52,15 +52,18 @@ class NativeCandidatePipelineTest {
 
     @Test
     fun nativeNineKeyRefreshKeepsMissingImmediateChoicesLearnable() {
-        NineKeyFallbackRegistry.remember("64426", listOf("你好", "你号", "拟好"))
+        val registry = NineKeyFallbackRegistry().apply {
+            remember("64426", listOf("你好", "你号", "拟好"))
+        }
 
         val merged = NativeCandidatePipeline.mergeRoundRobin(
-            listOf(
+            batches = listOf(
                 "64426" to listOf(
                     RimeCandidateEntry("你好", 0),
                     RimeCandidateEntry("泥好", 1),
                 ),
             ),
+            fallbackCandidatesFor = registry::candidatesFor,
         )
 
         assertEquals(listOf("你好", "泥好", "你号", "拟好"), merged.map { it.text })
@@ -74,10 +77,13 @@ class NativeCandidatePipelineTest {
 
     @Test
     fun emptyNativeNineKeyResultDoesNotMasqueradeAsNativeFallback() {
-        NineKeyFallbackRegistry.remember("64426", listOf("你好", "你号"))
+        val registry = NineKeyFallbackRegistry().apply {
+            remember("64426", listOf("你好", "你号"))
+        }
 
         val merged = NativeCandidatePipeline.mergeRoundRobin(
-            listOf("64426" to emptyList()),
+            batches = listOf("64426" to emptyList()),
+            fallbackCandidatesFor = registry::candidatesFor,
         )
 
         assertTrue(merged.isEmpty())

@@ -2,6 +2,7 @@ package llc.slacker.openime
 
 import android.app.Activity
 import android.app.Application
+import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
 import android.os.SystemClock
@@ -13,8 +14,9 @@ import java.util.concurrent.atomic.AtomicReference
  *
  * ActivityScenario/startActivitySync wait for global main-thread idleness. Some
  * MIUI builds keep Choreographer/window callbacks active while an IME-like view
- * is visible, which can make that global-idle condition unreachable. This
- * harness waits only for the lifecycle/UI condition the test actually needs.
+ * is visible, which can make that global-idle condition unreachable. Start
+ * through the target app context so private activities work across Android
+ * versions, then wait only for the lifecycle/UI condition the test needs.
  */
 internal class DirectActivityHarness<T : Activity>(
     private val activityClass: Class<T>,
@@ -46,13 +48,15 @@ internal class DirectActivityHarness<T : Activity>(
         application.registerActivityLifecycleCallbacks(callbacks)
     }
 
-    fun launch(timeoutMs: Long = 30_000L): T {
+    fun launch(timeoutMs: Long = 30_000L, intent: Intent? = null): T {
         resumed.set(null)
-        instrumentation.targetContext.startActivity(
-            Intent(instrumentation.targetContext, activityClass).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-            },
-        )
+        val launchIntent = (intent ?: Intent()).apply {
+            component = ComponentName(instrumentation.targetContext, activityClass)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        }
+        instrumentation.runOnMainSync {
+            application.startActivity(launchIntent)
+        }
         return await(timeoutMs) { resumed.get() }
             ?: error("${activityClass.simpleName} did not resume within ${timeoutMs}ms")
     }

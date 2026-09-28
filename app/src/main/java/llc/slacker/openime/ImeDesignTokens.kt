@@ -33,12 +33,34 @@ internal object ImeGeometryTokens {
     const val SWITCH_PADDING_DP = 4
     const val SWITCH_KNOB_TRAVEL_DP = SWITCH_WIDTH_DP - SWITCH_PADDING_DP * 2 - SWITCH_KNOB_DP
     const val KEY_ROW_GAP_DP = 6
+    const val KEY_SIDE_MARGIN_DP = 2
+    const val KEY_POPUP_HEIGHT_DP = 76
+    const val KEY_POPUP_MIN_WIDTH_DP = 40
+    const val KEY_POPUP_WIDTH_SCALE = 1.08f
+    const val KEY_POPUP_VERTICAL_GAP_DP = 8
     const val LANDSCAPE_KEY_ROW_HEIGHT_DP = 40
     const val FLOATING_LANDSCAPE_WIDTH_DP = 368
     // The toolbar itself is compact; the top zone still reserves the larger
     // composed height so typing never moves the keyboard window.
     const val TOOLBAR_HEIGHT_DP = TOUCH_TARGET_DP
     const val COMPOSED_TOP_ZONE_HEIGHT_DP = 70
+}
+
+/** Shared motion timing for native IME surfaces. */
+internal object ImeMotionTokens {
+    const val POPUP_ENTER_MS = 80L
+    const val SURFACE_FADE_MS = 100L
+    const val CANDIDATE_COLLAPSE_MS = 120L
+    const val STANDARD_TRANSITION_MS = 160L
+}
+
+/** Shared native text roles; keyboard glyph sizing remains renderer-specific. */
+internal object ImeTypographyTokens {
+    const val PANEL_TITLE_SP = 13f
+    const val PANEL_BODY_SP = 13f
+    const val PANEL_NOTE_SP = 12f
+    const val CAPTION_SP = 11f
+    const val CANDIDATE_SP = 12f
 }
 
 /**

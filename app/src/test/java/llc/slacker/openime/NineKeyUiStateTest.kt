@@ -7,7 +7,6 @@ class NineKeyUiStateTest {
 
     @Test
     fun manualPathChoiceSurvivesIncompleteNextSyllablePrefix() {
-        NineKeyUiState.clear()
         val pipeline = CandidatePipeline(CandidateEngine())
 
         val ambiguous = pipeline.resolveNineKey(
@@ -17,7 +16,7 @@ class NineKeyUiStateTest {
             fuzzy = false,
         )
         assertTrue("64 must expose ni as a selectable path", "ni" in ambiguous.displayPinyinPaths)
-        NineKeyUiState.select("64", "ni")
+        pipeline.selectNineKeyPath("64", "ni")
 
         val extended = pipeline.resolveNineKey(
             digits = "642",

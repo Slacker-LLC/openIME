@@ -5,9 +5,10 @@ package llc.slacker.openime
  * and undo are routed to the target editor, so they are no longer dead UI.
  */
 internal object TextEditControlPolicy {
-    // Password contents may not leave the editor, but clipboard text remains
-    // a valid input source (for example, a generated password from a vault).
-    private val passwordUnavailableLabels = setOf("全选", "复制", "剪切")
+    // Sensitive editors must not expose clipboard actions through the IME
+    // surface. This keeps the UI contract aligned with persistent-history
+    // privacy and prevents controls from advertising actions the IME blocks.
+    private val passwordUnavailableLabels = setOf("全选", "复制", "剪切", "粘贴")
 
     fun isUnavailableLabel(label: String, passwordField: Boolean = false): Boolean =
         passwordField && label in passwordUnavailableLabels

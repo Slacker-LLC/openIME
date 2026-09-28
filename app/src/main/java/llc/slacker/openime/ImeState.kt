@@ -6,7 +6,6 @@ enum class KeyboardMode {
     PINYIN_26,
     ENGLISH_26,
     PINYIN_9,
-    ENGLISH_T9,
     DIGITS,
 }
 
@@ -22,7 +21,6 @@ enum class Panel {
     TEXT_EDITOR,
     SETTINGS,
     FUZZY_SETTINGS,
-    GAMING,
     CANDIDATE_EXPANDED,
 }
 
@@ -40,7 +38,6 @@ enum class ImeAppearance(val label: String) {
 
 data class ImeState(
     val keyboardMode: KeyboardMode = KeyboardMode.PINYIN_26,
-    val previousKeyboardMode: KeyboardMode = KeyboardMode.PINYIN_26,
     val panel: Panel = Panel.NONE,
     val composition: String = "",
     val candidates: List<String> = emptyList(),
@@ -56,24 +53,16 @@ data class ImeState(
     val popupEnabled: Boolean = false,
     val fuzzyPinyinEnabled: Boolean = false,
     val editorInfo: EditorInfo? = null,
-    val editorAction: Int = EditorInfo.IME_ACTION_NONE,
     val passwordField: Boolean = false,
     val symbolCategory: String = "常用",
-    // First real emoji category tab (see ImeData.fluentSmileysByCategory order).
+    // First real emoji category tab (see ImeData.emojiByCategory order).
     val emojiCategory: String = "笑脸",
     val voiceState: VoiceUiState = VoiceUiState(),
     val skinOpacity: Int = 95,
     val skinRadius: Int = 8,
     val skinFontSize: Int = 17,
     val skinPrimaryColor: String = AccentPalette.DEFAULT,
-) {
-    fun withMode(mode: KeyboardMode): ImeState = copy(
-        previousKeyboardMode = keyboardMode,
-        keyboardMode = mode,
-        composition = "",
-        candidates = emptyList(),
-    )
-}
+)
 
 data class VoiceUiState(
     val listening: Boolean = false,

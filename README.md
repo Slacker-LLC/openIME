@@ -33,7 +33,7 @@ InputConnection
 - 内置约 90 万条 Rime Ice 基础及扩展词典记录；首次部署完整词典时，高频快速词库仍可即时提供候选。
 - OpenCC 简繁转换与 Rime 词典数据，候选结果通过 `setComposingText()` 更新，选中后
   通过 `commitText()` 写入当前编辑器。
-- Emoji、符号、剪贴板、文本编辑、手写入口、浮动键盘和设置面板。
+- Emoji、符号、剪贴板、文本编辑、浮动键盘和设置面板；手写目前仅保留笔迹采集 UI，识别引擎尚未接入，正式入口默认隐藏。
 - 根据输入法窗口实际可用宽度动态计算列宽与间距；宽屏限制内容最大宽度并居中，
   系统底部区域通过 WindowInsets 处理。
 - 空格短按输入空格或提交首选，长按约 150 ms 进入唯一的语音输入流程；删除键上滑清空。
@@ -44,9 +44,8 @@ InputConnection
 
 ```text
 app/                  Android APK、IME Service、Rime JNI、内置模型与词典
-scripts/              Windows PowerShell 构建、回归、性能和视觉检查脚本
+scripts/              PowerShell/Bash 构建、回归、性能和视觉检查脚本
 docs/                 架构、适配、测试证据和本地模型接入文档
-ui-suite/             Web UI 原型与交互参考，不参与 APK 构建
 gradle/               Gradle Wrapper
 .github/              GitHub Actions、Issue 模板和 PR 模板
 ```

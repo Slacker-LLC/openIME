@@ -89,6 +89,16 @@ class DebugKeyboardActivity : Activity(), ImeKeyboardView.Listener, CandidateRes
         fuzzy = fuzzy,
     )
 
+    override fun nineKeyPathsFor(code: String?): List<String> =
+        candidatePipeline.nineKeyPathsFor(code)
+
+    override fun selectedNineKeyPathFor(code: String?): String? =
+        candidatePipeline.selectedNineKeyPathFor(code)
+
+    override fun selectNineKeyPath(code: String, path: String) {
+        candidatePipeline.selectNineKeyPath(code, path)
+    }
+
     override fun onModeChanged(mode: KeyboardMode) {
         status.text = "mode=$mode"
     }
@@ -127,7 +137,7 @@ class DebugKeyboardActivity : Activity(), ImeKeyboardView.Listener, CandidateRes
     }
 
     override fun onVoiceToggle() {
-        keyboard.toggleVoiceFromSpace()
+        keyboard.startVoiceFromSpace()
         status.text = "voice-toggle"
     }
 

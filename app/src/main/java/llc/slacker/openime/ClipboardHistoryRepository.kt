@@ -30,10 +30,8 @@ internal object ClipboardPrivacyPolicy {
         editorKind: EditorInfoAdapter.EditorKind,
         imeOptions: Int,
     ): Boolean =
-        // A password editor may consume clipboard text, but its own contents
-        // are never copied or learned by the IME. Clipboard history is a user
-        // controlled input source, separate from personalized text learning.
-        (imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING) == 0
+        editorKind != EditorInfoAdapter.EditorKind.PASSWORD &&
+            (imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING) == 0
 }
 
 internal object ClipboardRetentionPolicy {
@@ -69,9 +67,8 @@ internal object ClipboardRetentionPolicy {
 
 /**
  * Tiny persistent clipboard history. Clipboard capture is best-effort; no
- * clipboard content is logged. Password editors can read the user-controlled
- * clipboard history, while password text itself is never copied into it.
- * No-personalized-learning editors do not use persistent history. Unpinned
+ * clipboard content is logged. Password and no-personalized-learning editors
+ * do not expose persistent history through the IME. Unpinned
  * items expire after 24 hours; pinned items remain until the user removes them.
  */
 object ClipboardHistoryRepository {
