@@ -568,6 +568,8 @@ open class ImeKeyboardView(
             currentSkinRadius = { skinRadius },
             currentSkinFontSize = { skinFontSize },
             currentSkinColor = { skinPrimaryColor },
+            currentHandedness = { keyboardHandedness },
+            currentKeyboardHeightPercent = { keyboardHeightPercent },
             onThemeSelected = ::setTheme,
             onAppearanceSelected = { selected ->
                 setAppearance(selected)
@@ -587,6 +589,8 @@ open class ImeKeyboardView(
                 )
                 applyTheme()
             },
+            onHandednessChanged = ::setHandedness,
+            onKeyboardHeightChanged = ::setKeyboardHeightPercent,
             onShowFuzzySettings = { showPanel(Panel.FUZZY_SETTINGS) },
             onFeedback = ::feedback,
             applyTheme = ::applyTheme,
