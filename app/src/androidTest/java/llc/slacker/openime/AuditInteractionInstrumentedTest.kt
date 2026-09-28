@@ -35,6 +35,7 @@ class AuditInteractionInstrumentedTest {
         val finals = mutableListOf<String>()
         val characters = mutableListOf<String>()
         val fuzzyChanges = mutableListOf<Boolean>()
+        val textEdits = mutableListOf<String>()
         var starts = 0
         var stops = 0
         var cancels = 0
@@ -66,6 +67,7 @@ class AuditInteractionInstrumentedTest {
                 "onSpace" -> { spaces++; null }
                 "onBackspace" -> { backspaces++; null }
                 "onClearAll" -> { clears++; null }
+                "onTextEdit" -> { textEdits.add(args!![0] as String); null }
                 "onFloatingKeyboardChanged" -> {
                     keyboard.setFloatingWindowMode(args!![0] as Boolean)
                     null
@@ -1053,6 +1055,70 @@ class AuditInteractionInstrumentedTest {
         harness.awaitMain {
             assertEquals("Configured long press must arm voice exactly once", 1, recorder.starts)
             assertEquals("Voice gesture must not also insert a space", 0, recorder.spaces)
+            true
+        }
+    }
+
+    @Test
+    fun spaceJitterDoesNotEnterCursorModeAndHorizontalSwipeDoes() = withKeyboard { harness, recorder, keyboard ->
+        val density = keyboard.resources.displayMetrics.density
+        harness.awaitMain {
+            val origin = keyPoint(keyboard, "key-space")
+            var downTime = SystemClock.uptimeMillis()
+            pointers(keyboard, downTime, MotionEvent.ACTION_DOWN, listOf(origin))
+            SystemClock.sleep(40L)
+            pointers(
+                keyboard,
+                downTime,
+                MotionEvent.ACTION_MOVE,
+                listOf(origin.copy(x = origin.x + 3f * density)),
+            )
+            SystemClock.sleep(40L)
+            pointers(keyboard, downTime, MotionEvent.ACTION_UP, listOf(origin.copy(x = origin.x + 3f * density)))
+            assertTrue("A small jitter must not move the cursor", recorder.textEdits.isEmpty())
+            val spacesAfterJitter = recorder.spaces
+
+            val swipeOrigin = keyPoint(keyboard, "key-space")
+            downTime = SystemClock.uptimeMillis()
+            pointers(keyboard, downTime, MotionEvent.ACTION_DOWN, listOf(swipeOrigin))
+            pointers(
+                keyboard,
+                downTime,
+                MotionEvent.ACTION_MOVE,
+                listOf(swipeOrigin.copy(x = swipeOrigin.x + 19f * density)),
+            )
+            pointers(
+                keyboard,
+                downTime,
+                MotionEvent.ACTION_MOVE,
+                listOf(swipeOrigin.copy(x = swipeOrigin.x + 31f * density)),
+            )
+            pointers(
+                keyboard,
+                downTime,
+                MotionEvent.ACTION_MOVE,
+                listOf(swipeOrigin.copy(x = swipeOrigin.x + 43f * density)),
+            )
+            pointers(
+                keyboard,
+                downTime,
+                MotionEvent.ACTION_MOVE,
+                listOf(swipeOrigin.copy(x = swipeOrigin.x + 30f * density)),
+            )
+            pointers(
+                keyboard,
+                downTime,
+                MotionEvent.ACTION_UP,
+                listOf(swipeOrigin.copy(x = swipeOrigin.x + 30f * density)),
+            )
+
+            assertEquals(
+                "A deliberate drag must move across characters and reverse direction",
+                listOf("right", "right", "left"),
+                recorder.textEdits,
+            )
+            assertEquals("Cursor movement must not commit a space", spacesAfterJitter, recorder.spaces)
+            assertEquals("Cursor movement must not arm voice", 0, recorder.starts)
             true
         }
     }
