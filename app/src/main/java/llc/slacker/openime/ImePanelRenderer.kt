@@ -2,6 +2,7 @@ package llc.slacker.openime
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Typeface
 import android.os.Build
 import android.view.Gravity
 import android.view.View
@@ -607,6 +608,7 @@ internal class ImePanelRenderer(
         minimumHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
         setPadding(toPx(10), 0, toPx(10), 0)
         tag = if (active) "tab-active" else "panel-tab"
+        typeface = if (active) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
         contentDescription = "$label，${if (active) "已选中" else "未选中"}"
         if (Build.VERSION.SDK_INT >= 30) {
             stateDescription = if (active) "已选中" else "未选中"
