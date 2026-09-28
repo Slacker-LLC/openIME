@@ -53,12 +53,15 @@ internal class SettingsPanelController(
     private val currentSkinColor: () -> String,
     private val currentHandedness: () -> ImeHandedness,
     private val currentKeyboardHeightPercent: () -> Int,
+    private val currentFloatingWidthPercent: () -> Int,
+    private val currentFloatingOpacityPercent: () -> Int,
     private val onThemeSelected: (ImeTheme) -> Unit,
     private val onAppearanceSelected: (ImeAppearance) -> Unit,
     private val onToggleChanged: (String, Boolean) -> Unit,
     private val onSkinChanged: (Int, Int, Int, String) -> Unit,
     private val onHandednessChanged: (ImeHandedness) -> Unit,
     private val onKeyboardHeightChanged: (Int) -> Unit,
+    private val onFloatingStyleChanged: (Int, Int) -> Unit,
     private val onShowFuzzySettings: () -> Unit,
     private val onFeedback: () -> Unit,
     private val applyTheme: () -> Unit,
@@ -164,6 +167,29 @@ internal class SettingsPanelController(
                     currentKeyboardHeightPercent(),
                     onKeyboardHeightChanged,
                 ),
+            ),
+            groupParams(),
+        )
+
+        content.addView(createSectionTitle("浮动键盘"), wrapParams())
+        content.addView(
+            settingGroup(
+                settingsSlider(
+                    "浮动宽度",
+                    72,
+                    96,
+                    currentFloatingWidthPercent(),
+                ) { width ->
+                    onFloatingStyleChanged(width, currentFloatingOpacityPercent())
+                },
+                settingsSlider(
+                    "浮动透明度",
+                    82,
+                    100,
+                    currentFloatingOpacityPercent(),
+                ) { opacity ->
+                    onFloatingStyleChanged(currentFloatingWidthPercent(), opacity)
+                },
             ),
             groupParams(),
         )
@@ -807,7 +833,7 @@ internal class SettingsPanelController(
             "圆角" -> " dp"
             "不透明度" -> "%"
             "按键字号" -> " sp"
-            "键盘高度" -> "%"
+            "键盘高度", "浮动宽度", "浮动透明度" -> "%"
             else -> ""
         }
         val seekBar = SeekBar(context).apply {
