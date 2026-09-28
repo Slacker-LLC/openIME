@@ -1991,6 +1991,7 @@ open class ImeKeyboardView(
             .putExtra(QuickPhraseEditActivity.EXTRA_ID, phrase?.id ?: 0L)
             .putExtra(QuickPhraseEditActivity.EXTRA_CATEGORY, phrase?.category.orEmpty())
             .putExtra(QuickPhraseEditActivity.EXTRA_TEXT, phrase?.text.orEmpty())
+            .putExtra(QuickPhraseEditActivity.EXTRA_INPUT_CODE, phrase?.inputCode.orEmpty())
         context.startActivity(intent)
     }
 
