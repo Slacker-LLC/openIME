@@ -63,13 +63,27 @@ class InputConnectionGateway(
         }
     }
 
+    private data class ClearUndoSnapshot(
+        val text: String,
+        val selectionStart: Int,
+        val selectionEnd: Int,
+    )
+
+    private var clearUndoSnapshot: ClearUndoSnapshot? = null
+
+    private fun invalidateClearUndo() {
+        clearUndoSnapshot = null
+    }
+
     fun commitText(text: String) {
         if (text.isEmpty()) return
+        invalidateClearUndo()
         connection()?.commitText(text, 1)
     }
 
     fun setComposingText(text: String) {
         if (isPassword()) return
+        if (text.isNotEmpty()) invalidateClearUndo()
         val ic = connection() ?: return
         if (text.isEmpty()) {
             ic.finishComposingText()
@@ -108,6 +122,7 @@ class InputConnectionGateway(
     }
 
     fun deleteBackwards() {
+        invalidateClearUndo()
         val ic = connection() ?: return
         if (deleteSelection()) return
 
@@ -133,6 +148,7 @@ class InputConnectionGateway(
 
     /** Delete the active selection without falling back to one-character delete. */
     fun deleteSelection(): Boolean {
+        invalidateClearUndo()
         val ic = connection() ?: return false
         if (isPassword()) {
             if (knownSelectionStart >= 0 && knownSelectionEnd >= 0 && knownSelectionStart != knownSelectionEnd) {
@@ -228,6 +244,7 @@ class InputConnectionGateway(
     fun clearAllText(): Boolean {
         if (isPassword()) return false
         val ic = connection() ?: return false
+        clearUndoSnapshot = null
         ic.beginBatchEdit()
         return try {
             val originalSelection = selectionBeforeDestructiveSelectAll(ic)
@@ -241,6 +258,7 @@ class InputConnectionGateway(
                         restoreSelectionAfterFailedClear(ic, originalSelection)
                     } else {
                         ic.finishComposingText()
+                        rememberClearUndo(selected, originalSelection)
                     }
                     return cleared
                 }
@@ -259,6 +277,7 @@ class InputConnectionGateway(
                             restoreSelectionAfterFailedClear(ic, originalSelection)
                         } else {
                             ic.finishComposingText()
+                            rememberClearUndo(selectedWindow.text, originalSelection)
                         }
                         return cleared
                     }
@@ -278,11 +297,84 @@ class InputConnectionGateway(
                 restoreSelectionAfterFailedClear(ic, originalSelection)
             } else {
                 ic.finishComposingText()
+                rememberClearUndo(window.text, originalSelection)
             }
             cleared
         } finally {
             ic.endBatchEdit()
         }
+    }
+
+    /**
+     * Restore only the most recent successful full-document clear. Any normal
+     * edit invalidates the snapshot, and restoration is rejected unless the
+     * target document is still empty.
+     */
+    fun restoreLastClear(): Boolean {
+        if (isPassword()) return false
+        val snapshot = clearUndoSnapshot ?: return false
+        val ic = connection() ?: return false
+
+        val window = extractedWindow(ic)
+        val documentEmpty = if (window?.isCompleteDocument == true) {
+            window.text.isEmpty()
+        } else {
+            val before = runCatching { ic.getTextBeforeCursor(1, 0)?.isEmpty() == true }
+                .getOrDefault(false)
+            val after = runCatching { ic.getTextAfterCursor(1, 0)?.isEmpty() == true }
+                .getOrDefault(false)
+            val selected = runCatching { ic.getSelectedText(0)?.isEmpty() != false }
+                .getOrDefault(false)
+            before && after && selected
+        }
+        if (!documentEmpty) {
+            invalidateClearUndo()
+            return false
+        }
+
+        ic.beginBatchEdit()
+        return try {
+            val committed = runCatching { ic.commitText(snapshot.text, 1) }.getOrDefault(false)
+            if (!committed) return false
+            ic.finishComposingText()
+            val start = snapshot.selectionStart.coerceIn(0, snapshot.text.length)
+            val end = snapshot.selectionEnd.coerceIn(0, snapshot.text.length)
+            runCatching { ic.setSelection(start, end) }
+            knownSelectionStart = start
+            knownSelectionEnd = end
+            invalidateClearUndo()
+            true
+        } finally {
+            ic.endBatchEdit()
+        }
+    }
+
+    private fun rememberClearUndo(
+        text: String,
+        selection: SelectionSnapshot?,
+    ) {
+        if (text.isEmpty()) return
+        val start: Int
+        val end: Int
+        when (selection) {
+            is SelectionSnapshot.Absolute -> {
+                start = selection.start
+                end = selection.end
+            }
+            is SelectionSnapshot.Relative -> {
+                start = selection.cursor
+                end = selection.cursor
+            }
+            null -> {
+                start = text.length
+                end = text.length
+            }
+        }
+        clearUndoSnapshot = ClearUndoSnapshot(
+            text = text,
+            selectionStart = start.coerceIn(0, text.length),
+            selectionEnd = end.coerceIn(0, text.length),
+        )
     }
 
     fun performEditorAction(action: Int) {
@@ -495,6 +587,7 @@ class InputConnectionGateway(
             clip.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(safeContext)?.toString().orEmpty()
         }.getOrDefault("")
         if (text.isEmpty()) return ""
+        invalidateClearUndo()
         val committed = connection()?.commitText(text, 1) == true
         if (!committed) return ""
         onPasted(clip)
