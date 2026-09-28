@@ -84,7 +84,10 @@ internal data class KeyboardLayoutMetrics(
             keyRowHeightDp * 4 +
             ImeGeometryTokens.KEY_ROW_GAP_DP * 3 +
             22
-        maxOf(if (landscape) 264 else 302, derived)
+        val baseMinimum = if (landscape) 264 else 302
+        val scaledMinimum =
+            (baseMinimum * heightPercent.coerceIn(92, 120) / 100f).toInt()
+        maxOf(scaledMinimum, derived)
     }
 
     val keyboardBodyHeightDp: Int = imeHeightDp - topZoneHeightDp
