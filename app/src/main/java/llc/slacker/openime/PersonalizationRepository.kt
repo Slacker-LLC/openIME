@@ -70,6 +70,16 @@ object PersonalizationRepository {
         }
     }
 
+    fun forget(text: String) {
+        val value = normalize(text)
+        if (value.isEmpty()) return
+        synchronized(lock) {
+            if (entries.remove(value) != null) {
+                saveLocked()
+            }
+        }
+    }
+
     fun clear() {
         synchronized(lock) {
             entries.clear()
