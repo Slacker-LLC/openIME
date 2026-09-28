@@ -29,7 +29,7 @@ internal class SpaceVoiceKeyFactory(
             }
         }.apply {
             tag = "key-space"
-            contentDescription = "$label，点击空格，长按语音输入"
+            contentDescription = "$label，点击空格，左右滑动移动光标，长按语音输入"
 
             setOnLongClickListener {
                 if (!canStartVoice()) return@setOnLongClickListener true
@@ -59,6 +59,7 @@ internal class SpaceVoiceKeyFactory(
                         gestureController.begin(
                             anchor = view,
                             pointerId = event.getPointerId(event.actionIndex),
+                            rawX = event.rawX,
                             rawY = event.rawY,
                         )
                         false
@@ -71,8 +72,9 @@ internal class SpaceVoiceKeyFactory(
                             if (wasTracking) suppressNextTap = true
                             wasTracking
                         } else {
+                            val pointerX = event.rawX + event.getX(index) - event.x
                             val pointerY = event.rawY + event.getY(index) - event.y
-                            gestureController.move(pointerY)
+                            gestureController.move(pointerX, pointerY)
                         }
                     }
                     MotionEvent.ACTION_POINTER_UP -> {
