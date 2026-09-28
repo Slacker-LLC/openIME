@@ -1213,7 +1213,15 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
                     emptyList()
                 }
                 val finalCandidates = if (native.isNotEmpty()) {
-                    native.map { it.text }
+                    val nativeText = native.map { it.text }
+                    if (
+                        mode == KeyboardMode.PINYIN_26 &&
+                        nativeText.size < TYPO_CORRECTION_NATIVE_THRESHOLD
+                    ) {
+                        (nativeText + fallback).distinct().take(MAX_CANDIDATES)
+                    } else {
+                        nativeText
+                    }
                 } else {
                     (learned + fallback).distinct().take(MAX_CANDIDATES)
                 }
@@ -1390,6 +1398,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         const val MAX_RIME_INPUT_LENGTH = 256
         const val MAX_RIME_NINE_KEY_PATHS = 6
         const val MAX_CANDIDATES = 96
+        const val TYPO_CORRECTION_NATIVE_THRESHOLD = 8
         @Volatile
         var activeInstance: LocalVoiceImeService? = null
     }
