@@ -330,8 +330,7 @@ internal class ImeThemeApplier(
                 tag == "clipboard-refresh" ||
                 tag?.startsWith("clip-pin:") == true ||
                 tag?.startsWith("clip-use:") == true ||
-                tag?.startsWith("phrase-edit:") == true ||
-                tag?.startsWith("phrase-delete:") == true -> {
+                tag?.startsWith("phrase-edit:") == true -> {
                 view.setTextColor(t.keyText)
                 view.background = statefulRounded(
                     t.panelHeadBackground,
@@ -349,13 +348,14 @@ internal class ImeThemeApplier(
                 )
             }
 
-            tag == "clipboard-retention-destructive" -> {
-                view.setTextColor(
-                    ImeDrawableFactory.contrastText(t.destructive),
-                )
+            tag == "clipboard-retention-destructive" ||
+                tag == "clipboard-clear-confirm" ||
+                tag?.startsWith("phrase-delete:") == true -> {
+                val destructiveSurface = ImeSurfacePolicy.destructiveSurface(t)
+                view.setTextColor(ImeSurfacePolicy.destructiveText(t))
                 view.background = statefulRounded(
-                    t.destructive,
-                    ImeSurfacePolicy.pressedSurface(t.destructive, t),
+                    destructiveSurface,
+                    ImeSurfacePolicy.pressedSurface(destructiveSurface, t),
                     toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
                 )
             }
