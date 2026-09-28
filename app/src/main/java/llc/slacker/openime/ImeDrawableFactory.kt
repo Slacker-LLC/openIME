@@ -80,6 +80,22 @@ internal object ImeDrawableFactory {
         }
     }
 
+    /**
+     * Mix two opaque UI colors without bringing in another color library.
+     * amount=0 returns background; amount=1 returns foreground.
+     */
+    fun blend(foreground: Int, background: Int, amount: Float): Int {
+        val t = amount.coerceIn(0f, 1f)
+        fun channel(front: Int, back: Int): Int =
+            (back + (front - back) * t).toInt().coerceIn(0, 255)
+        return Color.argb(
+            channel(Color.alpha(foreground), Color.alpha(background)),
+            channel(Color.red(foreground), Color.red(background)),
+            channel(Color.green(foreground), Color.green(background)),
+            channel(Color.blue(foreground), Color.blue(background)),
+        )
+    }
+
     fun withAlpha(color: Int, alpha: Int): Int = Color.argb(
         alpha.coerceIn(0, 255),
         Color.red(color),
