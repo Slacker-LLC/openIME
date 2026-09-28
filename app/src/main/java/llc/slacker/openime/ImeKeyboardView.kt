@@ -99,6 +99,7 @@ open class ImeKeyboardView(
         fun onSkinChanged(opacity: Int, radius: Int, fontSize: Int, primaryColor: String) {}
         fun onHandednessChanged(handedness: ImeHandedness) {}
         fun onKeyboardHeightChanged(percent: Int) {}
+        fun onFloatingStyleChanged(widthPercent: Int, opacityPercent: Int) {}
     }
 
     /** Visual class marker for white keys (nine/digits grid). */
@@ -226,6 +227,8 @@ open class ImeKeyboardView(
     private var appliedDensityDpi = resources.displayMetrics.densityDpi
     private var keyboardHandedness = ImeSettingsRepository.loadHandedness(context)
     private var keyboardHeightPercent = ImeSettingsRepository.loadKeyboardHeightPercent(context)
+    private var floatingWidthPercent = ImeSettingsRepository.loadFloatingWidthPercent(context)
+    private var floatingOpacityPercent = ImeSettingsRepository.loadFloatingOpacityPercent(context)
     private var layoutMetrics = KeyboardLayoutMetrics(
         landscape = appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE,
         fontScale = appliedFontScale,
@@ -572,6 +575,8 @@ open class ImeKeyboardView(
             currentSkinColor = { skinPrimaryColor },
             currentHandedness = { keyboardHandedness },
             currentKeyboardHeightPercent = { keyboardHeightPercent },
+            currentFloatingWidthPercent = { floatingWidthPercent },
+            currentFloatingOpacityPercent = { floatingOpacityPercent },
             onThemeSelected = ::setTheme,
             onAppearanceSelected = { selected ->
                 setAppearance(selected)
@@ -593,6 +598,7 @@ open class ImeKeyboardView(
             },
             onHandednessChanged = ::setHandedness,
             onKeyboardHeightChanged = ::setKeyboardHeightPercent,
+            onFloatingStyleChanged = ::setFloatingStyle,
             onShowFuzzySettings = { showPanel(Panel.FUZZY_SETTINGS) },
             onFeedback = ::feedback,
             applyTheme = ::applyTheme,
@@ -1450,6 +1456,17 @@ open class ImeKeyboardView(
         updateResponsiveGeometry(width)
     }
 
+    private fun setFloatingStyle(widthPercent: Int, opacityPercent: Int) {
+        val width = widthPercent.coerceIn(72, 96)
+        val opacity = opacityPercent.coerceIn(82, 100)
+        if (floatingWidthPercent == width && floatingOpacityPercent == opacity) return
+        floatingWidthPercent = width
+        floatingOpacityPercent = opacity
+        ImeSettingsRepository.saveFloatingWidthPercent(context, width)
+        ImeSettingsRepository.saveFloatingOpacityPercent(context, opacity)
+        listener.onFloatingStyleChanged(width, opacity)
+    }
+
     private fun setKeyboardHeightPercent(percent: Int) {
         val bounded = percent.coerceIn(92, 120)
         if (keyboardHeightPercent == bounded) return
@@ -1485,6 +1502,11 @@ open class ImeKeyboardView(
         val normalizedColor = AccentPalette.normalize(primaryColor)
         val persistedHandedness = ImeSettingsRepository.loadHandedness(context)
         val persistedHeight = ImeSettingsRepository.loadKeyboardHeightPercent(context)
+        val persistedFloatingWidth = ImeSettingsRepository.loadFloatingWidthPercent(context)
+        val persistedFloatingOpacity = ImeSettingsRepository.loadFloatingOpacityPercent(context)
+        val floatingStyleChanged =
+            floatingWidthPercent != persistedFloatingWidth ||
+                floatingOpacityPercent != persistedFloatingOpacity
         val heightChanged = keyboardHeightPercent != persistedHeight
         val geometryChanged = keyboardHandedness != persistedHandedness || heightChanged
         val visualChanged = theme != newTheme ||
@@ -1520,6 +1542,14 @@ open class ImeKeyboardView(
                 requestLayout()
             }
             updateResponsiveGeometry(width)
+        }
+        if (floatingStyleChanged) {
+            floatingWidthPercent = persistedFloatingWidth
+            floatingOpacityPercent = persistedFloatingOpacity
+            listener.onFloatingStyleChanged(
+                floatingWidthPercent,
+                floatingOpacityPercent,
+            )
         }
         if (visualChanged) applyTheme()
     }
