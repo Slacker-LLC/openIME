@@ -2612,7 +2612,7 @@ open class ImeKeyboardView(
     protected fun applyTheme() {
         val t = currentThemeTokens()
         setBackgroundColor(t.keyboardBackground)
-        mainDock.setBackgroundColor(t.expandedBackground)
+        mainDock.setBackgroundColor(t.keyboardBackground)
         keyboardBody.setBackgroundColor(t.keyboardBackground)
         topZone.setBackgroundColor(t.toolbarBackground)
         expandedPanel.setBackgroundColor(t.expandedBackground)
