@@ -97,6 +97,8 @@ open class ImeKeyboardView(
         fun onPopupChanged(enabled: Boolean)
         fun onFuzzyChanged(enabled: Boolean)
         fun onSkinChanged(opacity: Int, radius: Int, fontSize: Int, primaryColor: String) {}
+        fun onHandednessChanged(handedness: ImeHandedness) {}
+        fun onKeyboardHeightChanged(percent: Int) {}
     }
 
     /** Visual class marker for white keys (nine/digits grid). */
@@ -1444,6 +1446,7 @@ open class ImeKeyboardView(
         if (keyboardHandedness == next) return
         keyboardHandedness = next
         ImeSettingsRepository.saveHandedness(context, next)
+        listener.onHandednessChanged(next)
         updateResponsiveGeometry(width)
     }
 
@@ -1452,6 +1455,7 @@ open class ImeKeyboardView(
         if (keyboardHeightPercent == bounded) return
         keyboardHeightPercent = bounded
         ImeSettingsRepository.saveKeyboardHeightPercent(context, bounded)
+        listener.onKeyboardHeightChanged(bounded)
         renderedMode = null
         layoutMetrics = KeyboardLayoutMetrics(
             landscape = appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE,
