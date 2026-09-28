@@ -972,6 +972,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
 
         if (!rime.isReady) {
             if (UserPhraseRepository.forget(composition, candidate)) {
+                PersonalizationRepository.forget(candidate)
                 refreshAfterDelete()
                 showTextEditFeedback("已移除个人候选")
             } else {
@@ -983,6 +984,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         val queued = rime.deleteCandidate(composition, candidate) { deleted ->
             mainHandler.post {
                 if (deleted) {
+                    PersonalizationRepository.forget(candidate)
                     refreshAfterDelete()
                     showTextEditFeedback("已移除个人候选")
                 } else {
