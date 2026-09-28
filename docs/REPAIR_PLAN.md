@@ -106,7 +106,7 @@ Product contract remains: Chinese 26-key, Chinese 9-key, English 26-key, numeric
 
 ## Phase 6 — Mechanically split ImeKeyboardView
 
-ImeKeyboardView is currently approximately 6,020 lines and is the dominant UI debt. Do not rewrite the state model and do not migrate to Compose during this phase.
+ImeKeyboardView started this phase at approximately 6,020 lines and was the dominant UI debt. Do not rewrite the state model and do not migrate to Compose during this phase.
 
 Extract by real UI/interaction boundaries:
 
@@ -132,19 +132,29 @@ Use internal concrete classes/functions first. Avoid new generic frameworks.
 
 Target: ImeKeyboardView becomes orchestration rather than the implementation home for every screen and gesture.
 
-## Phase 7 — Retire ImeKeyboardViewV2
+Current extraction snapshot on `chore/architecture-debt-cleanup`:
 
-ImeKeyboardViewV2 is a production wrapper over the legacy renderer rather than an independent renderer.
+- `ImeKeyboardView` reduced from roughly 6,020 lines to roughly 2,500 lines without Compose migration.
+- 26-key, 9-key and numeric/phone rendering have concrete renderer owners.
+- candidate strip + expanded candidates are owned by `CandidateBarController`.
+- Tools/keyboard selector/symbols/emoji/handwriting share `ImePanelRenderer`; clipboard, text-edit and settings/fuzzy use concrete controllers.
+- Voice panel/session presentation, inline voice presentation, floating chrome/drag, popup, backspace gesture/wiring and space/voice gesture/wiring have concrete owners.
+- theme traversal, shared panel header and emoji bitmap-cell construction are no longer implemented in the top-level View.
+- remaining work should continue to remove only real implementation ownership from `ImeKeyboardView`; editor/composition orchestration and responsive geometry are allowed to stay there.
 
-Move its surviving responsibilities to their owning modules:
+## Phase 7 — Single production keyboard view — completed
 
-- insets/responsive geometry -> geometry/presentation;
-- Enter label/capability decoration -> keyboard presentation policy;
-- 9-key repairs -> Pinyin 9 component;
-- accessibility post-processing -> owning controls/components;
-- runtime capability filtering -> capability model.
+The historical compatibility wrapper around the production keyboard has been removed.
 
-Then make LocalVoiceImeService create the final production ImeKeyboardView directly.
+Its surviving responsibilities now have explicit owners:
+
+- WindowInsets / bottom safe-area measurement -> `ImeKeyboardView`;
+- Enter presentation -> `ImeKeyboardView.renderState`;
+- 9-key earlier-segment repair and accessibility repair -> `NineKeySegmentRepairController`;
+- handwriting availability -> the normal panel/tool capability path;
+- space/voice timing -> `SpaceVoiceGestureController`; key binding -> `SpaceVoiceKeyFactory`; session presentation -> `VoicePanelController`.
+
+`LocalVoiceImeService` now creates the single production `ImeKeyboardView` directly.
 
 ## Phase 8 — Converge design tokens
 
@@ -276,9 +286,9 @@ Backspace:
 
 Space/voice:
 
-- product long-press threshold: 150 ms;
-- <150 ms commits space;
-- >=150 ms arms voice;
+- long-press threshold follows Android's configured touch-and-hold timeout;
+- releasing before that threshold commits space;
+- crossing that threshold arms voice;
 - release finalizes/commits;
 - upward swipe cancels;
 - return from cancel zone restores;
@@ -422,7 +432,7 @@ Performance sanity:
 4. Orientation/floating separation.
 5. Dead state cleanup.
 6. ImeKeyboardView mechanical split.
-7. Remove ImeKeyboardViewV2.
+7. Single production ImeKeyboardView — completed.
 8. Design-token convergence.
 9. Chinese 26 visual lock.
 10. English 26 / Chinese 9 / numeric polish.

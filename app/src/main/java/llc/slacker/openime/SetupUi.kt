@@ -22,21 +22,18 @@ object SetupUi {
     fun accent(context: Context): Int =
         AccentPalette.parse(ImeSettingsRepository.loadSkinColor(context))
 
-    fun contrastText(background: Int): Int = ImeContrastPolicy.contrastText(background)
+    fun contrastText(background: Int): Int = ImeDrawableFactory.contrastText(background)
 
-    fun dim(color: Int, factor: Float): Int = Color.rgb(
-        (Color.red(color) * factor).toInt().coerceIn(0, 255),
-        (Color.green(color) * factor).toInt().coerceIn(0, 255),
-        (Color.blue(color) * factor).toInt().coerceIn(0, 255),
-    )
+    fun dim(color: Int, factor: Float): Int =
+        ImeDrawableFactory.dim(color, factor, preserveAlpha = false)
 
     fun rounded(color: Int, radiusDp: Float, strokeColor: Int? = null): GradientDrawable =
-        GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            setColor(color)
-            cornerRadius = radiusDp * 1f
-            if (strokeColor != null) setStroke(1, strokeColor)
-        }
+        ImeDrawableFactory.rounded(
+            color = color,
+            radiusPx = radiusDp,
+            strokeColor = strokeColor,
+            strokeWidthPx = 1,
+        )
 
     fun buttonBackground(
         context: Context,
@@ -163,32 +160,26 @@ object SetupUi {
         val line = context.getColor(R.color.setup_input_line)
         val accent = accent(context)
         val radius = dp(context, ImeGeometryTokens.CARD_RADIUS_DP).toFloat()
-        fun field(fill: Int, stroke: Int) = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            setColor(fill)
-            cornerRadius = radius
-            setStroke(dp(context, 1), stroke)
-        }
-        return StateListDrawable().apply {
-            addState(intArrayOf(android.R.attr.state_focused), field(surface, accent))
-            addState(intArrayOf(), field(surface, line))
-        }
+        return ImeDrawableFactory.focusedRounded(
+            fillColor = surface,
+            radiusPx = radius,
+            focusedStrokeColor = accent,
+            defaultStrokeColor = line,
+            strokeWidthPx = dp(context, 1),
+        )
     }
 
     /** Transparent focus ring for inputs placed on an already styled surface. */
     fun focusRingBackground(context: Context): StateListDrawable {
         val accent = accent(context)
         val radius = dp(context, ImeGeometryTokens.CARD_RADIUS_DP).toFloat()
-        fun ring(stroke: Int?): GradientDrawable = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            setColor(Color.TRANSPARENT)
-            cornerRadius = radius
-            stroke?.let { setStroke(dp(context, 2), it) }
-        }
-        return StateListDrawable().apply {
-            addState(intArrayOf(android.R.attr.state_focused), ring(accent))
-            addState(intArrayOf(), ring(null))
-        }
+        return ImeDrawableFactory.focusedRounded(
+            fillColor = Color.TRANSPARENT,
+            radiusPx = radius,
+            focusedStrokeColor = accent,
+            defaultStrokeColor = null,
+            strokeWidthPx = dp(context, 2),
+        )
     }
 
     fun styleInput(context: Context, input: EditText) {

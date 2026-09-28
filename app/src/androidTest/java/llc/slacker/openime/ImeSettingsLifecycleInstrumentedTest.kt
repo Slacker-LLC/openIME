@@ -2,7 +2,6 @@ package llc.slacker.openime
 
 import android.view.View
 import android.view.ViewGroup
-import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -15,18 +14,27 @@ class ImeSettingsLifecycleInstrumentedTest {
 
     @Test
     fun settingsActivityRecreatesWithItsPanelAndRendererLifecycleIntact() {
-        ActivityScenario.launch(ImeSettingsActivity::class.java).use { scenario ->
-            scenario.onActivity { activity ->
+        DirectActivityHarness(ImeSettingsActivity::class.java).use { harness ->
+            harness.launch()
+            lateinit var originalActivity: ImeSettingsActivity
+            harness.awaitMain { activity ->
+                originalActivity = activity
                 val keyboard = findKeyboard(activity.window.decorView)
                 assertNotNull("Settings Activity must attach its keyboard renderer", keyboard)
                 assertEquals(Panel.SETTINGS, keyboard!!.currentPanel())
+                true
             }
-            scenario.recreate()
-            scenario.onActivity { activity ->
+            harness.awaitMain { activity ->
+                activity.recreate()
+                true
+            }
+            harness.awaitMain { activity ->
+                if (activity === originalActivity) return@awaitMain null
                 val keyboard = findKeyboard(activity.window.decorView)
                 assertNotNull("Recreated settings Activity must attach a fresh renderer", keyboard)
                 assertEquals(Panel.SETTINGS, keyboard!!.currentPanel())
                 assertTrue("Settings renderer must remain attached after recreation", keyboard.isAttachedToWindow)
+                true
             }
         }
     }

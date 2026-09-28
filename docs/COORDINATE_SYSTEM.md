@@ -1,4 +1,4 @@
-# Keyboard Coordinate System v1
+# Keyboard Coordinate System
 
 ## 原则
 

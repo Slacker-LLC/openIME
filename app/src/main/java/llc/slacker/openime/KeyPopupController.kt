@@ -35,8 +35,16 @@ internal class KeyPopupController(
         keepAfterKeyUp = false
 
         val t = tokens()
-        val popupWidth = (anchor.width * 1.08f).toInt().coerceIn(dp(40), dp(64))
-        val popupHeight = dp(if (text == "清空") 36 else 48)
+        val minimumWidth = dp(ImeGeometryTokens.KEY_POPUP_MIN_WIDTH_DP)
+        val desiredWidth = (anchor.width * ImeGeometryTokens.KEY_POPUP_WIDTH_SCALE)
+            .toInt()
+            .coerceAtLeast(minimumWidth)
+        val availableWidth = (host.width - contentInsetPx() * 2)
+            .coerceAtLeast(minimumWidth)
+        val popupWidth = desiredWidth.coerceAtMost(availableWidth)
+        val popupHeight = dp(
+            if (text == "清空") 36 else ImeGeometryTokens.KEY_POPUP_HEIGHT_DP,
+        )
         val popup = TextView(host.context).apply {
             this.text = text
             textSize = if (text.length > 1) 13f else 16f
@@ -93,7 +101,10 @@ internal class KeyPopupController(
                         onSymbolSelected(symbol)
                     }
                 },
-                LinearLayout.LayoutParams(dp(48), dp(48)),
+                LinearLayout.LayoutParams(
+                    dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+                    dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+                ),
             )
         }
 
@@ -142,7 +153,9 @@ internal class KeyPopupController(
         val centeredLeft = anchorLeft + (anchor.width - popupWidth) / 2
         val maxLeft = (host.width - popupWidth - inset).coerceAtLeast(inset)
         val left = centeredLeft.coerceIn(inset, maxLeft)
-        val top = (anchorTop - popupHeight - dp(8)).coerceAtLeast(dp(4))
+        val top = (
+            anchorTop - popupHeight - dp(ImeGeometryTokens.KEY_POPUP_VERTICAL_GAP_DP)
+            ).coerceAtLeast(dp(4))
 
         host.addView(
             popup,
@@ -165,7 +178,7 @@ internal class KeyPopupController(
             .scaleX(1f)
             .scaleY(1f)
             .alpha(1f)
-            .setDuration(80L)
+            .setDuration(ImeMotionTokens.POPUP_ENTER_MS)
             .setInterpolator(DecelerateInterpolator(1.5f))
             .start()
     }

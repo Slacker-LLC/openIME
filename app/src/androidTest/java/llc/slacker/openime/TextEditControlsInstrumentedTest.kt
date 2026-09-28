@@ -4,28 +4,37 @@ import android.os.Build
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
-import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
+import org.junit.After
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
-import org.junit.Rule
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class TextEditControlsInstrumentedTest {
 
-    @get:Rule
-    val rule = ActivityScenarioRule(DebugKeyboardActivity::class.java)
+    private lateinit var harness: DirectActivityHarness<DebugKeyboardActivity>
+
+    @Before
+    fun launch() {
+        harness = DirectActivityHarness(DebugKeyboardActivity::class.java)
+        harness.launch()
+    }
+
+    @After
+    fun close() {
+        harness.close()
+    }
 
     @Test
     fun textEditorExposesUndoAndVerticalCursorControls() {
-        lateinit var keyboard: ImeKeyboardViewV2
-        rule.scenario.onActivity { activity ->
+        lateinit var keyboard: ImeKeyboardView
+        harness.awaitMain { activity ->
             val content = activity.findViewById<ViewGroup>(android.R.id.content)
-            keyboard = ImeKeyboardViewV2(activity, NoopListener())
+            keyboard = ImeKeyboardView(activity, NoopListener())
             content.addView(
                 keyboard,
                 ViewGroup.LayoutParams(
@@ -36,9 +45,9 @@ class TextEditControlsInstrumentedTest {
             keyboard.showPanel(Panel.TEXT_EDITOR)
         }
 
-        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        harness.awaitMain { true }
 
-        rule.scenario.onActivity {
+        harness.awaitMain {
             listOf("撤销", "▲", "▼").forEach { label ->
                 val control = findInteractiveControl(keyboard, label)
                 assertNotNull("missing supported text-edit control $label", control)
@@ -57,10 +66,10 @@ class TextEditControlsInstrumentedTest {
 
     @Test
     fun passwordFieldsDisableClipboardActionsBeforeTheUserCanTriggerADeadAction() {
-        lateinit var keyboard: ImeKeyboardViewV2
-        rule.scenario.onActivity { activity ->
+        lateinit var keyboard: ImeKeyboardView
+        harness.awaitMain { activity ->
             val content = activity.findViewById<ViewGroup>(android.R.id.content)
-            keyboard = ImeKeyboardViewV2(activity, NoopListener())
+            keyboard = ImeKeyboardView(activity, NoopListener())
             content.addView(
                 keyboard,
                 ViewGroup.LayoutParams(
@@ -71,17 +80,34 @@ class TextEditControlsInstrumentedTest {
             keyboard.renderState(ImeState(passwordField = false))
             keyboard.showPanel(Panel.TEXT_EDITOR)
             keyboard.renderState(ImeState(passwordField = true))
+            // Even if editor/clipboard probes later report that their dynamic
+            // prerequisites are available, password privacy must remain the
+            // higher-priority disabled reason.
+            keyboard.refreshTextEditAvailability(
+                selectionAvailable = true,
+                clipboardAvailable = true,
+            )
         }
 
-        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        harness.awaitMain { true }
 
-        rule.scenario.onActivity {
-            listOf("全选", "复制", "剪切", "粘贴").forEach { label ->
-                val control = findInteractiveControl(keyboard, label)
+        harness.awaitMain {
+            listOf(
+                "select-all" to "全选",
+                "copy" to "复制",
+                "cut" to "剪切",
+                "paste" to "粘贴",
+            ).forEach { (action, label) ->
+                val control = findTextEditAction(keyboard, action)
                 assertNotNull("password editor must still show $label", control)
                 assertFalse("password $label must not remain clickable", control!!.isClickable)
                 assertFalse("password $label must expose an enabled state", control.isEnabled)
                 assertTrue("password $label should look unavailable", control.alpha < 1f)
+                val description = control.contentDescription?.toString().orEmpty()
+                assertTrue(
+                    "password $label must remain named when unavailable",
+                    description == label || description.startsWith("$label，"),
+                )
                 if (Build.VERSION.SDK_INT >= 30) {
                     assertTrue(
                         "password $label must explain why it is unavailable",
@@ -95,10 +121,10 @@ class TextEditControlsInstrumentedTest {
 
     @Test
     fun editorActionsReflectSelectionAndClipboardAvailability() {
-        lateinit var keyboard: ImeKeyboardViewV2
-        rule.scenario.onActivity { activity ->
+        lateinit var keyboard: ImeKeyboardView
+        harness.awaitMain { activity ->
             val content = activity.findViewById<ViewGroup>(android.R.id.content)
-            keyboard = ImeKeyboardViewV2(activity, NoopListener())
+            keyboard = ImeKeyboardView(activity, NoopListener())
             content.addView(
                 keyboard,
                 ViewGroup.LayoutParams(
@@ -113,9 +139,9 @@ class TextEditControlsInstrumentedTest {
             )
         }
 
-        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        harness.awaitMain { true }
 
-        rule.scenario.onActivity {
+        harness.awaitMain {
             listOf("copy", "cut", "paste").forEach { action ->
                 val control = findTextEditAction(keyboard, action)
                 assertNotNull("missing dynamic text-edit control $action", control)
@@ -164,7 +190,7 @@ class TextEditControlsInstrumentedTest {
         return null
     }
 
-    private class NoopListener : ImeKeyboardViewV2.Listener {
+    private class NoopListener : ImeKeyboardView.Listener {
         override fun onModeChanged(mode: KeyboardMode) = Unit
         override fun onPanelChanged(panel: Panel) = Unit
         override fun onCharacter(char: String) = Unit

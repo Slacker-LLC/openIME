@@ -2,11 +2,15 @@ package llc.slacker.openime
 
 import android.content.Intent
 import android.view.inputmethod.EditorInfo
+import android.view.View
+import android.view.ViewGroup
+import android.widget.Button
 import android.widget.EditText
-import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -14,8 +18,9 @@ import org.junit.runner.RunWith
 class SetupFormActionInstrumentedTest {
     @Test
     fun symbolFormEditorActionsMoveFocusThroughTheForm() {
-        ActivityScenario.launch(SymbolManagerActivity::class.java).use { scenario ->
-            scenario.onActivity { activity ->
+        DirectActivityHarness(SymbolManagerActivity::class.java).use { harness ->
+            harness.launch()
+            harness.awaitMain { activity ->
                 val group = activity.findViewById<EditText>(R.id.custom_symbol_group_editor)
                 val symbol = activity.findViewById<EditText>(R.id.custom_symbol_text_editor)
                 group.onEditorAction(EditorInfo.IME_ACTION_NEXT)
@@ -26,12 +31,39 @@ class SetupFormActionInstrumentedTest {
     }
 
     @Test
+    fun quickPhraseBlankContentDisablesAndDimsSaveUntilTextExists() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val intent = Intent(context, QuickPhraseEditActivity::class.java)
+        DirectActivityHarness(QuickPhraseEditActivity::class.java).use { harness ->
+            harness.launch()
+            harness.awaitMain { activity ->
+                val phrase = activity.findViewById<EditText>(R.id.quick_phrase_text_editor)
+                val save = findButton(activity.window.decorView, "保存")
+                    ?: error("save button missing")
+
+                assertFalse("Blank quick phrase must not be saveable", save.isEnabled)
+                assertTrue("Disabled save action must look disabled", save.alpha < 1f)
+                assertTrue(
+                    "Disabled save action must explain the missing content",
+                    save.contentDescription.toString().contains("不可用"),
+                )
+
+                phrase.setText("可保存内容")
+
+                assertTrue("Typing content must enable save immediately", save.isEnabled)
+                assertTrue("Enabled save action must return to full opacity", save.alpha == 1f)
+            }
+        }
+    }
+
+    @Test
     fun quickPhraseFormEditorActionsMoveFocusThroughTheForm() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val intent = Intent(context, QuickPhraseEditActivity::class.java)
             .putExtra(QuickPhraseEditActivity.EXTRA_TEXT, "测试常用语")
-        ActivityScenario.launch<QuickPhraseEditActivity>(intent).use { scenario ->
-            scenario.onActivity { activity ->
+        DirectActivityHarness(QuickPhraseEditActivity::class.java).use { harness ->
+            harness.launch(intent = intent)
+            harness.awaitMain { activity ->
                 val category = activity.findViewById<EditText>(R.id.quick_phrase_category_editor)
                 val phrase = activity.findViewById<EditText>(R.id.quick_phrase_text_editor)
                 category.onEditorAction(EditorInfo.IME_ACTION_NEXT)
@@ -40,4 +72,15 @@ class SetupFormActionInstrumentedTest {
             }
         }
     }
+
+    private fun findButton(root: View, label: String): Button? {
+        if (root is Button && root.text.toString() == label) return root
+        if (root is ViewGroup) {
+            for (index in 0 until root.childCount) {
+                findButton(root.getChildAt(index), label)?.let { return it }
+            }
+        }
+        return null
+    }
+
 }

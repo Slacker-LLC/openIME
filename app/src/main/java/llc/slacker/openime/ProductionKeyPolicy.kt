@@ -1,13 +1,40 @@
 package llc.slacker.openime
 
-/** Pure geometry/timing helpers for production key presentation. */
+/** Pure geometry helpers for production key presentation. */
 internal object ProductionKeyPolicy {
-    const val SPACE_VOICE_TRIGGER_MS = 150L
-
     data class EdgeWeights(
         val leftOuter: Float,
         val rightOuter: Float,
     )
+
+    data class BottomRowWeights(
+        val leftOuter: Float,
+        val leftInner: Float,
+        val space: Float,
+        val rightInner: Float,
+        val rightOuter: Float,
+    )
+
+    /** Visual reference geometry for the shared Chinese/English 26-key bottom row. */
+    fun twentySixKeyBottomRowWeights(): BottomRowWeights {
+        val leftOuter = 1.30f
+        val leftInner = 0.95f
+        val rightInner = 1.05f
+        val rightOuter = 1.80f
+        val balanced = balancedOuterWeights(
+            leftTotal = leftOuter + leftInner,
+            rightTotal = rightInner + rightOuter,
+            leftOuter = leftOuter,
+            rightOuter = rightOuter,
+        )
+        return BottomRowWeights(
+            leftOuter = balanced.leftOuter,
+            leftInner = leftInner,
+            space = 3.40f,
+            rightInner = rightInner,
+            rightOuter = balanced.rightOuter,
+        )
+    }
 
     /**
      * Balance the total weights on both sides of a centered space key while
@@ -27,9 +54,4 @@ internal object ProductionKeyPolicy {
         )
     }
 
-    /**
-     * The renderer owns the 150 ms product threshold. V2 must not add another
-     * delay after the renderer has already armed the voice gesture.
-     */
-    fun remainingVoiceDelayMs(@Suppress("UNUSED_PARAMETER") systemLongPressTimeoutMs: Long): Long = 0L
 }

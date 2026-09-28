@@ -1,5 +1,7 @@
 package llc.slacker.openime
 
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.graphics.Color
 import android.graphics.Rect
@@ -12,13 +14,14 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.widget.ScrollView
+import android.widget.TextView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.lang.reflect.Proxy
@@ -26,10 +29,11 @@ import java.lang.reflect.Proxy
 @RunWith(AndroidJUnit4::class)
 class AuditInteractionInstrumentedTest {
     private class Recorder {
-        lateinit var keyboard: ImeKeyboardViewV2
+        lateinit var keyboard: ImeKeyboardView
         var events: VoiceRecognitionEvents? = null
         val partials = mutableListOf<String>()
         val finals = mutableListOf<String>()
+        val characters = mutableListOf<String>()
         val fuzzyChanges = mutableListOf<Boolean>()
         var starts = 0
         var stops = 0
@@ -38,8 +42,8 @@ class AuditInteractionInstrumentedTest {
         var backspaces = 0
         var clears = 0
         val listener = Proxy.newProxyInstance(
-            ImeKeyboardViewV2.Listener::class.java.classLoader,
-            arrayOf(ImeKeyboardViewV2.Listener::class.java),
+            ImeKeyboardView.Listener::class.java.classLoader,
+            arrayOf(ImeKeyboardView.Listener::class.java),
         ) { _, method, args ->
             when (method.name) {
                 "voiceModelState" -> VoiceModelLifecycleState.COLD
@@ -52,6 +56,7 @@ class AuditInteractionInstrumentedTest {
                 "cancelVoiceRecognition" -> { cancels++; null }
                 "onVoicePartial" -> { partials.add(args!![0] as String); null }
                 "onVoiceFinal" -> { finals.add(args!![0] as String); null }
+                "onCharacter" -> { characters.add(args!![0] as String); null }
                 "onVoiceToggle" -> { keyboard.startVoiceFromSpace(); null }
                 "onVoicePressChanged" -> {
                     if (args!![0] == true) keyboard.startVoiceFromSpace()
@@ -68,17 +73,17 @@ class AuditInteractionInstrumentedTest {
                 "onFuzzyChanged" -> { fuzzyChanges.add(args!![0] as Boolean); null }
                 else -> null
             }
-        } as ImeKeyboardViewV2.Listener
+        } as ImeKeyboardView.Listener
     }
 
     private fun withKeyboard(
-        test: (DirectActivityHarness<DebugKeyboardActivity>, Recorder, ImeKeyboardViewV2) -> Any?,
+        test: (DirectActivityHarness<DebugKeyboardActivity>, Recorder, ImeKeyboardView) -> Any?,
     ) {
         DirectActivityHarness(DebugKeyboardActivity::class.java).use { harness ->
             harness.launch()
             val recorder = Recorder()
             val keyboard = harness.awaitMain { activity ->
-                ImeKeyboardViewV2(activity, recorder.listener).also {
+                ImeKeyboardView(activity, recorder.listener).also {
                     recorder.keyboard = it
                     activity.findViewById<ViewGroup>(android.R.id.content).addView(it)
                 }
@@ -132,6 +137,61 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun modeSwitchCancelsActiveVoiceAndRejectsLateFinal() = withKeyboard { harness, recorder, keyboard ->
+        lateinit var staleEvents: VoiceRecognitionEvents
+        harness.awaitMain {
+            keyboard.startVoiceFromSpace()
+            true
+        }
+        harness.awaitMain(timeoutMs = 2_000L) {
+            recorder.events?.let {
+                staleEvents = it
+                true
+            }
+        }
+
+        harness.awaitMain {
+            keyboard.setMode(KeyboardMode.ENGLISH_26, notifyListener = false)
+            assertEquals("Mode switch must cancel the active backend session", 1, recorder.cancels)
+            assertFalse("Mode switch must leave no active voice presentation", keyboard.isVoiceActive())
+            staleEvents.onFinal("stale after mode switch")
+            true
+        }
+        harness.awaitMain {
+            assertTrue("Late final from the cancelled mode must be ignored", recorder.finals.isEmpty())
+            true
+        }
+    }
+
+    @Test
+    fun openingNonVoicePanelCancelsInlineVoiceAndRejectsLateFinal() = withKeyboard { harness, recorder, keyboard ->
+        lateinit var staleEvents: VoiceRecognitionEvents
+        harness.awaitMain {
+            keyboard.startVoiceFromSpace()
+            true
+        }
+        harness.awaitMain(timeoutMs = 2_000L) {
+            recorder.events?.let {
+                staleEvents = it
+                true
+            }
+        }
+
+        harness.awaitMain {
+            keyboard.showPanel(Panel.EMOJI)
+            assertEquals(Panel.EMOJI, keyboard.currentPanel())
+            assertEquals("Opening another panel must cancel inline voice", 1, recorder.cancels)
+            assertFalse(keyboard.isVoiceActive())
+            staleEvents.onFinal("stale behind emoji")
+            true
+        }
+        harness.awaitMain {
+            assertTrue("Hidden inline voice must not commit after panel replacement", recorder.finals.isEmpty())
+            true
+        }
+    }
+
+    @Test
     fun releaseKeepsLateVoiceCallbacksUntilFinalResult() = withKeyboard { harness, recorder, keyboard ->
         harness.awaitMain { keyboard.startVoiceFromSpace(); true }
         harness.awaitMain { if (recorder.events != null) true else null }
@@ -144,6 +204,45 @@ class AuditInteractionInstrumentedTest {
         harness.awaitMain {
             assertEquals("松手后的尾帧必须在释放后仍能进入最终识别流程", listOf("松手后的尾帧"), recorder.partials)
             assertEquals(listOf("松手后的最终结果"), recorder.finals)
+            true
+        }
+    }
+
+    @Test
+    fun finalVoiceCallbackInvalidatesDuplicateAndLateCallbacks() = withKeyboard { harness, recorder, keyboard ->
+        lateinit var events: VoiceRecognitionEvents
+        harness.awaitMain {
+            keyboard.showPanel(Panel.VOICE)
+            keyboard.startVoiceFromSpace()
+            true
+        }
+        harness.awaitMain(timeoutMs = 2_000L) {
+            recorder.events?.let {
+                events = it
+                true
+            }
+        }
+        harness.awaitMain {
+            keyboard.stopVoiceFromSpace()
+            events.onFinal("唯一最终结果")
+            events.onFinal("重复最终结果")
+            events.onError("迟到错误")
+            events.onReady()
+            true
+        }
+        harness.awaitMain {
+            if (recorder.finals.size != 1) return@awaitMain null
+            val status = keyboard.findViewWithTag<TextView>("voice-model-status")
+            assertEquals(
+                "Terminal final must commit exactly once",
+                listOf("唯一最终结果"),
+                recorder.finals,
+            )
+            assertTrue(
+                "Late callbacks must not resurrect recognition UI after final",
+                status.text.toString().contains("完成"),
+            )
+            assertFalse(keyboard.isVoiceActive())
             true
         }
     }
@@ -204,6 +303,131 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun quickPhrasePanelRefreshesEditedEntryAndCommitsCurrentText() = withKeyboard { harness, recorder, keyboard ->
+        val original = "面板原文-${SystemClock.uptimeMillis()}"
+        val edited = "面板编辑后-${SystemClock.uptimeMillis()}"
+        var phraseId = 0L
+        try {
+            harness.awaitMain {
+                val phrase = requireNotNull(
+                    QuickPhraseRepository.upsert(
+                        keyboard.context,
+                        0L,
+                        "测试分类",
+                        original,
+                    ),
+                )
+                phraseId = phrase.id
+                keyboard.showPanel(Panel.CLIPBOARD)
+                assertTrue(
+                    "Clipboard panel must expose the quick-phrase tab",
+                    keyboard.findTestTarget("常用语")!!.performClick(),
+                )
+                true
+            }
+            harness.awaitMain {
+                val entry = keyboard.findViewWithTag<View>("phrase:$phraseId")
+                    ?: return@awaitMain null
+                assertTrue(entry.performClick())
+                assertEquals(listOf(original), recorder.characters)
+
+                QuickPhraseRepository.upsert(
+                    keyboard.context,
+                    phraseId,
+                    "更新分类",
+                    edited,
+                )
+                keyboard.refreshAuxiliaryContent()
+                true
+            }
+            harness.awaitMain {
+                val editedEntry = keyboard.findViewWithTag<View>("phrase:$phraseId")
+                    ?: return@awaitMain null
+                assertTrue(
+                    "Refreshing auxiliary content must rebuild the row with edited text",
+                    editedEntry.contentDescription.toString().contains(edited),
+                )
+                assertTrue(editedEntry.performClick())
+                assertEquals(listOf(original, edited), recorder.characters)
+
+                QuickPhraseRepository.remove(keyboard.context, phraseId)
+                keyboard.refreshAuxiliaryContent()
+                assertNull(
+                    "Deleting then refreshing must remove the phrase row",
+                    keyboard.findViewWithTag<View>("phrase:$phraseId"),
+                )
+                true
+            }
+        } finally {
+            harness.awaitMain {
+                if (phraseId > 0L) QuickPhraseRepository.remove(keyboard.context, phraseId)
+                true
+            }
+        }
+    }
+
+    @Test
+    fun networkEmoticonCategoryFiltersSymbolsInsteadOfOnlyHighlightingTab() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            keyboard.showPanel(Panel.SYMBOLS)
+            val emoticonTab = keyboard.findTestTarget("网络颜文字")
+            assertNotNull("Symbols must expose network emoticons as a real category", emoticonTab)
+            assertTrue(emoticonTab!!.performClick())
+            assertNotNull(
+                "Selecting the category must render its contents",
+                keyboard.findTestTarget("(｡◕‿◕｡)"),
+            )
+
+            assertTrue(keyboard.findTestTarget("特殊")!!.performClick())
+            assertNotNull("Special shapes must remain in the special category", keyboard.findTestTarget("★"))
+            assertNull(
+                "Special category must not silently retain network emoticons",
+                keyboard.findTestTarget("(｡◕‿◕｡)"),
+            )
+            true
+        }
+    }
+
+    @Test
+    fun emojiCategorySelectionReplacesTheRenderedGrid() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            keyboard.showPanel(Panel.EMOJI)
+            assertNotNull("Default smiley category must render a smiley", keyboard.findTestTarget("😀"))
+            assertTrue(keyboard.findTestTarget("人物/手势")!!.performClick())
+            assertNull("Switching category must replace, not append to, the old emoji grid", keyboard.findTestTarget("😀"))
+            assertNotNull("People category must render skin-tone variants", keyboard.findTestTarget("👍🏿"))
+
+            assertTrue(keyboard.findTestTarget("动物/自然")!!.performClick())
+            assertNotNull("Animal category must render its own content", keyboard.findTestTarget("🐶"))
+            assertNull("Previous people grid must be removed", keyboard.findTestTarget("👍🏿"))
+            true
+        }
+    }
+
+    @Test
+    fun majorKeyboardModesReuseTheSamePrimaryKeyHeight() = withKeyboard { harness, _, keyboard ->
+        fun measuredHeight(mode: KeyboardMode, tag: String): Int {
+            harness.awaitMain {
+                keyboard.setMode(mode, notifyListener = false)
+                true
+            }
+            return harness.awaitMain {
+                val key = keyboard.findViewWithTag<View>(tag) ?: return@awaitMain null
+                key.height.takeIf { it > 0 }
+            }
+        }
+
+        val chinese26 = measuredHeight(KeyboardMode.PINYIN_26, "key:q")
+        val english26 = measuredHeight(KeyboardMode.ENGLISH_26, "key:q")
+        val chinese9 = measuredHeight(KeyboardMode.PINYIN_9, "key-9:2")
+        val numeric = measuredHeight(KeyboardMode.DIGITS, "key:5")
+
+        assertEquals("English 26 must reuse the Chinese 26 row geometry", chinese26, english26)
+        assertEquals("Chinese 9 must reuse the primary key-row height", chinese26, chinese9)
+        assertEquals("Numeric must reuse the primary key-row height", chinese26, numeric)
+    }
+
+    @Test
     fun settingsSlidersExposeCurrentValuesToTouchAndAccessibility() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.showPanel(Panel.SETTINGS)
@@ -247,6 +471,28 @@ class AuditInteractionInstrumentedTest {
             assertNotNull("Tools must expose the floating keyboard action", floatingEntry)
             assertTrue("Tool actions must be keyboard-focusable", floatingEntry!!.isFocusable)
             assertTrue("Tool actions must keep a 48dp target", floatingEntry.minimumHeight >= keyboard.resources.displayMetrics.density * 48f)
+            true
+        }
+    }
+
+    @Test
+    fun floatingDockStateDoesNotDependOnWindowAvailability() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            val controller = FloatingWindowController(
+                resources = keyboard.resources,
+                mainHandler = Handler(Looper.getMainLooper()),
+                windowProvider = { null },
+                keyboardHeightPx = { keyboard.measuredHeight.takeIf { it > 0 } },
+            )
+            controller.enable()
+            assertTrue(controller.enabled)
+
+            controller.restore()
+
+            assertFalse(
+                "Docked state must be committed even when the IME Window has already disappeared",
+                controller.enabled,
+            )
             true
         }
     }
@@ -590,6 +836,53 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
+    fun voiceErrorReleasesGestureLockAndAllowsRetry() = withKeyboard { harness, recorder, keyboard ->
+        lateinit var failedEvents: VoiceRecognitionEvents
+        harness.awaitMain {
+            keyboard.showPanel(Panel.VOICE)
+            keyboard.startVoiceFromSpace()
+            val language = keyboard.findViewWithTag<View>("voice-language")
+            assertFalse("Voice language must lock while recognition is starting", language.isEnabled)
+            true
+        }
+        harness.awaitMain(timeoutMs = 2_000L) {
+            recorder.events?.let {
+                failedEvents = it
+                true
+            }
+        }
+        harness.awaitMain {
+            failedEvents.onError("麦克风权限不可用")
+            true
+        }
+        harness.awaitMain {
+            val language = keyboard.findViewWithTag<View>("voice-language")
+            if (!language.isEnabled) return@awaitMain null
+            assertFalse("Terminal error must clear active voice state", keyboard.isVoiceActive())
+            assertTrue("Terminal error must release the gesture-owned language lock", language.isEnabled)
+            assertTrue("Language selection must work again after error", language.performClick())
+            failedEvents.onFinal("错误后的迟到结果")
+            true
+        }
+        harness.awaitMain {
+            assertTrue(
+                "A terminal error must reject a late final from the failed session",
+                recorder.finals.isEmpty(),
+            )
+            keyboard.startVoiceFromSpace()
+            true
+        }
+        harness.awaitMain(timeoutMs = 2_000L) {
+            if (recorder.starts >= 2) true else null
+        }
+        harness.awaitMain {
+            assertEquals("Voice must be retryable after a terminal error", 2, recorder.starts)
+            keyboard.cancelVoiceForManualInput()
+            true
+        }
+    }
+
+    @Test
     fun voiceControlsDescribeTheActiveGesture() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.showPanel(Panel.VOICE)
@@ -618,6 +911,44 @@ class AuditInteractionInstrumentedTest {
                 View.ACCESSIBILITY_LIVE_REGION_POLITE,
                 keyboard.findViewWithTag<View>("voice-transcript").accessibilityLiveRegion,
             )
+            true
+        }
+    }
+
+    @Test
+    fun modeSwitchDismissesLongPressChoicePopup() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            keyboard.setMode(KeyboardMode.PINYIN_26, notifyListener = false)
+            val segment = keyboard.findViewWithTag<View>("key-segment")
+            val baseline = keyboard.childCount
+            assertTrue(segment.performLongClick())
+            assertEquals("Long-press choice popup must attach to the root", baseline + 1, keyboard.childCount)
+
+            keyboard.setMode(KeyboardMode.ENGLISH_26, notifyListener = false)
+
+            assertEquals("Mode switch must retire popup whose anchor was rebuilt", baseline, keyboard.childCount)
+            true
+        }
+    }
+
+    @Test
+    fun openingPanelDismissesOrdinaryKeyPopup() = withKeyboard { harness, _, keyboard ->
+        lateinit var key: View
+        var baseline = 0
+        harness.awaitMain {
+            keyboard.setSettings(sound = false, haptic = false, popup = true)
+            keyboard.setMode(KeyboardMode.ENGLISH_26, notifyListener = false)
+            key = keyboard.findViewWithTag<View>("key:q") ?: return@awaitMain null
+            if (key.width == 0) return@awaitMain null
+            baseline = keyboard.childCount
+            touch(key, MotionEvent.ACTION_DOWN)
+            assertEquals("Ordinary key preview must attach to the root", baseline + 1, keyboard.childCount)
+
+            keyboard.showPanel(Panel.EMOJI)
+
+            assertEquals("Opening a panel must retire the transient key preview", baseline, keyboard.childCount)
+            assertEquals(Panel.EMOJI, keyboard.currentPanel())
+            touch(key, MotionEvent.ACTION_CANCEL)
             true
         }
     }
@@ -652,6 +983,37 @@ class AuditInteractionInstrumentedTest {
         }
     }
 
+    @Test
+    fun keyPopupUsesSharedProductGeometry() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            keyboard.setSettings(sound = false, haptic = false, popup = true)
+            keyboard.setMode(KeyboardMode.DIGITS, notifyListener = false)
+            true
+        }
+        harness.awaitMain {
+            val key = keyboard.findViewWithTag<View>("key:5") ?: return@awaitMain null
+            if (key.width == 0) return@awaitMain null
+            val baseline = keyboard.childCount
+            touch(key, MotionEvent.ACTION_DOWN)
+            try {
+                assertEquals(baseline + 1, keyboard.childCount)
+                val popup = keyboard.getChildAt(keyboard.childCount - 1)
+                val expectedHeight = (
+                    ImeGeometryTokens.KEY_POPUP_HEIGHT_DP *
+                        keyboard.resources.displayMetrics.density
+                    ).toInt()
+                assertEquals("Key popup height must use the shared product token", expectedHeight, popup.layoutParams.height)
+                assertTrue(
+                    "Wide keys must not produce a preview narrower than the source key",
+                    popup.layoutParams.width >= key.width,
+                )
+            } finally {
+                touch(key, MotionEvent.ACTION_CANCEL)
+            }
+            true
+        }
+    }
+
     private fun touch(view: View, action: Int) {
         val now = SystemClock.uptimeMillis()
         val event = MotionEvent.obtain(now, now, action, view.width / 2f, view.height / 2f, 0)
@@ -663,10 +1025,8 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
-    fun spaceHeldPast150msStartsVoiceBeforeSystemLongPressTimeout() = withKeyboard { harness, recorder, keyboard ->
-        val systemTimeout = ViewConfiguration.getLongPressTimeout().toLong()
-        val hold = ProductionKeyPolicy.SPACE_VOICE_TRIGGER_MS + 100L
-        assumeTrue("System long-press timeout must leave room for the 150ms product gesture", systemTimeout > hold + 50L)
+    fun spaceHeldPastConfiguredLongPressStartsVoiceWithoutInsertingSpace() = withKeyboard { harness, recorder, keyboard ->
+        val hold = ViewConfiguration.getLongPressTimeout().toLong() + 100L
         var released = false
         harness.awaitMain {
             val point = keyPoint(keyboard, "key-space")
@@ -679,10 +1039,84 @@ class AuditInteractionInstrumentedTest {
             true
         }
         harness.awaitMain { if (released) true else null }
-        harness.awaitMain(timeoutMs = 2_000L) { if (recorder.starts > 0) true else null }
+        harness.awaitMain(timeoutMs = 10_000L) { if (recorder.starts > 0) true else null }
         harness.awaitMain {
-            assertEquals("150ms hold must arm voice exactly once", 1, recorder.starts)
+            assertEquals("Configured long press must arm voice exactly once", 1, recorder.starts)
             assertEquals("Voice gesture must not also insert a space", 0, recorder.spaces)
+            true
+        }
+    }
+
+    @Test
+    fun spaceOwnerPointerUpBeforeLongPressCancelsPendingArmWithoutGhostSpace() = withKeyboard { harness, recorder, keyboard ->
+        lateinit var owner: Finger
+        lateinit var other: Finger
+        var downTime = 0L
+        harness.awaitMain {
+            owner = keyPoint(keyboard, "key-space").copy(id = 7)
+            other = owner.copy(id = 11, x = owner.x - 4f)
+            downTime = SystemClock.uptimeMillis()
+            pointers(keyboard, downTime, MotionEvent.ACTION_DOWN, listOf(owner))
+            pointers(
+                keyboard,
+                downTime,
+                pointerAction(MotionEvent.ACTION_POINTER_DOWN, 1),
+                listOf(owner, other),
+            )
+            pointers(
+                keyboard,
+                downTime,
+                pointerAction(MotionEvent.ACTION_POINTER_UP, 0),
+                listOf(owner, other),
+            )
+            true
+        }
+
+        SystemClock.sleep(ViewConfiguration.getLongPressTimeout().toLong() + 150L)
+
+        harness.awaitMain {
+            pointers(keyboard, downTime, MotionEvent.ACTION_UP, listOf(other))
+            assertEquals("Lifted owner must cancel the pending voice arm", 0, recorder.starts)
+            assertEquals("The remaining finger must not synthesize a space click", 0, recorder.spaces)
+            assertEquals(0, recorder.stops)
+            true
+        }
+    }
+
+    @Test
+    fun activeSpaceVoiceOwnerPointerUpStopsOnceWithoutGhostSpace() = withKeyboard { harness, recorder, keyboard ->
+        lateinit var owner: Finger
+        lateinit var other: Finger
+        var downTime = 0L
+        harness.awaitMain {
+            owner = keyPoint(keyboard, "key-space").copy(id = 7)
+            other = owner.copy(id = 11, x = owner.x - 4f)
+            downTime = SystemClock.uptimeMillis()
+            pointers(keyboard, downTime, MotionEvent.ACTION_DOWN, listOf(owner))
+            pointers(
+                keyboard,
+                downTime,
+                pointerAction(MotionEvent.ACTION_POINTER_DOWN, 1),
+                listOf(owner, other),
+            )
+            true
+        }
+
+        SystemClock.sleep(ViewConfiguration.getLongPressTimeout().toLong() + 100L)
+        harness.awaitMain(timeoutMs = 2_000L) { if (recorder.starts == 1) true else null }
+
+        harness.awaitMain {
+            pointers(
+                keyboard,
+                downTime,
+                pointerAction(MotionEvent.ACTION_POINTER_UP, 0),
+                listOf(owner, other),
+            )
+            assertEquals("Owner release must stop voice exactly once", 1, recorder.stops)
+            assertEquals(0, recorder.spaces)
+            pointers(keyboard, downTime, MotionEvent.ACTION_UP, listOf(other))
+            assertEquals("Remaining finger release must not insert a space", 0, recorder.spaces)
+            assertEquals("Remaining finger release must not stop voice twice", 1, recorder.stops)
             true
         }
     }
@@ -690,10 +1124,19 @@ class AuditInteractionInstrumentedTest {
     @Test
     fun rebuildWhileSpaceIsHeldDoesNotSwallowTheSpace() = withKeyboard { harness, recorder, keyboard ->
         var downTime = 0L
+        var released = false
+        var spaceViewSurvivedRebuildPoll = false
+        lateinit var spaceKey: View
+        val releaseDelayMs = minOf(
+            100L,
+            (ViewConfiguration.getLongPressTimeout().toLong() / 2L).coerceAtLeast(1L),
+        )
         harness.awaitMain {
             val point = keyPoint(keyboard, "key-space")
+            spaceKey = requireNotNull(keyboard.findViewWithTag("key-space"))
             downTime = SystemClock.uptimeMillis()
             pointers(keyboard, downTime, MotionEvent.ACTION_DOWN, listOf(point))
+            assertTrue("Space key must own the active press", spaceKey.isPressed)
             true
         }
         // A layout change (mode switch, configuration change, nine-key filter)
@@ -702,15 +1145,98 @@ class AuditInteractionInstrumentedTest {
         // detach it and swallow the release without a trace.
         harness.awaitMain {
             keyboard.setMode(KeyboardMode.ENGLISH_26, notifyListener = false)
+            assertSame(
+                "Changing layout must keep the pressed Space view attached until release",
+                spaceKey,
+                keyboard.findViewWithTag("key-space"),
+            )
+            // Give the deferred row rebuild poll several main-loop turns, but
+            // release before Android's own long-click can consume this tap.
+            keyboard.postDelayed({
+                spaceViewSurvivedRebuildPoll =
+                    keyboard.findViewWithTag<View>("key-space") === spaceKey
+                val point = keyPoint(keyboard, "key-space")
+                pointers(keyboard, downTime, MotionEvent.ACTION_UP, listOf(point))
+                released = true
+            }, releaseDelayMs)
             true
         }
+        harness.awaitMain(timeoutMs = 3_000L) { if (released) true else null }
         harness.awaitMain {
-            val point = keyPoint(keyboard, "key-space")
-            pointers(keyboard, downTime, MotionEvent.ACTION_UP, listOf(point))
+            assertTrue(
+                "The Space view must remain attached while the rebuild poll sees the active touch",
+                spaceViewSurvivedRebuildPoll,
+            )
+            assertEquals("Space release must commit synchronously", 1, recorder.spaces)
             true
         }
         harness.awaitMain(timeoutMs = 3_000L) { if (recorder.spaces > 0) true else null }
         assertEquals("A rebuild during the press must not swallow the space", 1, recorder.spaces)
+    }
+
+    @Test
+    fun backspaceTapDeletesExactlyOnceAndCancelDeletesNothing() = withKeyboard { harness, recorder, keyboard ->
+        harness.awaitMain {
+            val owner = keyPoint(keyboard, "key-backspace")
+            var downTime = SystemClock.uptimeMillis()
+            pointers(keyboard, downTime, MotionEvent.ACTION_DOWN, listOf(owner))
+            pointers(keyboard, downTime, MotionEvent.ACTION_UP, listOf(owner))
+            assertEquals("Backspace tap must delete exactly once", 1, recorder.backspaces)
+
+            downTime = SystemClock.uptimeMillis()
+            pointers(keyboard, downTime, MotionEvent.ACTION_DOWN, listOf(owner))
+            pointers(keyboard, downTime, MotionEvent.ACTION_CANCEL, listOf(owner))
+            assertEquals("Cancelled backspace must not delete", 1, recorder.backspaces)
+            true
+        }
+        SystemClock.sleep(ViewConfiguration.getLongPressTimeout().toLong() + 100L)
+        harness.awaitMain {
+            assertEquals("Cancelled backspace must not leave repeat callbacks", 1, recorder.backspaces)
+            assertEquals(0, recorder.clears)
+            true
+        }
+    }
+
+    @Test
+    fun backspaceClearCommitsOnceAndCanBeDisarmedBeforeRelease() = withKeyboard { harness, recorder, keyboard ->
+        harness.awaitMain {
+            val owner = keyPoint(keyboard, "key-backspace")
+            var downTime = SystemClock.uptimeMillis()
+            val clearPoint = owner.copy(y = owner.y - 44f * keyboard.resources.displayMetrics.density)
+
+            pointers(keyboard, downTime, MotionEvent.ACTION_DOWN, listOf(owner))
+            pointers(keyboard, downTime, MotionEvent.ACTION_MOVE, listOf(clearPoint))
+            pointers(keyboard, downTime, MotionEvent.ACTION_UP, listOf(clearPoint))
+            assertEquals("Armed clear gesture must clear exactly once", 1, recorder.clears)
+            assertEquals("Clear gesture must not also delete one character", 0, recorder.backspaces)
+
+            downTime = SystemClock.uptimeMillis()
+            pointers(keyboard, downTime, MotionEvent.ACTION_DOWN, listOf(owner))
+            pointers(keyboard, downTime, MotionEvent.ACTION_MOVE, listOf(clearPoint))
+            pointers(keyboard, downTime, MotionEvent.ACTION_MOVE, listOf(owner))
+            pointers(keyboard, downTime, MotionEvent.ACTION_UP, listOf(owner))
+            assertEquals("Returning below hysteresis must disarm clear", 1, recorder.clears)
+            assertEquals("Disarmed gesture falls back to one backspace", 1, recorder.backspaces)
+            true
+        }
+    }
+
+    @Test
+    fun backspaceLargeHorizontalDriftCannotArmClearAll() = withKeyboard { harness, recorder, keyboard ->
+        harness.awaitMain {
+            val owner = keyPoint(keyboard, "key-backspace")
+            val downTime = SystemClock.uptimeMillis()
+            val escaped = owner.copy(
+                x = owner.x + 132f * keyboard.resources.displayMetrics.density,
+                y = owner.y - 44f * keyboard.resources.displayMetrics.density,
+            )
+            pointers(keyboard, downTime, MotionEvent.ACTION_DOWN, listOf(owner))
+            pointers(keyboard, downTime, MotionEvent.ACTION_MOVE, listOf(escaped))
+            pointers(keyboard, downTime, MotionEvent.ACTION_UP, listOf(escaped))
+            assertEquals("Horizontal escape must not trigger clear-all", 0, recorder.clears)
+            assertEquals(1, recorder.backspaces)
+            true
+        }
     }
 
     @Test
@@ -792,7 +1318,7 @@ class AuditInteractionInstrumentedTest {
 
     private data class Finger(val id: Int, val x: Float, val y: Float)
 
-    private fun keyPoint(keyboard: ImeKeyboardViewV2, tag: String): Finger {
+    private fun keyPoint(keyboard: ImeKeyboardView, tag: String): Finger {
         val key = requireNotNull(keyboard.findViewWithTag<View>(tag))
         check(key.width > 0 && key.height > 0) { "Key $tag has not been laid out" }
         val rect = Rect(0, 0, key.width, key.height)
@@ -803,7 +1329,7 @@ class AuditInteractionInstrumentedTest {
     private fun pointerAction(action: Int, index: Int): Int =
         action or (index shl MotionEvent.ACTION_POINTER_INDEX_SHIFT)
 
-    private fun pointers(keyboard: ImeKeyboardViewV2, downTime: Long, action: Int, fingers: List<Finger>) {
+    private fun pointers(keyboard: ImeKeyboardView, downTime: Long, action: Int, fingers: List<Finger>) {
         val properties = fingers.map { finger ->
             MotionEvent.PointerProperties().apply {
                 id = finger.id
