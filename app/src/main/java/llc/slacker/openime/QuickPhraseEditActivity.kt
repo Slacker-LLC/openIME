@@ -181,7 +181,7 @@ class QuickPhraseEditActivity : Activity() {
         fun refreshSaveState() {
             val valid = phraseEdit.text.toString().isNotBlank()
             save.isEnabled = valid
-            save.alpha = if (valid) 1f else 0.38f
+            save.alpha = if (valid) 1f else ImeSurfacePolicy.DISABLED_ALPHA
             save.contentDescription = if (valid) {
                 "保存"
             } else {

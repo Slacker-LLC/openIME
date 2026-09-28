@@ -1374,7 +1374,7 @@ open class ImeKeyboardView(
         val available = !passwordField
         clipboardButton.isEnabled = available
         clipboardButton.isClickable = available
-        clipboardButton.alpha = if (available) 1f else 0.38f
+        clipboardButton.alpha = if (available) 1f else ImeSurfacePolicy.DISABLED_ALPHA
         clipboardButton.contentDescription = if (available) {
             "剪贴板"
         } else {
@@ -1890,8 +1890,9 @@ open class ImeKeyboardView(
                 MotionEvent.ACTION_MOVE -> {
                     val index = event.findPointerIndex(spaceVoiceGestureController.pointerId)
                     if (index < 0) return handled
+                    val pointerX = event.rawX + event.getX(index) - event.x
                     val pointerY = event.rawY + event.getY(index) - event.y
-                    spaceVoiceGestureController.move(pointerY)
+                    spaceVoiceGestureController.move(pointerX, pointerY)
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_UP -> {
                     if (event.actionMasked == MotionEvent.ACTION_POINTER_UP &&

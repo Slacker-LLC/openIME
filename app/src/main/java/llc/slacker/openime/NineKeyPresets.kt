@@ -3,7 +3,7 @@ package llc.slacker.openime
 /** Small high-confidence 9-key overrides. Every entry is code-validated in tests. */
 internal object NineKeyPresets {
     val combinations: Map<String, List<String>> = linkedMapOf(
-        "64" to listOf("ni", "mi", "oh"),
+        "64" to listOf("ni", "mi"),
         "64426" to listOf("nihao"),
         "9664" to listOf("yong"),
         "426" to listOf("hao"),

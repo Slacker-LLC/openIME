@@ -193,7 +193,7 @@ internal class TextEditorPanelController(
         val unavailable = reason != null
         control.view.isEnabled = !unavailable
         control.view.isClickable = !unavailable
-        control.view.alpha = if (unavailable) 0.38f else 1f
+        control.view.alpha = if (unavailable) ImeSurfacePolicy.DISABLED_ALPHA else 1f
         control.view.contentDescription =
             if (unavailable && Build.VERSION.SDK_INT < 30) {
                 "${control.label}，不可用：$reason"

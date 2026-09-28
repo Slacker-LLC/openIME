@@ -165,7 +165,7 @@ internal class VoicePanelView(
     fun refreshLanguageControl(locked: Boolean) {
         languageButton.isEnabled = !locked
         languageButton.isClickable = !locked
-        languageButton.alpha = if (locked) 0.52f else 1f
+        languageButton.alpha = if (locked) ImeSurfacePolicy.DISABLED_ALPHA else 1f
         updateLanguagePresentation(locked)
     }
 

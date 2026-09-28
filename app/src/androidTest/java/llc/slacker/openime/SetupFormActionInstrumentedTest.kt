@@ -42,7 +42,10 @@ class SetupFormActionInstrumentedTest {
                     ?: error("save button missing")
 
                 assertFalse("Blank quick phrase must not be saveable", save.isEnabled)
-                assertTrue("Disabled save action must look disabled", save.alpha < 1f)
+                assertTrue(
+                    "Disabled save action must use the shared disabled alpha",
+                    save.alpha == ImeSurfacePolicy.DISABLED_ALPHA,
+                )
                 assertTrue(
                     "Disabled save action must explain the missing content",
                     save.contentDescription.toString().contains("不可用"),
@@ -65,8 +68,11 @@ class SetupFormActionInstrumentedTest {
             harness.launch(intent = intent)
             harness.awaitMain { activity ->
                 val category = activity.findViewById<EditText>(R.id.quick_phrase_category_editor)
+                val code = activity.findViewById<EditText>(R.id.quick_phrase_code_editor)
                 val phrase = activity.findViewById<EditText>(R.id.quick_phrase_text_editor)
                 category.onEditorAction(EditorInfo.IME_ACTION_NEXT)
+                assertSame(code, activity.currentFocus)
+                code.onEditorAction(EditorInfo.IME_ACTION_NEXT)
                 assertSame(phrase, activity.currentFocus)
                 phrase.onEditorAction(EditorInfo.IME_ACTION_DONE)
             }

@@ -254,7 +254,7 @@ internal class ImePanelRenderer(
             ).forEach { (button, label) ->
                 button ?: return@forEach
                 button.isEnabled = hasStrokes
-                button.alpha = if (hasStrokes) 1f else 0.42f
+                button.alpha = if (hasStrokes) 1f else ImeSurfacePolicy.DISABLED_ALPHA
                 button.contentDescription = if (hasStrokes) label else "$label（暂无笔画）"
                 if (Build.VERSION.SDK_INT >= 30) {
                     button.stateDescription = if (hasStrokes) "可用" else "不可用"

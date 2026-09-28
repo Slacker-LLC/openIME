@@ -483,6 +483,8 @@ class AuditInteractionInstrumentedTest {
                 mainHandler = Handler(Looper.getMainLooper()),
                 windowProvider = { null },
                 keyboardHeightPx = { keyboard.measuredHeight.takeIf { it > 0 } },
+                floatingWidthPercent = { 88 },
+                floatingOpacityPercent = { 100 },
             )
             controller.enable()
             assertTrue(controller.enabled)
@@ -588,6 +590,10 @@ class AuditInteractionInstrumentedTest {
         harness.awaitMain {
             val expand = keyboard.findViewWithTag<View>("candidate-expand")
             assertTrue("Empty composition must not expose a dead overflow action", !expand.isEnabled)
+            assertTrue(
+                "Empty candidate overflow must use the shared disabled alpha",
+                expand.alpha == ImeSurfacePolicy.DISABLED_ALPHA,
+            )
             assertTrue(expand.contentDescription.toString().contains("暂无更多候选"))
             keyboard.renderState(ImeState(composition = "ni", candidates = listOf("你")))
             assertTrue("Candidate overflow must become available with a result", expand.isEnabled)
@@ -625,6 +631,10 @@ class AuditInteractionInstrumentedTest {
             keyboard.renderState(ImeState(passwordField = true))
             val clipboard = keyboard.findViewWithTag<View>("clipboard-toolbar")
             assertFalse("Password fields must disable clipboard history", clipboard.isEnabled)
+            assertTrue(
+                "Password clipboard action must use the shared disabled alpha",
+                clipboard.alpha == ImeSurfacePolicy.DISABLED_ALPHA,
+            )
             assertTrue(clipboard.contentDescription.toString().contains("密码输入中不可用"))
             assertTrue("Sensitive editors must not list clipboard in tools", run {
                 keyboard.showPanel(Panel.TOOLS)
