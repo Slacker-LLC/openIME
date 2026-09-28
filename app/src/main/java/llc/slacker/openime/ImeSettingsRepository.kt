@@ -25,6 +25,8 @@ object ImeSettingsRepository {
     private const val KEY_PREFERRED_CHINESE_MODE = "preferred_chinese_mode"
     private const val KEY_HANDEDNESS = "handedness"
     private const val KEY_KEYBOARD_HEIGHT = "keyboard_height_percent"
+    private const val KEY_FLOATING_WIDTH = "floating_width_percent"
+    private const val KEY_FLOATING_OPACITY = "floating_opacity_percent"
 
     /**
      * The user's preferred Chinese layout (26-key vs 9-key). Only PINYIN_26 and
@@ -68,6 +70,26 @@ object ImeSettingsRepository {
     fun saveKeyboardHeightPercent(context: Context, percent: Int) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putInt(KEY_KEYBOARD_HEIGHT, percent.coerceIn(92, 120)).apply()
+    }
+
+    fun loadFloatingWidthPercent(context: Context): Int =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getInt(KEY_FLOATING_WIDTH, 88)
+            .coerceIn(72, 96)
+
+    fun saveFloatingWidthPercent(context: Context, percent: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putInt(KEY_FLOATING_WIDTH, percent.coerceIn(72, 96)).apply()
+    }
+
+    fun loadFloatingOpacityPercent(context: Context): Int =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getInt(KEY_FLOATING_OPACITY, 100)
+            .coerceIn(82, 100)
+
+    fun saveFloatingOpacityPercent(context: Context, percent: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putInt(KEY_FLOATING_OPACITY, percent.coerceIn(82, 100)).apply()
     }
 
     /**
