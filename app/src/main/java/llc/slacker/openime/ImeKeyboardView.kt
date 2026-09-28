@@ -151,6 +151,9 @@ open class ImeKeyboardView(
         onCancelPreviewChanged = { cancelling ->
             voicePanelController.setCancelPreview(cancelling)
         },
+        onCursorStep = { direction ->
+            listener.onTextEdit(if (direction < 0) "left" else "right")
+        },
     )
     private val spaceVoiceKeyFactory: SpaceVoiceKeyFactory by lazy {
         SpaceVoiceKeyFactory(
