@@ -222,9 +222,12 @@ open class ImeKeyboardView(
     private var appliedOrientation = resources.configuration.orientation
     private var appliedFontScale = resources.configuration.fontScale
     private var appliedDensityDpi = resources.displayMetrics.densityDpi
+    private var keyboardHandedness = ImeSettingsRepository.loadHandedness(context)
+    private var keyboardHeightPercent = ImeSettingsRepository.loadKeyboardHeightPercent(context)
     private var layoutMetrics = KeyboardLayoutMetrics(
         landscape = appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE,
         fontScale = appliedFontScale,
+        heightPercent = keyboardHeightPercent,
     )
     private var lastTextMode = KeyboardMode.PINYIN_26
     private var preferredChineseMode = ImeSettingsRepository.loadPreferredChineseMode(context)
@@ -810,6 +813,7 @@ open class ImeKeyboardView(
         layoutMetrics = KeyboardLayoutMetrics(
             landscape = appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE,
             fontScale = appliedFontScale,
+            heightPercent = keyboardHeightPercent,
         )
         if (!geometryChanged) return
         // Do not yank the user out of an open panel.
@@ -930,6 +934,22 @@ open class ImeKeyboardView(
      */
     private fun updateResponsiveGeometry(measuredWidthPx: Int) {
         if (measuredWidthPx <= 0) return
+
+        (mainDock.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
+            if (floatingKeyboardController.enabled || keyboardHandedness == ImeHandedness.STANDARD) {
+                params.width = FrameLayout.LayoutParams.MATCH_PARENT
+                params.gravity = Gravity.TOP
+            } else {
+                params.width = (measuredWidthPx * 0.82f).toInt().coerceAtLeast(dp(280))
+                params.gravity = Gravity.TOP or if (keyboardHandedness == ImeHandedness.LEFT) {
+                    Gravity.START
+                } else {
+                    Gravity.END
+                }
+            }
+            mainDock.layoutParams = params
+        }
+
         if (floatingKeyboardController.enabled) {
             // A configuration pass can briefly report the physical display
             // width before WindowManager applies the floating window bounds.
@@ -1404,6 +1424,29 @@ open class ImeKeyboardView(
      * several times. Keep the individual setters for user actions, but use
      * this atomic boundary whenever a persisted snapshot is loaded.
      */
+    private fun setHandedness(next: ImeHandedness) {
+        if (keyboardHandedness == next) return
+        keyboardHandedness = next
+        ImeSettingsRepository.saveHandedness(context, next)
+        updateResponsiveGeometry(width)
+    }
+
+    private fun setKeyboardHeightPercent(percent: Int) {
+        val bounded = percent.coerceIn(92, 120)
+        if (keyboardHeightPercent == bounded) return
+        keyboardHeightPercent = bounded
+        ImeSettingsRepository.saveKeyboardHeightPercent(context, bounded)
+        layoutMetrics = KeyboardLayoutMetrics(
+            landscape = appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE,
+            fontScale = appliedFontScale,
+            heightPercent = keyboardHeightPercent,
+        )
+        applyDynamicHeights()
+        if (!standalonePanel) {
+            if (panel == Panel.NONE) renderModeBody() else renderPanel(panel)
+        }
+    }
+
     internal fun applyPersistedSettings(
         newTheme: ImeTheme,
         newAppearance: ImeAppearance,
@@ -1417,6 +1460,10 @@ open class ImeKeyboardView(
         primaryColor: String,
     ) {
         val normalizedColor = AccentPalette.normalize(primaryColor)
+        val persistedHandedness = ImeSettingsRepository.loadHandedness(context)
+        val persistedHeight = ImeSettingsRepository.loadKeyboardHeightPercent(context)
+        val geometryChanged = keyboardHandedness != persistedHandedness ||
+            keyboardHeightPercent != persistedHeight
         val visualChanged = theme != newTheme ||
             appearance != newAppearance ||
             skinOpacity != opacity ||
@@ -1434,6 +1481,20 @@ open class ImeKeyboardView(
         skinRadius = radius
         skinFontSize = fontSize
         skinPrimaryColor = normalizedColor
+        if (geometryChanged) {
+            keyboardHandedness = persistedHandedness
+            keyboardHeightPercent = persistedHeight
+            layoutMetrics = KeyboardLayoutMetrics(
+                landscape = appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE,
+                fontScale = appliedFontScale,
+                heightPercent = keyboardHeightPercent,
+            )
+            applyDynamicHeights()
+            if (!standalonePanel) {
+                if (panel == Panel.NONE) renderModeBody() else renderPanel(panel)
+            }
+            updateResponsiveGeometry(width)
+        }
         if (visualChanged) applyTheme()
     }
 
