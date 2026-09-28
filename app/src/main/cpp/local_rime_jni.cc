@@ -330,6 +330,20 @@ Java_llc_slacker_openime_RimeNative_nativeSelectCandidate(
   return utf8_to_jstring(env, finish_selection());
 }
 
+extern "C" JNIEXPORT jboolean JNICALL
+Java_llc_slacker_openime_RimeNative_nativeDeleteCandidate(
+    JNIEnv*, jclass, jint index) {
+  std::lock_guard<std::mutex> lock(g_mutex);
+  if (!g_api || !g_session || index < 0 || !g_api->delete_candidate) {
+    return JNI_FALSE;
+  }
+  return g_api->delete_candidate(
+             g_session,
+             static_cast<size_t>(index))
+             ? JNI_TRUE
+             : JNI_FALSE;
+}
+
 extern "C" JNIEXPORT jstring JNICALL
 Java_llc_slacker_openime_RimeNative_nativeCommitFirst(
     JNIEnv* env, jclass) {
