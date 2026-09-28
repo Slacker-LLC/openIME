@@ -55,7 +55,17 @@ internal class KeyPopupController(
             setPadding(dp(8), dp(6), dp(8), dp(6))
             val popupBackground = if (text == "清空") t.destructive else t.keyBackground
             setTextColor(if (text == "清空") contrastText(popupBackground) else t.keyText)
-            background = rounded(popupBackground, dp(ImeGeometryTokens.CONTROL_RADIUS_DP))
+            background =
+                if (text == "清空") {
+                    rounded(popupBackground, dp(ImeGeometryTokens.CONTROL_RADIUS_DP))
+                } else {
+                    ImeDrawableFactory.rounded(
+                        popupBackground,
+                        dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
+                        ImeSurfacePolicy.divider(t),
+                        dp(1).coerceAtLeast(1),
+                    )
+                }
             elevation = dp(2).toFloat()
         }
 
@@ -73,7 +83,12 @@ internal class KeyPopupController(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             setPadding(dp(5), dp(5), dp(5), dp(5))
-            background = rounded(t.keyBackground, dp(ImeGeometryTokens.CONTROL_RADIUS_DP))
+            background = ImeDrawableFactory.rounded(
+                t.keyBackground,
+                dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
+                ImeSurfacePolicy.divider(t),
+                dp(1).coerceAtLeast(1),
+            )
             elevation = dp(2).toFloat()
             contentDescription = "长按符号选择"
         }
@@ -88,7 +103,7 @@ internal class KeyPopupController(
                     setTextColor(t.keyText)
                     background = statefulRounded(
                         Color.TRANSPARENT,
-                        t.keyPressedBackground,
+                        ImeSurfacePolicy.pressedSurface(t.keyBackground, t),
                         dp(ImeGeometryTokens.KEY_RADIUS_DP),
                     )
                     isClickable = true
