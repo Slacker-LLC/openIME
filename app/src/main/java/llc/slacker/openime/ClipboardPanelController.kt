@@ -275,6 +275,12 @@ internal class ClipboardPanelController(
                 }.apply {
                     setPadding(toPx(12), 0, toPx(12), 0)
                     tag = "phrase:${phrase.id}"
+                    contentDescription =
+                        if (phrase.inputCode.isBlank()) {
+                            "常用语：${phrase.text}"
+                        } else {
+                            "常用语：${phrase.text}，输入码${phrase.inputCode}"
+                        }
                 },
                 LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f).apply {
                     marginEnd = toPx(5)
