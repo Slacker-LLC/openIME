@@ -40,6 +40,7 @@ internal class CandidateBarController(
     private val statefulBackground: (Int, Int, Int) -> Drawable,
     private val onFeedback: () -> Unit,
     private val onCandidateSelected: (String) -> Unit,
+    private val onCandidateLongPressed: (String) -> Unit,
 ) {
     private var renderedCandidates: List<String>? = null
     private var renderedComposition: String? = null
@@ -350,6 +351,11 @@ internal class CandidateBarController(
         item.setOnClickListener {
             onFeedback()
             onCandidateSelected(candidate)
+        }
+        item.setOnLongClickListener {
+            onFeedback()
+            onCandidateLongPressed(candidate)
+            true
         }
     }
 
