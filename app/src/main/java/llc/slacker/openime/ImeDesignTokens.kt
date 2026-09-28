@@ -219,6 +219,22 @@ internal object ImeSurfacePolicy {
             if (isDark(tokens)) 0.18f else 0.08f,
         )
 
+    fun destructiveSurface(tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.blend(
+            tokens.destructive,
+            tokens.toolCardBackground,
+            if (isDark(tokens)) 0.18f else 0.10f,
+        )
+
+    fun destructiveText(tokens: ImeTheme.Tokens): Int {
+        val surface = destructiveSurface(tokens)
+        return if (ImeContrastPolicy.contrastRatio(tokens.destructive, surface) >= 4.5) {
+            tokens.destructive
+        } else {
+            ImeDrawableFactory.contrastText(surface)
+        }
+    }
+
     fun divider(tokens: ImeTheme.Tokens): Int =
         ImeDrawableFactory.withAlpha(
             tokens.border,
