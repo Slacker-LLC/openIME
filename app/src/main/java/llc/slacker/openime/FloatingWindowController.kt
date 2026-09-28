@@ -17,6 +17,8 @@ internal class FloatingWindowController(
     private val mainHandler: Handler,
     private val windowProvider: () -> Window?,
     private val keyboardHeightPx: () -> Int?,
+    private val floatingWidthPercent: () -> Int,
+    private val floatingOpacityPercent: () -> Int,
     private val debugLog: (String) -> Unit = {},
 ) {
     var enabled: Boolean = false
@@ -28,6 +30,7 @@ internal class FloatingWindowController(
     private var baseWidth: Int? = null
     private var baseHeight: Int? = null
     private var baseSoftInputMode: Int? = null
+    private var baseAlpha: Float? = null
 
     fun enable(resetPosition: Boolean = x == 0 && y == 0) {
         enabled = true
@@ -61,6 +64,7 @@ internal class FloatingWindowController(
             attrs.width = baseWidth ?: WindowManager.LayoutParams.MATCH_PARENT
             attrs.height = baseHeight ?: WindowManager.LayoutParams.WRAP_CONTENT
             baseSoftInputMode?.let { attrs.softInputMode = it }
+            baseAlpha?.let { attrs.alpha = it }
             attrs.x = 0
             attrs.y = 0
             imeWindow.attributes = attrs
@@ -77,6 +81,7 @@ internal class FloatingWindowController(
                 baseWidth = attrs.width
                 baseHeight = attrs.height
                 baseSoftInputMode = attrs.softInputMode
+                baseAlpha = attrs.alpha
             }
 
             val (screenWidth, screenHeight) = displaySize()
@@ -96,6 +101,7 @@ internal class FloatingWindowController(
             attrs.width = desiredWidth
             attrs.height = currentHeight
             attrs.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+            attrs.alpha = floatingOpacityPercent().coerceIn(82, 100) / 100f
             attrs.x = x.coerceIn(bounds[0], bounds[1])
             attrs.y = y.coerceIn(bounds[2], bounds[3])
             x = attrs.x
@@ -127,6 +133,7 @@ internal class FloatingWindowController(
         attrs.width = width
         attrs.height = height
         attrs.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+        attrs.alpha = floatingOpacityPercent().coerceIn(82, 100) / 100f
         attrs.x = x
         attrs.y = y
         imeWindow.attributes = attrs
@@ -149,20 +156,19 @@ internal class FloatingWindowController(
     }
 
     private fun floatingWidth(screenWidth: Int): Int {
-        val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-        val preferred = if (landscape) {
-            dp(ImeGeometryTokens.FLOATING_LANDSCAPE_WIDTH_DP)
-        } else {
-            (screenWidth * 0.88f).toInt()
-        }
+        val landscape =
+            resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val percent = floatingWidthPercent().coerceIn(72, 96)
+        val preferred = (screenWidth * percent / 100f).toInt()
         val maximum = dp(
-            if (landscape) ImeGeometryTokens.FLOATING_LANDSCAPE_WIDTH_DP else 400,
+            if (landscape) ImeGeometryTokens.FLOATING_LANDSCAPE_WIDTH_DP else 420,
         )
+        val minimum = dp(if (landscape) 300 else 280)
         return minOf(
             preferred,
             maximum,
             (screenWidth - dp(16)).coerceAtLeast(dp(1)),
-        ).coerceAtLeast(dp(320))
+        ).coerceAtLeast(minimum.coerceAtMost(screenWidth))
     }
 
     private fun displaySize(): Pair<Int, Int> {
