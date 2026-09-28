@@ -361,7 +361,7 @@ internal class ImeThemeApplier(
                 )
                 view.background = statefulRounded(
                     t.destructive,
-                    ImeDrawableFactory.dim(t.destructive, 0.86f),
+                    ImeSurfacePolicy.pressedSurface(t.destructive, t),
                     toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
                 )
             }
@@ -410,13 +410,13 @@ internal class ImeThemeApplier(
                 view.background = if (customSelected) {
                     statefulRounded(
                         t.primary,
-                        ImeDrawableFactory.dim(t.primary),
+                        ImeSurfacePolicy.primaryPressed(t),
                         toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
                     )
                 } else {
                     statefulRounded(
                         t.panelHeadBackground,
-                        ImeDrawableFactory.dim(t.panelHeadBackground),
+                        ImeSurfacePolicy.pressedSurface(t.panelHeadBackground, t),
                         toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
                     )
                 }
