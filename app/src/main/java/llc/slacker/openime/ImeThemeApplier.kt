@@ -222,27 +222,9 @@ internal class ImeThemeApplier(
     private fun applyImageView(view: ImageView, t: ImeTheme.Tokens) {
         when {
             view.tag == "setting-icon" -> {
-                val icon = t.primary
-                view.imageTintList = ColorStateList.valueOf(icon)
-                val dark =
-                    ImeDrawableFactory.contrastText(t.keyboardBackground) ==
-                        Color.WHITE
+                view.imageTintList = ColorStateList.valueOf(t.primary)
                 view.background = ImeDrawableFactory.rounded(
-                    if (dark) {
-                        Color.argb(
-                            42,
-                            Color.red(icon),
-                            Color.green(icon),
-                            Color.blue(icon),
-                        )
-                    } else {
-                        Color.argb(
-                            24,
-                            Color.red(icon),
-                            Color.green(icon),
-                            Color.blue(icon),
-                        )
-                    },
+                    ImeSurfacePolicy.subtleAccentSurface(t),
                     toPx(ImeGeometryTokens.KEY_RADIUS_DP),
                 )
             }
@@ -258,7 +240,7 @@ internal class ImeThemeApplier(
                 view.parent is LinearLayout &&
                     (view.parent as LinearLayout).tag == "toolbar-row"
                 ) || hasAncestorTag(view, "tools-panel") -> {
-                view.imageTintList = ColorStateList.valueOf(t.keyText)
+                view.imageTintList = ColorStateList.valueOf(t.keySecondaryText)
                 if (view.isClickable) {
                     view.background = statefulRounded(
                         Color.TRANSPARENT,
