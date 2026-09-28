@@ -2,6 +2,12 @@ package llc.slacker.openime
 
 import android.content.Context
 
+enum class ImeHandedness(val label: String) {
+    STANDARD("标准"),
+    LEFT("左手"),
+    RIGHT("右手"),
+}
+
 /** Lightweight persistent IME settings. */
 object ImeSettingsRepository {
 
@@ -17,6 +23,8 @@ object ImeSettingsRepository {
     private const val KEY_SKIN_FONT = "skin_font"
     private const val KEY_SKIN_COLOR = "skin_color"
     private const val KEY_PREFERRED_CHINESE_MODE = "preferred_chinese_mode"
+    private const val KEY_HANDEDNESS = "handedness"
+    private const val KEY_KEYBOARD_HEIGHT = "keyboard_height_percent"
 
     /**
      * The user's preferred Chinese layout (26-key vs 9-key). Only PINYIN_26 and
@@ -36,6 +44,30 @@ object ImeSettingsRepository {
         if (mode != KeyboardMode.PINYIN_26 && mode != KeyboardMode.PINYIN_9) return
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putString(KEY_PREFERRED_CHINESE_MODE, mode.name).apply()
+    }
+
+    fun loadHandedness(context: Context): ImeHandedness =
+        runCatching {
+            ImeHandedness.valueOf(
+                context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getString(KEY_HANDEDNESS, ImeHandedness.STANDARD.name)
+                    ?: ImeHandedness.STANDARD.name,
+            )
+        }.getOrDefault(ImeHandedness.STANDARD)
+
+    fun saveHandedness(context: Context, handedness: ImeHandedness) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY_HANDEDNESS, handedness.name).apply()
+    }
+
+    fun loadKeyboardHeightPercent(context: Context): Int =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getInt(KEY_KEYBOARD_HEIGHT, 100)
+            .coerceIn(92, 120)
+
+    fun saveKeyboardHeightPercent(context: Context, percent: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putInt(KEY_KEYBOARD_HEIGHT, percent.coerceIn(92, 120)).apply()
     }
 
     /**
