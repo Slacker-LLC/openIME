@@ -83,10 +83,10 @@ internal class ImeThemeApplier(
             else -> t.keyBackground
         }
         val pressedColor = when {
-            primary -> ImeDrawableFactory.dim(color, 0.88f)
-            side -> ImeDrawableFactory.dim(t.sideKeyBackground, 0.88f)
-            function -> ImeDrawableFactory.dim(t.functionKeyBackground, 0.88f)
-            else -> t.keyPressedBackground
+            primary -> ImeSurfacePolicy.primaryPressed(t)
+            side -> ImeSurfacePolicy.pressedSurface(t.sideKeyBackground, t)
+            function -> ImeSurfacePolicy.pressedSurface(t.functionKeyBackground, t)
+            else -> ImeSurfacePolicy.pressedSurface(color, t)
         }
 
         view.applyMainTextScale(keyMainTextScale())
@@ -318,7 +318,7 @@ internal class ImeThemeApplier(
                 view.setTextColor(t.keySecondaryText)
                 view.background = statefulRounded(
                     t.panelHeadBackground,
-                    ImeDrawableFactory.dim(t.panelHeadBackground),
+                    ImeSurfacePolicy.pressedSurface(t.panelHeadBackground, t),
                     toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
                 )
             }
@@ -327,7 +327,7 @@ internal class ImeThemeApplier(
                 view.setTextColor(ImeDrawableFactory.contrastText(t.primary))
                 view.background = statefulRounded(
                     t.primary,
-                    ImeDrawableFactory.dim(t.primary),
+                    ImeSurfacePolicy.primaryPressed(t),
                     toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
                 )
             }
@@ -341,7 +341,7 @@ internal class ImeThemeApplier(
                 view.setTextColor(t.keyText)
                 view.background = statefulRounded(
                     t.panelHeadBackground,
-                    ImeDrawableFactory.dim(t.panelHeadBackground),
+                    ImeSurfacePolicy.pressedSurface(t.panelHeadBackground, t),
                     toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
                 )
             }
@@ -350,7 +350,7 @@ internal class ImeThemeApplier(
                 view.setTextColor(t.keyText)
                 view.background = statefulRounded(
                     t.panelHeadBackground,
-                    ImeDrawableFactory.dim(t.panelHeadBackground),
+                    ImeSurfacePolicy.pressedSurface(t.panelHeadBackground, t),
                     toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
                 )
             }
@@ -390,7 +390,7 @@ internal class ImeThemeApplier(
                 view.setTextColor(t.sideKeyText)
                 view.background = statefulRounded(
                     Color.TRANSPARENT,
-                    t.keyPressedBackground,
+                    ImeSurfacePolicy.pressedSurface(t.sideKeyBackground, t),
                     toPx(ImeGeometryTokens.KEY_RADIUS_DP),
                 )
             }
@@ -435,7 +435,7 @@ internal class ImeThemeApplier(
                 view.setTextColor(t.keyText)
                 view.background = statefulRounded(
                     t.panelHeadBackground,
-                    ImeDrawableFactory.dim(t.panelHeadBackground),
+                    ImeSurfacePolicy.pressedSurface(t.panelHeadBackground, t),
                     toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
                 )
             }
@@ -467,7 +467,7 @@ internal class ImeThemeApplier(
                 view.setTextColor(t.candidateText)
                 view.background = statefulRounded(
                     t.toolCardBackground,
-                    ImeDrawableFactory.dim(t.toolCardBackground),
+                    ImeSurfacePolicy.pressedSurface(t.toolCardBackground, t),
                     toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
                 )
             }
@@ -481,7 +481,7 @@ internal class ImeThemeApplier(
                 )
                 view.background = statefulRounded(
                     t.primary,
-                    ImeDrawableFactory.dim(t.primary, 0.88f),
+                    ImeSurfacePolicy.primaryPressed(t),
                     toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
                 )
             }
@@ -503,14 +503,14 @@ internal class ImeThemeApplier(
             "emoji-cell" -> {
                 view.background = statefulRounded(
                     Color.TRANSPARENT,
-                    t.keyPressedBackground,
+                    ImeSurfacePolicy.pressedSurface(t.sideKeyBackground, t),
                     toPx(ImeGeometryTokens.KEY_RADIUS_DP),
                 )
             }
             "accent-swatch" -> {
                 view.background = statefulRounded(
                     Color.TRANSPARENT,
-                    t.keyPressedBackground,
+                    ImeSurfacePolicy.pressedSurface(t.sideKeyBackground, t),
                     toPx(ImeGeometryTokens.KEY_RADIUS_DP),
                 )
             }
