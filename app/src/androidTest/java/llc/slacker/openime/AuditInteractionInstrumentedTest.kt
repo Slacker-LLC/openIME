@@ -1124,7 +1124,13 @@ class AuditInteractionInstrumentedTest {
     @Test
     fun rebuildWhileSpaceIsHeldDoesNotSwallowTheSpace() = withKeyboard { harness, recorder, keyboard ->
         var downTime = 0L
+        var released = false
+        var spaceViewSurvivedRebuildPoll = false
         lateinit var spaceKey: View
+        val releaseDelayMs = minOf(
+            100L,
+            (ViewConfiguration.getLongPressTimeout().toLong() / 2L).coerceAtLeast(1L),
+        )
         harness.awaitMain {
             val point = keyPoint(keyboard, "key-space")
             spaceKey = requireNotNull(keyboard.findViewWithTag("key-space"))
@@ -1144,11 +1150,23 @@ class AuditInteractionInstrumentedTest {
                 spaceKey,
                 keyboard.findViewWithTag("key-space"),
             )
+            // Give the deferred row rebuild poll several main-loop turns, but
+            // release before Android's own long-click can consume this tap.
+            keyboard.postDelayed({
+                spaceViewSurvivedRebuildPoll =
+                    keyboard.findViewWithTag<View>("key-space") === spaceKey
+                val point = keyPoint(keyboard, "key-space")
+                pointers(keyboard, downTime, MotionEvent.ACTION_UP, listOf(point))
+                released = true
+            }, releaseDelayMs)
             true
         }
+        harness.awaitMain(timeoutMs = 3_000L) { if (released) true else null }
         harness.awaitMain {
-            val point = keyPoint(keyboard, "key-space")
-            pointers(keyboard, downTime, MotionEvent.ACTION_UP, listOf(point))
+            assertTrue(
+                "The Space view must remain attached while the rebuild poll sees the active touch",
+                spaceViewSurvivedRebuildPoll,
+            )
             assertEquals("Space release must commit synchronously", 1, recorder.spaces)
             true
         }
