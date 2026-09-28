@@ -1,6 +1,7 @@
 package llc.slacker.openime
 
 import android.content.Context
+import android.graphics.Typeface
 import android.os.Build
 import android.text.Editable
 import android.text.TextWatcher
@@ -199,6 +200,7 @@ internal class NineKeySymbolRailController(
                         stateDescription = if (active) "已选择" else "未选择"
                     }
                     isSelected = active
+                    typeface = if (active) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
                     isClickable = true
                     isFocusable = true
                     maxLines = 2
