@@ -1719,6 +1719,7 @@ open class ImeKeyboardView(
             composition = composition,
             onCommit = listener::onCharacter,
             onFeedback = ::feedback,
+            onRailChanged = ::applyThemeToSubtree,
         ).also { nineKeySymbolRailController = it }
     }
 
