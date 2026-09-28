@@ -823,6 +823,7 @@ internal class SettingsPanelController(
             ),
         )
         val valueView = TextView(context).apply {
+            tag = "setting-value"
             textSize = 12f
             gravity = Gravity.CENTER
             includeFontPadding = false
@@ -910,6 +911,7 @@ internal class SettingsPanelController(
             text = value
             textSize = size
             includeFontPadding = false
+            tag = if (size <= 11.5f) "panel-note" else "setting-label"
         }
 
     private fun chipParams() =
