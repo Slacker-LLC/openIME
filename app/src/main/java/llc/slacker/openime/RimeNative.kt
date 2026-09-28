@@ -26,6 +26,10 @@ internal object RimeNative {
     @JvmStatic
     external fun nativeSelectCandidate(index: Int): String?
 
+    /** Remove a deletable candidate from the active Rime user dictionary. */
+    @JvmStatic
+    external fun nativeDeleteCandidate(index: Int): Boolean
+
     @JvmStatic
     external fun nativeCommitFirst(): String?
 
