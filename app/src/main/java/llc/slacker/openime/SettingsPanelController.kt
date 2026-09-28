@@ -526,10 +526,7 @@ internal class SettingsPanelController(
             ).apply {
                 gravity = Gravity.START or Gravity.CENTER_VERTICAL
             }
-            background = ImeDrawableFactory.rounded(
-                Color.WHITE,
-                toPx(ImeGeometryTokens.PILL_RADIUS_DP),
-            )
+            tag = "toggle-knob"
             translationX =
                 if (isOn) toPx(ImeGeometryTokens.SWITCH_KNOB_TRAVEL_DP).toFloat()
                 else 0f
