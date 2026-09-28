@@ -1253,6 +1253,9 @@ open class ImeKeyboardView(
         }
         stopVoiceIfActive()
         panel = Panel.NONE
+        if (renderedMode != mode) {
+            renderModeBody()
+        }
         expandedPanel.animate().cancel()
         expandedPanel.visibility = View.GONE
         mainDock.animate().cancel()
@@ -1449,6 +1452,7 @@ open class ImeKeyboardView(
         if (keyboardHeightPercent == bounded) return
         keyboardHeightPercent = bounded
         ImeSettingsRepository.saveKeyboardHeightPercent(context, bounded)
+        renderedMode = null
         layoutMetrics = KeyboardLayoutMetrics(
             landscape = appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE,
             fontScale = appliedFontScale,
@@ -1477,8 +1481,8 @@ open class ImeKeyboardView(
         val normalizedColor = AccentPalette.normalize(primaryColor)
         val persistedHandedness = ImeSettingsRepository.loadHandedness(context)
         val persistedHeight = ImeSettingsRepository.loadKeyboardHeightPercent(context)
-        val geometryChanged = keyboardHandedness != persistedHandedness ||
-            keyboardHeightPercent != persistedHeight
+        val heightChanged = keyboardHeightPercent != persistedHeight
+        val geometryChanged = keyboardHandedness != persistedHandedness || heightChanged
         val visualChanged = theme != newTheme ||
             appearance != newAppearance ||
             skinOpacity != opacity ||
@@ -1499,6 +1503,7 @@ open class ImeKeyboardView(
         if (geometryChanged) {
             keyboardHandedness = persistedHandedness
             keyboardHeightPercent = persistedHeight
+            if (heightChanged) renderedMode = null
             layoutMetrics = KeyboardLayoutMetrics(
                 landscape = appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE,
                 fontScale = appliedFontScale,
