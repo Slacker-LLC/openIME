@@ -339,6 +339,47 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
 
     private fun fuzzyVariants(py: String): List<String> = pinyinFuzzyVariants(py)
 
+    private fun typoCandidatesFor(
+        pinyin: String,
+        fuzzy: Boolean,
+    ): List<String> {
+        val result = linkedSetOf<String>()
+
+        if (fuzzy) {
+            fuzzyVariants(pinyin).forEach { variant ->
+                result.addAll(ImeData.phraseDict[variant].orEmpty().take(2))
+                result.addAll(pinyinDict[variant].orEmpty().take(2))
+            }
+        }
+        result.addAll(ImeData.phraseDict[pinyin].orEmpty().take(4))
+        result.addAll(pinyinDict[pinyin].orEmpty().take(4))
+
+        // Prefix lookup is indexed and bounded; unlike getCandidates(), this
+        // path never performs segmentation or initial-index expansion for each
+        // neighboring-key variant.
+        phrasePrefixIndex.lookup(pinyin)
+            .values
+            .asSequence()
+            .flatMap { it.asSequence() }
+            .filter { it.isNotEmpty() }
+            .take(4)
+            .forEach(result::add)
+
+        var index = lowerBound(sortedPinyinKeys, pinyin)
+        var scanned = 0
+        while (index < sortedPinyinKeys.size && scanned < 4) {
+            val key = sortedPinyinKeys[index]
+            if (!key.startsWith(pinyin)) break
+            pinyinDict[key].orEmpty().firstOrNull()?.let(result::add)
+            index += 1
+            scanned += 1
+        }
+
+        return result
+            .filter { candidate -> candidate.any { ch -> ch.code > 0x7f } }
+            .take(8)
+    }
+
     /**
      * Recover common 26-key slips by substituting exactly one physically
      * adjacent QWERTY key. This is intentionally conservative: it never
@@ -368,12 +409,7 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
                     append(replacement)
                     append(input, index + 1, input.length)
                 }
-                getCandidates(variant, fuzzy)
-                    .asSequence()
-                    .filter { candidate ->
-                        candidate != variant &&
-                            candidate.any { ch -> ch.code > 0x7f }
-                    }
+                typoCandidatesFor(variant, fuzzy)
                     .take(2)
                     .forEach { candidate ->
                         result += candidate
