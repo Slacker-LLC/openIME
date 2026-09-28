@@ -204,4 +204,9 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
         ImeSettingsRepository.saveKeyboardHeightPercent(this, percent)
         refreshLiveIme()
     }
+    override fun onFloatingStyleChanged(widthPercent: Int, opacityPercent: Int) {
+        ImeSettingsRepository.saveFloatingWidthPercent(this, widthPercent)
+        ImeSettingsRepository.saveFloatingOpacityPercent(this, opacityPercent)
+        refreshLiveIme()
+    }
 }
