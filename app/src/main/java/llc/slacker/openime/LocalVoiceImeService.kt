@@ -670,6 +670,28 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         keyboardView?.renderState(state)
     }
 
+    override fun onUndoClear(): Boolean {
+        if (state.passwordField) return false
+        val restored = gateway.restoreLastClear()
+        if (!restored) {
+            showTextEditFeedback("没有可撤回的清空内容")
+            return false
+        }
+        voiceCorrectionTracker.clear()
+        voiceComposing = false
+        state = state.copy(
+            composition = "",
+            candidates = emptyList(),
+            expandedCandidates = emptyList(),
+            voiceState = VoiceUiState(),
+        )
+        lastComposition = ""
+        renderedCandidateSnapshot = null
+        keyboardView?.clearAssociationCandidates()
+        keyboardView?.renderState(state)
+        return true
+    }
+
     override fun onFloatingKeyboardChanged(floating: Boolean) {
         keyboardView?.setFloatingWindowMode(floating)
         if (floating) floatingWindow.enable() else floatingWindow.restore()
