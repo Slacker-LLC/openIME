@@ -155,18 +155,24 @@ internal class ImeThemeApplier(
                 view.background = ImeDrawableFactory.rounded(
                     t.toolCardBackground,
                     toPx(ImeGeometryTokens.CARD_RADIUS_DP),
+                    ImeSurfacePolicy.divider(t),
+                    toPx(1).coerceAtLeast(1),
                 )
             }
             "clip-card" -> {
                 view.background = ImeDrawableFactory.rounded(
                     t.toolCardBackground,
                     toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
+                    ImeSurfacePolicy.divider(t),
+                    toPx(1).coerceAtLeast(1),
                 )
             }
             "panel-head" -> {
                 view.background = ImeDrawableFactory.rounded(
                     t.panelHeadBackground,
                     toPx(ImeGeometryTokens.CARD_RADIUS_DP),
+                    ImeSurfacePolicy.divider(t),
+                    toPx(1).coerceAtLeast(1),
                 )
             }
             "toolbar-row" -> view.setBackgroundColor(t.toolbarBackground)
@@ -241,7 +247,7 @@ internal class ImeThemeApplier(
                 )
             }
             view.tag == "key-panel-back" -> {
-                view.imageTintList = ColorStateList.valueOf(t.keyText)
+                view.imageTintList = ColorStateList.valueOf(t.keySecondaryText)
                 view.background = statefulRounded(
                     t.panelHeadBackground,
                     ImeSurfacePolicy.pressedSurface(t.panelHeadBackground, t),
@@ -287,8 +293,14 @@ internal class ImeThemeApplier(
             tag == "candidate-word" ->
                 view.setTextColor(t.candidateText)
 
-            tag == "panel-note" ->
+            tag == "panel-note" ||
+                tag == "setting-value" ||
+                tag == "setting-chevron" ||
+                tag == "panel-section-title" ->
                 view.setTextColor(t.keySecondaryText)
+
+            tag == "setting-label" ->
+                view.setTextColor(t.keyText)
 
             tag == "panel-error" -> {
                 val error = t.destructive
