@@ -125,20 +125,20 @@ enum class ImeTheme(val key: String, val label: String) {
                 // controls sit one surface above it, and typing keys occupy
                 // the clearest foreground plane.
                 Tokens(
-                    c("#7FAAFF"), c("#16181C"), c("#1D2025"), c("#1F2228"), c("#F2F3F5"),
-                    c("#2B2E34"), c("#F2F3F5"), c("#ADB2BC"), c("#22252B"), c("#D8DCE3"), c("#3A3E46"),
-                    c("#22252B"), c("#343840"), c("#22252B"), c("#181B20"), c("#1F2228"),
-                    c("#2B2E34"), c("#F2F3F5"), c("#22252B"), c("#D8DCE3"), c("#22252B"), c("#1D2025"),
+                    c("#0A84FF"), c("#1C1C1E"), c("#242426"), c("#262628"), c("#F2F2F7"),
+                    c("#3A3A3C"), c("#F2F2F7"), c("#AEAEB2"), c("#2C2C2E"), c("#F2F2F7"), c("#4A4A4D"),
+                    c("#242426"), c("#48484A"), c("#2C2C2E"), c("#202022"), c("#242426"),
+                    c("#3A3A3C"), c("#F2F2F7"), c("#2C2C2E"), c("#F2F2F7"), c("#303033"), c("#242426"),
                 )
             } else {
                 // Light mode deliberately separates the cool-gray keyboard
                 // base, secondary controls and near-white typing surfaces.
                 // Text remains neutral instead of using absolute black.
                 Tokens(
-                    c("#1D9BF0"), c("#D9DCE2"), c("#F1F2F4"), c("#F5F6F8"), c("#202124"),
-                    c("#FFFFFF"), c("#202124"), c("#5E6570"), c("#C8CCD4"), c("#343A44"), c("#E2E5EA"),
-                    c("#F7F8FA"), c("#BCC1C9"), c("#C8CCD4"), c("#F5F6F8"), c("#F7F8FA"),
-                    c("#FFFFFF"), c("#202124"), c("#C8CCD4"), c("#343A44"), c("#FFFFFF"), c("#EEF0F3"),
+                    c("#007AFF"), c("#D5D8DE"), c("#EEF0F3"), c("#F7F8FA"), c("#1F2023"),
+                    c("#FFFFFF"), c("#1C1C1E"), c("#6E6E73"), c("#C5C9D1"), c("#2C2D31"), c("#DDE1E7"),
+                    c("#F2F3F5"), c("#B7BCC5"), c("#C5C9D1"), c("#F1F2F4"), c("#F8F9FA"),
+                    c("#FFFFFF"), c("#1C1C1E"), c("#C5C9D1"), c("#2C2D31"), c("#FFFFFF"), c("#E4E7EB"),
                 )
             }
             DARK -> Tokens(
@@ -169,6 +169,54 @@ enum class ImeTheme(val key: String, val label: String) {
         val accent = accentOverride ?: return base
         return base.copy(primary = accent)
     }
+}
+
+/**
+ * Derived interaction roles. Base palettes own neutral hierarchy; these
+ * functions derive selected/pressed/disabled surfaces so every panel uses the
+ * same state language instead of inventing another gray.
+ */
+internal object ImeSurfacePolicy {
+    const val DISABLED_ALPHA = 0.42f
+
+    fun isDark(tokens: ImeTheme.Tokens): Boolean =
+        ImeContrastPolicy.relativeLuminance(tokens.keyboardBackground) < 0.16
+
+    fun selectedSurface(tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.blend(
+            tokens.primary,
+            tokens.candidateBackground,
+            if (isDark(tokens)) 0.24f else 0.12f,
+        )
+
+    fun selectedText(tokens: ImeTheme.Tokens): Int =
+        if (
+            ImeContrastPolicy.contrastRatio(tokens.primary, selectedSurface(tokens)) >= 4.5
+        ) {
+            tokens.primary
+        } else {
+            tokens.keyText
+        }
+
+    fun pressedSurface(base: Int, tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.blend(
+            tokens.keyText,
+            base,
+            if (isDark(tokens)) 0.12f else 0.08f,
+        )
+
+    fun subtleAccentSurface(tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.blend(
+            tokens.primary,
+            tokens.toolCardBackground,
+            if (isDark(tokens)) 0.18f else 0.08f,
+        )
+
+    fun divider(tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.withAlpha(
+            tokens.border,
+            if (isDark(tokens)) 150 else 180,
+        )
 }
 
 /** Shared WCAG contrast decisions for every native surface. */
