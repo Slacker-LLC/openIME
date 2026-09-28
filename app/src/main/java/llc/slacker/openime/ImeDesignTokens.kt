@@ -120,18 +120,25 @@ enum class ImeTheme(val key: String, val label: String) {
             // minis_ime_dual_theme_renderer.html 的 Dark Obsidian / Light Crystal
             // 调色板。390 × 296 只是设计基准，尺寸仍由原生 View 的实际窗口计算。
             IOS -> if (useDark) {
+                // Dark mode is a separate neutral scale rather than an
+                // inverted light palette. The keyboard base stays darkest,
+                // controls sit one surface above it, and typing keys occupy
+                // the clearest foreground plane.
                 Tokens(
-                    c("#afc6ff"), c("#181a1e"), c("#202228"), c("#202228"), c("#e8e9ed"),
-                    c("#303238"), c("#e8e9ed"), c("#b3b7c2"), c("#25272c"), c("#d7dae2"), c("#3a3d44"),
-                    c("#25272c"), c("#343740"), c("#25272c"), c("#181a1e"), c("#202228"),
-                    c("#303238"), c("#e8e9ed"), c("#25272c"), c("#d7dae2"), c("#25272c"), c("#202228"),
+                    c("#7FAAFF"), c("#16181C"), c("#1D2025"), c("#1F2228"), c("#F2F3F5"),
+                    c("#2B2E34"), c("#F2F3F5"), c("#ADB2BC"), c("#22252B"), c("#D8DCE3"), c("#3A3E46"),
+                    c("#22252B"), c("#343840"), c("#22252B"), c("#181B20"), c("#1F2228"),
+                    c("#2B2E34"), c("#F2F3F5"), c("#22252B"), c("#D8DCE3"), c("#22252B"), c("#1D2025"),
                 )
             } else {
+                // Light mode deliberately separates the cool-gray keyboard
+                // base, secondary controls and near-white typing surfaces.
+                // Text remains neutral instead of using absolute black.
                 Tokens(
-                    c("#1D9BF0"), c("#e6e7eb"), c("#f0f1f3"), c("#f0f1f3"), c("#202124"),
-                    c("#fafafb"), c("#202124"), c("#555b66"), c("#d2d4db"), c("#374151"), c("#e3e5e9"),
-                    c("#f5f6f8"), c("#c8cbd2"), c("#d2d4db"), c("#e6e7eb"), c("#f0f1f3"),
-                    c("#fafafb"), c("#202124"), c("#d2d4db"), c("#374151"), c("#f8f9fa"), c("#f0f1f3"),
+                    c("#1D9BF0"), c("#D9DCE2"), c("#F1F2F4"), c("#F5F6F8"), c("#202124"),
+                    c("#FFFFFF"), c("#202124"), c("#5E6570"), c("#C8CCD4"), c("#343A44"), c("#E2E5EA"),
+                    c("#F7F8FA"), c("#BCC1C9"), c("#C8CCD4"), c("#F5F6F8"), c("#F7F8FA"),
+                    c("#FFFFFF"), c("#202124"), c("#C8CCD4"), c("#343A44"), c("#FFFFFF"), c("#EEF0F3"),
                 )
             }
             DARK -> Tokens(
