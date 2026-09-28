@@ -6,6 +6,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.os.Build
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
@@ -13,6 +14,7 @@ import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import kotlin.math.abs
 
 /**
  * Owns candidate presentation: strip diff/reuse, scroll preservation,
@@ -43,6 +45,40 @@ internal class CandidateBarController(
     private var renderedComposition: String? = null
     private var renderedExpandedCandidates: List<String>? = null
     private var renderedExpandedComposition: String? = null
+    private var candidateTouchDownX = 0f
+    private var candidateTouchDownY = 0f
+
+    init {
+        // Keep ordinary horizontal scrolling native. A deliberate downward
+        // swipe on the candidate strip is only an alternate affordance for
+        // the existing expand button, so it does not create another state
+        // owner or candidate-navigation path.
+        scroll.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    candidateTouchDownX = event.x
+                    candidateTouchDownY = event.y
+                }
+                MotionEvent.ACTION_UP -> {
+                    val dx = event.x - candidateTouchDownX
+                    val dy = event.y - candidateTouchDownY
+                    if (
+                        !expandedOpen &&
+                        expandButton.isEnabled &&
+                        dy >= toPx(CANDIDATE_EXPAND_SWIPE_DP) &&
+                        dy > abs(dx) * 1.15f
+                    ) {
+                        expandButton.performClick()
+                    }
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    candidateTouchDownX = 0f
+                    candidateTouchDownY = 0f
+                }
+            }
+            false
+        }
+    }
 
     var expandedOpen: Boolean = false
         private set
@@ -319,5 +355,6 @@ internal class CandidateBarController(
 
     private companion object {
         const val STRIP_LIMIT = 24
+        const val CANDIDATE_EXPAND_SWIPE_DP = 36
     }
 }
