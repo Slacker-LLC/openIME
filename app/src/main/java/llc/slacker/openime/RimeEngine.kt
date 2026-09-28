@@ -290,6 +290,38 @@ class RimeEngine(
         return ""
     }
 
+    /**
+     * Delete one user-learned candidate without blocking the IME thread.
+     * Built-in dictionary entries are not deletable and report false.
+     */
+    fun deleteCandidate(
+        input: String,
+        candidate: String,
+        onComplete: (Boolean) -> Unit,
+    ): Boolean {
+        val normalized = RimeInputNormalizer.normalize(input)
+        val visible = candidate.trim()
+        if (!isReady || normalized.isBlank() || visible.isEmpty()) return false
+
+        return mutationQueue.submit {
+            val deleted = synchronized(lock) {
+                if (!isReady) {
+                    false
+                } else {
+                    runCatching {
+                        if (!syncSchemaFromSettingsLocked()) return@runCatching false
+                        val snapshot = RimeNative.nativeSetInput(normalized)
+                        val entry = snapshotCandidateEntries(snapshot)
+                            .firstOrNull { it.text == visible }
+                            ?: return@runCatching false
+                        RimeNative.nativeDeleteCandidate(entry.nativeIndex)
+                    }.getOrDefault(false)
+                }
+            }
+            onComplete(deleted)
+        }
+    }
+
     fun commitFirst(input: String, allowLearning: Boolean = true): String {
         if (!allowLearning) return candidates(input).firstOrNull().orEmpty()
         val normalized = RimeInputNormalizer.normalize(input)
