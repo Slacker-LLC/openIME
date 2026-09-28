@@ -5,6 +5,7 @@ import android.os.Build
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
+import android.view.View
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -24,8 +25,14 @@ internal class NineKeySymbolRailController(
     private val composition: EditText,
     private val onCommit: (String) -> Unit,
     private val onFeedback: () -> Unit,
+    private val onRailChanged: (View) -> Unit,
 ) {
+    private enum class RailMode { SYMBOLS, PINYIN }
+
     private var rail: ScrollView? = null
+    private var railMode = RailMode.SYMBOLS
+    private var renderedChoices: List<String> = emptyList()
+    private var renderedSelected: String? = null
 
     init {
         composition.addTextChangedListener(object : TextWatcher {
@@ -61,6 +68,9 @@ internal class NineKeySymbolRailController(
             onFeedback = onFeedback,
         ).also {
             rail = it
+            railMode = RailMode.SYMBOLS
+            renderedChoices = emptyList()
+            renderedSelected = null
             refreshPinyinFilters()
         }
 
@@ -70,7 +80,11 @@ internal class NineKeySymbolRailController(
      * rail is actually in symbol mode.
      */
     fun refreshSymbols() {
-        refreshPinyinFilters()
+        if (railMode == RailMode.SYMBOLS) {
+            renderSymbols(force = true)
+        } else {
+            refreshPinyinFilters()
+        }
     }
 
     private fun refreshPinyinFilters() {
@@ -127,8 +141,10 @@ internal class NineKeySymbolRailController(
         }
     }
 
-    private fun renderSymbols() {
+    private fun renderSymbols(force: Boolean = false) {
         val scroll = rail ?: return
+        if (railMode == RailMode.SYMBOLS && !force) return
+
         SymbolRailRenderer.populate(
             scroll = scroll,
             symbols = commonSymbols(),
@@ -136,8 +152,12 @@ internal class NineKeySymbolRailController(
             onCommit = onCommit,
             onFeedback = onFeedback,
         )
+        railMode = RailMode.SYMBOLS
+        renderedChoices = emptyList()
+        renderedSelected = null
         if (scroll.scrollY != 0) scroll.post { scroll.scrollTo(0, 0) }
         scroll.contentDescription = "九键常用符号，上下滑动查看更多"
+        onRailChanged(scroll)
     }
 
     private fun renderPinyinChoices(
@@ -146,6 +166,13 @@ internal class NineKeySymbolRailController(
         onSelect: (String) -> Unit,
     ) {
         val scroll = rail ?: return
+        if (
+            railMode == RailMode.PINYIN &&
+            renderedChoices == choices &&
+            renderedSelected == selected
+        ) {
+            return
+        }
         val content = scroll.getChildAt(0) as? LinearLayout ?: return
         val inheritedTextColor = (0 until content.childCount)
             .asSequence()
@@ -189,7 +216,11 @@ internal class NineKeySymbolRailController(
             )
         }
 
+        railMode = RailMode.PINYIN
+        renderedChoices = choices.toList()
+        renderedSelected = selected
         scroll.contentDescription = "九键拼音筛选，上下滑动查看更多"
+        onRailChanged(scroll)
         val selectedIndex = choices.indexOf(selected).coerceAtLeast(0)
         scroll.post {
             val target = content.getChildAt(selectedIndex) ?: return@post
