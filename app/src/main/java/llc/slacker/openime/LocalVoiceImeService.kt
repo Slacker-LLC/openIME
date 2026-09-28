@@ -959,6 +959,18 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             return
         }
 
+        if (
+            QuickPhraseRepository.candidatesForInputCode(
+                context = this,
+                rawCode = composition,
+                exactOnly = false,
+                limit = 16,
+            ).contains(candidate)
+        ) {
+            showTextEditFeedback("这是常用语，请在常用语面板中编辑或删除")
+            return
+        }
+
         val modeAtRequest = state.keyboardMode
         fun refreshAfterDelete() {
             if (lastComposition != composition || state.keyboardMode != modeAtRequest) return
