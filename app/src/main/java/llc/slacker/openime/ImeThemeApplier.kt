@@ -535,6 +535,18 @@ internal class ImeThemeApplier(
                     toPx(ImeGeometryTokens.PILL_RADIUS_DP),
                 )
             }
+            "toggle-knob" -> {
+                val parent = view.parent as? FrameLayout
+                val seed = parent?.contentDescription?.toString()
+                    ?.substringBefore('，')
+                    .orEmpty()
+                val trackColor =
+                    if (toggleState(seed)) t.primary else t.panelHeadBackground
+                view.background = ImeDrawableFactory.rounded(
+                    ImeDrawableFactory.contrastText(trackColor),
+                    toPx(ImeGeometryTokens.PILL_RADIUS_DP),
+                )
+            }
             "setting-divider" ->
                 view.setBackgroundColor(ImeSurfacePolicy.divider(t))
         }
