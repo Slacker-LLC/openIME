@@ -72,6 +72,7 @@ open class ImeKeyboardView(
             onCompositionChanged(composition, candidates)
         }
         fun onCandidateSelected(candidate: String)
+        fun onCandidateLongPressed(candidate: String) {}
 
         /**
          * An association ("联想") chip is rendered only *after* a candidate was
@@ -1014,6 +1015,11 @@ open class ImeKeyboardView(
                 }.apply {
                     allowTwoLineLabel()
                     contentDescription = "候选:$candidate"
+                    setOnLongClickListener {
+                        feedback()
+                        listener.onCandidateLongPressed(candidate)
+                        true
+                    }
                 }
             },
             createEmptyLabel = { title("暂无候选", small = true) },
@@ -1028,6 +1034,7 @@ open class ImeKeyboardView(
             statefulBackground = ::statefulRounded,
             onFeedback = ::feedback,
             onCandidateSelected = listener::onCandidateSelected,
+            onCandidateLongPressed = listener::onCandidateLongPressed,
         )
         mainDock.addView(
             topZone,
