@@ -205,6 +205,13 @@ internal object ImeSurfacePolicy {
             if (isDark(tokens)) 0.12f else 0.08f,
         )
 
+    fun primaryPressed(tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.blend(
+            if (isDark(tokens)) Color.WHITE else Color.BLACK,
+            tokens.primary,
+            if (isDark(tokens)) 0.10f else 0.12f,
+        )
+
     fun subtleAccentSurface(tokens: ImeTheme.Tokens): Int =
         ImeDrawableFactory.blend(
             tokens.primary,
