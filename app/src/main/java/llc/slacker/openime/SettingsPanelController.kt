@@ -51,10 +51,14 @@ internal class SettingsPanelController(
     private val currentSkinRadius: () -> Int,
     private val currentSkinFontSize: () -> Int,
     private val currentSkinColor: () -> String,
+    private val currentHandedness: () -> ImeHandedness,
+    private val currentKeyboardHeightPercent: () -> Int,
     private val onThemeSelected: (ImeTheme) -> Unit,
     private val onAppearanceSelected: (ImeAppearance) -> Unit,
     private val onToggleChanged: (String, Boolean) -> Unit,
     private val onSkinChanged: (Int, Int, Int, String) -> Unit,
+    private val onHandednessChanged: (ImeHandedness) -> Unit,
+    private val onKeyboardHeightChanged: (Int) -> Unit,
     private val onShowFuzzySettings: () -> Unit,
     private val onFeedback: () -> Unit,
     private val applyTheme: () -> Unit,
@@ -136,6 +140,32 @@ internal class SettingsPanelController(
                 }
             },
             chipParams(),
+        )
+
+        content.addView(createSectionTitle("键盘布局"), wrapParams())
+        content.addView(
+            createChipScroll(
+                ImeHandedness.entries.map { it.label },
+                currentHandedness().label,
+            ) { label ->
+                ImeHandedness.entries.firstOrNull { it.label == label }?.let { selected ->
+                    onHandednessChanged(selected)
+                    renderSettings(reusePanel = true)
+                }
+            },
+            chipParams(),
+        )
+        content.addView(
+            settingGroup(
+                settingsSlider(
+                    "键盘高度",
+                    92,
+                    120,
+                    currentKeyboardHeightPercent(),
+                    onKeyboardHeightChanged,
+                ),
+            ),
+            groupParams(),
         )
 
         content.addView(createSectionTitle("强调色"), wrapParams())
@@ -777,6 +807,7 @@ internal class SettingsPanelController(
             "圆角" -> " dp"
             "不透明度" -> "%"
             "按键字号" -> " sp"
+            "键盘高度" -> "%"
             else -> ""
         }
         val seekBar = SeekBar(context).apply {
