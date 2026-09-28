@@ -196,4 +196,12 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
         refreshWindowChrome()
         refreshLiveIme()
     }
+    override fun onHandednessChanged(handedness: ImeHandedness) {
+        ImeSettingsRepository.saveHandedness(this, handedness)
+        refreshLiveIme()
+    }
+    override fun onKeyboardHeightChanged(percent: Int) {
+        ImeSettingsRepository.saveKeyboardHeightPercent(this, percent)
+        refreshLiveIme()
+    }
 }
