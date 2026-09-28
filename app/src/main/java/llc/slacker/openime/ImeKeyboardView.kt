@@ -939,12 +939,21 @@ open class ImeKeyboardView(
     private fun updateResponsiveGeometry(measuredWidthPx: Int) {
         if (measuredWidthPx <= 0) return
 
-        (mainDock.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
+        val dockWidthPx =
             if (floatingKeyboardController.enabled || keyboardHandedness == ImeHandedness.STANDARD) {
+                measuredWidthPx
+            } else {
+                (measuredWidthPx * 0.82f).toInt()
+                    .coerceAtLeast(dp(280))
+                    .coerceAtMost(measuredWidthPx)
+            }
+
+        (mainDock.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
+            if (dockWidthPx == measuredWidthPx) {
                 params.width = FrameLayout.LayoutParams.MATCH_PARENT
                 params.gravity = Gravity.TOP
             } else {
-                params.width = (measuredWidthPx * 0.82f).toInt().coerceAtLeast(dp(280))
+                params.width = dockWidthPx
                 params.gravity = Gravity.TOP or if (keyboardHandedness == ImeHandedness.LEFT) {
                     Gravity.START
                 } else {
@@ -979,7 +988,7 @@ open class ImeKeyboardView(
         }
         val minimumInset = dp(5)
         val maxWidth = dp(maxContentWidthDp)
-        contentInsetPx = maxOf(minimumInset, (measuredWidthPx - maxWidth) / 2)
+        contentInsetPx = maxOf(minimumInset, (dockWidthPx - maxWidth) / 2)
         keyboardBody.setPadding(
             contentInsetPx,
             dp(6),
@@ -987,7 +996,7 @@ open class ImeKeyboardView(
             dp(16),
         )
         keyboardBody.findViewWithTag<View>("key-row-secondary")?.let { row ->
-            val rowWidth = ((measuredWidthPx - contentInsetPx * 2) * 0.9f).toInt()
+            val rowWidth = ((dockWidthPx - contentInsetPx * 2) * 0.9f).toInt()
             val params = row.layoutParams as? LinearLayout.LayoutParams
             if (params != null) {
                 params.gravity = Gravity.CENTER_HORIZONTAL
@@ -1446,8 +1455,10 @@ open class ImeKeyboardView(
             heightPercent = keyboardHeightPercent,
         )
         applyDynamicHeights()
-        if (!standalonePanel) {
-            if (panel == Panel.NONE) renderModeBody() else renderPanel(panel)
+        if (!standalonePanel && panel == Panel.NONE) {
+            renderModeBody()
+        } else {
+            requestLayout()
         }
     }
 
@@ -1494,8 +1505,10 @@ open class ImeKeyboardView(
                 heightPercent = keyboardHeightPercent,
             )
             applyDynamicHeights()
-            if (!standalonePanel) {
-                if (panel == Panel.NONE) renderModeBody() else renderPanel(panel)
+            if (!standalonePanel && panel == Panel.NONE) {
+                renderModeBody()
+            } else {
+                requestLayout()
             }
             updateResponsiveGeometry(width)
         }
