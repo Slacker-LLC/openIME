@@ -362,11 +362,20 @@ internal class ImeThemeApplier(
                 )
             }
 
-            tag == "nine-pinyin-path-filter" -> {
+            tag == "nine-pinyin-path-selected" -> {
                 view.setTextColor(ImeDrawableFactory.contrastText(t.primary))
                 view.background = statefulRounded(
                     t.primary,
                     ImeDrawableFactory.dim(t.primary, 0.86f),
+                    toPx(ImeGeometryTokens.KEY_RADIUS_DP),
+                )
+            }
+
+            tag == "nine-pinyin-path-filter" -> {
+                view.setTextColor(t.sideKeyText)
+                view.background = statefulRounded(
+                    Color.TRANSPARENT,
+                    t.keyPressedBackground,
                     toPx(ImeGeometryTokens.KEY_RADIUS_DP),
                 )
             }
