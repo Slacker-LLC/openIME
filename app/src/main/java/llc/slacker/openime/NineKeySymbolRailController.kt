@@ -11,10 +11,13 @@ import android.widget.ScrollView
 import android.widget.TextView
 
 /**
- * Owns the Chinese 9-key side symbol rail and ambiguity filter presentation.
+ * Owns the Chinese 9-key side rail.
  *
- * The renderer receives the built rail directly. Composition updates also use
- * explicit editor/rail references rather than searching the whole View tree.
+ * With no ambiguity it behaves as the normal vertically scrollable symbol
+ * rail. Once one digit sequence maps to multiple Pinyin paths, the same rail
+ * becomes a directly selectable Pinyin list. This mirrors mature 9-key IMEs:
+ * the user sees all useful spellings at once instead of cycling one hidden
+ * option through a single button.
  */
 internal class NineKeySymbolRailController(
     private val context: Context,
@@ -51,7 +54,7 @@ internal class NineKeySymbolRailController(
             context = context,
             railTag = NINE_RAIL_TAG,
             contentTag = NINE_CONTENT_TAG,
-            contentDescription = "九键常用符号，上下滑动查看更多",
+            contentDescription = "九键拼音筛选或常用符号，上下滑动查看更多",
             symbols = commonSymbols(),
             tagPrefix = "punct:",
             onCommit = onCommit,
@@ -61,25 +64,19 @@ internal class NineKeySymbolRailController(
             refreshPinyinFilters()
         }
 
+    /**
+     * A symbol edit may happen while the Pinyin filter is visible. Re-resolve
+     * the current composition first; symbols are repopulated only when the
+     * rail is actually in symbol mode.
+     */
     fun refreshSymbols() {
-        val current = rail ?: return
-        val content = current.getChildAt(0) as? LinearLayout ?: return
-        val header = content.findViewWithTag<TextView>(FILTER_TAG)
-        SymbolRailRenderer.populate(
-            scroll = current,
-            symbols = commonSymbols(),
-            tagPrefix = "punct:",
-            preservedHeader = header,
-            onCommit = onCommit,
-            onFeedback = onFeedback,
-        )
         refreshPinyinFilters()
     }
 
     private fun refreshPinyinFilters() {
         val text = composition.text?.toString().orEmpty()
         if (text.isBlank()) {
-            setPinyinFilters(emptyList(), null) {}
+            renderSymbols()
             return
         }
 
@@ -89,86 +86,124 @@ internal class NineKeySymbolRailController(
         val digits = CandidatePipeline.nineKeyDigitsFor(suffix)
         val code = digits?.let { NineKeyLocalDecoder.nativeCode(prefix, it) }
         if (code.isNullOrEmpty()) {
-            setPinyinFilters(emptyList(), null) {}
+            renderSymbols()
             return
         }
 
-        val resolver = context as? CandidateResolver ?: return
+        val resolver = context as? CandidateResolver
+        if (resolver == null) {
+            renderSymbols()
+            return
+        }
+
         val choices = resolver.nineKeyPathsFor(code)
-        val selected = resolver.selectedNineKeyPathFor(code) ?: text
-        setPinyinFilters(
-            filters = choices,
+            .asSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .take(MAX_VISIBLE_PATHS)
+            .toList()
+
+        // One spelling needs no disambiguation. Keep the valuable symbol rail
+        // available instead of occupying the whole column with redundant UI.
+        if (choices.size <= 1) {
+            renderSymbols()
+            return
+        }
+
+        val selected = resolver.selectedNineKeyPathFor(code)
+            ?.takeIf { it in choices }
+            ?: text.takeIf { it in choices }
+            ?: choices.first()
+
+        renderPinyinChoices(
+            choices = choices,
             selected = selected,
         ) { chosen ->
             resolver.selectNineKeyPath(code, chosen)
-            if (chosen == composition.text?.toString()) return@setPinyinFilters
+            if (chosen == composition.text?.toString()) return@renderPinyinChoices
             composition.setText(chosen)
             composition.setSelection(chosen.length)
         }
     }
 
-    private fun setPinyinFilters(
-        filters: List<String>,
-        selected: String?,
+    private fun renderSymbols() {
+        val scroll = rail ?: return
+        SymbolRailRenderer.populate(
+            scroll = scroll,
+            symbols = commonSymbols(),
+            tagPrefix = "punct:",
+            onCommit = onCommit,
+            onFeedback = onFeedback,
+        )
+        if (scroll.scrollY != 0) scroll.post { scroll.scrollTo(0, 0) }
+        scroll.contentDescription = "九键常用符号，上下滑动查看更多"
+    }
+
+    private fun renderPinyinChoices(
+        choices: List<String>,
+        selected: String,
         onSelect: (String) -> Unit,
     ) {
         val scroll = rail ?: return
         val content = scroll.getChildAt(0) as? LinearLayout ?: return
-        val choices = filters
+        val inheritedTextColor = (0 until content.childCount)
             .asSequence()
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .distinct()
-            .take(8)
-            .toList()
+            .mapNotNull { content.getChildAt(it) as? TextView }
+            .firstOrNull()
+            ?.currentTextColor
 
-        val existing = content.findViewWithTag<TextView>(FILTER_TAG)
-        if (choices.size <= 1) {
-            if (existing != null) content.removeView(existing)
-            return
-        }
-
-        var active = selected?.takeIf { it in choices } ?: choices.first()
-        val view = existing ?: TextView(content.context).apply {
-            tag = FILTER_TAG
-            textSize = 12f
-            gravity = Gravity.CENTER
-            isClickable = true
-            isFocusable = true
-            minimumHeight = SymbolRailRenderer.cellHeightPx(content.context)
-            val inherited = (0 until content.childCount)
-                .asSequence()
-                .mapNotNull { content.getChildAt(it) as? TextView }
-                .firstOrNull { it.tag != FILTER_TAG }
-                ?.currentTextColor
-            inherited?.let(::setTextColor)
+        content.removeAllViews()
+        choices.forEachIndexed { index, choice ->
+            val active = choice == selected
             content.addView(
-                this,
-                0,
-                SymbolRailRenderer.cellParams(content.context, withGap = true),
+                TextView(content.context).apply {
+                    text = displayPath(choice)
+                    textSize = 12f
+                    gravity = Gravity.CENTER
+                    tag = if (active) SELECTED_FILTER_TAG else FILTER_TAG
+                    contentDescription =
+                        if (active) {
+                            "九键拼音${speakablePath(choice)}，已选择"
+                        } else {
+                            "九键拼音${speakablePath(choice)}，双击选择"
+                        }
+                    if (Build.VERSION.SDK_INT >= 30) {
+                        stateDescription = if (active) "已选择" else "未选择"
+                    }
+                    isSelected = active
+                    isClickable = true
+                    isFocusable = true
+                    maxLines = 2
+                    minimumHeight = SymbolRailRenderer.cellHeightPx(content.context)
+                    inheritedTextColor?.let(::setTextColor)
+                    setOnClickListener {
+                        onFeedback()
+                        onSelect(choice)
+                    }
+                },
+                SymbolRailRenderer.cellParams(
+                    content.context,
+                    withGap = index < choices.lastIndex,
+                ),
             )
         }
 
-        fun updatePresentation() {
-            view.text = active.replace(" ", "·") + " ›"
-            view.contentDescription =
-                "九键拼音筛选，当前${active.replace(" ", "、")}，点击切换"
-            if (Build.VERSION.SDK_INT >= 30) {
-                view.stateDescription = "当前${active.replace(" ", "、")}"
-            }
+        scroll.contentDescription = "九键拼音筛选，上下滑动查看更多"
+        val selectedIndex = choices.indexOf(selected).coerceAtLeast(0)
+        scroll.post {
+            val target = content.getChildAt(selectedIndex) ?: return@post
+            val viewport = scroll.height.coerceAtLeast(SymbolRailRenderer.cellHeightPx(content.context))
+            val targetY = (target.top - (viewport - target.height) / 2).coerceAtLeast(0)
+            scroll.scrollTo(0, targetY)
         }
-
-        updatePresentation()
-        view.setOnClickListener {
-            onFeedback()
-            val current = choices.indexOf(active).coerceAtLeast(0)
-            active = choices[(current + 1) % choices.size]
-            updatePresentation()
-            onSelect(active)
-        }
-
-        if (scroll.scrollY != 0) scroll.post { scroll.scrollTo(0, 0) }
     }
+
+    private fun displayPath(path: String): String =
+        path.replace(" ", "·").replace("|", "·").replace("'", "·")
+
+    private fun speakablePath(path: String): String =
+        path.replace(" ", "、").replace("|", "、").replace("'", "、")
 
     private fun commonSymbols(): List<String> =
         CustomSymbolRepository.load(context)
@@ -185,5 +220,7 @@ internal class NineKeySymbolRailController(
         const val NINE_RAIL_TAG = "nine-punct-stack"
         const val NINE_CONTENT_TAG = "nine-symbol-scroll-content"
         const val FILTER_TAG = "nine-pinyin-path-filter"
+        const val SELECTED_FILTER_TAG = "nine-pinyin-path-selected"
+        const val MAX_VISIBLE_PATHS = 16
     }
 }
