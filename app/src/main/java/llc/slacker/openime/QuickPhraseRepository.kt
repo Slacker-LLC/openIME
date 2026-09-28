@@ -15,11 +15,27 @@ data class QuickPhrase(
 object QuickPhraseRepository {
     private const val PREFS = "ime_quick_phrases"
     private const val KEY_ITEMS = "items"
+    private val cacheLock = Any()
+    private var cachedRaw: String? = null
+    private var cachedItems: List<QuickPhrase>? = null
 
     fun load(context: Context): List<QuickPhrase> {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val raw = prefs.getString(KEY_ITEMS, null) ?: return defaults()
-        return runCatching {
+        val raw = prefs.getString(KEY_ITEMS, null)
+        synchronized(cacheLock) {
+            if (cachedRaw == raw && cachedItems != null) {
+                return cachedItems.orEmpty()
+            }
+        }
+        if (raw == null) {
+            val defaults = defaults()
+            synchronized(cacheLock) {
+                cachedRaw = null
+                cachedItems = defaults
+            }
+            return defaults
+        }
+        val parsed = runCatching {
             val array = JSONArray(raw)
             buildList {
                 for (index in 0 until array.length()) {
@@ -38,6 +54,11 @@ object QuickPhraseRepository {
                 }
             }
         }.getOrElse { defaults() }
+        synchronized(cacheLock) {
+            cachedRaw = raw
+            cachedItems = parsed
+        }
+        return parsed
     }
 
     fun upsert(
@@ -130,9 +151,14 @@ object QuickPhraseRepository {
                     .put("input_code", item.inputCode),
             )
         }
+        val raw = array.toString()
+        synchronized(cacheLock) {
+            cachedRaw = raw
+            cachedItems = items.toList()
+        }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
-            .putString(KEY_ITEMS, array.toString())
+            .putString(KEY_ITEMS, raw)
             .apply()
     }
 }
