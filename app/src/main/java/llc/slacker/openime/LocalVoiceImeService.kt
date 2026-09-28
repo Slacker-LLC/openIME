@@ -926,6 +926,53 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         selectCandidate(candidate)
     }
 
+    override fun onCandidateLongPressed(candidate: String) {
+        val composition = lastComposition
+        if (
+            state.passwordField ||
+            composition.isBlank() ||
+            candidate.isBlank() ||
+            !allowsPersonalizedLearning()
+        ) {
+            return
+        }
+
+        val modeAtRequest = state.keyboardMode
+        fun refreshAfterDelete() {
+            if (lastComposition != composition || state.keyboardMode != modeAtRequest) return
+            val fallback = fallbackCandidatesFor(composition, modeAtRequest)
+            handleCompositionChanged(
+                composition = composition,
+                candidates = fallback,
+                rimeInputs = listOf(composition),
+            )
+        }
+
+        if (!rime.isReady) {
+            if (UserPhraseRepository.forget(composition, candidate)) {
+                refreshAfterDelete()
+                showTextEditFeedback("已移除个人候选")
+            } else {
+                showTextEditFeedback("该候选不是个人学习词")
+            }
+            return
+        }
+
+        val queued = rime.deleteCandidate(composition, candidate) { deleted ->
+            mainHandler.post {
+                if (deleted) {
+                    refreshAfterDelete()
+                    showTextEditFeedback("已移除个人候选")
+                } else {
+                    showTextEditFeedback("系统词条不可删除")
+                }
+            }
+        }
+        if (!queued) {
+            showTextEditFeedback("暂时无法修改个人词")
+        }
+    }
+
     /**
      * Association ("联想") chips are produced only after a commit, so there is
      * no composition for [selectCandidate] to match against. Commit the word
