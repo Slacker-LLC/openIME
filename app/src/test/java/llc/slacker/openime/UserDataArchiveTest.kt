@@ -48,6 +48,31 @@ class UserDataArchiveTest {
     }
 
     @Test
+    fun decodeDropsRimeDictionaryNamesThatCanEscapeTheUserDataDirectory() {
+        val archive = UserDataArchive(
+            quickPhrases = emptyList(),
+            customSymbols = emptyList(),
+            userPhrases = emptyList(),
+            settings = settings,
+            rimeUserDictionaries = listOf(
+                RimeUserDictionaryArchive("luna_pinyin", "safe"),
+                RimeUserDictionaryArchive("../outside", "unsafe"),
+                RimeUserDictionaryArchive("nested/path", "unsafe"),
+                RimeUserDictionaryArchive("nested\\path", "unsafe"),
+            ),
+        )
+
+        val decoded = UserDataArchiveCodec.decode(UserDataArchiveCodec.encode(archive))
+
+        assertEquals(
+            listOf("luna_pinyin"),
+            decoded.rimeUserDictionaries.map { it.name },
+        )
+        assertTrue(UserDataArchiveCodec.isSafeRimeDictionaryName("luna_pinyin"))
+        assertFalse(UserDataArchiveCodec.isSafeRimeDictionaryName("../outside"))
+    }
+
+    @Test
     fun mergeAddsNewRecordsWithoutDroppingExistingRecords() {
         val existing = UserDataArchive(
             quickPhrases = listOf(
