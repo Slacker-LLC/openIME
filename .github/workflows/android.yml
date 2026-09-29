@@ -68,7 +68,17 @@ jobs:
         run: chmod +x gradlew
 
       - name: Run unit tests, lint, and assemble
-        run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon --console=plain
+        shell: bash
+        run: |
+          set +e
+          ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon --console=plain
+          status=$?
+          if [[ $status -ne 0 && -f app/build/reports/lint-results-debug.txt ]]; then
+            echo "::group::Full Android Lint report"
+            cat app/build/reports/lint-results-debug.txt
+            echo "::endgroup::"
+          fi
+          exit $status
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v7

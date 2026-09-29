@@ -1363,8 +1363,8 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
                     candidates = finalCandidates,
                     nativeReferences = nativeReferences,
                 )
-                    keyboardView?.renderState(state)
-                }
+                keyboardView?.renderState(state)
+            }
                 applyWhenCandidateSurfaceIdle()
             },
         )
