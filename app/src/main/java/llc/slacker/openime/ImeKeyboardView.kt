@@ -2620,8 +2620,8 @@ open class ImeKeyboardView(
         candidateOverlay.setBackgroundColor(t.expandedBackground)
         themeApplier.apply(this, t)
         composition.setTextColor(t.keySecondaryText)
-        topZone.candidateExpandButton.setTextColor(t.keySecondaryText)
-        topZone.candidateEmojiButton.setTextColor(t.keySecondaryText)
+        topZone.candidateExpandButton.imageTintList = android.content.res.ColorStateList.valueOf(t.keySecondaryText)
+        topZone.candidateEmojiButton.imageTintList = android.content.res.ColorStateList.valueOf(t.keySecondaryText)
         floatingKeyboardController.applyTheme(t)
         inlineVoicePresenter.refreshPalette()
     }
