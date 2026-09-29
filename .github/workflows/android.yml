@@ -102,6 +102,13 @@ jobs:
         api-level: [29, 31]
 
     steps:
+      - name: Enable KVM group perms
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
@@ -123,17 +130,27 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            set -euo pipefail
+            set -eu
             mkdir -p ci-reports
+            report="ci-reports/instrumentation-api-${{ matrix.api-level }}.txt"
             app_apk="$(find ci-apks -type f -name 'app-debug.apk' -print -quit)"
             test_apk="$(find ci-apks -type f -name 'app-debug-androidTest.apk' -print -quit)"
             test -n "$app_apk"
             test -n "$test_apk"
             adb install -r "$app_apk"
             adb install -r "$test_apk"
-            adb shell am instrument -w -r \
+            if adb shell am instrument -w -r \
               llc.slacker.openime.test/androidx.test.runner.AndroidJUnitRunner \
-              | tee ci-reports/instrumentation-api-${{ matrix.api-level }}.txt
+              >"$report" 2>&1; then
+              status=0
+            else
+              status=$?
+            fi
+            cat "$report"
+            if grep -Eq 'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed' "$report"; then
+              exit 1
+            fi
+            exit "$status"
 
       - name: Upload compatibility test report
         if: always()
