@@ -92,7 +92,7 @@ internal class ImePanelRenderer(
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             chunk.forEach { (modeValue, label) ->
                 row.addView(
-                    createKey(label, true, 13f) { onModeSelected(modeValue) }.apply {
+                    createKey(label, true, ImeTypographyTokens.BODY_SP) { onModeSelected(modeValue) }.apply {
                         val selected = currentMode() == modeValue
                         tag = if (selected) "tab-active" else "keyboard-choice"
                         contentDescription = "$label，${if (selected) "已选中" else "未选中"}"
@@ -275,7 +275,7 @@ internal class ImePanelRenderer(
                 is HandwritingResult.Success -> {
                     result.candidates.forEach { candidate ->
                         candidateRow.addView(
-                            createKey(candidate, false, 15f) { onCharacter(candidate) },
+                            createKey(candidate, false, ImeTypographyTokens.TITLE_SP) { onCharacter(candidate) },
                             wrapParams(),
                         )
                     }
@@ -296,8 +296,8 @@ internal class ImePanelRenderer(
         val actions = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
         }
-        undoButton = createKey("撤销", true, 13f) { pad.undo() }
-        clearButton = createKey("清空", true, 13f) { pad.clear() }
+        undoButton = createKey("撤销", true, ImeTypographyTokens.BODY_SP) { pad.undo() }
+        clearButton = createKey("清空", true, ImeTypographyTokens.BODY_SP) { pad.clear() }
         actions.addView(
             undoButton,
             LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f).apply { marginEnd = toPx(6) },
@@ -307,7 +307,7 @@ internal class ImePanelRenderer(
             LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f).apply { marginEnd = toPx(6) },
         )
         actions.addView(
-            createKey("空格", true, 13f, onSpace),
+            createKey("空格", true, ImeTypographyTokens.BODY_SP, onSpace),
             LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f),
         )
         refreshStrokeActions(false)
@@ -483,7 +483,7 @@ internal class ImePanelRenderer(
                     createKey(
                         symbol,
                         false,
-                        if (symbol.length > 2) 12f else 17f,
+                        ImeTypographyTokens.BODY_SP,
                     ) { onSymbolSelected(symbol) },
                     gridCellParams(48, 6, 6),
                 )
