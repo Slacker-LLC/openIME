@@ -24,6 +24,8 @@ artifacts/
 
 # Local screenshots and UI dumps kept outside the source tree
 *.png
+!docs/images/
+!docs/images/*.png
 *.xml
 !app/src/**/*.xml
 !app/src/main/assets/

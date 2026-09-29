@@ -24,6 +24,9 @@
 `app/src/main/assets/licenses/rime-ice-GPL-3.0.txt`，来源明细见根目录
 `THIRD_PARTY_NOTICES.md`。
 
-语音 runtime 以 `app/libs/sherpa-onnx-1.13.6.aar` 提供，语音模型位于
-`app/src/main/assets/models/voice/`。发布 APK 前应同时核对 runtime、模型和词典的
-上游许可证与再分发条件；Git LFS 只负责文件存储，不改变文件的许可证。
+语音 runtime 以 `app/libs/sherpa-onnx-1.13.6.aar` 提供，上游
+`k2-fsa/sherpa-onnx` 使用 Apache-2.0。内置中英双语 Zipformer 模型
+`sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20` 的原模型
+`csukuangfj/k2fsa-zipformer-chinese-english-mixed` 模型卡标记为 Apache-2.0。
+具体来源、文件位置和发布核对项统一记录在根目录 `THIRD_PARTY_NOTICES.md`。
+Git LFS 只负责文件存储，不改变文件的许可证。
