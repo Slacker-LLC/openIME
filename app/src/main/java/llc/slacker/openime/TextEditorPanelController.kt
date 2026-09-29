@@ -104,9 +104,9 @@ internal class TextEditorPanelController(
         }
 
         listOf(
-            listOf(cell(), cell("▲", "up"), cell()),
-            listOf(cell("◀", "left"), cell(center = true), cell("▶", "right")),
-            listOf(cell(), cell("▼", "down"), cell()),
+            listOf(cell(), cell("上", "up"), cell()),
+            listOf(cell("左", "left"), cell(center = true), cell("右", "right")),
+            listOf(cell(), cell("下", "down"), cell()),
         ).forEach { rowItems ->
             val row = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
