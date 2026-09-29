@@ -50,8 +50,8 @@ internal class ImeTopZone(
     val candidateRow = LinearLayout(context)
     val candidateScroll = HorizontalScrollView(context)
     val associationRow = LinearLayout(context)
-    val candidateExpandButton = TextView(context)
-    val candidateEmojiButton = TextView(context)
+    val candidateExpandButton = ImageView(context)
+    val candidateEmojiButton = ImageView(context)
     val voiceInlineZone = LinearLayout(context)
     val voiceInlineIcon = ImageView(context)
     val voiceInlineStatus = TextView(context)
@@ -196,9 +196,8 @@ internal class ImeTopZone(
 
         candidateEmojiButton.apply {
             tag = "candidate-emoji"
-            text = "☺"
-            textSize = ImeTypographyTokens.BODY_SP
-            gravity = Gravity.CENTER
+            setImageResource(R.drawable.ic_emoji)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
             contentDescription = "表情"
             setPadding(toPx(7), 0, toPx(7), 0)
             isClickable = true
@@ -212,9 +211,8 @@ internal class ImeTopZone(
 
         candidateExpandButton.apply {
             tag = "candidate-expand"
-            text = "⌄"
-            textSize = ImeTypographyTokens.BODY_SP
-            gravity = Gravity.CENTER
+            setImageResource(R.drawable.ic_chevron_down)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
             contentDescription = "展开更多候选"
             setPadding(toPx(7), 0, toPx(7), 0)
             isClickable = true
