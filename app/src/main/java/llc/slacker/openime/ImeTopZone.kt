@@ -42,6 +42,8 @@ internal class ImeTopZone(
     onHideKeyboard: () -> Unit,
     onTools: () -> Unit,
     onExpandCandidates: () -> Unit,
+    private val onUndoClear: () -> Unit,
+    private val onUndoClearExpired: () -> Unit,
 ) : LinearLayout(context) {
     val toolbarRow = LinearLayout(context)
     val composeZone = LinearLayout(context)
@@ -50,12 +52,19 @@ internal class ImeTopZone(
     val candidateRow = LinearLayout(context)
     val candidateScroll = HorizontalScrollView(context)
     val associationRow = LinearLayout(context)
-    val candidateExpandButton = TextView(context)
-    val candidateEmojiButton = TextView(context)
+    val candidateExpandButton = ImageView(context)
+    val candidateEmojiButton = ImageView(context)
     val voiceInlineZone = LinearLayout(context)
     val voiceInlineIcon = ImageView(context)
     val voiceInlineStatus = TextView(context)
     val voiceInlineWaves = mutableListOf<View>()
+    val undoClearAction = TextView(context)
+    private val hideUndoClearRunnable = Runnable {
+        if (undoClearAction.visibility == View.VISIBLE) {
+            undoClearAction.visibility = View.GONE
+            onUndoClearExpired()
+        }
+    }
 
     init {
         tag = "ime_toolbar"
@@ -112,6 +121,32 @@ internal class ImeTopZone(
                 1f,
             ).apply { marginStart = toPx(4) },
         )
+        undoClearAction.apply {
+            tag = "undo-clear-action"
+            text = "撤销"
+            textSize = ImeTypographyTokens.BODY_SP
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            minWidth = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
+            minimumHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
+            visibility = View.GONE
+            isClickable = true
+            isFocusable = true
+            contentDescription = "撤销清空"
+            setOnClickListener {
+                removeCallbacks(hideUndoClearRunnable)
+                visibility = View.GONE
+                onFeedback()
+                onUndoClear()
+            }
+        }
+        toolbarRow.addView(
+            undoClearAction,
+            LinearLayout.LayoutParams(
+                toPx(64),
+                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
+            ),
+        )
         toolbarRow.addView(
             toolbarIcon(R.drawable.ic_keyboard_hide, "收起键盘", "keyboard-hide", onHideKeyboard),
             touchTargetParams(),
@@ -136,7 +171,7 @@ internal class ImeTopZone(
         composition.apply {
             tag = "pinyin-composition-editor"
             contentDescription = "可编辑拼音预编辑"
-            textSize = 13f
+            textSize = ImeTypographyTokens.BODY_SP
             gravity = Gravity.CENTER_VERTICAL or Gravity.START
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             setSingleLine(true)
@@ -196,9 +231,8 @@ internal class ImeTopZone(
 
         candidateEmojiButton.apply {
             tag = "candidate-emoji"
-            text = "☺"
-            textSize = 17f
-            gravity = Gravity.CENTER
+            setImageResource(R.drawable.ic_emoji)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
             contentDescription = "表情"
             setPadding(toPx(7), 0, toPx(7), 0)
             isClickable = true
@@ -212,9 +246,8 @@ internal class ImeTopZone(
 
         candidateExpandButton.apply {
             tag = "candidate-expand"
-            text = "⌄"
-            textSize = 15f
-            gravity = Gravity.CENTER
+            setImageResource(R.drawable.ic_chevron_down)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
             contentDescription = "展开更多候选"
             setPadding(toPx(7), 0, toPx(7), 0)
             isClickable = true
@@ -270,7 +303,7 @@ internal class ImeTopZone(
         voiceInlineStatus.apply {
             tag = "voice-inline-status"
             text = "正在聆听…"
-            textSize = 14f
+            textSize = ImeTypographyTokens.BODY_SP
             setTextColor(Color.WHITE)
             includeFontPadding = false
             maxLines = 1
@@ -321,6 +354,20 @@ internal class ImeTopZone(
         )
     }
 
+    fun showUndoClear() {
+        removeCallbacks(hideUndoClearRunnable)
+        undoClearAction.visibility = View.VISIBLE
+        undoClearAction.bringToFront()
+        postDelayed(hideUndoClearRunnable, CLEAR_UNDO_VISIBLE_MS)
+    }
+
+    fun hideUndoClear(discardSnapshot: Boolean = false) {
+        removeCallbacks(hideUndoClearRunnable)
+        val wasVisible = undoClearAction.visibility == View.VISIBLE
+        undoClearAction.visibility = View.GONE
+        if (discardSnapshot && wasVisible) onUndoClearExpired()
+    }
+
     fun setContentInset(contentInsetPx: Int) {
         toolbarRow.setPadding(contentInsetPx + toPx(10), 0, contentInsetPx + toPx(10), 0)
         composition.setPadding(contentInsetPx + toPx(14), toPx(3), contentInsetPx + toPx(14), 0)
@@ -365,4 +412,8 @@ internal class ImeTopZone(
             toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
             toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
         )
+
+    private companion object {
+        const val CLEAR_UNDO_VISIBLE_MS = 5_000L
+    }
 }

@@ -5,16 +5,19 @@ import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
-import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
 import android.os.Build
+import android.util.TypedValue
+import android.view.Gravity
+import android.view.HapticFeedbackConstants
+import android.widget.ImageButton
+import android.widget.LinearLayout
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
 
 /** Shared visual primitives for the non-IME setup and editor screens. */
 object SetupUi {
-    private const val DESTRUCTIVE = "#F4212E"
 
     fun dp(context: Context, value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
@@ -22,79 +25,107 @@ object SetupUi {
     fun accent(context: Context): Int =
         AccentPalette.parse(ImeSettingsRepository.loadSkinColor(context))
 
+    private fun tokens(context: Context): ImeTheme.Tokens {
+        val nightMask =
+            context.resources.configuration.uiMode and
+                android.content.res.Configuration.UI_MODE_NIGHT_MASK
+        return ImeTheme.IOS.tokens(
+            appearance = ImeSettingsRepository.loadAppearance(context),
+            systemDark = nightMask == android.content.res.Configuration.UI_MODE_NIGHT_YES,
+            accentOverride = accent(context),
+        )
+    }
+
     fun contrastText(background: Int): Int = ImeDrawableFactory.contrastText(background)
+
+    fun rounded(
+        color: Int,
+        radiusPx: Float,
+        strokeColor: Int? = null,
+        strokeWidthPx: Int = 1,
+    ) = ImeDrawableFactory.rounded(
+        color = color,
+        radiusPx = radiusPx,
+        strokeColor = strokeColor,
+        strokeWidthPx = strokeWidthPx,
+    )
 
     fun dim(color: Int, factor: Float): Int =
         ImeDrawableFactory.dim(color, factor, preserveAlpha = false)
-
-    fun rounded(color: Int, radiusDp: Float, strokeColor: Int? = null): GradientDrawable =
-        ImeDrawableFactory.rounded(
-            color = color,
-            radiusPx = radiusDp,
-            strokeColor = strokeColor,
-            strokeWidthPx = 1,
-        )
 
     fun buttonBackground(
         context: Context,
         color: Int,
         radiusDp: Float = ImeGeometryTokens.CONTROL_RADIUS_DP.toFloat(),
     ): StateListDrawable {
-        val pressed = dim(color, 0.86f)
+        val pressed =
+            if (color == accent(context)) tokens(context).accentPressed else dim(color, 0.86f)
         return StateListDrawable().apply {
             addState(
                 intArrayOf(android.R.attr.state_enabled, android.R.attr.state_pressed),
-                rounded(pressed, dp(context, radiusDp.toInt()).toFloat()),
+                ImeDrawableFactory.rounded(
+                    pressed,
+                    dp(context, radiusDp.toInt()).toFloat(),
+                ),
             )
             addState(
                 intArrayOf(android.R.attr.state_enabled, android.R.attr.state_focused),
-                rounded(
-                    color,
-                    dp(context, radiusDp.toInt()).toFloat(),
-                    contrastText(color),
+                ImeDrawableFactory.rounded(
+                    color = color,
+                    radiusPx = dp(context, radiusDp.toInt()).toFloat(),
+                    strokeColor = contrastText(color),
+                    strokeWidthPx = dp(context, 1),
                 ),
             )
             addState(
                 intArrayOf(-android.R.attr.state_enabled),
-                rounded(
+                ImeDrawableFactory.rounded(
                     context.getColor(R.color.setup_muted),
                     dp(context, radiusDp.toInt()).toFloat(),
                 ),
             )
             addState(
                 intArrayOf(),
-                rounded(color, dp(context, radiusDp.toInt()).toFloat()),
+                ImeDrawableFactory.rounded(
+                    color,
+                    dp(context, radiusDp.toInt()).toFloat(),
+                ),
             )
         }
     }
 
     /** Secondary rounded-rectangle control used by setup actions. */
-    fun mutedPillBackground(context: Context): StateListDrawable {
+    fun secondaryBackground(context: Context): StateListDrawable {
         val surface = context.getColor(R.color.setup_muted)
         val pressed = context.getColor(R.color.setup_muted_pressed)
         val accent = accent(context)
-        val radius = dp(context, ImeGeometryTokens.SETUP_PILL_RADIUS_DP).toFloat()
+        val radius = dp(context, ImeGeometryTokens.CONTROL_RADIUS_DP).toFloat()
         return StateListDrawable().apply {
             addState(
                 intArrayOf(android.R.attr.state_enabled, android.R.attr.state_pressed),
-                rounded(pressed, radius),
+                ImeDrawableFactory.rounded(pressed, radius),
             )
             addState(
                 intArrayOf(android.R.attr.state_focused),
-                rounded(surface, radius, accent),
+                ImeDrawableFactory.rounded(
+                    color = surface,
+                    radiusPx = radius,
+                    strokeColor = accent,
+                    strokeWidthPx = dp(context, 1),
+                ),
             )
             addState(
                 intArrayOf(-android.R.attr.state_enabled),
-                rounded(dim(surface, 0.72f), radius),
+                ImeDrawableFactory.rounded(dim(surface, 0.72f), radius),
             )
-            addState(intArrayOf(), rounded(surface, radius))
+            addState(intArrayOf(), ImeDrawableFactory.rounded(surface, radius))
         }
     }
 
     fun secondaryButton(context: Context, label: String, onClick: () -> Unit): Button =
         Button(context).apply {
             text = label
-            textSize = 12f
+            textSize = ImeTypographyTokens.BODY_SP
             isAllCaps = false
             minHeight = dp(context, 48)
             minWidth = 0
@@ -115,20 +146,38 @@ object SetupUi {
         return StateListDrawable().apply {
             addState(
                 intArrayOf(android.R.attr.state_pressed),
-                rounded(dim(surface, 0.94f), radius, line),
+                ImeDrawableFactory.rounded(
+                    color = dim(surface, 0.94f),
+                    radiusPx = radius,
+                    strokeColor = line,
+                    strokeWidthPx = dp(context, 1),
+                ),
             )
             addState(
                 intArrayOf(android.R.attr.state_focused),
-                rounded(surface, radius, accent(context)),
+                ImeDrawableFactory.rounded(
+                    color = surface,
+                    radiusPx = radius,
+                    strokeColor = accent(context),
+                    strokeWidthPx = dp(context, 1),
+                ),
             )
-            addState(intArrayOf(), rounded(surface, radius, line))
+            addState(
+                intArrayOf(),
+                ImeDrawableFactory.rounded(
+                    color = surface,
+                    radiusPx = radius,
+                    strokeColor = line,
+                    strokeWidthPx = dp(context, 1),
+                ),
+            )
         }
     }
 
     fun primaryButton(context: Context, label: String, onClick: () -> Unit): Button =
         Button(context).apply {
             text = label
-            textSize = 15f
+            textSize = ImeTypographyTokens.BODY_SP
             isAllCaps = false
             minHeight = dp(context, ImeGeometryTokens.PRIMARY_ROW_HEIGHT_DP)
             background = buttonBackground(
@@ -178,13 +227,18 @@ object SetupUi {
             radiusPx = radius,
             focusedStrokeColor = accent,
             defaultStrokeColor = null,
-            strokeWidthPx = dp(context, 2),
+            strokeWidthPx = dp(context, ImeSpacingTokens.XXS_DP),
         )
     }
 
     fun styleInput(context: Context, input: EditText) {
         input.background = inputBackground(context)
-        input.setPadding(dp(context, 16), dp(context, 8), dp(context, 16), dp(context, 8))
+        input.setPadding(
+            dp(context, ImeSpacingTokens.LG_DP),
+            dp(context, ImeSpacingTokens.SM_DP),
+            dp(context, ImeSpacingTokens.LG_DP),
+            dp(context, ImeSpacingTokens.SM_DP),
+        )
         input.setTextColor(context.getColor(R.color.setup_title))
         input.setHintTextColor(context.getColor(R.color.setup_muted_text))
         styleCursor(context, input)
@@ -204,6 +258,73 @@ object SetupUi {
         }
     }
 
+    fun activityTopBar(
+        context: Context,
+        title: String,
+        backContentDescription: String = "返回",
+        onBack: () -> Unit,
+    ): LinearLayout =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(context, ImeGeometryTokens.TOP_BAR_HEIGHT_DP)
+
+            addView(
+                ImageButton(context).apply {
+                    setImageResource(R.drawable.ic_arrow_back)
+                    imageTintList = ColorStateList.valueOf(accent(context))
+                    scaleType = android.widget.ImageView.ScaleType.CENTER
+                    setPadding(
+                        dp(context, ImeSpacingTokens.MD_DP),
+                        dp(context, ImeSpacingTokens.LG_DP),
+                        dp(context, ImeSpacingTokens.MD_DP),
+                        dp(context, ImeSpacingTokens.LG_DP),
+                    )
+                    contentDescription = backContentDescription
+                    minimumWidth = dp(context, ImeGeometryTokens.TOUCH_TARGET_DP)
+                    minimumHeight = dp(context, ImeGeometryTokens.TOUCH_TARGET_DP)
+                    isClickable = true
+                    isFocusable = true
+                    val selectable = TypedValue()
+                    if (
+                        context.theme.resolveAttribute(
+                            android.R.attr.selectableItemBackgroundBorderless,
+                            selectable,
+                            true,
+                        ) && selectable.resourceId != 0
+                    ) {
+                        setBackgroundResource(selectable.resourceId)
+                    } else {
+                        background = null
+                    }
+                    setOnClickListener {
+                        performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                        onBack()
+                    }
+                },
+                LinearLayout.LayoutParams(
+                    dp(context, ImeGeometryTokens.TOUCH_TARGET_DP),
+                    dp(context, ImeGeometryTokens.TOP_BAR_HEIGHT_DP),
+                ),
+            )
+            addView(
+                TextView(context).apply {
+                    text = title
+                    textSize = ImeTypographyTokens.TITLE_SP
+                    setTextColor(context.getColor(R.color.setup_title))
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    gravity = Gravity.CENTER_VERTICAL
+                    includeFontPadding = false
+                    if (Build.VERSION.SDK_INT >= 28) setAccessibilityHeading(true)
+                },
+                LinearLayout.LayoutParams(
+                    0,
+                    dp(context, ImeGeometryTokens.TOP_BAR_HEIGHT_DP),
+                    1f,
+                ),
+            )
+        }
+
     fun styleDialog(dialog: AlertDialog, context: Context, destructivePositive: Boolean = false) {
         val accent = accent(context)
         val alertTitleId = context.resources.getIdentifier("alertTitle", "id", "android")
@@ -216,12 +337,12 @@ object SetupUi {
             context.getColor(R.color.setup_body),
         )
         dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(
-            if (destructivePositive) Color.parseColor(DESTRUCTIVE) else accent,
+            if (destructivePositive) tokens(context).danger else accent,
         )
         dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(accent)
         dialog.getButton(AlertDialog.BUTTON_NEUTRAL)?.setTextColor(accent)
         dialog.window?.setBackgroundDrawable(
-            rounded(
+            ImeDrawableFactory.rounded(
                 context.getColor(R.color.setup_surface),
                 dp(context, ImeGeometryTokens.DIALOG_RADIUS_DP).toFloat(),
             ),

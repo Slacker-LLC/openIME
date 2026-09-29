@@ -525,7 +525,7 @@ object ImeData {
     )
 
     val keypad9Combinations: Map<String, List<String>> = mapOf(
-        "64" to listOf("ni", "mi", "oh"),
+        "64" to listOf("ni", "mi"),
         "64426" to listOf("nihao"),
         "9664" to listOf("yong"),
         "426" to listOf("gong", "hao"),

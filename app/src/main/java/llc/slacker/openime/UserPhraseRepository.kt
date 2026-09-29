@@ -96,6 +96,31 @@ object UserPhraseRepository {
         }
     }
 
+    fun contains(code: String, text: String): Boolean {
+        val key = normalize(code)
+        val value = text.trim()
+        if (key.isEmpty() || value.isEmpty()) return false
+        synchronized(lock) {
+            return entries.containsKey("$key\u0000$value")
+        }
+    }
+
+    /**
+     * Forget one exact fallback-learned phrase. This repository is used only
+     * while librime is unavailable, so deleting here never mutates the native
+     * Rime user database.
+     */
+    fun forget(code: String, text: String): Boolean {
+        val key = normalize(code)
+        val value = text.trim()
+        if (key.isEmpty() || value.isEmpty()) return false
+        synchronized(lock) {
+            val removed = entries.remove("$key\u0000$value") != null
+            if (removed) scheduleSaveLocked()
+            return removed
+        }
+    }
+
     /** Write the latest immutable snapshot synchronously when a lifecycle owner needs durability now. */
     fun flush() {
         synchronized(persistenceLock) {
@@ -164,6 +189,57 @@ object UserPhraseRepository {
                 .take(boundedLimit)
                 .toList()
         }
+    }
+
+    internal fun exportArchiveEntries(): List<ArchiveUserPhrase> =
+        synchronized(lock) {
+            entries.values
+                .sortedWith(
+                    compareByDescending<Entry> { it.lastUsed }
+                        .thenByDescending { it.frequency },
+                )
+                .map { entry ->
+                    ArchiveUserPhrase(
+                        code = entry.code,
+                        text = entry.text,
+                        frequency = entry.frequency,
+                        lastUsed = entry.lastUsed,
+                    )
+                }
+        }
+
+    internal fun mergeArchiveEntries(incoming: List<ArchiveUserPhrase>): Int {
+        var added = 0
+        synchronized(lock) {
+            incoming.forEach { item ->
+                val code = normalize(item.code)
+                val text = item.text.trim()
+                if (code.isEmpty() || text.isEmpty() || text == code) return@forEach
+                val key = "$code\u0000$text"
+                val current = entries[key]
+                if (current == null) {
+                    entries[key] = Entry(
+                        code = code,
+                        text = text,
+                        frequency = item.frequency.coerceIn(1, 1_000_000),
+                        lastUsed = item.lastUsed.coerceAtLeast(0L),
+                    )
+                    added += 1
+                } else {
+                    current.frequency = maxOf(
+                        current.frequency,
+                        item.frequency.coerceIn(1, 1_000_000),
+                    )
+                    current.lastUsed = maxOf(
+                        current.lastUsed,
+                        item.lastUsed.coerceAtLeast(0L),
+                    )
+                }
+            }
+            trimLocked()
+            if (incoming.isNotEmpty()) scheduleSaveLocked()
+        }
+        return added
     }
 
     fun clear() {

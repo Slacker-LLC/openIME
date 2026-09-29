@@ -63,7 +63,7 @@ internal class VoicePanelView(
 
         transcript.apply {
             text = "只需长按空格；松开自动上屏，上滑取消"
-            textSize = 16f
+            textSize = ImeTypographyTokens.BODY_SP
             gravity = Gravity.CENTER_VERTICAL
             maxLines = 2
             ellipsize = TextUtils.TruncateAt.END
@@ -103,7 +103,7 @@ internal class VoicePanelView(
         }
         languageButton = createButton(
             LANGUAGES[languageIndex].first,
-            13f,
+            ImeTypographyTokens.BODY_SP,
             true,
         ).apply {
             tag = "voice-language"
@@ -124,8 +124,10 @@ internal class VoicePanelView(
             ),
         )
 
-        micButton = createButton("🎤", 18f, false).apply {
+        micButton = createButton("", ImeTypographyTokens.BODY_SP, false).apply {
             tag = "voice-mic"
+            setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_mic, 0, 0, 0)
+            compoundDrawablePadding = 0
             isEnabled = false
             contentDescription = "语音状态，当前未开始，仅支持长按空格启动"
         }
@@ -137,7 +139,7 @@ internal class VoicePanelView(
             ),
         )
 
-        gestureHint = createButton("长按空格开始", 13f, true).apply {
+        gestureHint = createButton("长按空格开始", ImeTypographyTokens.BODY_SP, true).apply {
             tag = "voice-gesture-hint"
             isEnabled = false
             contentDescription = "长按空格开始语音，松开自动上屏，上滑取消"
@@ -165,12 +167,12 @@ internal class VoicePanelView(
     fun refreshLanguageControl(locked: Boolean) {
         languageButton.isEnabled = !locked
         languageButton.isClickable = !locked
-        languageButton.alpha = if (locked) 0.52f else 1f
+        languageButton.alpha = if (locked) ImeSurfacePolicy.DISABLED_ALPHA else 1f
         updateLanguagePresentation(locked)
     }
 
-    fun setMicState(icon: String, description: String) {
-        micButton.text = icon
+    fun setMicState(iconRes: Int, description: String) {
+        micButton.setCompoundDrawablesRelativeWithIntrinsicBounds(iconRes, 0, 0, 0)
         micButton.contentDescription = description
     }
 

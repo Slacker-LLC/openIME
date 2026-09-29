@@ -45,14 +45,22 @@ class CandidatePipeline internal constructor(
         val displayPinyinPaths: List<String> = emptyList(),
     )
 
-    private val nineKeyDecoder = NineKeyLocalDecoder(engine)
+    private val nineKeyDecoder: NineKeyLocalDecoder = run {
+        val startedAt = System.nanoTime()
+        NineKeyLocalDecoder(engine).also {
+            NineKeyPerformanceTrace.recordDecoderConstruction(
+                elapsedNs = System.nanoTime() - startedAt,
+                threadName = Thread.currentThread().name,
+            )
+        }
+    }
 
     override fun candidatesFor(
         mode: KeyboardMode,
         composition: String,
         fuzzy: Boolean,
     ): List<String> = when (mode) {
-        KeyboardMode.PINYIN_26 -> engine.getCandidates(composition, fuzzy)
+        KeyboardMode.PINYIN_26 -> pinyin26Candidates(composition, fuzzy)
         KeyboardMode.ENGLISH_26 -> englishCandidates(composition)
         KeyboardMode.PINYIN_9 -> if (composition.length <= 32) {
             engine.getCandidates(composition, fuzzy)
@@ -60,6 +68,24 @@ class CandidatePipeline internal constructor(
             emptyList()
         }
         KeyboardMode.DIGITS -> emptyList()
+    }
+
+    private fun pinyin26Candidates(
+        composition: String,
+        fuzzy: Boolean,
+    ): List<String> {
+        val normal = engine.getCandidates(composition, fuzzy)
+        val meaningfulNormal = normal.count { candidate ->
+            candidate != composition && candidate.any { it.code > 0x7f }
+        }
+        if (meaningfulNormal >= TYPO_CORRECTION_MIN_NORMAL_CANDIDATES) {
+            return normal.take(MAX_CANDIDATES)
+        }
+
+        return (normal + engine.getAdjacentKeyCorrections(composition, fuzzy))
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .take(MAX_CANDIDATES)
     }
 
     /**
@@ -199,6 +225,7 @@ class CandidatePipeline internal constructor(
     companion object {
         private const val MAX_CANDIDATES = 96
         private const val PER_PATH_CANDIDATES = 24
+        private const val TYPO_CORRECTION_MIN_NORMAL_CANDIDATES = 8
 
         fun nineKeyDigitsFor(pinyin: String): String? =
             NineKeyLocalDecoder.digitsForPinyin(pinyin)

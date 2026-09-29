@@ -28,7 +28,7 @@ internal class BackspaceKeyFactory(
     fun build(): ImeKeyView =
         createBaseKey(onDeleteOne).apply {
             tag = "key-backspace"
-            contentDescription = "删除，向上滑清空"
+            contentDescription = "删除，向上滑清空；清空后向下滑撤回"
             accessibilityDelegate = object : View.AccessibilityDelegate() {
                 override fun onInitializeAccessibilityNodeInfo(
                     host: View,
@@ -59,8 +59,8 @@ internal class BackspaceKeyFactory(
             }
 
             val clearHint = TextView(context).apply {
-                text = "↑ 清空"
-                textSize = 7.5f
+                text = "清空"
+                textSize = ImeTypographyTokens.CAPTION_SP
                 gravity = Gravity.CENTER
                 includeFontPadding = false
                 alpha = 0.72f

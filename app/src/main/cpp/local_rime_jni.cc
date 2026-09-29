@@ -2,11 +2,16 @@
 
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <mutex>
 #include <string>
 #include <vector>
 
 #include <rime_api.h>
+#include <rime/candidate.h>
+#include <rime/context.h>
+#include <rime/lever/user_dict_manager.h>
+#include <rime/service.h>
 
 namespace {
 
@@ -163,6 +168,27 @@ jobjectArray make_strings(JNIEnv* env, const std::vector<std::string>& values) {
   return result;
 }
 
+bool candidate_is_user_learned(size_t index) {
+  if (!g_session) return false;
+  auto session = rime::Service::instance().GetSession(g_session);
+  if (!session) return false;
+  auto* context = session->context();
+  if (!context || context->composition().empty()) return false;
+  auto candidate = context->composition().back().GetCandidateAt(index);
+  if (!candidate) return false;
+
+  const auto genuine_candidates =
+      rime::Candidate::GetGenuineCandidates(candidate);
+  for (const auto& genuine : genuine_candidates) {
+    if (!genuine) continue;
+    const auto& type = genuine->type();
+    if (type == "user_phrase" || type == "user_table") {
+      return true;
+    }
+  }
+  return false;
+}
+
 std::string take_commit() {
   if (!g_api || !g_session) return {};
   RIME_STRUCT(RimeCommit, commit);
@@ -231,6 +257,42 @@ std::vector<std::string> snapshot_locked() {
 bool select_schema_locked(const std::string& schema_id) {
   return g_api && g_session && g_api->select_schema && !schema_id.empty() &&
          g_api->select_schema(g_session, schema_id.c_str());
+}
+
+bool safe_user_dict_name(const std::string& name) {
+  return !name.empty() && name.size() <= 128 && name != "." && name != ".." &&
+         name.find('/') == std::string::npos &&
+         name.find('\\') == std::string::npos;
+}
+
+std::string suspend_session_locked() {
+  std::string schema;
+  if (g_api && g_session && g_api->get_current_schema) {
+    char current[128] = {0};
+    if (g_api->get_current_schema(g_session, current, sizeof(current))) {
+      schema = current;
+    }
+  }
+  if (g_api && g_session) {
+    g_api->destroy_session(g_session);
+  }
+  g_session = 0;
+  return schema;
+}
+
+bool resume_session_locked(const std::string& schema) {
+  if (!g_api) return false;
+  g_session = g_api->create_session();
+  if (!g_session) return false;
+  const bool selected =
+      (!schema.empty() && select_schema_locked(schema)) ||
+      select_schema_locked("luna_pinyin_simp") ||
+      select_schema_locked("luna_pinyin");
+  if (!selected) {
+    g_api->destroy_session(g_session);
+    g_session = 0;
+  }
+  return selected;
 }
 
 void shutdown_locked() {
@@ -328,6 +390,87 @@ Java_llc_slacker_openime_RimeNative_nativeSelectCandidate(
   // remaining segmented input is preserved, and the Android pre-edit can be
   // cleared atomically after the click.
   return utf8_to_jstring(env, finish_selection());
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_llc_slacker_openime_RimeNative_nativeIsUserLearnedCandidate(
+    JNIEnv*, jclass, jint index) {
+  std::lock_guard<std::mutex> lock(g_mutex);
+  if (!g_api || !g_session || index < 0) return JNI_FALSE;
+  return candidate_is_user_learned(static_cast<size_t>(index))
+             ? JNI_TRUE
+             : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_llc_slacker_openime_RimeNative_nativeDeleteCandidate(
+    JNIEnv*, jclass, jint index) {
+  std::lock_guard<std::mutex> lock(g_mutex);
+  if (!g_api || !g_session || index < 0 || !g_api->delete_candidate) {
+    return JNI_FALSE;
+  }
+  return g_api->delete_candidate(
+             g_session,
+             static_cast<size_t>(index))
+             ? JNI_TRUE
+             : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jobjectArray JNICALL
+Java_llc_slacker_openime_RimeNative_nativeExportUserDictionaries(
+    JNIEnv* env, jclass, jstring target_dir) {
+  std::lock_guard<std::mutex> lock(g_mutex);
+  if (!g_api || !g_session) return nullptr;
+
+  const std::string target = jstring_to_utf8(env, target_dir);
+  if (target.empty()) return nullptr;
+  std::error_code error;
+  std::filesystem::create_directories(target, error);
+  if (error) return nullptr;
+
+  const std::string schema = suspend_session_locked();
+  std::vector<std::string> exported;
+  {
+    rime::UserDictManager manager(&rime::Service::instance().deployer());
+    rime::UserDictList dictionaries;
+    manager.GetUserDictList(&dictionaries);
+    size_t index = 0;
+    bool failed = false;
+    for (const auto& name : dictionaries) {
+      const std::filesystem::path path =
+          std::filesystem::path(target) /
+          ("dict-" + std::to_string(index++) + ".userdb.txt");
+      const int count = manager.Export(name, path);
+      if (count < 0) {
+        failed = true;
+        break;
+      }
+      exported.emplace_back(name + "\t" + path.string());
+    }
+    const bool resumed = resume_session_locked(schema);
+    if (failed || !resumed) return nullptr;
+  }
+  return make_strings(env, exported);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_llc_slacker_openime_RimeNative_nativeImportUserDictionary(
+    JNIEnv* env, jclass, jstring dict_name, jstring source_file) {
+  std::lock_guard<std::mutex> lock(g_mutex);
+  if (!g_api || !g_session) return -1;
+
+  const std::string name = jstring_to_utf8(env, dict_name);
+  const std::string source = jstring_to_utf8(env, source_file);
+  if (!safe_user_dict_name(name) || source.empty()) return -1;
+
+  const std::string schema = suspend_session_locked();
+  int imported = -1;
+  {
+    rime::UserDictManager manager(&rime::Service::instance().deployer());
+    imported = manager.Import(name, std::filesystem::path(source));
+  }
+  resume_session_locked(schema);
+  return imported;
 }
 
 extern "C" JNIEXPORT jstring JNICALL

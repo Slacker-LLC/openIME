@@ -339,6 +339,87 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
 
     private fun fuzzyVariants(py: String): List<String> = pinyinFuzzyVariants(py)
 
+    private fun typoCandidatesFor(
+        pinyin: String,
+        fuzzy: Boolean,
+    ): List<String> {
+        val result = linkedSetOf<String>()
+
+        if (fuzzy) {
+            fuzzyVariants(pinyin).forEach { variant ->
+                result.addAll(ImeData.phraseDict[variant].orEmpty().take(2))
+                result.addAll(pinyinDict[variant].orEmpty().take(2))
+            }
+        }
+        result.addAll(ImeData.phraseDict[pinyin].orEmpty().take(4))
+        result.addAll(pinyinDict[pinyin].orEmpty().take(4))
+
+        // Prefix lookup is indexed and bounded; unlike getCandidates(), this
+        // path never performs segmentation or initial-index expansion for each
+        // neighboring-key variant.
+        phrasePrefixIndex.lookup(pinyin)
+            .values
+            .asSequence()
+            .flatMap { it.asSequence() }
+            .filter { it.isNotEmpty() }
+            .take(4)
+            .forEach(result::add)
+
+        var index = lowerBound(sortedPinyinKeys, pinyin)
+        var scanned = 0
+        while (index < sortedPinyinKeys.size && scanned < 4) {
+            val key = sortedPinyinKeys[index]
+            if (!key.startsWith(pinyin)) break
+            pinyinDict[key].orEmpty().firstOrNull()?.let(result::add)
+            index += 1
+            scanned += 1
+        }
+
+        return result
+            .filter { candidate -> candidate.any { ch -> ch.code > 0x7f } }
+            .take(8)
+    }
+
+    /**
+     * Recover common 26-key slips by substituting exactly one physically
+     * adjacent QWERTY key. This is intentionally conservative: it never
+     * changes the user's composition, never chains multiple corrections, and
+     * only contributes real non-ASCII candidates behind the normal result.
+     */
+    fun getAdjacentKeyCorrections(
+        rawPinyin: String,
+        fuzzy: Boolean = false,
+        limit: Int = 24,
+    ): List<String> {
+        val input = rawPinyin.lowercase().trim()
+        if (
+            input.length !in 2..12 ||
+            input.any { it !in 'a'..'z' } ||
+            limit <= 0
+        ) {
+            return emptyList()
+        }
+
+        val result = linkedSetOf<String>()
+        for (index in input.indices.reversed()) {
+            val original = input[index]
+            QWERTY_NEIGHBORS[original].orEmpty().forEach { replacement ->
+                val variant = buildString(input.length) {
+                    append(input, 0, index)
+                    append(replacement)
+                    append(input, index + 1, input.length)
+                }
+                typoCandidatesFor(variant, fuzzy)
+                    .take(2)
+                    .forEach { candidate ->
+                        result += candidate
+                    }
+                if (result.size >= limit) return result.take(limit)
+            }
+        }
+        return result.take(limit)
+    }
+
     fun get9KeyCandidates(numberStr: String): NineKeyResult {
         val digits = numberStr
             .take(MAX_NINE_KEY_DIGITS)
@@ -491,6 +572,35 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
         const val MAX_NINE_KEY_DIGITS = 64
         private const val MAX_NINE_MATCHES = 12
         private const val MAX_LOCAL_RESOLVE_LENGTH = 32
+
+        private val QWERTY_NEIGHBORS = mapOf(
+            'q' to "wa",
+            'w' to "qase",
+            'e' to "wsdr",
+            'r' to "edft",
+            't' to "rfgy",
+            'y' to "tghu",
+            'u' to "yhji",
+            'i' to "ujko",
+            'o' to "iklp",
+            'p' to "ol",
+            'a' to "qwsz",
+            's' to "awedxz",
+            'd' to "serfcx",
+            'f' to "drtgvc",
+            'g' to "ftyhbv",
+            'h' to "gyujnb",
+            'j' to "huikmn",
+            'k' to "jiolm",
+            'l' to "kop",
+            'z' to "asx",
+            'x' to "zsdc",
+            'c' to "xdfv",
+            'v' to "cfgb",
+            'b' to "vghn",
+            'n' to "bhjm",
+            'm' to "njk",
+        )
 
         /**
          * Correct common legacy table mistakes without trusting the table at

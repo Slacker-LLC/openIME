@@ -9,6 +9,7 @@ import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
@@ -41,6 +42,8 @@ open class ImeKeyboardView(
         fun onCharacter(char: String)
         fun onBackspace()
         fun onClearAll()
+        fun onUndoClear(): Boolean = false
+        fun onUndoClearExpired() {}
         fun onSpace()
         fun onFloatingKeyboardChanged(floating: Boolean)
         fun onFloatingKeyboardDragged(deltaX: Float, deltaY: Float)
@@ -72,6 +75,7 @@ open class ImeKeyboardView(
             onCompositionChanged(composition, candidates)
         }
         fun onCandidateSelected(candidate: String)
+        fun onCandidateLongPressed(candidate: String) {}
 
         /**
          * An association ("联想") chip is rendered only *after* a candidate was
@@ -95,6 +99,10 @@ open class ImeKeyboardView(
         fun onPopupChanged(enabled: Boolean)
         fun onFuzzyChanged(enabled: Boolean)
         fun onSkinChanged(opacity: Int, radius: Int, fontSize: Int, primaryColor: String) {}
+        fun onHandednessChanged(handedness: ImeHandedness) {}
+        fun onKeyboardHeightChanged(percent: Int) {}
+        fun onFloatingStyleChanged(widthPercent: Int, opacityPercent: Int) {}
+        fun onOpenAboutData() {}
     }
 
     /** Visual class marker for white keys (nine/digits grid). */
@@ -114,9 +122,11 @@ open class ImeKeyboardView(
         toPx = ::dp,
         onDeleteOne = ::performBackspaceOnce,
         onClearAll = listener::onClearAll,
+        onUndoClear = listener::onUndoClear,
         onPressFeedback = ::feedback,
         onHapticFeedback = ::hapticFeedback,
         onShowClearPopup = { anchor -> showPopup(anchor, "清空") },
+        onShowUndoPopup = { anchor -> showPopup(anchor, "撤回") },
         onHidePopup = ::hidePopup,
     )
     private val backspaceKeyFactory: BackspaceKeyFactory by lazy {
@@ -129,7 +139,7 @@ open class ImeKeyboardView(
                     text = "",
                     func = true,
                     secondary = null,
-                    mainTextSizeOverride = 15f,
+                    mainTextSizeOverride = ImeTypographyTokens.BODY_SP,
                     iconRes = R.drawable.ic_backspace,
                     onTap = onTap,
                 )
@@ -151,6 +161,9 @@ open class ImeKeyboardView(
         onCancelPreviewChanged = { cancelling ->
             voicePanelController.setCancelPreview(cancelling)
         },
+        onCursorStep = { direction ->
+            listener.onTextEdit(if (direction < 0) "left" else "right")
+        },
     )
     private val spaceVoiceKeyFactory: SpaceVoiceKeyFactory by lazy {
         SpaceVoiceKeyFactory(
@@ -160,7 +173,7 @@ open class ImeKeyboardView(
                     text = label,
                     func = true,
                     secondary = null,
-                    mainTextSizeOverride = 14f,
+                    mainTextSizeOverride = ImeTypographyTokens.BODY_SP,
                     iconRes = R.drawable.ic_mic,
                     onTap = {
                         if (!insertIntoInlineEditor(" ")) onTap()
@@ -215,9 +228,14 @@ open class ImeKeyboardView(
     private var appliedOrientation = resources.configuration.orientation
     private var appliedFontScale = resources.configuration.fontScale
     private var appliedDensityDpi = resources.displayMetrics.densityDpi
+    private var keyboardHandedness = ImeSettingsRepository.loadHandedness(context)
+    private var keyboardHeightPercent = ImeSettingsRepository.loadKeyboardHeightPercent(context)
+    private var floatingWidthPercent = ImeSettingsRepository.loadFloatingWidthPercent(context)
+    private var floatingOpacityPercent = ImeSettingsRepository.loadFloatingOpacityPercent(context)
     private var layoutMetrics = KeyboardLayoutMetrics(
         landscape = appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE,
         fontScale = appliedFontScale,
+        heightPercent = keyboardHeightPercent,
     )
     private var lastTextMode = KeyboardMode.PINYIN_26
     private var preferredChineseMode = ImeSettingsRepository.loadPreferredChineseMode(context)
@@ -454,6 +472,7 @@ open class ImeKeyboardView(
             previousPanel = { panelBackStack.lastOrNull() },
             onBack = ::closePanelToKeyboard,
             onFeedback = ::feedback,
+            standalone = standalonePanel,
         )
     }
     private val panelRenderer: ImePanelRenderer by lazy {
@@ -558,6 +577,10 @@ open class ImeKeyboardView(
             currentSkinRadius = { skinRadius },
             currentSkinFontSize = { skinFontSize },
             currentSkinColor = { skinPrimaryColor },
+            currentHandedness = { keyboardHandedness },
+            currentKeyboardHeightPercent = { keyboardHeightPercent },
+            currentFloatingWidthPercent = { floatingWidthPercent },
+            currentFloatingOpacityPercent = { floatingOpacityPercent },
             onThemeSelected = ::setTheme,
             onAppearanceSelected = { selected ->
                 setAppearance(selected)
@@ -577,7 +600,11 @@ open class ImeKeyboardView(
                 )
                 applyTheme()
             },
+            onHandednessChanged = ::setHandedness,
+            onKeyboardHeightChanged = ::setKeyboardHeightPercent,
+            onFloatingStyleChanged = ::setFloatingStyle,
             onShowFuzzySettings = { showPanel(Panel.FUZZY_SETTINGS) },
+            onOpenAboutData = listener::onOpenAboutData,
             onFeedback = ::feedback,
             applyTheme = ::applyTheme,
             onHierarchyRebuilt = ::onViewHierarchyRebuilt,
@@ -803,6 +830,7 @@ open class ImeKeyboardView(
         layoutMetrics = KeyboardLayoutMetrics(
             landscape = appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE,
             fontScale = appliedFontScale,
+            heightPercent = keyboardHeightPercent,
         )
         if (!geometryChanged) return
         // Do not yank the user out of an open panel.
@@ -923,6 +951,31 @@ open class ImeKeyboardView(
      */
     private fun updateResponsiveGeometry(measuredWidthPx: Int) {
         if (measuredWidthPx <= 0) return
+
+        val dockWidthPx =
+            if (floatingKeyboardController.enabled || keyboardHandedness == ImeHandedness.STANDARD) {
+                measuredWidthPx
+            } else {
+                (measuredWidthPx * 0.82f).toInt()
+                    .coerceAtLeast(dp(280))
+                    .coerceAtMost(measuredWidthPx)
+            }
+
+        (mainDock.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
+            if (dockWidthPx == measuredWidthPx) {
+                params.width = FrameLayout.LayoutParams.MATCH_PARENT
+                params.gravity = Gravity.TOP
+            } else {
+                params.width = dockWidthPx
+                params.gravity = Gravity.TOP or if (keyboardHandedness == ImeHandedness.LEFT) {
+                    Gravity.START
+                } else {
+                    Gravity.END
+                }
+            }
+            mainDock.layoutParams = params
+        }
+
         if (floatingKeyboardController.enabled) {
             // A configuration pass can briefly report the physical display
             // width before WindowManager applies the floating window bounds.
@@ -948,7 +1001,7 @@ open class ImeKeyboardView(
         }
         val minimumInset = dp(5)
         val maxWidth = dp(maxContentWidthDp)
-        contentInsetPx = maxOf(minimumInset, (measuredWidthPx - maxWidth) / 2)
+        contentInsetPx = maxOf(minimumInset, (dockWidthPx - maxWidth) / 2)
         keyboardBody.setPadding(
             contentInsetPx,
             dp(6),
@@ -956,7 +1009,7 @@ open class ImeKeyboardView(
             dp(16),
         )
         keyboardBody.findViewWithTag<View>("key-row-secondary")?.let { row ->
-            val rowWidth = ((measuredWidthPx - contentInsetPx * 2) * 0.9f).toInt()
+            val rowWidth = ((dockWidthPx - contentInsetPx * 2) * 0.9f).toInt()
             val params = row.layoutParams as? LinearLayout.LayoutParams
             if (params != null) {
                 params.gravity = Gravity.CENTER_HORIZONTAL
@@ -994,6 +1047,8 @@ open class ImeKeyboardView(
                 updateTopZone(composition.text?.isNotEmpty() == true)
                 listener.onCandidateExpanded(open)
             },
+            onUndoClear = { listener.onUndoClear() },
+            onUndoClearExpired = listener::onUndoClearExpired,
         )
         candidateBarController = CandidateBarController(
             context = context,
@@ -1011,6 +1066,11 @@ open class ImeKeyboardView(
                 }.apply {
                     allowTwoLineLabel()
                     contentDescription = "候选:$candidate"
+                    setOnLongClickListener {
+                        feedback()
+                        listener.onCandidateLongPressed(candidate)
+                        true
+                    }
                 }
             },
             createEmptyLabel = { title("暂无候选", small = true) },
@@ -1025,6 +1085,7 @@ open class ImeKeyboardView(
             statefulBackground = ::statefulRounded,
             onFeedback = ::feedback,
             onCandidateSelected = listener::onCandidateSelected,
+            onCandidateLongPressed = listener::onCandidateLongPressed,
         )
         mainDock.addView(
             topZone,
@@ -1207,6 +1268,9 @@ open class ImeKeyboardView(
         }
         stopVoiceIfActive()
         panel = Panel.NONE
+        if (renderedMode != mode) {
+            renderModeBody()
+        }
         expandedPanel.animate().cancel()
         expandedPanel.visibility = View.GONE
         mainDock.animate().cancel()
@@ -1317,7 +1381,7 @@ open class ImeKeyboardView(
         val available = !passwordField
         clipboardButton.isEnabled = available
         clipboardButton.isClickable = available
-        clipboardButton.alpha = if (available) 1f else 0.38f
+        clipboardButton.alpha = if (available) 1f else ImeSurfacePolicy.DISABLED_ALPHA
         clipboardButton.contentDescription = if (available) {
             "剪贴板"
         } else {
@@ -1391,6 +1455,45 @@ open class ImeKeyboardView(
      * several times. Keep the individual setters for user actions, but use
      * this atomic boundary whenever a persisted snapshot is loaded.
      */
+    private fun setHandedness(next: ImeHandedness) {
+        if (keyboardHandedness == next) return
+        keyboardHandedness = next
+        ImeSettingsRepository.saveHandedness(context, next)
+        listener.onHandednessChanged(next)
+        updateResponsiveGeometry(width)
+    }
+
+    private fun setFloatingStyle(widthPercent: Int, opacityPercent: Int) {
+        val width = widthPercent.coerceIn(72, 96)
+        val opacity = opacityPercent.coerceIn(82, 100)
+        if (floatingWidthPercent == width && floatingOpacityPercent == opacity) return
+        floatingWidthPercent = width
+        floatingOpacityPercent = opacity
+        ImeSettingsRepository.saveFloatingWidthPercent(context, width)
+        ImeSettingsRepository.saveFloatingOpacityPercent(context, opacity)
+        listener.onFloatingStyleChanged(width, opacity)
+    }
+
+    private fun setKeyboardHeightPercent(percent: Int) {
+        val bounded = percent.coerceIn(92, 120)
+        if (keyboardHeightPercent == bounded) return
+        keyboardHeightPercent = bounded
+        ImeSettingsRepository.saveKeyboardHeightPercent(context, bounded)
+        listener.onKeyboardHeightChanged(bounded)
+        renderedMode = null
+        layoutMetrics = KeyboardLayoutMetrics(
+            landscape = appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE,
+            fontScale = appliedFontScale,
+            heightPercent = keyboardHeightPercent,
+        )
+        applyDynamicHeights()
+        if (!standalonePanel && panel == Panel.NONE) {
+            renderModeBody()
+        } else {
+            requestLayout()
+        }
+    }
+
     internal fun applyPersistedSettings(
         newTheme: ImeTheme,
         newAppearance: ImeAppearance,
@@ -1404,6 +1507,15 @@ open class ImeKeyboardView(
         primaryColor: String,
     ) {
         val normalizedColor = AccentPalette.normalize(primaryColor)
+        val persistedHandedness = ImeSettingsRepository.loadHandedness(context)
+        val persistedHeight = ImeSettingsRepository.loadKeyboardHeightPercent(context)
+        val persistedFloatingWidth = ImeSettingsRepository.loadFloatingWidthPercent(context)
+        val persistedFloatingOpacity = ImeSettingsRepository.loadFloatingOpacityPercent(context)
+        val floatingStyleChanged =
+            floatingWidthPercent != persistedFloatingWidth ||
+                floatingOpacityPercent != persistedFloatingOpacity
+        val heightChanged = keyboardHeightPercent != persistedHeight
+        val geometryChanged = keyboardHandedness != persistedHandedness || heightChanged
         val visualChanged = theme != newTheme ||
             appearance != newAppearance ||
             skinOpacity != opacity ||
@@ -1421,7 +1533,50 @@ open class ImeKeyboardView(
         skinRadius = radius
         skinFontSize = fontSize
         skinPrimaryColor = normalizedColor
+        if (geometryChanged) {
+            keyboardHandedness = persistedHandedness
+            keyboardHeightPercent = persistedHeight
+            if (heightChanged) renderedMode = null
+            layoutMetrics = KeyboardLayoutMetrics(
+                landscape = appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE,
+                fontScale = appliedFontScale,
+                heightPercent = keyboardHeightPercent,
+            )
+            applyDynamicHeights()
+            if (!standalonePanel && panel == Panel.NONE) {
+                renderModeBody()
+            } else {
+                requestLayout()
+            }
+            updateResponsiveGeometry(width)
+        }
+        if (floatingStyleChanged) {
+            floatingWidthPercent = persistedFloatingWidth
+            floatingOpacityPercent = persistedFloatingOpacity
+            listener.onFloatingStyleChanged(
+                floatingWidthPercent,
+                floatingOpacityPercent,
+            )
+        }
         if (visualChanged) applyTheme()
+    }
+
+    fun isCandidateInteractionActive(): Boolean =
+        ::candidateBarController.isInitialized &&
+            candidateBarController.isInteractionActive()
+
+    fun confirmCandidateDeletion(candidate: String, onConfirm: () -> Unit) {
+        if (::candidateBarController.isInitialized) {
+            candidateBarController.confirmCandidateDeletion(candidate, onConfirm)
+        }
+    }
+
+    fun showClearUndo() {
+        if (::topZone.isInitialized) topZone.showUndoClear()
+    }
+
+    fun hideClearUndo(discardSnapshot: Boolean = false) {
+        if (::topZone.isInitialized) topZone.hideUndoClear(discardSnapshot)
     }
 
     fun setAppearance(newAppearance: ImeAppearance) {
@@ -1706,6 +1861,7 @@ open class ImeKeyboardView(
             composition = composition,
             onCommit = listener::onCharacter,
             onFeedback = ::feedback,
+            onRailChanged = ::applyThemeToSubtree,
         ).also { nineKeySymbolRailController = it }
     }
 
@@ -1759,8 +1915,9 @@ open class ImeKeyboardView(
                 MotionEvent.ACTION_MOVE -> {
                     val index = event.findPointerIndex(spaceVoiceGestureController.pointerId)
                     if (index < 0) return handled
+                    val pointerX = event.rawX + event.getX(index) - event.x
                     val pointerY = event.rawY + event.getY(index) - event.y
-                    spaceVoiceGestureController.move(pointerY)
+                    spaceVoiceGestureController.move(pointerX, pointerY)
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_UP -> {
                     if (event.actionMasked == MotionEvent.ACTION_POINTER_UP &&
@@ -1899,6 +2056,7 @@ open class ImeKeyboardView(
             .putExtra(QuickPhraseEditActivity.EXTRA_ID, phrase?.id ?: 0L)
             .putExtra(QuickPhraseEditActivity.EXTRA_CATEGORY, phrase?.category.orEmpty())
             .putExtra(QuickPhraseEditActivity.EXTRA_TEXT, phrase?.text.orEmpty())
+            .putExtra(QuickPhraseEditActivity.EXTRA_INPUT_CODE, phrase?.inputCode.orEmpty())
         context.startActivity(intent)
     }
 
@@ -1916,7 +2074,7 @@ open class ImeKeyboardView(
 
     private fun sectionTitle(textValue: String): TextView = TextView(context).apply {
         text = textValue
-        textSize = 12f
+        textSize = ImeTypographyTokens.TITLE_SP
         includeFontPadding = false
         setPadding(dp(4), dp(2), 0, dp(8))
         tag = "panel-section-title"
@@ -2078,11 +2236,17 @@ open class ImeKeyboardView(
         preferredSuffix: String? = null,
         cursorPosition: Int? = null,
     ) {
+        val resolveStartedAt = SystemClock.elapsedRealtimeNanos()
         val resolution = requireCandidateProvider().resolveNineKey(
             digits = digits,
             segmentPrefix = lastNineSegmentPrefix,
             preferredSuffix = preferredSuffix,
             fuzzy = fuzzyEnabled,
+        )
+        NineKeyPerformanceTrace.recordResolve(
+            digitLength = digits.length,
+            elapsedNs = SystemClock.elapsedRealtimeNanos() - resolveStartedAt,
+            threadName = Thread.currentThread().name,
         )
         val preview = resolution.preview
         val pinyinPaths = resolution.pinyinPaths
@@ -2392,7 +2556,11 @@ open class ImeKeyboardView(
             text = text,
             secondary = if (func) null else secondary,
             iconRes = iconRes,
-            mainTextSize = mainTextSizeOverride ?: (if (func) 15f else 20f),
+            mainTextSize = mainTextSizeOverride ?: if (func) {
+                ImeTypographyTokens.BODY_SP
+            } else {
+                ImeTypographyTokens.KEY_LETTER_SP
+            },
             fitMainText = func || text.length > 2,
         ).apply {
             tag = "key:$text"
@@ -2453,7 +2621,7 @@ open class ImeKeyboardView(
 
     private fun title(text: String, small: Boolean = false) = TextView(context).apply {
         this.text = text
-        textSize = if (small) 12f else 16f
+        textSize = if (small) ImeTypographyTokens.BODY_SP else ImeTypographyTokens.TITLE_SP
         setPadding(0, 0, 0, dp(4))
     }
 
@@ -2480,15 +2648,15 @@ open class ImeKeyboardView(
     protected fun applyTheme() {
         val t = currentThemeTokens()
         setBackgroundColor(t.keyboardBackground)
-        mainDock.setBackgroundColor(t.expandedBackground)
+        mainDock.setBackgroundColor(t.keyboardBackground)
         keyboardBody.setBackgroundColor(t.keyboardBackground)
         topZone.setBackgroundColor(t.toolbarBackground)
         expandedPanel.setBackgroundColor(t.expandedBackground)
         candidateOverlay.setBackgroundColor(t.expandedBackground)
         themeApplier.apply(this, t)
         composition.setTextColor(t.keySecondaryText)
-        topZone.candidateExpandButton.setTextColor(t.keySecondaryText)
-        topZone.candidateEmojiButton.setTextColor(t.keySecondaryText)
+        topZone.candidateExpandButton.imageTintList = android.content.res.ColorStateList.valueOf(t.keySecondaryText)
+        topZone.candidateEmojiButton.imageTintList = android.content.res.ColorStateList.valueOf(t.keySecondaryText)
         floatingKeyboardController.applyTheme(t)
         inlineVoicePresenter.refreshPalette()
     }

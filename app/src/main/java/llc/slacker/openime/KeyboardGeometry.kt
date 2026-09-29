@@ -53,6 +53,7 @@ data class NormalizedBounds(
 internal data class KeyboardLayoutMetrics(
     val landscape: Boolean,
     val fontScale: Float,
+    val heightPercent: Int = 100,
 ) {
     val keyRowHeightDp: Int = run {
         val base = if (landscape) {
@@ -63,7 +64,8 @@ internal data class KeyboardLayoutMetrics(
         val fontGrow = ((fontScale - 1f).coerceAtLeast(0f) * 12f)
             .toInt()
             .coerceAtMost(12)
-        base + fontGrow
+        val scaled = ((base + fontGrow) * heightPercent.coerceIn(92, 120) / 100f).toInt()
+        scaled.coerceAtLeast(if (landscape) 38 else 44)
     }
 
     val nineGridHeightDp: Int =
@@ -82,7 +84,10 @@ internal data class KeyboardLayoutMetrics(
             keyRowHeightDp * 4 +
             ImeGeometryTokens.KEY_ROW_GAP_DP * 3 +
             22
-        maxOf(if (landscape) 264 else 302, derived)
+        val baseMinimum = if (landscape) 264 else 302
+        val scaledMinimum =
+            (baseMinimum * heightPercent.coerceIn(92, 120) / 100f).toInt()
+        maxOf(scaledMinimum, derived)
     }
 
     val keyboardBodyHeightDp: Int = imeHeightDp - topZoneHeightDp

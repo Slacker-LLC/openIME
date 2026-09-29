@@ -316,6 +316,54 @@ class InputConnectionGatewayTest {
     }
 
     @Test
+    fun clearUndoExpiresAfterFiveSeconds() {
+        var now = 1_000L
+        val fake = FakeInputConnection(
+            selectedText = "可恢复文本",
+            contextMenuResult = true,
+            extractedText = extracted("", 0, 0, 0),
+        )
+        val gateway = InputConnectionGateway(null, { fake }, nowMs = { now })
+
+        assertTrue(gateway.clearAllText())
+        assertTrue(gateway.hasClearUndo())
+
+        now += 5_001L
+        assertFalse(gateway.hasClearUndo())
+        assertFalse(gateway.restoreLastClear())
+    }
+
+    @Test
+    fun clearUndoIsBoundToTheOriginalInputConnection() {
+        val first = FakeInputConnection(
+            selectedText = "第一个输入框",
+            contextMenuResult = true,
+            extractedText = extracted("", 0, 0, 0),
+        )
+        val second = FakeInputConnection(extractedText = extracted("", 0, 0, 0))
+        var current: InputConnection = first
+        val gateway = InputConnectionGateway(null, { current }, nowMs = { 1_000L })
+
+        assertTrue(gateway.clearAllText())
+        assertTrue(gateway.hasClearUndo())
+
+        current = second
+        assertFalse(gateway.hasClearUndo())
+        assertFalse(gateway.restoreLastClear())
+        assertTrue(second.events.none { it.startsWith("commit:") })
+    }
+
+    @Test
+    fun passwordClearNeverCreatesUndoSnapshot() {
+        val fake = FakeInputConnection(selectedText = "secret", contextMenuResult = true)
+        val gateway = InputConnectionGateway(null, { fake }, isPassword = { true })
+
+        assertFalse(gateway.clearAllText())
+        assertFalse(gateway.hasClearUndo())
+        assertFalse(gateway.restoreLastClear())
+    }
+
+    @Test
     fun failedClearAllRestoresSelectionWithoutPreDeletingContent() {
         val fake = FakeInputConnection(
             selectedText = "234",

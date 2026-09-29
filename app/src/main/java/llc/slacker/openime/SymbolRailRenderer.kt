@@ -110,7 +110,7 @@ internal object SymbolRailRenderer {
         onFeedback: () -> Unit,
     ): TextView = TextView(context).apply {
         text = symbol
-        textSize = if (symbol.length > 2) 12f else 17f
+        textSize = ImeTypographyTokens.BODY_SP
         gravity = Gravity.CENTER
         tag = "$tagPrefix$symbol"
         contentDescription = symbol

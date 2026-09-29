@@ -5,6 +5,7 @@ import android.view.ViewGroup
 import android.widget.TextView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.After
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -47,6 +48,36 @@ class NineKeyChineseInstrumentedTest {
     fun correctedCommonMappingsReachTheRenderer() {
         tapDigits("943")
         assertComposition("zhe")
+    }
+
+    @Test
+    fun ambiguousRailShowsInputtablePinyinAndSelectionKeepsCompositionActive() {
+        tapDigits("64")
+
+        val paths = harness.awaitMain { activity ->
+            val root = activity.findViewById<ViewGroup>(android.R.id.content) ?: return@awaitMain emptyList()
+            val content = findView(root) { it.tag == "nine-symbol-scroll-content" } as? ViewGroup
+                ?: return@awaitMain emptyList()
+            (0 until content.childCount).mapNotNull { index ->
+                (content.getChildAt(index) as? TextView)?.text?.toString()
+            }
+        }
+        assertTrue("64 must keep ni as an available path: $paths", "ni" in paths)
+        assertTrue("64 must keep mi as an available path: $paths", "mi" in paths)
+        assertFalse("64 must not show the non-Pinyin spelling oh: $paths", "oh" in paths)
+
+        val selected = harness.awaitMain { activity ->
+            val root = activity.findViewById<ViewGroup>(android.R.id.content) ?: return@awaitMain false
+            val content = findView(root) { it.tag == "nine-symbol-scroll-content" } as? ViewGroup
+                ?: return@awaitMain false
+            val choice = (0 until content.childCount)
+                .mapNotNull { content.getChildAt(it) as? TextView }
+                .firstOrNull { it.text.toString() == "mi" }
+                ?: return@awaitMain false
+            choice.performClick()
+        }
+        assertTrue("The mi path must be independently selectable", selected)
+        assertComposition("mi")
     }
 
     private fun enterChineseNineKey() {

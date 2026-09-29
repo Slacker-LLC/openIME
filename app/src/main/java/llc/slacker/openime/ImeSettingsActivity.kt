@@ -1,6 +1,7 @@
 package llc.slacker.openime
 
 import android.app.Activity
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -195,5 +196,22 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
         ImeSettingsRepository.saveSkin(this, opacity, radius, fontSize, primaryColor)
         refreshWindowChrome()
         refreshLiveIme()
+    }
+    override fun onHandednessChanged(handedness: ImeHandedness) {
+        ImeSettingsRepository.saveHandedness(this, handedness)
+        refreshLiveIme()
+    }
+    override fun onKeyboardHeightChanged(percent: Int) {
+        ImeSettingsRepository.saveKeyboardHeightPercent(this, percent)
+        refreshLiveIme()
+    }
+    override fun onFloatingStyleChanged(widthPercent: Int, opacityPercent: Int) {
+        ImeSettingsRepository.saveFloatingWidthPercent(this, widthPercent)
+        ImeSettingsRepository.saveFloatingOpacityPercent(this, opacityPercent)
+        refreshLiveIme()
+    }
+
+    override fun onOpenAboutData() {
+        startActivity(Intent(this, AboutDataActivity::class.java))
     }
 }

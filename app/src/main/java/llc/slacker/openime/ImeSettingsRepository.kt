@@ -2,6 +2,12 @@ package llc.slacker.openime
 
 import android.content.Context
 
+enum class ImeHandedness(val label: String) {
+    STANDARD("标准"),
+    LEFT("左手"),
+    RIGHT("右手"),
+}
+
 /** Lightweight persistent IME settings. */
 object ImeSettingsRepository {
 
@@ -17,6 +23,10 @@ object ImeSettingsRepository {
     private const val KEY_SKIN_FONT = "skin_font"
     private const val KEY_SKIN_COLOR = "skin_color"
     private const val KEY_PREFERRED_CHINESE_MODE = "preferred_chinese_mode"
+    private const val KEY_HANDEDNESS = "handedness"
+    private const val KEY_KEYBOARD_HEIGHT = "keyboard_height_percent"
+    private const val KEY_FLOATING_WIDTH = "floating_width_percent"
+    private const val KEY_FLOATING_OPACITY = "floating_opacity_percent"
 
     /**
      * The user's preferred Chinese layout (26-key vs 9-key). Only PINYIN_26 and
@@ -38,19 +48,63 @@ object ImeSettingsRepository {
             .edit().putString(KEY_PREFERRED_CHINESE_MODE, mode.name).apply()
     }
 
+    fun loadHandedness(context: Context): ImeHandedness =
+        runCatching {
+            ImeHandedness.valueOf(
+                context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getString(KEY_HANDEDNESS, ImeHandedness.STANDARD.name)
+                    ?: ImeHandedness.STANDARD.name,
+            )
+        }.getOrDefault(ImeHandedness.STANDARD)
+
+    fun saveHandedness(context: Context, handedness: ImeHandedness) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY_HANDEDNESS, handedness.name).apply()
+    }
+
+    fun loadKeyboardHeightPercent(context: Context): Int =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getInt(KEY_KEYBOARD_HEIGHT, 100)
+            .coerceIn(92, 120)
+
+    fun saveKeyboardHeightPercent(context: Context, percent: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putInt(KEY_KEYBOARD_HEIGHT, percent.coerceIn(92, 120)).apply()
+    }
+
+    fun loadFloatingWidthPercent(context: Context): Int =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getInt(KEY_FLOATING_WIDTH, 88)
+            .coerceIn(72, 96)
+
+    fun saveFloatingWidthPercent(context: Context, percent: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putInt(KEY_FLOATING_WIDTH, percent.coerceIn(72, 96)).apply()
+    }
+
+    fun loadFloatingOpacityPercent(context: Context): Int =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getInt(KEY_FLOATING_OPACITY, 100)
+            .coerceIn(82, 100)
+
+    fun saveFloatingOpacityPercent(context: Context, percent: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putInt(KEY_FLOATING_OPACITY, percent.coerceIn(82, 100)).apply()
+    }
+
+    internal fun parseTheme(value: String?): ImeTheme =
+        runCatching { ImeTheme.valueOf(value ?: ImeTheme.IOS.name) }
+            .getOrDefault(ImeTheme.IOS)
+
     /**
-     * Every ImeTheme ships a complete token set in ImeDesignTokens, but the
-     * getter used to hard-code IOS, which made four finished skins unreachable
-     * and made a persisted choice impossible to restore.
+     * Historical theme names can still exist in SharedPreferences after an
+     * upgrade. They intentionally fall back to the only supported skin.
      */
     fun loadTheme(context: Context): ImeTheme =
-        runCatching {
-            ImeTheme.valueOf(
-                context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                    .getString(KEY_THEME, ImeTheme.IOS.name)
-                    ?: ImeTheme.IOS.name,
-            )
-        }.getOrDefault(ImeTheme.IOS)
+        parseTheme(
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_THEME, ImeTheme.IOS.name),
+        )
 
     fun saveTheme(context: Context, theme: ImeTheme) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -131,40 +185,5 @@ object ImeSettingsRepository {
             .putInt(KEY_SKIN_FONT, fontSize)
             .putString(KEY_SKIN_COLOR, AccentPalette.normalize(primaryColor))
             .apply()
-    }
-}
-
-
-object AccentPalette {
-    const val DEFAULT = "#1D9BF0"
-    val presets = listOf(
-        "#1D9BF0" to "蓝色",
-        "#FFD400" to "黄色",
-        "#F91880" to "粉色",
-        "#7856FF" to "紫色",
-        "#FF7A00" to "橙色",
-        "#00BA7C" to "绿色",
-        "#00C2D7" to "青色",
-        "#38BDF8" to "天蓝",
-        "#5865F2" to "靛蓝",
-        "#9B5DE5" to "深紫",
-        "#E94FB8" to "洋红",
-        "#F4212E" to "红色",
-        "#FF5A5F" to "珊瑚红",
-        "#F59E0B" to "琥珀",
-        "#84CC16" to "青柠",
-        "#22C55E" to "翠绿",
-        "#10CFA0" to "薄荷",
-        "#14B8A6" to "蓝绿",
-    )
-
-    fun parse(value: String?): Int = runCatching {
-        android.graphics.Color.parseColor(normalize(value))
-    }.getOrDefault(android.graphics.Color.parseColor(DEFAULT))
-
-    fun normalize(value: String?): String {
-        val raw = value.orEmpty().trim()
-        val hex = if (raw.startsWith("#")) raw else "#$raw"
-        return if (hex.matches(Regex("#?[0-9a-fA-F]{6}"))) hex.uppercase() else DEFAULT
     }
 }

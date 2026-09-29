@@ -14,6 +14,7 @@
 - [TEST_SOP.md](TEST_SOP.md)：L0～L3 正式测试流程。
 - [TEST_SOP_CHECKLIST.md](TEST_SOP_CHECKLIST.md)：多设备与人工交互验收清单。
 - [LICENSING.md](LICENSING.md)：主项目与第三方组件许可证边界。
+- [RELEASE.md](RELEASE.md)：固定签名、arm64 正式包、标签发布、校验和与第三方清单。
 
 旧的按 PR/分支推进的审计状态文档已删除。当前状态以 GitHub 分支/PR/CI 为准，长期执行顺序只维护在 `REPAIR_PLAN.md`，避免两份计划互相冲突。
 

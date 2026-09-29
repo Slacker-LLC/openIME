@@ -5,6 +5,21 @@ if (customBuildDir != null) {
     layout.buildDirectory.set(file(customBuildDir))
 }
 
+fun releaseValue(name: String): String? =
+    providers.gradleProperty(name).orNull
+        ?: providers.environmentVariable(name).orNull
+
+val releaseKeystorePath = releaseValue("OPENIME_KEYSTORE_PATH")
+val releaseKeystorePassword = releaseValue("OPENIME_KEYSTORE_PASSWORD")
+val releaseKeyAlias = releaseValue("OPENIME_KEY_ALIAS")
+val releaseKeyPassword = releaseValue("OPENIME_KEY_PASSWORD")
+val releaseSigningReady = listOf(
+    releaseKeystorePath,
+    releaseKeystorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { !it.isNullOrBlank() }
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -23,11 +38,39 @@ android {
         versionCode = 4
         versionName = "1.0.3"
 
-        ndk {
-            // Physical phones in scope are arm64; x86_64 keeps the existing
-            // emulator regression path available without shipping 32-bit
-            // native Rime binaries we do not need.
-            abiFilters += listOf("arm64-v8a", "x86_64")
+    }
+
+    signingConfigs {
+        if (releaseSigningReady) {
+            create("release") {
+                storeFile = file(releaseKeystorePath!!)
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("debug") {
+            ndk {
+                abiFilters.clear()
+                abiFilters += listOf("arm64-v8a", "x86_64")
+            }
+        }
+        getByName("release") {
+            isMinifyEnabled = false
+            ndk {
+                abiFilters.clear()
+                abiFilters += "arm64-v8a"
+            }
+            if (releaseSigningReady) {
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                logger.warn(
+                    "openIME release signing is not configured; assembleRelease will produce an unsigned APK",
+                )
+            }
         }
     }
 
@@ -59,6 +102,7 @@ android {
 dependencies {
     implementation(files("libs/sherpa-onnx-1.13.6.aar"))
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20260814")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
 }

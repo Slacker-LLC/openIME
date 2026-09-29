@@ -78,7 +78,7 @@ internal class FloatingKeyboardController(
             )
             mainDock.clipToOutline = true
         } else {
-            mainDock.setBackgroundColor(tokens.expandedBackground)
+            mainDock.setBackgroundColor(tokens.keyboardBackground)
             mainDock.clipToOutline = false
         }
     }

@@ -8,7 +8,8 @@
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
-        android:icon="@drawable/ic_launcher"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
@@ -27,20 +28,25 @@
         <activity
             android:name=".ImeSettingsActivity"
             android:exported="false"
-            android:label="偏好设置"
+            android:label="@string/activity_label_settings"
             android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".QuickPhraseEditActivity"
             android:exported="false"
-            android:label="常用语"
+            android:label="@string/activity_label_quick_phrases"
             android:windowSoftInputMode="stateAlwaysVisible|adjustResize" />
 
         <activity
             android:name=".SymbolManagerActivity"
             android:exported="false"
-            android:label="自定义符号"
+            android:label="@string/activity_label_symbols"
             android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".AboutDataActivity"
+            android:exported="false"
+            android:label="@string/activity_label_about_data" />
 
         <service
             android:name=".LocalVoiceImeService"

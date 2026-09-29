@@ -51,11 +51,19 @@ internal class SettingsPanelController(
     private val currentSkinRadius: () -> Int,
     private val currentSkinFontSize: () -> Int,
     private val currentSkinColor: () -> String,
+    private val currentHandedness: () -> ImeHandedness,
+    private val currentKeyboardHeightPercent: () -> Int,
+    private val currentFloatingWidthPercent: () -> Int,
+    private val currentFloatingOpacityPercent: () -> Int,
     private val onThemeSelected: (ImeTheme) -> Unit,
     private val onAppearanceSelected: (ImeAppearance) -> Unit,
     private val onToggleChanged: (String, Boolean) -> Unit,
     private val onSkinChanged: (Int, Int, Int, String) -> Unit,
+    private val onHandednessChanged: (ImeHandedness) -> Unit,
+    private val onKeyboardHeightChanged: (Int) -> Unit,
+    private val onFloatingStyleChanged: (Int, Int) -> Unit,
     private val onShowFuzzySettings: () -> Unit,
+    private val onOpenAboutData: () -> Unit,
     private val onFeedback: () -> Unit,
     private val applyTheme: () -> Unit,
     private val onHierarchyRebuilt: () -> Unit,
@@ -84,7 +92,7 @@ internal class SettingsPanelController(
                 createHeader("偏好设置"),
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
-                    toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
+                    toPx(ImeGeometryTokens.TOP_BAR_HEIGHT_DP),
                 ),
             )
         } else {
@@ -136,6 +144,55 @@ internal class SettingsPanelController(
                 }
             },
             chipParams(),
+        )
+
+        content.addView(createSectionTitle("键盘布局"), wrapParams())
+        content.addView(
+            createChipScroll(
+                ImeHandedness.entries.map { it.label },
+                currentHandedness().label,
+            ) { label ->
+                ImeHandedness.entries.firstOrNull { it.label == label }?.let { selected ->
+                    onHandednessChanged(selected)
+                    renderSettings(reusePanel = true)
+                }
+            },
+            chipParams(),
+        )
+        content.addView(
+            settingGroup(
+                settingsSlider(
+                    "键盘高度",
+                    92,
+                    120,
+                    currentKeyboardHeightPercent(),
+                    onKeyboardHeightChanged,
+                ),
+            ),
+            groupParams(),
+        )
+
+        content.addView(createSectionTitle("浮动键盘"), wrapParams())
+        content.addView(
+            settingGroup(
+                settingsSlider(
+                    "浮动宽度",
+                    72,
+                    96,
+                    currentFloatingWidthPercent(),
+                ) { width ->
+                    onFloatingStyleChanged(width, currentFloatingOpacityPercent())
+                },
+                settingsSlider(
+                    "浮动透明度",
+                    82,
+                    100,
+                    currentFloatingOpacityPercent(),
+                ) { opacity ->
+                    onFloatingStyleChanged(currentFloatingWidthPercent(), opacity)
+                },
+            ),
+            groupParams(),
         )
 
         content.addView(createSectionTitle("强调色"), wrapParams())
@@ -195,6 +252,18 @@ internal class SettingsPanelController(
                     "模糊音与智能纠错",
                     "进入后配置 z/zh、c/ch、s/sh 等规则",
                     onShowFuzzySettings,
+                ),
+            ),
+            groupParams(),
+        )
+
+        content.addView(createSectionTitle("数据"), wrapParams())
+        content.addView(
+            settingGroup(
+                settingNavigationRow(
+                    "关于与数据",
+                    "版本、隐私、导出与导入",
+                    onOpenAboutData,
                 ),
             ),
             groupParams(),
@@ -340,6 +409,7 @@ internal class SettingsPanelController(
                     "触感震动" -> R.drawable.ic_vibration
                     "按键气泡" -> R.drawable.ic_bubble
                     "模糊音与智能纠错", "启用模糊音" -> R.drawable.ic_tune
+                    "关于与数据" -> R.drawable.ic_info
                     else -> R.drawable.ic_tune
                 },
             )
@@ -382,9 +452,9 @@ internal class SettingsPanelController(
                 LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
                     gravity = Gravity.CENTER_VERTICAL
-                    addView(labelText(label, 14f), wrapParams())
+                    addView(labelText(label, ImeTypographyTokens.BODY_SP), wrapParams())
                     addView(
-                        labelText(sub, 11f).apply {
+                        labelText(sub, ImeTypographyTokens.CAPTION_SP).apply {
                             setPadding(0, toPx(3), 0, 0)
                         },
                         wrapParams(),
@@ -431,9 +501,9 @@ internal class SettingsPanelController(
                 LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
                     gravity = Gravity.CENTER_VERTICAL
-                    addView(labelText(label, 14f), wrapParams())
+                    addView(labelText(label, ImeTypographyTokens.BODY_SP), wrapParams())
                     addView(
-                        labelText(sub, 11f).apply {
+                        labelText(sub, ImeTypographyTokens.CAPTION_SP).apply {
                             setPadding(0, toPx(3), 0, 0)
                         },
                         wrapParams(),
@@ -447,10 +517,16 @@ internal class SettingsPanelController(
                 ),
             )
             addView(
-                TextView(context).apply {
-                    text = "›"
-                    textSize = 18f
-                    gravity = Gravity.CENTER
+                ImageView(context).apply {
+                    setImageResource(R.drawable.ic_arrow_back)
+                    rotation = 180f
+                    imageTintList = ColorStateList.valueOf(
+                        ImeTheme.IOS.tokens(
+                            appearance = currentAppearance(),
+                            accentOverride = AccentPalette.parse(currentSkinColor()),
+                        ).keySecondaryText,
+                    )
+                    scaleType = ImageView.ScaleType.CENTER_INSIDE
                     importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                     tag = "setting-chevron"
                 },
@@ -470,10 +546,7 @@ internal class SettingsPanelController(
             ).apply {
                 gravity = Gravity.START or Gravity.CENTER_VERTICAL
             }
-            background = ImeDrawableFactory.rounded(
-                Color.WHITE,
-                toPx(ImeGeometryTokens.PILL_RADIUS_DP),
-            )
+            tag = "toggle-knob"
             translationX =
                 if (isOn) toPx(ImeGeometryTokens.SWITCH_KNOB_TRAVEL_DP).toFloat()
                 else 0f
@@ -592,11 +665,14 @@ internal class SettingsPanelController(
                         )
                         if (selected) {
                             addView(
-                                TextView(context).apply {
-                                    text = "✓"
-                                    textSize = ImeTypographyTokens.PANEL_BODY_SP
-                                    gravity = Gravity.CENTER
-                                    includeFontPadding = false
+                                ImageView(context).apply {
+                                    setImageResource(R.drawable.ic_check)
+                                    imageTintList = ColorStateList.valueOf(
+                                        ImeDrawableFactory.contrastText(
+                                            AccentPalette.parse(hex),
+                                        ),
+                                    )
+                                    scaleType = ImageView.ScaleType.CENTER_INSIDE
                                     tag = "accent-selected-mark:$hex"
                                     importantForAccessibility =
                                         View.IMPORTANT_FOR_ACCESSIBILITY_NO
@@ -767,7 +843,8 @@ internal class SettingsPanelController(
             ),
         )
         val valueView = TextView(context).apply {
-            textSize = 12f
+            tag = "setting-value"
+            textSize = ImeTypographyTokens.BODY_SP
             gravity = Gravity.CENTER
             includeFontPadding = false
             minWidth = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
@@ -777,6 +854,7 @@ internal class SettingsPanelController(
             "圆角" -> " dp"
             "不透明度" -> "%"
             "按键字号" -> " sp"
+            "键盘高度", "浮动宽度", "浮动透明度" -> "%"
             else -> ""
         }
         val seekBar = SeekBar(context).apply {
@@ -853,6 +931,7 @@ internal class SettingsPanelController(
             text = value
             textSize = size
             includeFontPadding = false
+            tag = if (size <= 11.5f) "panel-note" else "setting-label"
         }
 
     private fun chipParams() =

@@ -1,5 +1,6 @@
 package llc.slacker.openime
 
+import android.content.Intent
 import android.inputmethodservice.InputMethodService
 import android.os.Handler
 import android.os.Looper
@@ -11,6 +12,7 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.view.inputmethod.InputMethodSubtype
+import java.io.File
 
 /**
  * Native system IME service. The view is a thin native renderer; all candidate
@@ -23,13 +25,15 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         val nativeCount: Int = 0,
         val fallbackCount: Int = 0,
         val nativeLatencyMs: Long = 0L,
+        val resultLatencyMs: Long = 0L,
         val pathCount: Int = 0,
         val finalCandidateSource: String = "none",
     ) {
         fun asLogFields(): String =
             "learnedCount=$learnedCount nativeCount=$nativeCount " +
                 "fallbackCount=$fallbackCount nativeLatencyMs=$nativeLatencyMs " +
-                "pathCount=$pathCount finalCandidateSource=$finalCandidateSource"
+                "resultLatencyMs=$resultLatencyMs pathCount=$pathCount " +
+                "finalCandidateSource=$finalCandidateSource"
     }
 
     private var keyboardView: ImeKeyboardView? = null
@@ -47,6 +51,8 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             mainHandler = mainHandler,
             windowProvider = { getWindow().window },
             keyboardHeightPx = { keyboardView?.measuredHeight },
+            floatingWidthPercent = { ImeSettingsRepository.loadFloatingWidthPercent(this) },
+            floatingOpacityPercent = { ImeSettingsRepository.loadFloatingOpacityPercent(this) },
             debugLog = { message ->
                 if (verboseLogging) Log.d(TAG, message)
             },
@@ -189,6 +195,10 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
 
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
+        if (!restarting) {
+            gateway.discardClearUndo()
+            keyboardView?.hideClearUndo()
+        }
         reloadPersistedSettings()
         voiceCorrectionTracker.clear()
         val previousRimeInputs = candidateQueries.activeInputs
@@ -282,9 +292,13 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         )
     }
 
-    /** Apply settings changed by the standalone preferences Activity immediately. */
+    /** Apply settings changed by standalone Activities on the IME main thread. */
     internal fun refreshPersistedSettingsFromActivity() {
-        reloadPersistedSettings()
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            reloadPersistedSettings()
+        } else {
+            mainHandler.post(::reloadPersistedSettings)
+        }
     }
 
     override fun onCurrentInputMethodSubtypeChanged(newSubtype: InputMethodSubtype) {
@@ -661,13 +675,47 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         // editor. Otherwise a late native result can restore the just-cleared
         // pre-edit on the very next key press.
         clearImeCompositionState(render = false)
-        if (!gateway.clearAllText()) {
+        val cleared = gateway.clearAllText()
+        if (!cleared) {
             android.widget.Toast.makeText(this, "当前应用未能清空全部文本", android.widget.Toast.LENGTH_SHORT).show()
         }
         voiceCorrectionTracker.clear()
         voiceComposing = false
         state = state.copy(voiceState = VoiceUiState())
         keyboardView?.renderState(state)
+        if (cleared && gateway.hasClearUndo()) {
+            keyboardView?.showClearUndo()
+        } else {
+            keyboardView?.hideClearUndo()
+        }
+    }
+
+    override fun onUndoClear(): Boolean {
+        if (state.passwordField) return false
+        val restored = gateway.restoreLastClear()
+        if (!restored) {
+            showTextEditFeedback("没有可撤回的清空内容")
+            return false
+        }
+        voiceCorrectionTracker.clear()
+        voiceComposing = false
+        state = state.copy(
+            composition = "",
+            candidates = emptyList(),
+            expandedCandidates = emptyList(),
+            voiceState = VoiceUiState(),
+        )
+        lastComposition = ""
+        renderedCandidateSnapshot = null
+        keyboardView?.clearAssociationCandidates()
+        keyboardView?.hideClearUndo()
+        keyboardView?.renderState(state)
+        return true
+    }
+
+    override fun onUndoClearExpired() {
+        gateway.discardClearUndo()
+        keyboardView?.hideClearUndo()
     }
 
     override fun onFloatingKeyboardChanged(floating: Boolean) {
@@ -677,6 +725,10 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
 
     override fun onFloatingKeyboardDragged(deltaX: Float, deltaY: Float) {
         floatingWindow.drag(deltaX, deltaY)
+    }
+
+    override fun onFloatingStyleChanged(widthPercent: Int, opacityPercent: Int) {
+        if (floatingWindow.enabled) floatingWindow.reapply()
     }
 
     override fun onSpace() {
@@ -926,6 +978,87 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         selectCandidate(candidate)
     }
 
+    override fun onCandidateLongPressed(candidate: String) {
+        val composition = lastComposition
+        if (
+            state.passwordField ||
+            composition.isBlank() ||
+            candidate.isBlank() ||
+            !allowsPersonalizedLearning()
+        ) {
+            return
+        }
+
+        if (
+            QuickPhraseRepository.candidatesForInputCode(
+                context = this,
+                rawCode = composition,
+                exactOnly = false,
+                limit = 16,
+            ).contains(candidate)
+        ) {
+            return
+        }
+
+        val modeAtRequest = state.keyboardMode
+
+        fun refreshAfterDelete() {
+            if (lastComposition != composition || state.keyboardMode != modeAtRequest) return
+            val fallback = fallbackCandidatesFor(composition, modeAtRequest)
+            handleCompositionChanged(
+                composition = composition,
+                candidates = fallback,
+                rimeInputs = listOf(composition),
+            )
+        }
+
+        fun confirmDelete(onConfirm: () -> Unit) {
+            if (lastComposition != composition || state.keyboardMode != modeAtRequest) return
+            keyboardView?.confirmCandidateDeletion(candidate, onConfirm)
+        }
+
+        if (!rime.isReady) {
+            if (!UserPhraseRepository.contains(composition, candidate)) return
+            confirmDelete {
+                if (UserPhraseRepository.forget(composition, candidate)) {
+                    PersonalizationRepository.forget(candidate)
+                    refreshAfterDelete()
+                    showTextEditFeedback("已删除个人学习词")
+                }
+            }
+            return
+        }
+
+        val queued = rime.isUserLearnedCandidate(composition, candidate) { learned ->
+            mainHandler.post {
+                if (
+                    !learned ||
+                    lastComposition != composition ||
+                    state.keyboardMode != modeAtRequest
+                ) {
+                    return@post
+                }
+                confirmDelete {
+                    val deleteQueued = rime.deleteCandidate(composition, candidate) { deleted ->
+                        mainHandler.post {
+                            if (deleted) {
+                                PersonalizationRepository.forget(candidate)
+                                refreshAfterDelete()
+                                showTextEditFeedback("已删除个人学习词")
+                            }
+                        }
+                    }
+                    if (!deleteQueued) {
+                        showTextEditFeedback("暂时无法修改个人词")
+                    }
+                }
+            }
+        }
+        if (!queued) {
+            return
+        }
+    }
+
     /**
      * Association ("联想") chips are produced only after a commit, so there is
      * no composition for [selectCandidate] to match against. Commit the word
@@ -1095,8 +1228,26 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         commitFirstCandidate()
     }
 
-    private fun fallbackCandidatesFor(composition: String, mode: KeyboardMode): List<String> =
-        candidatePipeline.candidatesFor(mode, composition, state.fuzzyPinyinEnabled)
+    private fun fallbackCandidatesFor(
+        composition: String,
+        mode: KeyboardMode,
+    ): List<String> {
+        val normal = candidatePipeline.candidatesFor(
+            mode,
+            composition,
+            state.fuzzyPinyinEnabled,
+        )
+        if (mode != KeyboardMode.PINYIN_26 && mode != KeyboardMode.ENGLISH_26) {
+            return normal
+        }
+        val quickPhrases = QuickPhraseRepository.candidatesForInputCode(
+            context = this,
+            rawCode = composition,
+            exactOnly = false,
+            limit = 8,
+        )
+        return (quickPhrases + normal).distinct().take(MAX_CANDIDATES)
+    }
 
     /** The extra learner is only a repeated-choice fallback while Rime is unavailable. */
     private fun immediateCandidates(composition: String, fallback: List<String>): List<String> {
@@ -1129,12 +1280,23 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             mode = mode,
             rimeInputs = rimeInputs,
             onResult = result@{ request, queryInputs, query ->
-                if (
-                    state.keyboardMode != mode ||
-                    lastComposition != composition
-                ) return@result
+                fun applyWhenCandidateSurfaceIdle() {
+                    if (
+                        state.keyboardMode != mode ||
+                        lastComposition != composition ||
+                        candidateQueries.currentGeneration() != request
+                    ) {
+                        return
+                    }
+                    if (keyboardView?.isCandidateInteractionActive() == true) {
+                        mainHandler.postDelayed(
+                            { applyWhenCandidateSurfaceIdle() },
+                            CANDIDATE_REFRESH_IDLE_POLL_MS,
+                        )
+                        return
+                    }
 
-                val native = query.choices
+                    val native = query.choices
                 // Once Rime returns candidates, its mature dictionary and
                 // userdb ordering replace the transient Kotlin preview. The
                 // fallback is retained only when native has no answer.
@@ -1144,7 +1306,30 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
                     emptyList()
                 }
                 val finalCandidates = if (native.isNotEmpty()) {
-                    native.map { it.text }
+                    val nativeText = native.map { it.text }
+                    val exactQuickPhrases =
+                        if (mode == KeyboardMode.PINYIN_26 || mode == KeyboardMode.ENGLISH_26) {
+                            QuickPhraseRepository.candidatesForInputCode(
+                                context = this,
+                                rawCode = composition,
+                                exactOnly = true,
+                                limit = 8,
+                            )
+                        } else {
+                            emptyList()
+                        }
+                    if (exactQuickPhrases.isNotEmpty()) {
+                        (exactQuickPhrases + nativeText + fallback)
+                            .distinct()
+                            .take(MAX_CANDIDATES)
+                    } else if (
+                        mode == KeyboardMode.PINYIN_26 &&
+                        nativeText.size < TYPO_CORRECTION_NATIVE_THRESHOLD
+                    ) {
+                        (nativeText + fallback).distinct().take(MAX_CANDIDATES)
+                    } else {
+                        nativeText
+                    }
                 } else {
                     (learned + fallback).distinct().take(MAX_CANDIDATES)
                 }
@@ -1158,6 +1343,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
                     nativeCount = native.size,
                     fallbackCount = fallback.distinct().size,
                     nativeLatencyMs = query.latencyMs,
+                    resultLatencyMs = query.resultLatencyMs,
                     pathCount = queryInputs.size,
                     finalCandidateSource = when {
                         native.isNotEmpty() -> "native"
@@ -1178,6 +1364,8 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
                     nativeReferences = nativeReferences,
                 )
                 keyboardView?.renderState(state)
+            }
+                applyWhenCandidateSurfaceIdle()
             },
         )
 
@@ -1316,11 +1504,35 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         renderedCandidateSnapshot = null
     }
 
+    internal fun exportRimeUserData(
+        targetDir: File,
+        onComplete: (List<RimeUserDictionaryArchive>?) -> Unit,
+    ): Boolean =
+        ::rime.isInitialized &&
+            rime.exportUserDictionaries(targetDir, onComplete)
+
+    internal fun importRimeUserData(
+        sourceDir: File,
+        dictionaries: List<RimeUserDictionaryArchive>,
+        onComplete: (Int?) -> Unit,
+    ): Boolean =
+        ::rime.isInitialized &&
+            rime.importUserDictionaries(sourceDir, dictionaries, onComplete)
+
+    override fun onOpenAboutData() {
+        startActivity(
+            Intent(this, AboutDataActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }
+
     internal companion object {
         const val TAG = "OpenIme"
+        const val CANDIDATE_REFRESH_IDLE_POLL_MS = 16L
         const val MAX_RIME_INPUT_LENGTH = 256
         const val MAX_RIME_NINE_KEY_PATHS = 6
         const val MAX_CANDIDATES = 96
+        const val TYPO_CORRECTION_NATIVE_THRESHOLD = 8
         @Volatile
         var activeInstance: LocalVoiceImeService? = null
     }

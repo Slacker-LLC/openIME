@@ -7,16 +7,19 @@ import android.view.ViewConfiguration
 import kotlin.math.abs
 
 /**
- * Owns the held-backspace gesture: repeat delete, upward clear-all arming,
- * hysteresis, and pointer/session state. Editor mutations remain callbacks.
+ * Owns the held-backspace gesture: repeat delete, upward clear-all, and the
+ * one-shot downward restore that is available immediately after a successful
+ * clear gesture. Editor mutations remain callbacks.
  */
 internal class BackspaceGestureController(
     private val toPx: (Int) -> Int,
     private val onDeleteOne: () -> Unit,
     private val onClearAll: () -> Unit,
+    private val onUndoClear: () -> Boolean,
     private val onPressFeedback: () -> Unit,
     private val onHapticFeedback: () -> Unit,
     private val onShowClearPopup: (View) -> Unit,
+    private val onShowUndoPopup: (View) -> Unit,
     private val onHidePopup: () -> Unit,
 ) {
     private val handler = Handler(Looper.getMainLooper())
@@ -29,6 +32,8 @@ internal class BackspaceGestureController(
         private set
 
     private var clearArmed = false
+    private var undoArmed = false
+    private var undoAvailable = false
     private var repeatStarted = false
     private var repeatSuspended = false
     private var startX = 0f
@@ -39,8 +44,9 @@ internal class BackspaceGestureController(
 
     private val repeatAction = object : Runnable {
         override fun run() {
-            if (!active || clearArmed) return
+            if (!active || clearArmed || undoArmed) return
             repeatStarted = true
+            undoAvailable = false
             onDeleteOne()
             handler.postDelayed(this, REPEAT_INTERVAL_MS)
         }
@@ -59,6 +65,7 @@ internal class BackspaceGestureController(
 
         active = true
         clearArmed = false
+        undoArmed = false
         repeatStarted = false
         repeatSuspended = false
         startX = rawX
@@ -74,7 +81,7 @@ internal class BackspaceGestureController(
         onPressFeedback()
 
         val startRepeat = Runnable {
-            if (active && !clearArmed) repeatAction.run()
+            if (active && !clearArmed && !undoArmed) repeatAction.run()
         }
         repeatStartAction = startRepeat
         handler.postDelayed(startRepeat, longPressTimeoutMs)
@@ -83,31 +90,61 @@ internal class BackspaceGestureController(
     fun update(rawX: Float, rawY: Float) {
         if (!active) return
         val upward = startY - rawY
+        val downward = rawY - startY
         val horizontal = abs(rawX - startX)
 
-        // Suspend repeat-delete as soon as the gesture clearly points upward,
-        // so a slow clear swipe stays atomic instead of deleting on the way.
-        if (upward >= toPx(8) && horizontal <= toPx(96)) {
+        // Suspend repeat-delete as soon as the gesture clearly becomes a
+        // vertical command. Otherwise a slow swipe could mutate text before
+        // clear/restore is armed.
+        val verticalCommand =
+            horizontal <= toPx(96) &&
+                (upward >= toPx(8) || (undoAvailable && downward >= toPx(8)))
+        if (verticalCommand) {
             repeatSuspended = true
             repeatStartAction?.let(handler::removeCallbacks)
             handler.removeCallbacks(repeatAction)
-        } else if (repeatSuspended) {
+        } else if (repeatSuspended && !clearArmed && !undoArmed) {
             repeatSuspended = false
             repeatStartAction?.let {
-                handler.postDelayed(it, if (repeatStarted) REPEAT_INTERVAL_MS else longPressTimeoutMs)
+                handler.postDelayed(
+                    it,
+                    if (repeatStarted) REPEAT_INTERVAL_MS else longPressTimeoutMs,
+                )
             }
         }
 
-        val shouldArm = if (clearArmed) {
+        val shouldUndo = undoAvailable && if (undoArmed) {
+            downward > toPx(16) && horizontal <= toPx(120)
+        } else {
+            downward >= toPx(36) && horizontal <= toPx(96)
+        }
+        if (shouldUndo != undoArmed) {
+            undoArmed = shouldUndo
+            if (undoArmed) {
+                clearArmed = false
+                clearPreviewChanged?.invoke(false)
+                repeatStartAction?.let(handler::removeCallbacks)
+                handler.removeCallbacks(repeatAction)
+                anchor?.let(onShowUndoPopup)
+                onHapticFeedback()
+                return
+            } else {
+                onHidePopup()
+                onHapticFeedback()
+            }
+        }
+        if (undoArmed) return
+
+        val shouldClear = if (clearArmed) {
             upward > toPx(16) && horizontal <= toPx(120)
         } else {
-            upward >= toPx(36) && horizontal <= toPx(96)
+            upward >= toPx(56) && horizontal <= toPx(96)
         }
-        if (shouldArm == clearArmed) return
+        if (shouldClear == clearArmed) return
 
-        clearArmed = shouldArm
-        clearPreviewChanged?.invoke(shouldArm)
-        if (shouldArm) {
+        clearArmed = shouldClear
+        clearPreviewChanged?.invoke(shouldClear)
+        if (shouldClear) {
             repeatStartAction?.let(handler::removeCallbacks)
             handler.removeCallbacks(repeatAction)
             anchor?.let(onShowClearPopup)
@@ -119,8 +156,9 @@ internal class BackspaceGestureController(
 
     fun finish(commit: Boolean) {
         if (!active) return
+        val restoreClear = commit && undoArmed
         val clearAll = commit && clearArmed
-        val deleteOnce = commit && !clearArmed && !repeatStarted
+        val deleteOnce = commit && !clearArmed && !undoArmed && !repeatStarted
 
         handler.removeCallbacks(repeatAction)
         repeatStartAction?.let(handler::removeCallbacks)
@@ -134,6 +172,7 @@ internal class BackspaceGestureController(
         pointerId = -1
         clearPreviewChanged?.invoke(false)
         clearArmed = false
+        undoArmed = false
         repeatStarted = false
         repeatSuspended = false
         anchor = null
@@ -141,11 +180,23 @@ internal class BackspaceGestureController(
         onHidePopup()
 
         when {
+            restoreClear -> {
+                onHapticFeedback()
+                onUndoClear()
+                // The gateway independently validates whether the one-shot
+                // snapshot is still legal. Either way this gesture consumes
+                // our local affordance so stale undo is never offered twice.
+                undoAvailable = false
+            }
             clearAll -> {
                 onHapticFeedback()
                 onClearAll()
+                undoAvailable = true
             }
-            deleteOnce -> onDeleteOne()
+            deleteOnce -> {
+                undoAvailable = false
+                onDeleteOne()
+            }
         }
     }
 
@@ -156,6 +207,7 @@ internal class BackspaceGestureController(
         handler.removeCallbacksAndMessages(null)
         repeatStartAction = null
         pointerId = -1
+        undoAvailable = false
     }
 
     private companion object {

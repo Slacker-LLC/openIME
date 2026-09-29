@@ -17,9 +17,24 @@ internal class PanelHeaderFactory(
     private val previousPanel: () -> Panel?,
     private val onBack: () -> Boolean,
     private val onFeedback: () -> Unit,
+    private val standalone: Boolean = false,
 ) {
     fun create(name: String): LinearLayout {
         val backTarget = previousPanel()?.let(::titleFor) ?: "键盘"
+        if (standalone) {
+            return SetupUi.activityTopBar(
+                context = context,
+                title = name,
+                backContentDescription = "返回$backTarget",
+            ) {
+                onFeedback()
+                onBack()
+            }.apply {
+                tag = "panel-head"
+                getChildAt(0)?.tag = "key-panel-back"
+                getChildAt(1)?.tag = "panel-title"
+            }
+        }
         return LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL

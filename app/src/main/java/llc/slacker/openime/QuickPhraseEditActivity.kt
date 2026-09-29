@@ -1,19 +1,15 @@
 package llc.slacker.openime
 
 import android.app.Activity
-import android.content.res.ColorStateList
 import android.os.Build
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
-import android.util.TypedValue
 import android.view.Gravity
-import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.WindowInsets
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
-import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -25,13 +21,16 @@ class QuickPhraseEditActivity : Activity() {
         const val EXTRA_ID = "quick_phrase_id"
         const val EXTRA_CATEGORY = "quick_phrase_category"
         const val EXTRA_TEXT = "quick_phrase_text"
+        const val EXTRA_INPUT_CODE = "quick_phrase_input_code"
     }
 
     private val density by lazy { resources.displayMetrics.density }
     private lateinit var categoryEdit: EditText
+    private lateinit var codeEdit: EditText
     private lateinit var phraseEdit: EditText
     private var phraseId = 0L
     private var initialCategory = ""
+    private var initialCode = ""
     private var initialPhrase = ""
     private var savedScrollY = 0
     private var savedFocusId = R.id.quick_phrase_text_editor
@@ -47,13 +46,19 @@ class QuickPhraseEditActivity : Activity() {
             ?: R.id.quick_phrase_text_editor
         initialCategory = savedInstanceState?.getString("baseline_category")
             ?: intent.getStringExtra(EXTRA_CATEGORY).orEmpty()
+        initialCode = savedInstanceState?.getString("baseline_code")
+            ?: intent.getStringExtra(EXTRA_INPUT_CODE).orEmpty()
         initialPhrase = savedInstanceState?.getString("baseline_phrase")
             ?: intent.getStringExtra(EXTRA_TEXT).orEmpty()
         val category = savedInstanceState?.getString("draft_category") ?: initialCategory
+        val code = savedInstanceState?.getString("draft_code") ?: initialCode
         val phrase = savedInstanceState?.getString("draft_phrase") ?: initialPhrase
-        render(category, phrase)
-        if (savedFocusId == R.id.quick_phrase_category_editor) categoryEdit.requestFocus()
-        else phraseEdit.requestFocus()
+        render(category, code, phrase)
+        when (savedFocusId) {
+            R.id.quick_phrase_category_editor -> categoryEdit.requestFocus()
+            R.id.quick_phrase_code_editor -> codeEdit.requestFocus()
+            else -> phraseEdit.requestFocus()
+        }
         if (Build.VERSION.SDK_INT >= 33) {
             backCallback = OnBackInvokedCallback { requestClose() }
             onBackInvokedDispatcher.registerOnBackInvokedCallback(
@@ -79,8 +84,10 @@ class QuickPhraseEditActivity : Activity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString("baseline_category", initialCategory)
+        outState.putString("baseline_code", initialCode)
         outState.putString("baseline_phrase", initialPhrase)
         outState.putString("draft_category", categoryEdit.text.toString())
+        outState.putString("draft_code", codeEdit.text.toString())
         outState.putString("draft_phrase", phraseEdit.text.toString())
         outState.putInt("focused_field", currentFocus?.id ?: savedFocusId)
         outState.putInt(
@@ -90,35 +97,12 @@ class QuickPhraseEditActivity : Activity() {
         super.onSaveInstanceState(outState)
     }
 
-    private fun render(category: String, phrase: String) {
-        val accent = SetupUi.accent(this)
-        val title = TextView(this).apply {
-            text = if (phraseId > 0L) "编辑常用语" else "新增常用语"
-            textSize = 22f
-            setTextColor(getColor(R.color.setup_title))
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            gravity = Gravity.CENTER_VERTICAL
-            includeFontPadding = false
-            if (Build.VERSION.SDK_INT >= 28) setAccessibilityHeading(true)
-        }
-        val header = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            addView(ImageButton(this@QuickPhraseEditActivity).apply {
-                setImageResource(R.drawable.ic_arrow_back)
-                imageTintList = ColorStateList.valueOf(accent)
-                contentDescription = "返回"
-                setMinimumWidth(dp(ImeGeometryTokens.TOUCH_TARGET_DP))
-                setMinimumHeight(dp(ImeGeometryTokens.TOUCH_TARGET_DP))
-                isClickable = true
-                isFocusable = true
-                applySelectableBackground(this)
-                setOnClickListener {
-                    it.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                    requestClose()
-                }
-            }, LinearLayout.LayoutParams(dp(ImeGeometryTokens.TOUCH_TARGET_DP), dp(56)))
-            addView(title, LinearLayout.LayoutParams(0, dp(56), 1f))
+    private fun render(category: String, code: String, phrase: String) {
+        val header = SetupUi.activityTopBar(
+            context = this,
+            title = if (phraseId > 0L) "编辑常用语" else "新增常用语",
+        ) {
+            requestClose()
         }
 
         categoryEdit = EditText(this).apply {
@@ -127,9 +111,20 @@ class QuickPhraseEditActivity : Activity() {
             setText(category)
             setSingleLine(true)
             imeOptions = EditorInfo.IME_ACTION_NEXT
-            textSize = 16f
+            textSize = ImeTypographyTokens.BODY_SP
         }
         SetupUi.styleInput(this, categoryEdit)
+        codeEdit = EditText(this).apply {
+            id = R.id.quick_phrase_code_editor
+            hint = "例如：dz、mail、addr"
+            setText(code)
+            setSingleLine(true)
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            imeOptions = EditorInfo.IME_ACTION_NEXT
+            textSize = ImeTypographyTokens.BODY_SP
+        }
+        SetupUi.styleInput(this, codeEdit)
         phraseEdit = EditText(this).apply {
             id = R.id.quick_phrase_text_editor
             hint = "输入常用语"
@@ -138,7 +133,7 @@ class QuickPhraseEditActivity : Activity() {
             maxLines = 8
             gravity = Gravity.TOP or Gravity.START
             imeOptions = EditorInfo.IME_ACTION_DONE
-            textSize = 17f
+            textSize = ImeTypographyTokens.BODY_SP
         }
         SetupUi.styleInput(this, phraseEdit)
         val save = SetupUi.primaryButton(this, "保存") {
@@ -150,6 +145,7 @@ class QuickPhraseEditActivity : Activity() {
                     phraseId,
                     categoryEdit.text.toString(),
                     phraseEdit.text.toString(),
+                    inputCode = codeEdit.text.toString(),
                 ) != null
             ) {
                 finish()
@@ -158,7 +154,7 @@ class QuickPhraseEditActivity : Activity() {
         fun refreshSaveState() {
             val valid = phraseEdit.text.toString().isNotBlank()
             save.isEnabled = valid
-            save.alpha = if (valid) 1f else 0.38f
+            save.alpha = if (valid) 1f else ImeSurfacePolicy.DISABLED_ALPHA
             save.contentDescription = if (valid) {
                 "保存"
             } else {
@@ -179,6 +175,14 @@ class QuickPhraseEditActivity : Activity() {
             requestClose()
         }
         categoryEdit.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_NEXT) {
+                codeEdit.requestFocus()
+                true
+            } else {
+                false
+            }
+        }
+        codeEdit.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_NEXT) {
                 phraseEdit.requestFocus()
                 true
@@ -215,6 +219,23 @@ class QuickPhraseEditActivity : Activity() {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 dp(ImeGeometryTokens.FIELD_HEIGHT_DP),
             ).apply { bottomMargin = dp(14) })
+            addView(fieldLabel("输入码（可选）", R.id.quick_phrase_code_editor), LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ))
+            addView(codeEdit, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(ImeGeometryTokens.FIELD_HEIGHT_DP),
+            ).apply { bottomMargin = dp(14) })
+            addView(TextView(this@QuickPhraseEditActivity).apply {
+                text = "设置后，输入至少 2 个字符的短码即可在候选栏召回这条常用语。"
+                textSize = ImeTypographyTokens.BODY_SP
+                setTextColor(getColor(R.color.setup_body))
+                setPadding(dp(4), 0, dp(4), dp(12))
+            }, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ))
             addView(fieldLabel("常用语内容", R.id.quick_phrase_text_editor), LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -225,7 +246,7 @@ class QuickPhraseEditActivity : Activity() {
             ).apply { bottomMargin = dp(8) })
             addView(TextView(this@QuickPhraseEditActivity).apply {
                 text = "保存后会在剪贴板面板中按分类显示，可直接点选输入。"
-                textSize = 12f
+                textSize = ImeTypographyTokens.BODY_SP
                 setTextColor(getColor(R.color.setup_body))
                 setPadding(dp(4), 0, dp(4), dp(12))
             }, LinearLayout.LayoutParams(
@@ -242,8 +263,8 @@ class QuickPhraseEditActivity : Activity() {
             setPadding(dp(20), dp(24), dp(20), dp(24))
             addView(header, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(56),
-            ).apply { bottomMargin = dp(12) })
+                dp(ImeGeometryTokens.TOP_BAR_HEIGHT_DP),
+            ).apply { bottomMargin = dp(ImeSpacingTokens.MD_DP) })
             addView(form, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -276,15 +297,19 @@ class QuickPhraseEditActivity : Activity() {
 
     private fun fieldLabel(label: String, targetId: Int) = TextView(this).apply {
         text = label
-        textSize = 12f
+        textSize = ImeTypographyTokens.BODY_SP
         setTextColor(getColor(R.color.setup_body))
         setPadding(dp(4), 0, dp(4), dp(4))
         labelFor = targetId
     }
 
     private fun requestClose() {
-        if (!::categoryEdit.isInitialized || !::phraseEdit.isInitialized ||
-            (categoryEdit.text.toString() == initialCategory && phraseEdit.text.toString() == initialPhrase)
+        if (!::categoryEdit.isInitialized || !::codeEdit.isInitialized || !::phraseEdit.isInitialized ||
+            (
+                categoryEdit.text.toString() == initialCategory &&
+                    codeEdit.text.toString() == initialCode &&
+                    phraseEdit.text.toString() == initialPhrase
+            )
         ) {
             finish()
             return
@@ -305,16 +330,5 @@ class QuickPhraseEditActivity : Activity() {
         dialog.show()
     }
 
-    private fun applySelectableBackground(view: View) {
-        val value = TypedValue()
-        if (
-            theme.resolveAttribute(
-                android.R.attr.selectableItemBackgroundBorderless,
-                value,
-                true,
-            ) && value.resourceId != 0
-        ) {
-            view.setBackgroundResource(value.resourceId)
-        }
-    }
+
 }

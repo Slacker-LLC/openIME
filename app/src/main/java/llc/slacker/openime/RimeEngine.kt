@@ -290,6 +290,148 @@ class RimeEngine(
         return ""
     }
 
+    fun isUserLearnedCandidate(
+        input: String,
+        candidate: String,
+        onComplete: (Boolean) -> Unit,
+    ): Boolean {
+        val normalized = RimeInputNormalizer.normalize(input)
+        val visible = candidate.trim()
+        if (!isReady || normalized.isBlank() || visible.isEmpty()) return false
+
+        return mutationQueue.submit {
+            val learned = synchronized(lock) {
+                if (!isReady) {
+                    false
+                } else {
+                    runCatching {
+                        if (!syncSchemaFromSettingsLocked()) return@runCatching false
+                        val snapshot = RimeNative.nativeSetInput(normalized)
+                        val entry = snapshotCandidateEntries(snapshot)
+                            .firstOrNull { it.text == visible }
+                            ?: return@runCatching false
+                        RimeNative.nativeIsUserLearnedCandidate(entry.nativeIndex)
+                    }.getOrDefault(false)
+                }
+            }
+            onComplete(learned)
+        }
+    }
+
+    /**
+     * Delete one user-learned candidate without blocking the IME thread.
+     * Built-in dictionary entries are not deletable and report false.
+     */
+    fun deleteCandidate(
+        input: String,
+        candidate: String,
+        onComplete: (Boolean) -> Unit,
+    ): Boolean {
+        val normalized = RimeInputNormalizer.normalize(input)
+        val visible = candidate.trim()
+        if (!isReady || normalized.isBlank() || visible.isEmpty()) return false
+
+        return mutationQueue.submit {
+            val deleted = synchronized(lock) {
+                if (!isReady) {
+                    false
+                } else {
+                    runCatching {
+                        if (!syncSchemaFromSettingsLocked()) return@runCatching false
+                        val snapshot = RimeNative.nativeSetInput(normalized)
+                        val entry = snapshotCandidateEntries(snapshot)
+                            .firstOrNull { it.text == visible }
+                            ?: return@runCatching false
+                        if (!RimeNative.nativeIsUserLearnedCandidate(entry.nativeIndex)) {
+                            return@runCatching false
+                        }
+                        RimeNative.nativeDeleteCandidate(entry.nativeIndex)
+                    }.getOrDefault(false)
+                }
+            }
+            onComplete(deleted)
+        }
+    }
+
+    internal fun exportUserDictionaries(
+        targetDir: File,
+        onComplete: (List<RimeUserDictionaryArchive>?) -> Unit,
+    ): Boolean {
+        if (!isReady) return false
+        return mutationQueue.submit {
+            val exported: List<RimeUserDictionaryArchive>? = synchronized(lock) {
+                if (!isReady) return@synchronized null
+                try {
+                    if (!syncSchemaFromSettingsLocked()) return@synchronized null
+                    if (!targetDir.exists() && !targetDir.mkdirs()) {
+                        return@synchronized null
+                    }
+                    val mappings =
+                        RimeNative.nativeExportUserDictionaries(targetDir.absolutePath)
+                            ?: return@synchronized null
+                    val result = mutableListOf<RimeUserDictionaryArchive>()
+                    for (mapping in mappings) {
+                        val separator = mapping.indexOf('\t')
+                        if (separator <= 0 || separator >= mapping.lastIndex) {
+                            return@synchronized null
+                        }
+                        val name = mapping.substring(0, separator).trim()
+                        val path = mapping.substring(separator + 1)
+                        val file = File(path)
+                        if (
+                            !UserDataArchiveCodec.isSafeRimeDictionaryName(name) ||
+                            !file.isFile
+                        ) {
+                            return@synchronized null
+                        }
+                        result += RimeUserDictionaryArchive(
+                            name = name,
+                            content = file.readText(),
+                        )
+                    }
+                    result
+                } catch (error: Exception) {
+                    Log.w(TAG, "Rime user dictionary export failed", error)
+                    null
+                }
+            }
+            onComplete(exported)
+        }
+    }
+
+    internal fun importUserDictionaries(
+        sourceDir: File,
+        dictionaries: List<RimeUserDictionaryArchive>,
+        onComplete: (Int?) -> Unit,
+    ): Boolean {
+        if (!isReady) return false
+        return mutationQueue.submit {
+            val imported = synchronized(lock) {
+                if (!isReady) {
+                    null
+                } else {
+                    runCatching {
+                        if (!syncSchemaFromSettingsLocked()) return@runCatching null
+                        sourceDir.mkdirs()
+                        var total = 0
+                        dictionaries.forEachIndexed { index, item ->
+                            val file = File(sourceDir, "dict-$index.userdb.txt")
+                            file.writeText(item.content)
+                            val count = RimeNative.nativeImportUserDictionary(
+                                item.name,
+                                file.absolutePath,
+                            )
+                            if (count < 0) return@runCatching null
+                            total += count
+                        }
+                        total
+                    }.getOrNull()
+                }
+            }
+            onComplete(imported)
+        }
+    }
+
     fun commitFirst(input: String, allowLearning: Boolean = true): String {
         if (!allowLearning) return candidates(input).firstOrNull().orEmpty()
         val normalized = RimeInputNormalizer.normalize(input)

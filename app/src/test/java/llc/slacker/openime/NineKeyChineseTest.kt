@@ -36,6 +36,12 @@ class NineKeyChineseTest {
     }
 
     @Test
+    fun incompleteDigitOnlyPrefixesStayAsDigitsInsteadOfFakeLetters() {
+        assertEquals("2", resolve("2").preview)
+        assertEquals("6", resolve("6").preview)
+    }
+
+    @Test
     fun commonChineseSequencesResolveToStableExpectedPreview() {
         assertEquals("ni", resolve("64").preview)
         assertEquals("hao", resolve("426").preview)

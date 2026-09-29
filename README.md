@@ -1,9 +1,33 @@
 # openIME
 
-独立的 Android 系统输入法，包名为 `llc.slacker.openime`，应用显示名为
-`openIME`。它不依赖 `Minis for Android`，也不与其他输入法共享进程、数据或服务。
+<p align="center">
+  <img src="docs/images/openime-brand.png" width="96" height="96" alt="openIME">
+</p>
+
+<p align="center"><strong>本地优先的 Android 中文输入法。</strong></p>
+
+openIME 是独立 Android 系统输入法，包名 `llc.slacker.openime`。拼音候选、用户学习和语音识别均在设备内运行；应用不声明 `INTERNET` 权限。
 
 [![Android CI](https://github.com/Slacker-LLC/openIME/actions/workflows/android.yml/badge.svg)](https://github.com/Slacker-LLC/openIME/actions/workflows/android.yml)
+
+## 下载
+
+正式版本从 [GitHub Releases](https://github.com/Slacker-LLC/openIME/releases/latest) 下载。发布 APK 使用固定发布签名，文件名为 `openIME-v{versionName}-arm64-release.apk`，同一 Release 同时提供 `SHA256SUMS.txt`。
+
+当前正式发布包只包含 `arm64-v8a`；开发用 Debug APK 仍保留 `x86_64`，用于模拟器回归。
+
+## 安装四步
+
+1. **启用**：安装 APK 后打开 openIME，进入系统输入法设置并启用 `openIME`。
+2. **切换**：回到引导页，打开系统输入法选择器并切换到 `openIME`。
+3. **授权（可选）**：需要本地语音输入时授权麦克风；不授权可直接跳过。
+4. **试打**：在引导页输入框确认键盘、候选和上屏链路正常。
+
+语音输入长按空格达到系统长按阈值后开始录音，松手后识别并上屏。
+
+## 截图
+
+真实截图由 `scripts/visual_matrix_regression.ps1` 和视觉验收流程生成。仓库不提交占位图；26 键、九键与设置页的浅色/深色截图将在真实视觉矩阵验收后写入 `docs/images/`。
 
 ## 项目定位
 
@@ -36,7 +60,7 @@ InputConnection
 - Emoji、符号、剪贴板、文本编辑、浮动键盘和设置面板；手写目前仅保留笔迹采集 UI，识别引擎尚未接入，正式入口默认隐藏。
 - 根据输入法窗口实际可用宽度动态计算列宽与间距；宽屏限制内容最大宽度并居中，
   系统底部区域通过 WindowInsets 处理。
-- 空格短按输入空格或提交首选，长按约 150 ms 进入唯一的语音输入流程；删除键上滑清空。
+- 空格短按输入空格或提交首选，长按达到系统长按时长（`ViewConfiguration.getLongPressTimeout()`）进入唯一的语音输入流程；删除键上滑清空。
 - 选词或首选上屏后统一清除拼音、候选与 Rime composition，随后删除键只处理目标输入框。
 - Android 密码编辑器的隐私边界、麦克风权限失败回退和本地模型校验。
 
@@ -94,10 +118,9 @@ Windows PowerShell：
 .\scripts\build_ascii.ps1
 ```
 
-APK 输出为 `app/build/outputs/apk/debug/app-debug.apk`。本地交付副本可放在被忽略的
-`artifacts/openIME-1.0-debug.apk`，不会提交到源码仓库。
+Debug APK 输出为 `app/build/outputs/apk/debug/app-debug.apk`，仅用于开发与回归；正式分发使用 GitHub Release 中固定签名的 arm64 APK。
 
-## 安装并启用
+开发设备可用 ADB 安装 Debug APK：
 
 ```bash
 adb install -r app/build/outputs/apk/debug/app-debug.apk
@@ -105,8 +128,7 @@ adb shell ime enable --user 0 llc.slacker.openime/.LocalVoiceImeService
 adb shell ime set --user 0 llc.slacker.openime/.LocalVoiceImeService
 ```
 
-也可以打开 APK 的设置页，按系统提示启用 `openIME`。调试测试 Activity 和 E2E
-Receiver 只存在于 debug 变体，不会成为正式输入法的公共控制入口。
+调试测试 Activity 和 E2E Receiver 只存在于 debug 变体，不会成为正式输入法的公共控制入口。
 
 ## 验证
 
@@ -148,12 +170,15 @@ bash scripts/verify_linux.sh emulator-5554
 - [适配与坐标规范](docs/COORDINATE_SYSTEM.md)
 - [测试流程 SOP](docs/TEST_SOP.md)
 - [脚本说明](scripts/README.md)
+- [发布流程](docs/RELEASE.md)
 
 ## 隐私与安全
 
-语音 PCM 只在当前会话的有界内存缓冲区中处理，结束、取消或失败时清空；模型和
-词典随 APK 提供。密码输入框不写入候选、剪贴板或日志，但允许用户从剪贴板粘贴；发现安全问题请不要直接
-创建公开 Issue，先按 [SECURITY.md](SECURITY.md) 联系维护者。
+**本应用不含联网权限，数据只存在本机。**
+
+语音 PCM 只在当前会话的有界内存缓冲区中处理，结束、取消或失败时清空；模型和词典随 APK 提供。密码输入框不写入候选、剪贴板或日志，但允许用户从剪贴板粘贴。设置中的“关于与数据”可导出/合并导入用户数据；剪贴板历史不导出。卸载会清除本机全部数据，包括学习的用户词库。
+
+发现安全问题请不要直接创建公开 Issue，先按 [SECURITY.md](SECURITY.md) 联系维护者。
 
 ## 许可证
 

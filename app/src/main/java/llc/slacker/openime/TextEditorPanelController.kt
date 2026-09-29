@@ -56,7 +56,7 @@ internal class TextEditorPanelController(
             orientation = LinearLayout.HORIZONTAL
         }
         QUICK_ACTIONS.forEach { (label, action) ->
-            val control = createKey(label, 10f) { onTextEdit(action) }.apply {
+            val control = createKey(label, ImeTypographyTokens.CAPTION_SP) { onTextEdit(action) }.apply {
                 tag = "textedit-action:$action"
             }
             actionControls[action] = ActionControl(label, control)
@@ -85,7 +85,7 @@ internal class TextEditorPanelController(
             center: Boolean = false,
         ): TextView = createPanelButton(
             label ?: "",
-            if (center) 9f else 14f,
+            if (center) ImeTypographyTokens.CAPTION_SP else ImeTypographyTokens.BODY_SP,
             !center,
         ).apply {
             if (action != null) {
@@ -104,9 +104,9 @@ internal class TextEditorPanelController(
         }
 
         listOf(
-            listOf(cell(), cell("▲", "up"), cell()),
-            listOf(cell("◀", "left"), cell(center = true), cell("▶", "right")),
-            listOf(cell(), cell("▼", "down"), cell()),
+            listOf(cell(), cell("上", "up"), cell()),
+            listOf(cell("左", "left"), cell(center = true), cell("右", "right")),
+            listOf(cell(), cell("下", "down"), cell()),
         ).forEach { rowItems ->
             val row = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -193,7 +193,7 @@ internal class TextEditorPanelController(
         val unavailable = reason != null
         control.view.isEnabled = !unavailable
         control.view.isClickable = !unavailable
-        control.view.alpha = if (unavailable) 0.38f else 1f
+        control.view.alpha = if (unavailable) ImeSurfacePolicy.DISABLED_ALPHA else 1f
         control.view.contentDescription =
             if (unavailable && Build.VERSION.SDK_INT < 30) {
                 "${control.label}，不可用：$reason"

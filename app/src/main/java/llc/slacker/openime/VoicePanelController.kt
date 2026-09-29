@@ -93,7 +93,7 @@ internal class VoicePanelController(
 
         refreshLanguageControl()
         onInlineState("正在准备麦克风…", false, false, null)
-        setMicState("⏹", "语音输入进行中，松开空格结束，上滑取消")
+        setMicState(R.drawable.ic_stop, "语音输入进行中，松开空格结束，上滑取消")
         setGestureHint(
             "松开空格上屏 · 上滑取消",
             "松开空格结束语音并自动上屏，上滑取消",
@@ -111,7 +111,7 @@ internal class VoicePanelController(
     fun stop() {
         if (!active || stopRequested) return
         listener.stopVoiceRecognition()
-        setMicState("🎤", "正在整理语音识别结果，请稍候")
+        setMicState(R.drawable.ic_mic, "正在整理语音识别结果，请稍候")
         setGestureHint("整理识别结果…", "正在整理语音识别结果，请稍候")
         stopRequested = true
         refreshLanguageControl()
@@ -130,7 +130,7 @@ internal class VoicePanelController(
         refreshLanguageControl()
         listener.cancelVoiceRecognition()
         recognizedText = ""
-        setMicState("🎤", "语音状态，已取消，仅支持长按空格启动")
+        setMicState(R.drawable.ic_mic, "语音状态，已取消，仅支持长按空格启动")
         setGestureHint(
             "长按空格开始",
             "长按空格开始语音，松开自动上屏，上滑取消",
@@ -145,7 +145,7 @@ internal class VoicePanelController(
     fun setCancelPreview(cancelling: Boolean) {
         cancelPreview = cancelling
         if (cancelling) {
-            setMicState("⏹", "取消语音输入中，松开将丢弃本次语音")
+            setMicState(R.drawable.ic_stop, "取消语音输入中，松开将丢弃本次语音")
             setGestureHint(
                 "上滑取消 · 松开丢弃",
                 "继续上滑取消语音，松开将丢弃本次语音",
@@ -154,7 +154,7 @@ internal class VoicePanelController(
             setModelStatus("取消状态 · 松开将丢弃")
             onInlineState("松开取消", true, false, null)
         } else {
-            setMicState("⏹", "语音输入进行中，松开空格结束，上滑取消")
+            setMicState(R.drawable.ic_stop, "语音输入进行中，松开空格结束，上滑取消")
             setGestureHint(
                 "松开空格上屏 · 上滑取消",
                 "松开空格结束语音并自动上屏，上滑取消",
@@ -205,7 +205,7 @@ internal class VoicePanelController(
 
                     if (stopRequested) {
                         setModelStatus("正在整理识别结果…")
-                        setMicState("⏹", "正在整理语音识别结果，请稍候")
+                        setMicState(R.drawable.ic_stop, "正在整理语音识别结果，请稍候")
                         setGestureHint(
                             "整理识别结果…",
                             "正在整理语音识别结果，请稍候",
@@ -213,7 +213,7 @@ internal class VoicePanelController(
                         onInlineState("正在识别…", false, false, null)
                     } else {
                         setModelStatus("正在聆听 · 松开空格结束")
-                        setMicState("⏹", "语音输入进行中，松开空格结束，上滑取消")
+                        setMicState(R.drawable.ic_stop, "语音输入进行中，松开空格结束，上滑取消")
                         setGestureHint(
                             "松开空格上屏 · 上滑取消",
                             "松开空格结束语音并自动上屏，上滑取消",
@@ -239,7 +239,7 @@ internal class VoicePanelController(
                     eventGeneration++
                     if (text.isNotBlank()) recognizedText = text
                     setTranscript(text)
-                    setMicState("🎤", "语音状态，已完成识别，仅支持长按空格启动")
+                    setMicState(R.drawable.ic_mic, "语音状态，已完成识别，仅支持长按空格启动")
                     setGestureHint(
                         "长按空格开始",
                         "长按空格开始语音，松开自动上屏，上滑取消",
@@ -303,7 +303,7 @@ internal class VoicePanelController(
                     eventGeneration++
                     recognizedText = ""
                     setTranscript(message)
-                    setMicState("🎤", "语音状态，识别失败，仅支持长按空格重试")
+                    setMicState(R.drawable.ic_mic, "语音状态，识别失败，仅支持长按空格重试")
                     setGestureHint(
                         "长按空格开始",
                         "长按空格重新开始语音，松开自动上屏，上滑取消",
@@ -329,7 +329,7 @@ internal class VoicePanelController(
                 expandedPanel.post {
                     if (generation != eventGeneration || cancelled) return@post
                     if (active && !stopRequested) {
-                        setMicState("⏹", "语音输入进行中，松开空格结束，上滑取消")
+                        setMicState(R.drawable.ic_stop, "语音输入进行中，松开空格结束，上滑取消")
                         setGestureHint(
                             "松开空格上屏 · 上滑取消",
                             "松开空格结束语音并自动上屏，上滑取消",
@@ -342,7 +342,7 @@ internal class VoicePanelController(
                             null,
                         )
                     } else {
-                        setMicState("⏹", "正在整理语音识别结果，请稍候")
+                        setMicState(R.drawable.ic_stop, "正在整理语音识别结果，请稍候")
                         setGestureHint(
                             "整理识别结果…",
                             "正在整理语音识别结果，请稍候",
@@ -365,7 +365,7 @@ internal class VoicePanelController(
                         return@post
                     }
                     modelPrepared = true
-                    setMicState("⏹", "语音输入进行中，松开空格结束，上滑取消")
+                    setMicState(R.drawable.ic_stop, "语音输入进行中，松开空格结束，上滑取消")
                     setGestureHint(
                         "松开空格上屏 · 上滑取消",
                         "松开空格结束语音并自动上屏，上滑取消",
@@ -391,7 +391,7 @@ internal class VoicePanelController(
     private fun syncViewPresentation() {
         when {
             active && stopRequested -> {
-                setMicState("🎤", "正在整理语音识别结果，请稍候")
+                setMicState(R.drawable.ic_mic, "正在整理语音识别结果，请稍候")
                 setGestureHint(
                     "整理识别结果…",
                     "正在整理语音识别结果，请稍候",
@@ -402,7 +402,7 @@ internal class VoicePanelController(
                 )
             }
             active -> {
-                setMicState("⏹", "语音输入进行中，松开空格结束，上滑取消")
+                setMicState(R.drawable.ic_stop, "语音输入进行中，松开空格结束，上滑取消")
                 setGestureHint(
                     "松开空格上屏 · 上滑取消",
                     "松开空格结束语音并自动上屏，上滑取消",
@@ -415,8 +415,8 @@ internal class VoicePanelController(
         }
     }
 
-    private fun setMicState(icon: String, description: String) {
-        view?.setMicState(icon, description)
+    private fun setMicState(iconRes: Int, description: String) {
+        view?.setMicState(iconRes, description)
     }
 
     private fun setGestureHint(label: String, description: String) {

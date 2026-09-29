@@ -102,7 +102,10 @@ class TextEditControlsInstrumentedTest {
                 assertNotNull("password editor must still show $label", control)
                 assertFalse("password $label must not remain clickable", control!!.isClickable)
                 assertFalse("password $label must expose an enabled state", control.isEnabled)
-                assertTrue("password $label should look unavailable", control.alpha < 1f)
+                assertTrue(
+                    "password $label should use the shared disabled alpha",
+                    control.alpha == ImeSurfacePolicy.DISABLED_ALPHA,
+                )
                 val description = control.contentDescription?.toString().orEmpty()
                 assertTrue(
                     "password $label must remain named when unavailable",

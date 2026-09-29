@@ -1,18 +1,23 @@
 package llc.slacker.openime
 
+import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.os.Build
+import android.os.SystemClock
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
 import android.widget.HorizontalScrollView
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import kotlin.math.abs
 
 /**
  * Owns candidate presentation: strip diff/reuse, scroll preservation,
@@ -25,7 +30,7 @@ internal class CandidateBarController(
     private val context: Context,
     private val row: LinearLayout,
     private val scroll: HorizontalScrollView,
-    private val expandButton: TextView,
+    private val expandButton: ImageView,
     private val overlay: LinearLayout,
     private val keyboardBody: LinearLayout,
     private val toPx: (Int) -> Int,
@@ -38,11 +43,59 @@ internal class CandidateBarController(
     private val statefulBackground: (Int, Int, Int) -> Drawable,
     private val onFeedback: () -> Unit,
     private val onCandidateSelected: (String) -> Unit,
+    private val onCandidateLongPressed: (String) -> Unit,
 ) {
     private var renderedCandidates: List<String>? = null
     private var renderedComposition: String? = null
     private var renderedExpandedCandidates: List<String>? = null
     private var renderedExpandedComposition: String? = null
+    private var candidateTouchDownX = 0f
+    private var candidateTouchDownY = 0f
+    private var candidateTouchActive = false
+    private var scrollingActiveUntilMs = 0L
+
+    init {
+        // Keep ordinary horizontal scrolling native. A deliberate downward
+        // swipe on the candidate strip is only an alternate affordance for
+        // the existing expand button, so it does not create another state
+        // owner or candidate-navigation path.
+        scroll.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    candidateTouchActive = true
+                    candidateTouchDownX = event.x
+                    candidateTouchDownY = event.y
+                }
+                MotionEvent.ACTION_UP -> {
+                    candidateTouchActive = false
+                    val dx = event.x - candidateTouchDownX
+                    val dy = event.y - candidateTouchDownY
+                    if (
+                        !expandedOpen &&
+                        expandButton.isEnabled &&
+                        dy >= toPx(CANDIDATE_EXPAND_SWIPE_DP) &&
+                        dy > abs(dx) * 1.15f
+                    ) {
+                        expandButton.performClick()
+                    }
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    candidateTouchActive = false
+                    candidateTouchDownX = 0f
+                    candidateTouchDownY = 0f
+                }
+            }
+            false
+        }
+        scroll.setOnScrollChangeListener { _, _, _, _, _ ->
+            scrollingActiveUntilMs =
+                SystemClock.uptimeMillis() + SCROLL_SETTLE_WINDOW_MS
+        }
+    }
+
+    fun isInteractionActive(): Boolean =
+        candidateTouchActive ||
+            SystemClock.uptimeMillis() < scrollingActiveUntilMs
 
     var expandedOpen: Boolean = false
         private set
@@ -116,7 +169,8 @@ internal class CandidateBarController(
     ) {
         val canExpandOrClose = expandedOpen || hasCandidates
         expandButton.isEnabled = canExpandOrClose
-        expandButton.alpha = if (canExpandOrClose) 1f else 0.38f
+        expandButton.alpha =
+            if (canExpandOrClose) 1f else ImeSurfacePolicy.DISABLED_ALPHA
         if (!canExpandOrClose) {
             expandButton.contentDescription = "暂无更多候选"
             if (android.os.Build.VERSION.SDK_INT >= 30) {
@@ -133,7 +187,7 @@ internal class CandidateBarController(
         compositionPreview: String,
     ) {
         if (!open) {
-            expandButton.text = "⌄"
+            expandButton.rotation = 0f
             expandButton.contentDescription = "展开更多候选"
             overlay.animate().cancel()
             keyboardBody.animate().cancel()
@@ -172,7 +226,7 @@ internal class CandidateBarController(
         renderedExpandedCandidates = candidates.toList()
         renderedExpandedComposition = compositionPreview
         expandedOpen = true
-        expandButton.text = "⌃"
+        expandButton.rotation = 180f
         expandButton.contentDescription = "收起候选"
         if (Build.VERSION.SDK_INT >= 30) {
             expandButton.stateDescription = "已展开"
@@ -267,7 +321,7 @@ internal class CandidateBarController(
         expandedOpen = false
         renderedExpandedCandidates = null
         renderedExpandedComposition = null
-        expandButton.text = "⌄"
+        expandButton.rotation = 0f
         expandButton.contentDescription = "展开更多候选"
     }
 
@@ -281,7 +335,7 @@ internal class CandidateBarController(
             isClickable = true
             addView(
                 TextView(context).apply {
-                    textSize = 14f
+                    textSize = ImeTypographyTokens.CANDIDATE_SP
                     maxLines = 1
                     includeFontPadding = false
                     setPadding(toPx(12), 0, toPx(12), 0)
@@ -305,19 +359,56 @@ internal class CandidateBarController(
         word.typeface = if (index == 0) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
 
         val palette = tokens()
-        word.setTextColor(if (index == 0) palette.keyText else palette.candidateText)
+        val normalBackground =
+            if (index == 0) ImeSurfacePolicy.selectedSurface(palette) else Color.TRANSPARENT
+        word.setTextColor(
+            if (index == 0) ImeSurfacePolicy.selectedText(palette) else palette.candidateText,
+        )
         item.background = statefulBackground(
-            if (index == 0) palette.keyBackground else Color.TRANSPARENT,
-            palette.keyPressedBackground,
+            normalBackground,
+            if (index == 0) {
+                ImeSurfacePolicy.pressedSurface(normalBackground, palette)
+            } else {
+                ImeSurfacePolicy.pressedSurface(palette.candidateBackground, palette)
+            },
             toPx(ImeGeometryTokens.KEY_RADIUS_DP),
         )
+        item.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> candidateTouchActive = true
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL,
+                -> candidateTouchActive = false
+            }
+            false
+        }
         item.setOnClickListener {
             onFeedback()
             onCandidateSelected(candidate)
         }
+        item.setOnLongClickListener {
+            onFeedback()
+            onCandidateLongPressed(candidate)
+            true
+        }
+    }
+
+    fun confirmCandidateDeletion(candidate: String, onConfirm: () -> Unit) {
+        val dialog = AlertDialog.Builder(context)
+            .setTitle("删除此词")
+            .setMessage("从个人学习词中删除“$candidate”？")
+            .setPositiveButton("删除") { _, _ -> onConfirm() }
+            .setNegativeButton("取消", null)
+            .create()
+        dialog.setOnShowListener {
+            SetupUi.styleDialog(dialog, context, destructivePositive = true)
+        }
+        dialog.show()
     }
 
     private companion object {
         const val STRIP_LIMIT = 24
+        const val CANDIDATE_EXPAND_SWIPE_DP = 36
+        const val SCROLL_SETTLE_WINDOW_MS = 96L
     }
 }

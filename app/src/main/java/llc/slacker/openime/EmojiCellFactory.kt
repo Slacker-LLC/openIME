@@ -31,7 +31,7 @@ internal class EmojiCellFactory(
         }
         val fallback = TextView(context).apply {
             text = emoji
-            textSize = 21f
+            textSize = ImeTypographyTokens.KEY_LETTER_SP
             gravity = Gravity.CENTER
             includeFontPadding = false
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO

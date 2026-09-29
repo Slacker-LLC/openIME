@@ -69,7 +69,7 @@ internal class Pinyin26KeyboardRenderer(
 
         val bottom = rowHost()
         bottom.addView(
-            createKey("123", true, null, 15f, 0, onDigits),
+            createKey("123", true, null, ImeTypographyTokens.BODY_SP, 0, onDigits),
             flexKeyParams(weights.leftOuter),
         )
         val punctuation = if (english) "." else "，"
@@ -78,7 +78,7 @@ internal class Pinyin26KeyboardRenderer(
                 punctuation,
                 true,
                 null,
-                15f,
+                ImeTypographyTokens.BODY_SP,
                 0,
             ) { onCommitCharacter(punctuation) },
             flexKeyParams(weights.leftInner),
@@ -88,22 +88,22 @@ internal class Pinyin26KeyboardRenderer(
             flexKeyParams(weights.space),
         )
         bottom.addView(
-            createKey("中/英", true, null, 14f, 0, onModeSwitch).apply {
+            createKey("中/英", true, null, ImeTypographyTokens.BODY_SP, 0, onModeSwitch).apply {
                 tag = "key:mode"
             },
             flexKeyParams(weights.rightInner),
         )
         bottom.addView(
-            createKey(enterLabel, true, null, 15f, 0, onEnter).apply {
+            createKey(enterLabel, true, null, ImeTypographyTokens.BODY_SP, 0, onEnter).apply {
                 tag = "key-enter"
             },
             flexKeyParams(weights.rightOuter),
         )
-        keyboardBody.addView(bottom, rowParams(includeBottomGap = false))
+        keyboardBody.addView(bottom, rowParams())
     }
 
     private fun segmentKey(): ImeKeyView =
-        createKey("分词", true, "@#/", 12f, 0, onPinyinSegment).apply {
+        createKey("分词", true, "@#/", ImeTypographyTokens.BODY_SP, 0, onPinyinSegment).apply {
             tag = "key-segment"
             contentDescription = "分词，长按输入@井号或斜杠"
             setOnLongClickListener {
@@ -139,14 +139,13 @@ internal class Pinyin26KeyboardRenderer(
             base
         }
         val secondary = if (english) null else DIGIT_HINTS[character]
-        return createKey(main, false, secondary, 20f, 0) {
+        return createKey(main, false, secondary, ImeTypographyTokens.KEY_LETTER_SP, 0) {
             onLetter(base)
         }.apply {
             tag = "key:$base"
-            // 26-key keeps the surface visually clean while preserving the
-            // long-press digit action.
             if (secondary != null) {
-                setSecondaryVisible(false)
+                setSecondaryVisible(true)
+                setSecondaryAlpha(0.4f)
                 setOnLongClickListener {
                     onCommitCharacter(secondary)
                     true
@@ -161,23 +160,18 @@ internal class Pinyin26KeyboardRenderer(
         layoutParams = rowParams()
     }
 
-    private fun rowParams(includeBottomGap: Boolean = true) =
+    private fun rowParams() =
         LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             toPx(keyRowHeightDp()),
-        ).apply {
-            if (includeBottomGap) bottomMargin = toPx(ImeGeometryTokens.KEY_ROW_GAP_DP)
-        }
+        )
 
     private fun flexKeyParams(weight: Float = 1f) =
         LinearLayout.LayoutParams(
             0,
             toPx(keyRowHeightDp()),
             weight,
-        ).apply {
-            marginStart = toPx(ImeGeometryTokens.KEY_SIDE_MARGIN_DP)
-            marginEnd = toPx(ImeGeometryTokens.KEY_SIDE_MARGIN_DP)
-        }
+        )
 
     private companion object {
         val ROWS = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")

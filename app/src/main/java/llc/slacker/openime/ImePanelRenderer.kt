@@ -2,6 +2,7 @@ package llc.slacker.openime
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Typeface
 import android.os.Build
 import android.view.Gravity
 import android.view.View
@@ -91,7 +92,7 @@ internal class ImePanelRenderer(
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             chunk.forEach { (modeValue, label) ->
                 row.addView(
-                    createKey(label, true, 13f) { onModeSelected(modeValue) }.apply {
+                    createKey(label, true, ImeTypographyTokens.BODY_SP) { onModeSelected(modeValue) }.apply {
                         val selected = currentMode() == modeValue
                         tag = if (selected) "tab-active" else "keyboard-choice"
                         contentDescription = "$label，${if (selected) "已选中" else "未选中"}"
@@ -253,7 +254,7 @@ internal class ImePanelRenderer(
             ).forEach { (button, label) ->
                 button ?: return@forEach
                 button.isEnabled = hasStrokes
-                button.alpha = if (hasStrokes) 1f else 0.42f
+                button.alpha = if (hasStrokes) 1f else ImeSurfacePolicy.DISABLED_ALPHA
                 button.contentDescription = if (hasStrokes) label else "$label（暂无笔画）"
                 if (Build.VERSION.SDK_INT >= 30) {
                     button.stateDescription = if (hasStrokes) "可用" else "不可用"
@@ -274,7 +275,7 @@ internal class ImePanelRenderer(
                 is HandwritingResult.Success -> {
                     result.candidates.forEach { candidate ->
                         candidateRow.addView(
-                            createKey(candidate, false, 15f) { onCharacter(candidate) },
+                            createKey(candidate, false, ImeTypographyTokens.TITLE_SP) { onCharacter(candidate) },
                             wrapParams(),
                         )
                     }
@@ -295,8 +296,8 @@ internal class ImePanelRenderer(
         val actions = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
         }
-        undoButton = createKey("撤销", true, 13f) { pad.undo() }
-        clearButton = createKey("清空", true, 13f) { pad.clear() }
+        undoButton = createKey("撤销", true, ImeTypographyTokens.BODY_SP) { pad.undo() }
+        clearButton = createKey("清空", true, ImeTypographyTokens.BODY_SP) { pad.clear() }
         actions.addView(
             undoButton,
             LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f).apply { marginEnd = toPx(6) },
@@ -306,7 +307,7 @@ internal class ImePanelRenderer(
             LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f).apply { marginEnd = toPx(6) },
         )
         actions.addView(
-            createKey("空格", true, 13f, onSpace),
+            createKey("空格", true, ImeTypographyTokens.BODY_SP, onSpace),
             LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f),
         )
         refreshStrokeActions(false)
@@ -442,7 +443,7 @@ internal class ImePanelRenderer(
 
         if (symbolCategory == "自定义") {
             body.addView(
-                createPanelButton("管理自定义符号", 12f, true).apply {
+                createPanelButton("管理自定义符号", ImeTypographyTokens.BODY_SP, true).apply {
                     contentDescription = "管理自定义符号"
                     setOnClickListener {
                         onFeedback()
@@ -482,7 +483,7 @@ internal class ImePanelRenderer(
                     createKey(
                         symbol,
                         false,
-                        if (symbol.length > 2) 12f else 17f,
+                        ImeTypographyTokens.BODY_SP,
                     ) { onSymbolSelected(symbol) },
                     gridCellParams(48, 6, 6),
                 )
@@ -607,6 +608,7 @@ internal class ImePanelRenderer(
         minimumHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
         setPadding(toPx(10), 0, toPx(10), 0)
         tag = if (active) "tab-active" else "panel-tab"
+        typeface = if (active) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
         contentDescription = "$label，${if (active) "已选中" else "未选中"}"
         if (Build.VERSION.SDK_INT >= 30) {
             stateDescription = if (active) "已选中" else "未选中"
