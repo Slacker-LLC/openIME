@@ -1,0 +1,177 @@
+name: Android Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build signed arm64 release
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout source and LFS files
+        uses: actions/checkout@v7
+        with:
+          lfs: true
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
+
+      - name: Install Android build components
+        shell: bash
+        run: |
+          sdkmanager "platforms;android-36" \
+            "build-tools;35.0.0" \
+            "ndk;27.0.12077973" \
+            "cmake;3.22.1"
+
+      - name: Verify LFS objects
+        shell: bash
+        run: |
+          git lfs checkout
+          if grep -RIl --exclude-dir=.git "version https://git-lfs.github.com/spec/v1" app/libs app/src/main/assets/models; then
+            echo "A Git LFS pointer was left unresolved" >&2
+            exit 1
+          fi
+
+      - name: Fetch pinned librime dependencies
+        shell: bash
+        run: bash scripts/fetch_rime_deps.sh
+
+      - name: Ensure Gradle wrapper is executable
+        shell: bash
+        run: chmod +x gradlew
+
+      - name: Validate signing secrets
+        shell: bash
+        env:
+          OPENIME_KEYSTORE_B64: ${{ secrets.OPENIME_KEYSTORE_B64 }}
+          OPENIME_KEYSTORE_PASSWORD: ${{ secrets.OPENIME_KEYSTORE_PASSWORD }}
+          OPENIME_KEY_ALIAS: ${{ secrets.OPENIME_KEY_ALIAS }}
+          OPENIME_KEY_PASSWORD: ${{ secrets.OPENIME_KEY_PASSWORD }}
+        run: |
+          for name in \
+            OPENIME_KEYSTORE_B64 \
+            OPENIME_KEYSTORE_PASSWORD \
+            OPENIME_KEY_ALIAS \
+            OPENIME_KEY_PASSWORD
+          do
+            if [[ -z "${!name}" ]]; then
+              echo "Missing required release signing secret: ${name}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Decode release keystore
+        shell: bash
+        env:
+          OPENIME_KEYSTORE_B64: ${{ secrets.OPENIME_KEYSTORE_B64 }}
+        run: |
+          printf '%s' "$OPENIME_KEYSTORE_B64" \
+            | base64 --decode \
+            > "$RUNNER_TEMP/openime-release.jks"
+          chmod 600 "$RUNNER_TEMP/openime-release.jks"
+
+      - name: Run tests, lint, and release build
+        shell: bash
+        env:
+          OPENIME_KEYSTORE_PATH: ${{ runner.temp }}/openime-release.jks
+          OPENIME_KEYSTORE_PASSWORD: ${{ secrets.OPENIME_KEYSTORE_PASSWORD }}
+          OPENIME_KEY_ALIAS: ${{ secrets.OPENIME_KEY_ALIAS }}
+          OPENIME_KEY_PASSWORD: ${{ secrets.OPENIME_KEY_PASSWORD }}
+        run: |
+          ./gradlew \
+            :app:testDebugUnitTest \
+            :app:lintRelease \
+            :app:assembleRelease \
+            --no-daemon \
+            --console=plain
+
+      - name: Verify signed arm64 artifact
+        id: artifact
+        shell: bash
+        run: |
+          APK="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name 'app-release*.apk' | head -n 1)"
+          if [[ -z "$APK" || ! -f "$APK" ]]; then
+            echo "Release APK not found" >&2
+            exit 1
+          fi
+
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+
+          mapfile -t ABIS < <(
+            unzip -Z1 "$APK" \
+              | awk -F/ '/^lib\/[^/]+\/[^/]+$/ {print $2}' \
+              | sort -u
+          )
+          if [[ "${#ABIS[@]}" -ne 1 || "${ABIS[0]}" != "arm64-v8a" ]]; then
+            echo "Release APK must contain only arm64-v8a; found: ${ABIS[*]:-none}" >&2
+            exit 1
+          fi
+
+          VERSION_NAME="$(
+            sed -n 's/^[[:space:]]*versionName = "\(.*\)"/\1/p' app/build.gradle.kts \
+              | head -n 1
+          )"
+          if [[ -z "$VERSION_NAME" ]]; then
+            echo "Unable to read versionName" >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_REF_NAME" != "v$VERSION_NAME" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match versionName $VERSION_NAME" >&2
+            exit 1
+          fi
+
+          OUTPUT="openIME-v${VERSION_NAME}-arm64-release.apk"
+          cp "$APK" "$OUTPUT"
+          sha256sum "$OUTPUT" > SHA256SUMS.txt
+          echo "apk=$OUTPUT" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Create release notes
+        shell: bash
+        run: |
+          cat > RELEASE_NOTES.md <<'EOF'
+          ## 更新内容
+          - 此版本包含标签所对应提交中的 openIME 功能、稳定性与界面更新。
+
+          ## 已知问题
+          - 首次安装时，完整 Rime 词典可能需要完成首次部署后才达到稳定候选表现。
+          - 发布 APK 仅包含 arm64-v8a；模拟器继续使用 Debug 构建。
+
+          ## 校验方式
+          下载 APK 后，在同一目录执行：
+
+          ```bash
+          sha256sum -c SHA256SUMS.txt
+          ```
+
+          校验通过后再安装。
+          EOF
+
+      - name: Publish GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "${{ steps.artifact.outputs.apk }}" \
+            SHA256SUMS.txt \
+            --verify-tag \
+            --title "openIME $GITHUB_REF_NAME" \
+            --notes-file RELEASE_NOTES.md
