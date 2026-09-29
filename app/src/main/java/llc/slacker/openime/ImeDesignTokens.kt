@@ -32,7 +32,8 @@ internal object ImeGeometryTokens {
     const val SWITCH_KNOB_DP = 20
     const val SWITCH_PADDING_DP = 4
     const val SWITCH_KNOB_TRAVEL_DP = SWITCH_WIDTH_DP - SWITCH_PADDING_DP * 2 - SWITCH_KNOB_DP
-    const val KEY_ROW_GAP_DP = 6
+    const val KEY_GAP_DP = 6
+    const val KEY_ROW_GAP_DP = KEY_GAP_DP
     const val KEY_SIDE_MARGIN_DP = 2
     const val KEY_POPUP_HEIGHT_DP = 76
     const val KEY_POPUP_MIN_WIDTH_DP = 40
@@ -46,6 +47,17 @@ internal object ImeGeometryTokens {
     const val COMPOSED_TOP_ZONE_HEIGHT_DP = 70
 }
 
+/** Shared spacing scale for every non-keyboard layout. */
+internal object ImeSpacingTokens {
+    const val XXS_DP = 2
+    const val XS_DP = 4
+    const val SM_DP = 8
+    const val MD_DP = 12
+    const val LG_DP = 16
+    const val XL_DP = 24
+    const val XXL_DP = 32
+}
+
 /** Shared motion timing for native IME surfaces. */
 internal object ImeMotionTokens {
     const val POPUP_ENTER_MS = 80L
@@ -54,13 +66,20 @@ internal object ImeMotionTokens {
     const val STANDARD_TRANSITION_MS = 160L
 }
 
-/** Shared native text roles; keyboard glyph sizing remains renderer-specific. */
+/** Six text roles shared by the keyboard and every app surface. */
 internal object ImeTypographyTokens {
-    const val PANEL_TITLE_SP = 13f
-    const val PANEL_BODY_SP = 13f
-    const val PANEL_NOTE_SP = 12f
     const val CAPTION_SP = 11f
-    const val CANDIDATE_SP = 12f
+    const val BODY_SP = 14f
+    const val TITLE_SP = 16f
+    const val CANDIDATE_SP = 18f
+    const val KEY_LETTER_SP = 21f
+    const val DISPLAY_SP = 28f
+
+    // Compatibility names for existing callers; every alias resolves to the
+    // canonical six-step scale above.
+    const val PANEL_TITLE_SP = TITLE_SP
+    const val PANEL_BODY_SP = BODY_SP
+    const val PANEL_NOTE_SP = BODY_SP
 }
 
 /**
@@ -103,7 +122,18 @@ enum class ImeTheme(val key: String, val label: String) {
         val toolCardBackground: Int,
         val panelHeadBackground: Int,
         val destructive: Int = Color.parseColor("#F4212E"),
-    )
+        val success: Int = Color.parseColor("#1F8A4C"),
+        val onAccent: Int = Color.parseColor("#07131D"),
+    ) {
+        val canvas: Int get() = keyboardBackground
+        val surface: Int get() = toolbarBackground
+        val outline: Int get() = border
+        val text: Int get() = keyText
+        val textSecondary: Int get() = keySecondaryText
+        val accent: Int get() = primary
+        val danger: Int get() = destructive
+        val accentPressed: Int get() = ImeSurfacePolicy.primaryPressed(this)
+    }
 
     fun tokens(
         appearance: ImeAppearance = ImeAppearance.DARK,
@@ -125,20 +155,22 @@ enum class ImeTheme(val key: String, val label: String) {
                 // controls sit one surface above it, and typing keys occupy
                 // the clearest foreground plane.
                 Tokens(
-                    c("#0A84FF"), c("#1C1C1E"), c("#242426"), c("#262628"), c("#F2F2F7"),
+                    c("#6EC3F7"), c("#1C1C1E"), c("#242426"), c("#262628"), c("#F2F2F7"),
                     c("#3A3A3C"), c("#F2F2F7"), c("#AEAEB2"), c("#2C2C2E"), c("#F2F2F7"), c("#4A4A4D"),
                     c("#242426"), c("#48484A"), c("#2C2C2E"), c("#202022"), c("#242426"),
                     c("#3A3A3C"), c("#F2F2F7"), c("#2C2C2E"), c("#F2F2F7"), c("#303033"), c("#242426"),
+                    success = c("#5BD08A"),
                 )
             } else {
                 // Light mode deliberately separates the cool-gray keyboard
                 // base, secondary controls and near-white typing surfaces.
                 // Text remains neutral instead of using absolute black.
                 Tokens(
-                    c("#007AFF"), c("#D5D8DE"), c("#EEF0F3"), c("#F7F8FA"), c("#1F2023"),
+                    c("#1D9BF0"), c("#D5D8DE"), c("#EEF0F3"), c("#F7F8FA"), c("#1F2023"),
                     c("#FFFFFF"), c("#1C1C1E"), c("#6E6E73"), c("#C5C9D1"), c("#2C2D31"), c("#DDE1E7"),
                     c("#F2F3F5"), c("#B7BCC5"), c("#C5C9D1"), c("#F1F2F4"), c("#F8F9FA"),
                     c("#FFFFFF"), c("#1C1C1E"), c("#C5C9D1"), c("#2C2D31"), c("#FFFFFF"), c("#E4E7EB"),
+                    success = c("#1F8A4C"),
                 )
             }
             DARK -> Tokens(
@@ -206,11 +238,48 @@ internal object ImeSurfacePolicy {
         )
 
     fun primaryPressed(tokens: ImeTheme.Tokens): Int =
-        ImeDrawableFactory.blend(
-            if (isDark(tokens)) Color.WHITE else Color.BLACK,
+        adjustHslLightness(
             tokens.primary,
-            if (isDark(tokens)) 0.10f else 0.12f,
+            if (isDark(tokens)) -0.06f else -0.08f,
         )
+
+    private fun adjustHslLightness(color: Int, delta: Float): Int {
+        val r = Color.red(color) / 255f
+        val g = Color.green(color) / 255f
+        val b = Color.blue(color) / 255f
+        val max = maxOf(r, g, b)
+        val min = minOf(r, g, b)
+        var h = 0f
+        var s = 0f
+        val l = (max + min) / 2f
+        val d = max - min
+        if (d != 0f) {
+            s = d / (1f - kotlin.math.abs(2f * l - 1f))
+            h = when (max) {
+                r -> 60f * (((g - b) / d) % 6f)
+                g -> 60f * (((b - r) / d) + 2f)
+                else -> 60f * (((r - g) / d) + 4f)
+            }
+            if (h < 0f) h += 360f
+        }
+        val targetL = (l + delta).coerceIn(0f, 1f)
+        val chroma = (1f - kotlin.math.abs(2f * targetL - 1f)) * s
+        val x = chroma * (1f - kotlin.math.abs((h / 60f) % 2f - 1f))
+        val m = targetL - chroma / 2f
+        val (rr, gg, bb) = when {
+            h < 60f -> Triple(chroma, x, 0f)
+            h < 120f -> Triple(x, chroma, 0f)
+            h < 180f -> Triple(0f, chroma, x)
+            h < 240f -> Triple(0f, x, chroma)
+            h < 300f -> Triple(x, 0f, chroma)
+            else -> Triple(chroma, 0f, x)
+        }
+        return Color.rgb(
+            ((rr + m) * 255f).toInt().coerceIn(0, 255),
+            ((gg + m) * 255f).toInt().coerceIn(0, 255),
+            ((bb + m) * 255f).toInt().coerceIn(0, 255),
+        )
+    }
 
     fun subtleAccentSurface(tokens: ImeTheme.Tokens): Int =
         ImeDrawableFactory.blend(
