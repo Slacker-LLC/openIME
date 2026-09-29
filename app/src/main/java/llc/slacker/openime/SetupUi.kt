@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
-import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
 import android.os.Build
 import android.widget.Button
@@ -37,14 +36,6 @@ object SetupUi {
     fun dim(color: Int, factor: Float): Int =
         ImeDrawableFactory.dim(color, factor, preserveAlpha = false)
 
-    fun rounded(color: Int, radiusDp: Float, strokeColor: Int? = null): GradientDrawable =
-        ImeDrawableFactory.rounded(
-            color = color,
-            radiusPx = radiusDp,
-            strokeColor = strokeColor,
-            strokeWidthPx = 1,
-        )
-
     fun buttonBackground(
         context: Context,
         color: Int,
@@ -55,50 +46,62 @@ object SetupUi {
         return StateListDrawable().apply {
             addState(
                 intArrayOf(android.R.attr.state_enabled, android.R.attr.state_pressed),
-                rounded(pressed, dp(context, radiusDp.toInt()).toFloat()),
+                ImeDrawableFactory.rounded(
+                    pressed,
+                    dp(context, radiusDp.toInt()).toFloat(),
+                ),
             )
             addState(
                 intArrayOf(android.R.attr.state_enabled, android.R.attr.state_focused),
-                rounded(
-                    color,
-                    dp(context, radiusDp.toInt()).toFloat(),
-                    contrastText(color),
+                ImeDrawableFactory.rounded(
+                    color = color,
+                    radiusPx = dp(context, radiusDp.toInt()).toFloat(),
+                    strokeColor = contrastText(color),
+                    strokeWidthPx = dp(context, 1),
                 ),
             )
             addState(
                 intArrayOf(-android.R.attr.state_enabled),
-                rounded(
+                ImeDrawableFactory.rounded(
                     context.getColor(R.color.setup_muted),
                     dp(context, radiusDp.toInt()).toFloat(),
                 ),
             )
             addState(
                 intArrayOf(),
-                rounded(color, dp(context, radiusDp.toInt()).toFloat()),
+                ImeDrawableFactory.rounded(
+                    color,
+                    dp(context, radiusDp.toInt()).toFloat(),
+                ),
             )
         }
     }
 
     /** Secondary rounded-rectangle control used by setup actions. */
-    fun mutedPillBackground(context: Context): StateListDrawable {
+    fun secondaryBackground(context: Context): StateListDrawable {
         val surface = context.getColor(R.color.setup_muted)
         val pressed = context.getColor(R.color.setup_muted_pressed)
         val accent = accent(context)
-        val radius = dp(context, ImeGeometryTokens.SETUP_PILL_RADIUS_DP).toFloat()
+        val radius = dp(context, ImeGeometryTokens.CONTROL_RADIUS_DP).toFloat()
         return StateListDrawable().apply {
             addState(
                 intArrayOf(android.R.attr.state_enabled, android.R.attr.state_pressed),
-                rounded(pressed, radius),
+                ImeDrawableFactory.rounded(pressed, radius),
             )
             addState(
                 intArrayOf(android.R.attr.state_focused),
-                rounded(surface, radius, accent),
+                ImeDrawableFactory.rounded(
+                    color = surface,
+                    radiusPx = radius,
+                    strokeColor = accent,
+                    strokeWidthPx = dp(context, 1),
+                ),
             )
             addState(
                 intArrayOf(-android.R.attr.state_enabled),
-                rounded(dim(surface, 0.72f), radius),
+                ImeDrawableFactory.rounded(dim(surface, 0.72f), radius),
             )
-            addState(intArrayOf(), rounded(surface, radius))
+            addState(intArrayOf(), ImeDrawableFactory.rounded(surface, radius))
         }
     }
 
@@ -126,13 +129,31 @@ object SetupUi {
         return StateListDrawable().apply {
             addState(
                 intArrayOf(android.R.attr.state_pressed),
-                rounded(dim(surface, 0.94f), radius, line),
+                ImeDrawableFactory.rounded(
+                    color = dim(surface, 0.94f),
+                    radiusPx = radius,
+                    strokeColor = line,
+                    strokeWidthPx = dp(context, 1),
+                ),
             )
             addState(
                 intArrayOf(android.R.attr.state_focused),
-                rounded(surface, radius, accent(context)),
+                ImeDrawableFactory.rounded(
+                    color = surface,
+                    radiusPx = radius,
+                    strokeColor = accent(context),
+                    strokeWidthPx = dp(context, 1),
+                ),
             )
-            addState(intArrayOf(), rounded(surface, radius, line))
+            addState(
+                intArrayOf(),
+                ImeDrawableFactory.rounded(
+                    color = surface,
+                    radiusPx = radius,
+                    strokeColor = line,
+                    strokeWidthPx = dp(context, 1),
+                ),
+            )
         }
     }
 
@@ -189,13 +210,18 @@ object SetupUi {
             radiusPx = radius,
             focusedStrokeColor = accent,
             defaultStrokeColor = null,
-            strokeWidthPx = dp(context, 2),
+            strokeWidthPx = dp(context, ImeSpacingTokens.XXS_DP),
         )
     }
 
     fun styleInput(context: Context, input: EditText) {
         input.background = inputBackground(context)
-        input.setPadding(dp(context, 16), dp(context, 8), dp(context, 16), dp(context, 8))
+        input.setPadding(
+            dp(context, ImeSpacingTokens.LG_DP),
+            dp(context, ImeSpacingTokens.SM_DP),
+            dp(context, ImeSpacingTokens.LG_DP),
+            dp(context, ImeSpacingTokens.SM_DP),
+        )
         input.setTextColor(context.getColor(R.color.setup_title))
         input.setHintTextColor(context.getColor(R.color.setup_muted_text))
         styleCursor(context, input)
@@ -232,7 +258,7 @@ object SetupUi {
         dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(accent)
         dialog.getButton(AlertDialog.BUTTON_NEUTRAL)?.setTextColor(accent)
         dialog.window?.setBackgroundDrawable(
-            rounded(
+            ImeDrawableFactory.rounded(
                 context.getColor(R.color.setup_surface),
                 dp(context, ImeGeometryTokens.DIALOG_RADIUS_DP).toFloat(),
             ),
