@@ -11,6 +11,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
 import android.widget.HorizontalScrollView
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -27,7 +28,7 @@ internal class CandidateBarController(
     private val context: Context,
     private val row: LinearLayout,
     private val scroll: HorizontalScrollView,
-    private val expandButton: TextView,
+    private val expandButton: ImageView,
     private val overlay: LinearLayout,
     private val keyboardBody: LinearLayout,
     private val toPx: (Int) -> Int,
@@ -171,7 +172,6 @@ internal class CandidateBarController(
         compositionPreview: String,
     ) {
         if (!open) {
-            expandButton.text = "⌄"
             expandButton.contentDescription = "展开更多候选"
             overlay.animate().cancel()
             keyboardBody.animate().cancel()
@@ -305,7 +305,6 @@ internal class CandidateBarController(
         expandedOpen = false
         renderedExpandedCandidates = null
         renderedExpandedComposition = null
-        expandButton.text = "⌄"
         expandButton.contentDescription = "展开更多候选"
     }
 
