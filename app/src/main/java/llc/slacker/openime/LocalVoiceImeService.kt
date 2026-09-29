@@ -23,13 +23,15 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         val nativeCount: Int = 0,
         val fallbackCount: Int = 0,
         val nativeLatencyMs: Long = 0L,
+        val resultLatencyMs: Long = 0L,
         val pathCount: Int = 0,
         val finalCandidateSource: String = "none",
     ) {
         fun asLogFields(): String =
             "learnedCount=$learnedCount nativeCount=$nativeCount " +
                 "fallbackCount=$fallbackCount nativeLatencyMs=$nativeLatencyMs " +
-                "pathCount=$pathCount finalCandidateSource=$finalCandidateSource"
+                "resultLatencyMs=$resultLatencyMs pathCount=$pathCount " +
+                "finalCandidateSource=$finalCandidateSource"
     }
 
     private var keyboardView: ImeKeyboardView? = null
@@ -1272,12 +1274,23 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             mode = mode,
             rimeInputs = rimeInputs,
             onResult = result@{ request, queryInputs, query ->
-                if (
-                    state.keyboardMode != mode ||
-                    lastComposition != composition
-                ) return@result
+                fun applyWhenCandidateSurfaceIdle() {
+                    if (
+                        state.keyboardMode != mode ||
+                        lastComposition != composition ||
+                        candidateQueries.currentGeneration() != request
+                    ) {
+                        return
+                    }
+                    if (keyboardView?.isCandidateInteractionActive() == true) {
+                        mainHandler.postDelayed(
+                            { applyWhenCandidateSurfaceIdle() },
+                            CANDIDATE_REFRESH_IDLE_POLL_MS,
+                        )
+                        return
+                    }
 
-                val native = query.choices
+                    val native = query.choices
                 // Once Rime returns candidates, its mature dictionary and
                 // userdb ordering replace the transient Kotlin preview. The
                 // fallback is retained only when native has no answer.
@@ -1324,6 +1337,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
                     nativeCount = native.size,
                     fallbackCount = fallback.distinct().size,
                     nativeLatencyMs = query.latencyMs,
+                    resultLatencyMs = query.resultLatencyMs,
                     pathCount = queryInputs.size,
                     finalCandidateSource = when {
                         native.isNotEmpty() -> "native"
@@ -1343,7 +1357,9 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
                     candidates = finalCandidates,
                     nativeReferences = nativeReferences,
                 )
-                keyboardView?.renderState(state)
+                    keyboardView?.renderState(state)
+                }
+                applyWhenCandidateSurfaceIdle()
             },
         )
 
@@ -1484,6 +1500,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
 
     internal companion object {
         const val TAG = "OpenIme"
+        const val CANDIDATE_REFRESH_IDLE_POLL_MS = 16L
         const val MAX_RIME_INPUT_LENGTH = 256
         const val MAX_RIME_NINE_KEY_PATHS = 6
         const val MAX_CANDIDATES = 96

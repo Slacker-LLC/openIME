@@ -1,9 +1,12 @@
 package llc.slacker.openime
 
 import android.os.SystemClock
+import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -56,4 +59,47 @@ class RimeNineKeyInstrumentedTest {
             rime.shutdown()
         }
     }
+
+    @Test
+    fun auditProductionPresetsAgainstNativeRimePreeditWithoutPresetLayer() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        assumeTrue(
+            "manual production preset audit; pass -e runPresetAudit true",
+            instrumentation.arguments.getString("runPresetAudit") == "true",
+        )
+        val context = instrumentation.targetContext
+        val originalFuzzy = ImeSettingsRepository.loadFuzzy(context)
+        ImeSettingsRepository.saveFuzzy(context, false)
+        val rime = RimeEngine(context = context)
+        try {
+            rime.start()
+            val deadline = SystemClock.elapsedRealtime() + 1_200_000L
+            while (!rime.isReady && rime.errorMessage.isBlank() && SystemClock.elapsedRealtime() < deadline) {
+                SystemClock.sleep(100L)
+            }
+            assertTrue("librime failed to start: ${rime.errorMessage}", rime.isReady)
+
+            val report = NineKeyPresets.combinations.map { (digits, expectedPaths) ->
+                val snapshot = RimeNative.nativeSetInput(digits).orEmpty()
+                val preedit = snapshot.getOrNull(1).orEmpty()
+                val normalized = preedit
+                    .lowercase()
+                    .filter { it in 'a'..'z' || it == 'ü' }
+                val matches = expectedPaths.any { expected ->
+                    expected.lowercase().filter { it in 'a'..'z' || it == 'ü' } == normalized
+                }
+                Log.i(
+                    "OpenImeNineKeyAudit",
+                    "digits=$digits preedit=$preedit expected=${expectedPaths.joinToString("|")} matches=$matches",
+                )
+                digits to matches
+            }
+            assertEquals(NineKeyPresets.combinations.size, report.size)
+        } finally {
+            ImeSettingsRepository.saveFuzzy(context, originalFuzzy)
+            rime.invalidateSettingsCache()
+            rime.shutdown()
+        }
+    }
+
 }

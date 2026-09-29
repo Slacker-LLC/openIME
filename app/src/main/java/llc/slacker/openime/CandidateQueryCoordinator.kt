@@ -8,6 +8,7 @@ import java.util.concurrent.atomic.AtomicLong
 internal data class CandidateNativeQueryResult(
     val choices: List<NativeCandidateChoice>,
     val latencyMs: Long,
+    val resultLatencyMs: Long = latencyMs,
 )
 
 internal data class CandidateQueryTicket(
@@ -63,6 +64,7 @@ internal class CandidateQueryCoordinator(
         ) -> Unit,
     ): CandidateQueryTicket {
         val request = generation.incrementAndGet()
+        val requestedAt = SystemClock.elapsedRealtime()
         val queryInputs = rimeInputs
             .asSequence()
             .map { it.trim() }
@@ -96,7 +98,14 @@ internal class CandidateQueryCoordinator(
 
             mainHandler.post {
                 if (!isCurrent(request, queryInputs)) return@post
-                onResult(request, queryInputs, query)
+                onResult(
+                    request,
+                    queryInputs,
+                    query.copy(
+                        resultLatencyMs =
+                            SystemClock.elapsedRealtime() - requestedAt,
+                    ),
+                )
             }
         }
 

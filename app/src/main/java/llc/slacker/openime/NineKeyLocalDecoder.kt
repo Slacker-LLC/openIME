@@ -149,21 +149,14 @@ internal class NineKeyLocalDecoder(
             ?.pinyin
             ?.take(bounded.length)
             ?.takeIf { digitsForPinyin(it) == bounded }
-        val preferredFallbackPreview = continuationBase?.let { base ->
-            val baseDigits = digitsForPinyin(base) ?: return@let null
-            if (!bounded.startsWith(baseDigits) || bounded.length <= baseDigits.length) {
-                return@let null
-            }
-            base + fallbackLetters(bounded.removePrefix(baseDigits))
-        }
         val preview = when {
             stable != null -> stable
             continuous != null -> continuous
+            paths.isEmpty() -> bounded
             continuationBase != null && validPreset.isEmpty() && prefixPreview != null -> prefixPreview
-            validPreset.isEmpty() && preferredFallbackPreview != null -> preferredFallbackPreview
             paths.isNotEmpty() -> paths.first()
             prefixPreview != null -> prefixPreview
-            else -> fallbackLetters(bounded)
+            else -> bounded
         }
 
         previousDigits = bounded
@@ -339,24 +332,6 @@ internal class NineKeyLocalDecoder(
 
     private fun isDisplayCandidate(value: String): Boolean =
         value.isNotBlank() && value.none(Char::isDigit) && value.any { it.code > 0x7f }
-
-    private fun fallbackLetters(digits: String): String = buildString(digits.length) {
-        digits.forEach { digit ->
-            append(
-                when (digit) {
-                    '2' -> 'a'
-                    '3' -> 'd'
-                    '4' -> 'g'
-                    '5' -> 'j'
-                    '6' -> 'm'
-                    '7' -> 'p'
-                    '8' -> 't'
-                    '9' -> 'w'
-                    else -> return@forEach
-                },
-            )
-        }
-    }
 
     companion object {
         const val MAX_DIGITS = 64

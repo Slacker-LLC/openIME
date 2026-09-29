@@ -45,7 +45,15 @@ class CandidatePipeline internal constructor(
         val displayPinyinPaths: List<String> = emptyList(),
     )
 
-    private val nineKeyDecoder = NineKeyLocalDecoder(engine)
+    private val nineKeyDecoder: NineKeyLocalDecoder = run {
+        val startedAt = System.nanoTime()
+        NineKeyLocalDecoder(engine).also {
+            NineKeyPerformanceTrace.recordDecoderConstruction(
+                elapsedNs = System.nanoTime() - startedAt,
+                threadName = Thread.currentThread().name,
+            )
+        }
+    }
 
     override fun candidatesFor(
         mode: KeyboardMode,

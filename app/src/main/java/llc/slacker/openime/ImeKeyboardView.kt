@@ -9,6 +9,7 @@ import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
@@ -1557,6 +1558,10 @@ open class ImeKeyboardView(
         if (visualChanged) applyTheme()
     }
 
+    fun isCandidateInteractionActive(): Boolean =
+        ::candidateBarController.isInitialized &&
+            candidateBarController.isInteractionActive()
+
     fun confirmCandidateDeletion(candidate: String, onConfirm: () -> Unit) {
         if (::candidateBarController.isInitialized) {
             candidateBarController.confirmCandidateDeletion(candidate, onConfirm)
@@ -2228,11 +2233,17 @@ open class ImeKeyboardView(
         preferredSuffix: String? = null,
         cursorPosition: Int? = null,
     ) {
+        val resolveStartedAt = SystemClock.elapsedRealtimeNanos()
         val resolution = requireCandidateProvider().resolveNineKey(
             digits = digits,
             segmentPrefix = lastNineSegmentPrefix,
             preferredSuffix = preferredSuffix,
             fuzzy = fuzzyEnabled,
+        )
+        NineKeyPerformanceTrace.recordResolve(
+            digitLength = digits.length,
+            elapsedNs = SystemClock.elapsedRealtimeNanos() - resolveStartedAt,
+            threadName = Thread.currentThread().name,
         )
         val preview = resolution.preview
         val pinyinPaths = resolution.pinyinPaths

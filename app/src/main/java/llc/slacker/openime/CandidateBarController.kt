@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.os.Build
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -50,6 +51,8 @@ internal class CandidateBarController(
     private var renderedExpandedComposition: String? = null
     private var candidateTouchDownX = 0f
     private var candidateTouchDownY = 0f
+    private var candidateTouchActive = false
+    private var scrollingActiveUntilMs = 0L
 
     init {
         // Keep ordinary horizontal scrolling native. A deliberate downward
@@ -59,10 +62,12 @@ internal class CandidateBarController(
         scroll.setOnTouchListener { _, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    candidateTouchActive = true
                     candidateTouchDownX = event.x
                     candidateTouchDownY = event.y
                 }
                 MotionEvent.ACTION_UP -> {
+                    candidateTouchActive = false
                     val dx = event.x - candidateTouchDownX
                     val dy = event.y - candidateTouchDownY
                     if (
@@ -75,13 +80,22 @@ internal class CandidateBarController(
                     }
                 }
                 MotionEvent.ACTION_CANCEL -> {
+                    candidateTouchActive = false
                     candidateTouchDownX = 0f
                     candidateTouchDownY = 0f
                 }
             }
             false
         }
+        scroll.setOnScrollChangeListener { _, _, _, _, _ ->
+            scrollingActiveUntilMs =
+                SystemClock.uptimeMillis() + SCROLL_SETTLE_WINDOW_MS
+        }
     }
+
+    fun isInteractionActive(): Boolean =
+        candidateTouchActive ||
+            SystemClock.uptimeMillis() < scrollingActiveUntilMs
 
     var expandedOpen: Boolean = false
         private set
@@ -359,6 +373,15 @@ internal class CandidateBarController(
             },
             toPx(ImeGeometryTokens.KEY_RADIUS_DP),
         )
+        item.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> candidateTouchActive = true
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL,
+                -> candidateTouchActive = false
+            }
+            false
+        }
         item.setOnClickListener {
             onFeedback()
             onCandidateSelected(candidate)
@@ -386,5 +409,6 @@ internal class CandidateBarController(
     private companion object {
         const val STRIP_LIMIT = 24
         const val CANDIDATE_EXPAND_SWIPE_DP = 36
+        const val SCROLL_SETTLE_WINDOW_MS = 96L
     }
 }
