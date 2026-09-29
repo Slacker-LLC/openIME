@@ -505,7 +505,7 @@ internal class SettingsPanelController(
             addView(
                 TextView(context).apply {
                     text = "›"
-                    textSize = 18f
+                    textSize = ImeTypographyTokens.BODY_SP
                     gravity = Gravity.CENTER
                     importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                     tag = "setting-chevron"
@@ -821,7 +821,7 @@ internal class SettingsPanelController(
         )
         val valueView = TextView(context).apply {
             tag = "setting-value"
-            textSize = 12f
+            textSize = ImeTypographyTokens.BODY_SP
             gravity = Gravity.CENTER
             includeFontPadding = false
             minWidth = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
