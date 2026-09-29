@@ -172,6 +172,7 @@ internal class CandidateBarController(
         compositionPreview: String,
     ) {
         if (!open) {
+            expandButton.rotation = 0f
             expandButton.contentDescription = "展开更多候选"
             overlay.animate().cancel()
             keyboardBody.animate().cancel()
@@ -210,7 +211,7 @@ internal class CandidateBarController(
         renderedExpandedCandidates = candidates.toList()
         renderedExpandedComposition = compositionPreview
         expandedOpen = true
-        expandButton.text = "⌃"
+        expandButton.rotation = 180f
         expandButton.contentDescription = "收起候选"
         if (Build.VERSION.SDK_INT >= 30) {
             expandButton.stateDescription = "已展开"
@@ -305,6 +306,7 @@ internal class CandidateBarController(
         expandedOpen = false
         renderedExpandedCandidates = null
         renderedExpandedComposition = null
+        expandButton.rotation = 0f
         expandButton.contentDescription = "展开更多候选"
     }
 
