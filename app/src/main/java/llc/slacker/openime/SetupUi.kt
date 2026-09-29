@@ -14,13 +14,23 @@ import android.widget.TextView
 
 /** Shared visual primitives for the non-IME setup and editor screens. */
 object SetupUi {
-    private const val DESTRUCTIVE = "#F4212E"
 
     fun dp(context: Context, value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
 
     fun accent(context: Context): Int =
         AccentPalette.parse(ImeSettingsRepository.loadSkinColor(context))
+
+    private fun tokens(context: Context): ImeTheme.Tokens {
+        val nightMask =
+            context.resources.configuration.uiMode and
+                android.content.res.Configuration.UI_MODE_NIGHT_MASK
+        return ImeTheme.IOS.tokens(
+            appearance = ImeSettingsRepository.loadAppearance(context),
+            systemDark = nightMask == android.content.res.Configuration.UI_MODE_NIGHT_YES,
+            accentOverride = accent(context),
+        )
+    }
 
     fun contrastText(background: Int): Int = ImeDrawableFactory.contrastText(background)
 
@@ -40,7 +50,8 @@ object SetupUi {
         color: Int,
         radiusDp: Float = ImeGeometryTokens.CONTROL_RADIUS_DP.toFloat(),
     ): StateListDrawable {
-        val pressed = dim(color, 0.86f)
+        val pressed =
+            if (color == accent(context)) tokens(context).accentPressed else dim(color, 0.86f)
         return StateListDrawable().apply {
             addState(
                 intArrayOf(android.R.attr.state_enabled, android.R.attr.state_pressed),
@@ -216,7 +227,7 @@ object SetupUi {
             context.getColor(R.color.setup_body),
         )
         dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(
-            if (destructivePositive) Color.parseColor(DESTRUCTIVE) else accent,
+            if (destructivePositive) tokens(context).danger else accent,
         )
         dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(accent)
         dialog.getButton(AlertDialog.BUTTON_NEUTRAL)?.setTextColor(accent)
