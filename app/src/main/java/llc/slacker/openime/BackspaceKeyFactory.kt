@@ -60,7 +60,7 @@ internal class BackspaceKeyFactory(
 
             val clearHint = TextView(context).apply {
                 text = "↑ 清空"
-                textSize = 7.5f
+                textSize = ImeTypographyTokens.CAPTION_SP
                 gravity = Gravity.CENTER
                 includeFontPadding = false
                 alpha = 0.72f
