@@ -124,8 +124,10 @@ internal class VoicePanelView(
             ),
         )
 
-        micButton = createButton("🎤", 18f, false).apply {
+        micButton = createButton("", ImeTypographyTokens.BODY_SP, false).apply {
             tag = "voice-mic"
+            setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_mic, 0, 0, 0)
+            compoundDrawablePadding = 0
             isEnabled = false
             contentDescription = "语音状态，当前未开始，仅支持长按空格启动"
         }
@@ -169,8 +171,8 @@ internal class VoicePanelView(
         updateLanguagePresentation(locked)
     }
 
-    fun setMicState(icon: String, description: String) {
-        micButton.text = icon
+    fun setMicState(iconRes: Int, description: String) {
+        micButton.setCompoundDrawablesRelativeWithIntrinsicBounds(iconRes, 0, 0, 0)
         micButton.contentDescription = description
     }
 
