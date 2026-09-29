@@ -17,8 +17,6 @@ import android.widget.TextView
 import android.widget.ImageView
 import android.widget.EditText
 import android.widget.Toast
-import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
 
 /** Match the selected IME by the exact package component, never by substring. */
@@ -131,7 +129,7 @@ class MainActivity : Activity() {
         findViewById<View>(R.id.voice_permission).apply {
             isEnabled = !microphoneGranted
             alpha = if (microphoneGranted) 0.72f else 1f
-            background = SetupUi.mutedPillBackground(this@MainActivity)
+            background = SetupUi.secondaryBackground(this@MainActivity)
         }
         findViewById<TextView>(R.id.voice_permission_label).apply {
             setText(if (microphoneGranted) R.string.voice_permission_ready else R.string.voice_permission_enable)
@@ -150,7 +148,7 @@ class MainActivity : Activity() {
         findViewById<View>(R.id.open_app_settings).apply {
             isEnabled = ready
             alpha = if (ready) 1f else 0.45f
-            background = SetupUi.mutedPillBackground(this@MainActivity)
+            background = SetupUi.secondaryBackground(this@MainActivity)
             contentDescription = getString(
                 if (ready) R.string.open_app_settings else R.string.setup_need_switch,
             )
@@ -200,9 +198,9 @@ class MainActivity : Activity() {
         // the system picker or input-method settings after initial setup.
         row.isEnabled = true
         row.background = when {
-            active -> primaryPill(accent)
-            done -> completedPill(accent)
-            else -> SetupUi.mutedPillBackground(this)
+            active -> SetupUi.buttonBackground(this, accent)
+            done -> completedBackground(accent)
+            else -> SetupUi.secondaryBackground(this)
         }
         label.text = if (done) doneText else activeText
         label.setTextColor(
@@ -234,9 +232,9 @@ class MainActivity : Activity() {
             if (active) accent else if (done) getColor(R.color.setup_ready) else accent,
         )
         if (active) {
-            mark.background = rounded(
+            mark.background = ImeDrawableFactory.rounded(
                 contrastText(accent),
-                ImeGeometryTokens.BADGE_RADIUS_DP.toFloat(),
+                SetupUi.dp(this, ImeGeometryTokens.BADGE_RADIUS_DP).toFloat(),
             )
         } else if (done) {
             mark.setBackgroundResource(R.drawable.bg_setup_mark_done)
@@ -262,58 +260,30 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun primaryPill(color: Int): StateListDrawable {
-        val pressed = dim(color, 0.86f)
-        return StateListDrawable().apply {
-            addState(
-                intArrayOf(android.R.attr.state_pressed),
-                rounded(pressed, ImeGeometryTokens.SETUP_PILL_RADIUS_DP.toFloat()),
-            )
-            addState(
-                intArrayOf(android.R.attr.state_focused),
-                rounded(color, ImeGeometryTokens.SETUP_PILL_RADIUS_DP.toFloat(), contrastText(color)),
-            )
-            addState(intArrayOf(), rounded(color, ImeGeometryTokens.SETUP_PILL_RADIUS_DP.toFloat()))
-        }
-    }
-
-    private fun completedPill(accent: Int): StateListDrawable {
+    private fun completedBackground(accent: Int): StateListDrawable {
         val surface = getColor(R.color.setup_muted)
-        val tint = blend(surface, accent, 0.10f)
-        val pressed = blend(surface, accent, 0.16f)
+        val tint = ImeDrawableFactory.blend(surface, accent, 0.10f)
+        val pressed = ImeDrawableFactory.blend(surface, accent, 0.16f)
+        val radius = SetupUi.dp(this, ImeGeometryTokens.CONTROL_RADIUS_DP).toFloat()
         return StateListDrawable().apply {
             addState(
                 intArrayOf(android.R.attr.state_pressed),
-                rounded(pressed, ImeGeometryTokens.SETUP_PILL_RADIUS_DP.toFloat()),
+                ImeDrawableFactory.rounded(pressed, radius),
             )
             addState(
                 intArrayOf(android.R.attr.state_focused),
-                rounded(tint, ImeGeometryTokens.SETUP_PILL_RADIUS_DP.toFloat(), accent),
+                ImeDrawableFactory.rounded(
+                    color = tint,
+                    radiusPx = radius,
+                    strokeColor = accent,
+                    strokeWidthPx = SetupUi.dp(this@MainActivity, 1),
+                ),
             )
-            addState(intArrayOf(), rounded(tint, ImeGeometryTokens.SETUP_PILL_RADIUS_DP.toFloat()))
+            addState(
+                intArrayOf(),
+                ImeDrawableFactory.rounded(tint, radius),
+            )
         }
-    }
-
-    private fun rounded(color: Int, radiusDp: Float, strokeColor: Int? = null): GradientDrawable = GradientDrawable().apply {
-        shape = GradientDrawable.RECTANGLE
-        setColor(color)
-        cornerRadius = radiusDp * resources.displayMetrics.density
-        strokeColor?.let { setStroke(resources.displayMetrics.density.toInt().coerceAtLeast(1), it) }
-    }
-
-    private fun dim(color: Int, factor: Float): Int = Color.rgb(
-        (Color.red(color) * factor).toInt().coerceIn(0, 255),
-        (Color.green(color) * factor).toInt().coerceIn(0, 255),
-        (Color.blue(color) * factor).toInt().coerceIn(0, 255),
-    )
-
-    private fun blend(base: Int, tint: Int, amount: Float): Int {
-        val ratio = amount.coerceIn(0f, 1f)
-        return Color.rgb(
-            (Color.red(base) * (1f - ratio) + Color.red(tint) * ratio).toInt(),
-            (Color.green(base) * (1f - ratio) + Color.green(tint) * ratio).toInt(),
-            (Color.blue(base) * (1f - ratio) + Color.blue(tint) * ratio).toInt(),
-        )
     }
 
     private fun contrastText(background: Int): Int {
