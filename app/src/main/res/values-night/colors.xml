@@ -5,7 +5,7 @@
     <color name="setup_title">#F2F2F7</color>
     <color name="setup_body">#AEAEB2</color>
     <color name="setup_primary">#6EC3F7</color>
-    <color name="setup_primary_pressed">#51B7F5</color>
+    <color name="setup_primary_pressed">#50B6F5</color>
     <color name="setup_on_primary">#07131D</color>
     <color name="setup_muted">#242426</color>
     <color name="setup_muted_pressed">#303033</color>
