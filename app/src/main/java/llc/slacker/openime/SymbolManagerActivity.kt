@@ -93,7 +93,7 @@ class SymbolManagerActivity : Activity() {
         }
         val title = TextView(this).apply {
             text = "自定义符号"
-            textSize = 22f
+            textSize = ImeTypographyTokens.TITLE_SP
             setTextColor(getColor(R.color.setup_title))
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             gravity = Gravity.CENTER_VERTICAL
@@ -122,7 +122,7 @@ class SymbolManagerActivity : Activity() {
         content.addView(header, fullHeight(56).apply { bottomMargin = dp(8) })
         content.addView(TextView(this).apply {
             text = "可添加、分类、固定和删除。点击箭头调整顺序，也可长按符号行拖动排序。"
-            textSize = 13f
+            textSize = ImeTypographyTokens.BODY_SP
             setTextColor(getColor(R.color.setup_body))
             setLineSpacing(dp(2).toFloat(), 1f)
             setPadding(0, 0, 0, dp(12))
@@ -133,7 +133,7 @@ class SymbolManagerActivity : Activity() {
             hint = "分组，例如：常用箭头"
             setSingleLine(true)
             imeOptions = EditorInfo.IME_ACTION_NEXT
-            textSize = 16f
+            textSize = ImeTypographyTokens.BODY_SP
             setText(draftGroup)
         }
         SetupUi.styleInput(this, groupEdit)
@@ -144,7 +144,7 @@ class SymbolManagerActivity : Activity() {
             hint = "符号，例如：⇢ 或 自定义文本"
             setSingleLine(true)
             imeOptions = EditorInfo.IME_ACTION_DONE
-            textSize = 20f
+            textSize = ImeTypographyTokens.BODY_SP
             setText(draftSymbol)
         }
         SetupUi.styleInput(this, symbolEdit)
@@ -208,7 +208,7 @@ class SymbolManagerActivity : Activity() {
         content.addView(save, fullHeight(ImeGeometryTokens.PRIMARY_ROW_HEIGHT_DP).apply { bottomMargin = dp(20) })
         content.addView(TextView(this).apply {
             text = "已保存符号"
-            textSize = 16f
+            textSize = ImeTypographyTokens.TITLE_SP
             setTextColor(getColor(R.color.setup_title))
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             setPadding(0, 0, 0, dp(8))
@@ -219,7 +219,7 @@ class SymbolManagerActivity : Activity() {
         if (symbols.isEmpty()) {
             content.addView(TextView(this).apply {
                 text = "还没有保存的自定义符号；在上方填写后点击保存符号。"
-                textSize = 13f
+                textSize = ImeTypographyTokens.BODY_SP
                 setTextColor(getColor(R.color.setup_body))
                 setPadding(dp(4), dp(4), dp(4), dp(8))
                 tag = "symbol-empty-state"
@@ -229,7 +229,7 @@ class SymbolManagerActivity : Activity() {
                 .forEach { (group, groupedSymbols) ->
                     content.addView(TextView(this).apply {
                         text = group
-                        textSize = 14f
+                        textSize = ImeTypographyTokens.TITLE_SP
                         setTextColor(accent)
                         setTypeface(typeface, android.graphics.Typeface.BOLD)
                         setPadding(0, dp(8), 0, dp(4))
@@ -279,7 +279,7 @@ class SymbolManagerActivity : Activity() {
         )
         addView(TextView(this@SymbolManagerActivity).apply {
             text = item.symbol
-            textSize = 21f
+            textSize = ImeTypographyTokens.KEY_LETTER_SP
             setTextColor(getColor(R.color.setup_title))
             maxLines = 2
             ellipsize = TextUtils.TruncateAt.END
@@ -288,7 +288,7 @@ class SymbolManagerActivity : Activity() {
         }, fullWrap())
         addView(TextView(this@SymbolManagerActivity).apply {
             text = if (item.pinned) "已固定" else "未固定"
-            textSize = 12f
+            textSize = ImeTypographyTokens.CAPTION_SP
             setTextColor(if (item.pinned) accent else getColor(R.color.setup_body))
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }, fullWrap())
@@ -387,7 +387,7 @@ class SymbolManagerActivity : Activity() {
 
     private fun fieldLabel(label: String, targetId: Int) = TextView(this).apply {
         text = label
-        textSize = 12f
+        textSize = ImeTypographyTokens.BODY_SP
         setTextColor(getColor(R.color.setup_body))
         setPadding(dp(4), 0, dp(4), dp(4))
         labelFor = targetId
