@@ -136,7 +136,7 @@ open class ImeKeyboardView(
                     text = "",
                     func = true,
                     secondary = null,
-                    mainTextSizeOverride = 15f,
+                    mainTextSizeOverride = ImeTypographyTokens.BODY_SP,
                     iconRes = R.drawable.ic_backspace,
                     onTap = onTap,
                 )
@@ -170,7 +170,7 @@ open class ImeKeyboardView(
                     text = label,
                     func = true,
                     secondary = null,
-                    mainTextSizeOverride = 14f,
+                    mainTextSizeOverride = ImeTypographyTokens.BODY_SP,
                     iconRes = R.drawable.ic_mic,
                     onTap = {
                         if (!insertIntoInlineEditor(" ")) onTap()
@@ -2525,7 +2525,11 @@ open class ImeKeyboardView(
             text = text,
             secondary = if (func) null else secondary,
             iconRes = iconRes,
-            mainTextSize = mainTextSizeOverride ?: (if (func) 15f else 20f),
+            mainTextSize = mainTextSizeOverride ?: if (func) {
+                ImeTypographyTokens.BODY_SP
+            } else {
+                ImeTypographyTokens.KEY_LETTER_SP
+            },
             fitMainText = func || text.length > 2,
         ).apply {
             tag = "key:$text"

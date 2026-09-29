@@ -58,7 +58,7 @@ internal class Pinyin9KeyboardRenderer(
             ),
         )
         left.addView(
-            createKey("符号", true, null, 13f, onShowSymbols).apply {
+            createKey("符号", true, null, ImeTypographyTokens.BODY_SP, onShowSymbols).apply {
                 markSideKey(this)
             },
             LinearLayout.LayoutParams(
@@ -80,7 +80,7 @@ internal class Pinyin9KeyboardRenderer(
             orientation = LinearLayout.HORIZONTAL
         }
         centerBottom.addView(
-            createKey("123", true, null, 13f, onDigits).apply {
+            createKey("123", true, null, ImeTypographyTokens.BODY_SP, onDigits).apply {
                 markSideKey(this)
             },
             flexKeyParams(0.925f),
@@ -90,7 +90,7 @@ internal class Pinyin9KeyboardRenderer(
             flexKeyParams(3.4f),
         )
         centerBottom.addView(
-            createKey("中/英", true, null, 13f, onModeSwitch).apply {
+            createKey("中/英", true, null, ImeTypographyTokens.BODY_SP, onModeSwitch).apply {
                 tag = "key:mode"
                 markSideKey(this)
             },
@@ -114,13 +114,13 @@ internal class Pinyin9KeyboardRenderer(
             sideKeyParams(keyRowHeightDp()),
         )
         side.addView(
-            createKey("重输", true, null, 13f, onRetranslate).apply {
+            createKey("重输", true, null, ImeTypographyTokens.BODY_SP, onRetranslate).apply {
                 markSideKey(this)
             },
             sideKeyParams(keyRowHeightDp()),
         )
         side.addView(
-            createKey(enterLabel, true, null, 13f, onEnter).apply {
+            createKey(enterLabel, true, null, ImeTypographyTokens.BODY_SP, onEnter).apply {
                 tag = "key-enter"
                 markSideKey(this)
             },
@@ -147,7 +147,7 @@ internal class Pinyin9KeyboardRenderer(
                     if (segmentation) "分词" else subLabel,
                     false,
                     if (segmentation) "@#/" else null,
-                    if (segmentation) 12f else 17f,
+                    if (segmentation) ImeTypographyTokens.BODY_SP else ImeTypographyTokens.KEY_LETTER_SP,
                 ) {
                     if (segmentation) onPinyinSegment() else onNineKey(digit)
                 }.apply {

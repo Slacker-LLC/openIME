@@ -27,7 +27,7 @@ class ImeKeyView(
     text: String = "",
     secondary: String? = null,
     iconRes: Int = 0,
-    mainTextSize: Float = 17f,
+    mainTextSize: Float = ImeTypographyTokens.KEY_LETTER_SP,
     fitMainText: Boolean = false,
 ) : FrameLayout(context) {
 
@@ -166,8 +166,8 @@ class ImeKeyView(
             addView(
                 view,
                 FrameLayout.LayoutParams(
-                    dp(if (text.isEmpty()) 18 else 13),
-                    dp(if (text.isEmpty()) 18 else 13),
+                    dp(if (text.isEmpty()) 20 else 16),
+                    dp(if (text.isEmpty()) 20 else 16),
                 ).apply {
                     gravity = if (text.isEmpty()) {
                         Gravity.CENTER
@@ -239,6 +239,10 @@ class ImeKeyView(
             view.visibility = target
             invalidate()
         }
+    }
+
+    fun setSecondaryAlpha(alpha: Float) {
+        secondaryTextView?.alpha = alpha.coerceIn(0f, 1f)
     }
 
     fun allowTwoLineLabel() {

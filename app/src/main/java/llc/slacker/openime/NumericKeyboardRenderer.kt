@@ -71,7 +71,7 @@ internal class NumericKeyboardRenderer(
             ),
         )
         left.addView(
-            createKey("符号", true, 13f, onShowSymbols).apply {
+            createKey("符号", true, ImeTypographyTokens.BODY_SP, onShowSymbols).apply {
                 markSideKey(this)
             },
             LinearLayout.LayoutParams(
@@ -89,7 +89,7 @@ internal class NumericKeyboardRenderer(
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             rowDigits.forEach { digit ->
                 row.addView(
-                    createKey(digit, false, 22f) { onCommitCharacter(digit) }.apply {
+                    createKey(digit, false, ImeTypographyTokens.KEY_LETTER_SP) { onCommitCharacter(digit) }.apply {
                         tag = "key:$digit"
                         markWhiteKey(this)
                     },
@@ -117,7 +117,7 @@ internal class NumericKeyboardRenderer(
             orientation = LinearLayout.HORIZONTAL
         }
         centerBottom.addView(
-            createKey("返回", true, 14f, onReturnToText).apply {
+            createKey("返回", true, ImeTypographyTokens.BODY_SP, onReturnToText).apply {
                 tag = "key:mode"
                 markSideKey(this)
             },
@@ -126,7 +126,7 @@ internal class NumericKeyboardRenderer(
         centerBottom.addView(
             if (phone) {
                 val value = literal("key-space", "*")
-                createKey(value, true, 14f) { onCommitCharacter(value) }.apply {
+                createKey(value, true, ImeTypographyTokens.BODY_SP) { onCommitCharacter(value) }.apply {
                     tag = "key-space"
                     markWhiteKey(this)
                 }
@@ -138,7 +138,7 @@ internal class NumericKeyboardRenderer(
             flexKeyParams(),
         )
         centerBottom.addView(
-            createKey(literal("key:.", "."), false, 22f) {
+            createKey(literal("key:.", "."), false, ImeTypographyTokens.KEY_LETTER_SP) {
                 onCommitCharacter(literal("key:.", "."))
             }.apply {
                 tag = "key:."
@@ -164,14 +164,14 @@ internal class NumericKeyboardRenderer(
             sideKeyParams(),
         )
         side.addView(
-            createKey("0", false, 22f) { onCommitCharacter("0") }.apply {
+            createKey("0", false, ImeTypographyTokens.KEY_LETTER_SP) { onCommitCharacter("0") }.apply {
                 tag = "key:0"
                 markSideKey(this)
             },
             sideKeyParams(),
         )
         side.addView(
-            createKey(literal("key:@", "@"), true, 15f) {
+            createKey(literal("key:@", "@"), true, ImeTypographyTokens.BODY_SP) {
                 onCommitCharacter(literal("key:@", "@"))
             }.apply {
                 tag = "key:@"
@@ -180,7 +180,7 @@ internal class NumericKeyboardRenderer(
             sideKeyParams(),
         )
         side.addView(
-            createKey(enterLabel, true, 13f, onEnter).apply {
+            createKey(enterLabel, true, ImeTypographyTokens.BODY_SP, onEnter).apply {
                 tag = "key-enter"
                 markSideKey(this)
             },
