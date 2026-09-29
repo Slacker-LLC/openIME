@@ -1,6 +1,7 @@
 package llc.slacker.openime
 
 import android.content.Context
+import android.util.Log
 import com.k2fsa.sherpa.onnx.FeatureConfig
 import com.k2fsa.sherpa.onnx.OnlineModelConfig
 import com.k2fsa.sherpa.onnx.OnlineRecognizer
@@ -324,8 +325,16 @@ private class SherpaOnnxStreamingRuntime(
                 val currentStream = streamLease.value
                 currentStream.inputFinished()
                 val decoded = decodeReadyLocked(currentRecognizer, currentStream)
-                val final = currentRecognizer.getResult(currentStream).text.trim()
-                    .ifBlank { lastPartial }
+                val recognizerFinal = currentRecognizer.getResult(currentStream).text.trim()
+                val usedFallback = recognizerFinal.isBlank() && lastPartial.isNotBlank()
+                if (usedFallback) {
+                    Log.i(
+                        "OpenImeVoicePerf",
+                        "sherpa inputFinished fallback=true finalLength=${recognizerFinal.length} " +
+                            "lastPartialLength=${lastPartial.length}",
+                    )
+                }
+                val final = recognizerFinal.ifBlank { lastPartial }
                 lastPartial = final
                 final to decoded
             }
