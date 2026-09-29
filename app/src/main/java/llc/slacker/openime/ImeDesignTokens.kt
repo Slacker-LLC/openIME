@@ -120,12 +120,13 @@ enum class ImeTheme(val key: String, val label: String) {
         val destructive: Int = Color.parseColor("#F4212E"),
         val success: Int = Color.parseColor("#1F8A4C"),
         val onAccent: Int = Color.parseColor("#07131D"),
+        val textSecondaryRole: Int? = null,
     ) {
         val canvas: Int get() = keyboardBackground
         val surface: Int get() = toolbarBackground
         val outline: Int get() = border
         val text: Int get() = keyText
-        val textSecondary: Int get() = keySecondaryText
+        val textSecondary: Int get() = textSecondaryRole ?: keySecondaryText
         val accent: Int get() = primary
         val danger: Int get() = destructive
         val accentPressed: Int get() = ImeSurfacePolicy.primaryPressed(this)
@@ -153,10 +154,11 @@ enum class ImeTheme(val key: String, val label: String) {
         } else {
             Tokens(
                 c("#1D9BF0"), c("#D5D8DE"), c("#EEF0F3"), c("#F7F8FA"), c("#1F2023"),
-                c("#FFFFFF"), c("#1C1C1E"), c("#6D6D72"), c("#C5C9D1"), c("#2C2D31"), c("#DDE1E7"),
+                c("#FFFFFF"), c("#1C1C1E"), c("#6E6E73"), c("#C5C9D1"), c("#2C2D31"), c("#DDE1E7"),
                 c("#F2F3F5"), c("#B7BCC5"), c("#C5C9D1"), c("#F1F2F4"), c("#F8F9FA"),
                 c("#FFFFFF"), c("#1C1C1E"), c("#C5C9D1"), c("#2C2D31"), c("#FFFFFF"), c("#E4E7EB"),
                 success = c("#1F8A4C"),
+                textSecondaryRole = c("#6D6D72"),
             )
         }
         val accent = accentOverride ?: return base
