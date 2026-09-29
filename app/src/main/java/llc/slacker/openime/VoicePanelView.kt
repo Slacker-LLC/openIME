@@ -103,7 +103,7 @@ internal class VoicePanelView(
         }
         languageButton = createButton(
             LANGUAGES[languageIndex].first,
-            13f,
+            ImeTypographyTokens.BODY_SP,
             true,
         ).apply {
             tag = "voice-language"
