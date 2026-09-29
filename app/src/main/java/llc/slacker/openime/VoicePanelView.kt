@@ -63,7 +63,7 @@ internal class VoicePanelView(
 
         transcript.apply {
             text = "只需长按空格；松开自动上屏，上滑取消"
-            textSize = 16f
+            textSize = ImeTypographyTokens.BODY_SP
             gravity = Gravity.CENTER_VERTICAL
             maxLines = 2
             ellipsize = TextUtils.TruncateAt.END
