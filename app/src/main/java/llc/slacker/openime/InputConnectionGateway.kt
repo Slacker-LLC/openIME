@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.os.Build
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.inputmethod.ExtractedText
 import android.view.inputmethod.ExtractedTextRequest
@@ -42,6 +43,7 @@ class InputConnectionGateway(
     private val context: Context?,
     private val connection: () -> InputConnection?,
     private val isPassword: () -> Boolean = { false },
+    private val nowMs: () -> Long = { SystemClock.elapsedRealtime() },
 ) {
 
     data class CursorSnapshot(
@@ -67,12 +69,29 @@ class InputConnectionGateway(
         val text: String,
         val selectionStart: Int,
         val selectionEnd: Int,
+        val connection: InputConnection,
+        val expiresAtMs: Long,
     )
 
     private var clearUndoSnapshot: ClearUndoSnapshot? = null
 
     private fun invalidateClearUndo() {
         clearUndoSnapshot = null
+    }
+
+    fun discardClearUndo() {
+        invalidateClearUndo()
+    }
+
+    fun hasClearUndo(): Boolean {
+        if (isPassword()) return false
+        val snapshot = clearUndoSnapshot ?: return false
+        val current = connection() ?: return false
+        if (snapshot.connection !== current || nowMs() > snapshot.expiresAtMs) {
+            invalidateClearUndo()
+            return false
+        }
+        return true
     }
 
     fun commitText(text: String) {
@@ -259,7 +278,7 @@ class InputConnectionGateway(
                         restoreSelectionAfterFailedClear(ic, originalSelection)
                     } else {
                         ic.finishComposingText()
-                        rememberClearUndo(selected, originalSelection)
+                        rememberClearUndo(selected, originalSelection, ic)
                     }
                     return cleared
                 }
@@ -278,7 +297,7 @@ class InputConnectionGateway(
                             restoreSelectionAfterFailedClear(ic, originalSelection)
                         } else {
                             ic.finishComposingText()
-                            rememberClearUndo(selectedWindow.text, originalSelection)
+                            rememberClearUndo(selectedWindow.text, originalSelection, ic)
                         }
                         return cleared
                     }
@@ -298,7 +317,7 @@ class InputConnectionGateway(
                 restoreSelectionAfterFailedClear(ic, originalSelection)
             } else {
                 ic.finishComposingText()
-                rememberClearUndo(window.text, originalSelection)
+                rememberClearUndo(window.text, originalSelection, ic)
             }
             cleared
         } finally {
@@ -315,6 +334,10 @@ class InputConnectionGateway(
         if (isPassword()) return false
         val snapshot = clearUndoSnapshot ?: return false
         val ic = connection() ?: return false
+        if (snapshot.connection !== ic || nowMs() > snapshot.expiresAtMs) {
+            invalidateClearUndo()
+            return false
+        }
 
         val window = extractedWindow(ic)
         val documentEmpty = if (window?.isCompleteDocument == true) {
@@ -353,6 +376,7 @@ class InputConnectionGateway(
     private fun rememberClearUndo(
         text: String,
         selection: SelectionSnapshot?,
+        ic: InputConnection,
     ) {
         if (text.isEmpty()) return
         val start: Int
@@ -375,6 +399,8 @@ class InputConnectionGateway(
             text = text,
             selectionStart = start.coerceIn(0, text.length),
             selectionEnd = end.coerceIn(0, text.length),
+            connection = ic,
+            expiresAtMs = nowMs() + CLEAR_UNDO_TIMEOUT_MS,
         )
     }
 
@@ -702,5 +728,6 @@ class InputConnectionGateway(
 
     private companion object {
         const val FALLBACK_WINDOW_CHARS = 8_192
+        const val CLEAR_UNDO_TIMEOUT_MS = 5_000L
     }
 }

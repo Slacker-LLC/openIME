@@ -138,7 +138,7 @@ internal class BackspaceGestureController(
         val shouldClear = if (clearArmed) {
             upward > toPx(16) && horizontal <= toPx(120)
         } else {
-            upward >= toPx(36) && horizontal <= toPx(96)
+            upward >= toPx(56) && horizontal <= toPx(96)
         }
         if (shouldClear == clearArmed) return
 

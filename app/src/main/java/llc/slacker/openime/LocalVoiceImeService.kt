@@ -191,6 +191,10 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
 
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
+        if (!restarting) {
+            gateway.discardClearUndo()
+            keyboardView?.hideClearUndo()
+        }
         reloadPersistedSettings()
         voiceCorrectionTracker.clear()
         val previousRimeInputs = candidateQueries.activeInputs
@@ -663,13 +667,19 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         // editor. Otherwise a late native result can restore the just-cleared
         // pre-edit on the very next key press.
         clearImeCompositionState(render = false)
-        if (!gateway.clearAllText()) {
+        val cleared = gateway.clearAllText()
+        if (!cleared) {
             android.widget.Toast.makeText(this, "当前应用未能清空全部文本", android.widget.Toast.LENGTH_SHORT).show()
         }
         voiceCorrectionTracker.clear()
         voiceComposing = false
         state = state.copy(voiceState = VoiceUiState())
         keyboardView?.renderState(state)
+        if (cleared && gateway.hasClearUndo()) {
+            keyboardView?.showClearUndo()
+        } else {
+            keyboardView?.hideClearUndo()
+        }
     }
 
     override fun onUndoClear(): Boolean {
@@ -690,8 +700,14 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         lastComposition = ""
         renderedCandidateSnapshot = null
         keyboardView?.clearAssociationCandidates()
+        keyboardView?.hideClearUndo()
         keyboardView?.renderState(state)
         return true
+    }
+
+    override fun onUndoClearExpired() {
+        gateway.discardClearUndo()
+        keyboardView?.hideClearUndo()
     }
 
     override fun onFloatingKeyboardChanged(floating: Boolean) {

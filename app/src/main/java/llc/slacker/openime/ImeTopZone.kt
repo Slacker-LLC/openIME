@@ -42,6 +42,8 @@ internal class ImeTopZone(
     onHideKeyboard: () -> Unit,
     onTools: () -> Unit,
     onExpandCandidates: () -> Unit,
+    private val onUndoClear: () -> Unit,
+    private val onUndoClearExpired: () -> Unit,
 ) : LinearLayout(context) {
     val toolbarRow = LinearLayout(context)
     val composeZone = LinearLayout(context)
@@ -56,6 +58,13 @@ internal class ImeTopZone(
     val voiceInlineIcon = ImageView(context)
     val voiceInlineStatus = TextView(context)
     val voiceInlineWaves = mutableListOf<View>()
+    val undoClearAction = TextView(context)
+    private val hideUndoClearRunnable = Runnable {
+        if (undoClearAction.visibility == View.VISIBLE) {
+            undoClearAction.visibility = View.GONE
+            onUndoClearExpired()
+        }
+    }
 
     init {
         tag = "ime_toolbar"
@@ -111,6 +120,32 @@ internal class ImeTopZone(
                 toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
                 1f,
             ).apply { marginStart = toPx(4) },
+        )
+        undoClearAction.apply {
+            tag = "undo-clear-action"
+            text = "撤销"
+            textSize = ImeTypographyTokens.BODY_SP
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            minWidth = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
+            minimumHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
+            visibility = View.GONE
+            isClickable = true
+            isFocusable = true
+            contentDescription = "撤销清空"
+            setOnClickListener {
+                removeCallbacks(hideUndoClearRunnable)
+                visibility = View.GONE
+                onFeedback()
+                onUndoClear()
+            }
+        }
+        toolbarRow.addView(
+            undoClearAction,
+            LinearLayout.LayoutParams(
+                toPx(64),
+                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
+            ),
         )
         toolbarRow.addView(
             toolbarIcon(R.drawable.ic_keyboard_hide, "收起键盘", "keyboard-hide", onHideKeyboard),
@@ -319,6 +354,20 @@ internal class ImeTopZone(
         )
     }
 
+    fun showUndoClear() {
+        removeCallbacks(hideUndoClearRunnable)
+        undoClearAction.visibility = View.VISIBLE
+        undoClearAction.bringToFront()
+        postDelayed(hideUndoClearRunnable, CLEAR_UNDO_VISIBLE_MS)
+    }
+
+    fun hideUndoClear(discardSnapshot: Boolean = false) {
+        removeCallbacks(hideUndoClearRunnable)
+        val wasVisible = undoClearAction.visibility == View.VISIBLE
+        undoClearAction.visibility = View.GONE
+        if (discardSnapshot && wasVisible) onUndoClearExpired()
+    }
+
     fun setContentInset(contentInsetPx: Int) {
         toolbarRow.setPadding(contentInsetPx + toPx(10), 0, contentInsetPx + toPx(10), 0)
         composition.setPadding(contentInsetPx + toPx(14), toPx(3), contentInsetPx + toPx(14), 0)
@@ -363,4 +412,8 @@ internal class ImeTopZone(
             toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
             toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
         )
+
+    private companion object {
+        const val CLEAR_UNDO_VISIBLE_MS = 5_000L
+    }
 }

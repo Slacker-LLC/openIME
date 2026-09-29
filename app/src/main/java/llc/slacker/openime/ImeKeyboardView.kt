@@ -42,6 +42,7 @@ open class ImeKeyboardView(
         fun onBackspace()
         fun onClearAll()
         fun onUndoClear(): Boolean = false
+        fun onUndoClearExpired() {}
         fun onSpace()
         fun onFloatingKeyboardChanged(floating: Boolean)
         fun onFloatingKeyboardDragged(deltaX: Float, deltaY: Float)
@@ -1042,6 +1043,8 @@ open class ImeKeyboardView(
                 updateTopZone(composition.text?.isNotEmpty() == true)
                 listener.onCandidateExpanded(open)
             },
+            onUndoClear = { listener.onUndoClear() },
+            onUndoClearExpired = listener::onUndoClearExpired,
         )
         candidateBarController = CandidateBarController(
             context = context,
@@ -1552,6 +1555,14 @@ open class ImeKeyboardView(
             )
         }
         if (visualChanged) applyTheme()
+    }
+
+    fun showClearUndo() {
+        if (::topZone.isInitialized) topZone.showUndoClear()
+    }
+
+    fun hideClearUndo(discardSnapshot: Boolean = false) {
+        if (::topZone.isInitialized) topZone.hideUndoClear(discardSnapshot)
     }
 
     fun setAppearance(newAppearance: ImeAppearance) {
