@@ -108,7 +108,7 @@ jobs:
           packages: 'platform-tools'
 
       - name: Download prebuilt test APKs
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v7
         with:
           name: openIME-test-apks
           path: ci-apks
@@ -125,8 +125,12 @@ jobs:
           script: |
             set -euo pipefail
             mkdir -p ci-reports
-            adb install -r ci-apks/app-debug.apk
-            adb install -r ci-apks/app-debug-androidTest.apk
+            app_apk="$(find ci-apks -type f -name 'app-debug.apk' -print -quit)"
+            test_apk="$(find ci-apks -type f -name 'app-debug-androidTest.apk' -print -quit)"
+            test -n "$app_apk"
+            test -n "$test_apk"
+            adb install -r "$app_apk"
+            adb install -r "$test_apk"
             adb shell am instrument -w -r \
               llc.slacker.openime.test/androidx.test.runner.AndroidJUnitRunner \
               | tee ci-reports/instrumentation-api-${{ matrix.api-level }}.txt
