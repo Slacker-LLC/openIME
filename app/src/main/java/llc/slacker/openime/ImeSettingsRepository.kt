@@ -92,19 +92,19 @@ object ImeSettingsRepository {
             .edit().putInt(KEY_FLOATING_OPACITY, percent.coerceIn(82, 100)).apply()
     }
 
+    internal fun parseTheme(value: String?): ImeTheme =
+        runCatching { ImeTheme.valueOf(value ?: ImeTheme.IOS.name) }
+            .getOrDefault(ImeTheme.IOS)
+
     /**
-     * Every ImeTheme ships a complete token set in ImeDesignTokens, but the
-     * getter used to hard-code IOS, which made four finished skins unreachable
-     * and made a persisted choice impossible to restore.
+     * Historical theme names can still exist in SharedPreferences after an
+     * upgrade. They intentionally fall back to the only supported skin.
      */
     fun loadTheme(context: Context): ImeTheme =
-        runCatching {
-            ImeTheme.valueOf(
-                context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                    .getString(KEY_THEME, ImeTheme.IOS.name)
-                    ?: ImeTheme.IOS.name,
-            )
-        }.getOrDefault(ImeTheme.IOS)
+        parseTheme(
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_THEME, ImeTheme.IOS.name),
+        )
 
     fun saveTheme(context: Context, theme: ImeTheme) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
