@@ -3,6 +3,7 @@ package llc.slacker.openime
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Build
@@ -211,7 +212,16 @@ class MainActivity : Activity() {
         // A completed step is easier to scan as a result than as an old
         // step number. Keep the number for the current step so the flow still
         // reads as 1 -> 2 while the completed state reads as a check.
-        mark.text = if (done) "✓" else markText
+        mark.text = if (done) "" else markText
+        mark.setCompoundDrawablesRelativeWithIntrinsicBounds(
+            if (done) R.drawable.ic_check else 0,
+            0,
+            0,
+            0,
+        )
+        mark.compoundDrawableTintList = ColorStateList.valueOf(
+            if (active) accent else if (done) getColor(R.color.setup_ready) else accent,
+        )
         mark.setBackgroundResource(
             when {
                 active -> R.drawable.bg_setup_mark_active
