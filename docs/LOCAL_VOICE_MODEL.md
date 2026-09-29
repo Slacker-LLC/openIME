@@ -34,7 +34,7 @@ app/src/main/assets/models/voice/
   "modelId": "paraformer-zh-en-int8",
   "modelVersion": "...",
   "language": "zh-CN,en-US",
-  "modelType": "streaming-paraformer",
+  "modelType": "paraformer",
   "engineVersion": "...",
   "fileHash": "sha256",
   "supportsPunctuation": true,
@@ -67,11 +67,15 @@ app/src/main/assets/models/voice/
 
 ## 当前交付状态
 
-当前 APK 已内置官方 `sherpa-onnx v1.13.6` native runtime 和中英双语流式
-Zipformer INT8 模型，模型路径为 `models/voice/bilingual-zipformer/`。模型使用
-`OnlineRecognizer` 按 16 kHz PCM 流式解码，键盘出现时异步预热，10 秒冷却期内
-中文或英文语音段复用同一个已加载识别器。当前内置的是纯识别模型，`punctuate()` 保留了独立
-标点模型的扩展边界；没有标点模型时会安全回退原始识别文字。
+当前 APK 使用官方 `sherpa-onnx v1.13.6` native runtime 和
+`sherpa-onnx-streaming-paraformer-bilingual-zh-en` 的 INT8 encoder/decoder，
+模型路径为 `models/voice/bilingual-paraformer/`。运行时通过
+`OnlineParaformerModelConfig`、`modelType="paraformer"` 和
+`greedy_search` 按 16 kHz PCM 流式解码；键盘出现时异步预热，10 秒冷却期内
+中文或英文语音段复用同一个已加载识别器。结束语音段时追加 300 ms 静音尾垫，
+再调用 `inputFinished()`，与 sherpa-onnx 官方流式 Paraformer 示例一致。
+当前内置的是纯识别模型，`punctuate()` 保留独立标点扩展边界；没有标点模型时
+安全回退原始识别文字。
 
 模型包的每个文件都在 `manifest.json` 的 SHA-256 清单内，APK 启动时只选择校验
 通过的内置包。下载模型仍然必须走 `VoiceModelRepository` 的校验和原子切换，
@@ -79,8 +83,9 @@ Zipformer INT8 模型，模型路径为 `models/voice/bilingual-zipformer/`。�
 
 ## 个性化与性能边界
 
-- 重复选择的本地用户词会生成有上限的 sherpa 动态 hotwords；当前内置模型缺少
-  `bpe.vocab`，因此只对可可靠编码的中文/中英混合词做上下文增强，普通英文识别不受影响。
+- Streaming Paraformer 不走 sherpa-onnx 的 transducer hotword graph，因此不再把
+  `VoiceHotwordProvider` 动态热词传给 native stream；本地 `VoiceCorrectionRepository`
+  的识别后纠正仍保留。
 - 用户在语音上屏后立即删除并改正的文本会形成私有 `VoiceCorrectionRepository` 对；
   后续相同 ASR 原结果先应用本地纠正，改正目标也会回流动态热词。
 - 密码框不进入热词或纠错学习；日志不记录 PCM、转写、热词、纠错内容。

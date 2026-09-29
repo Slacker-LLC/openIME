@@ -25,15 +25,15 @@
 `THIRD_PARTY_NOTICES.md`。
 
 语音 runtime 以 `app/libs/sherpa-onnx-1.13.6.aar` 提供，上游
-`k2-fsa/sherpa-onnx` 使用 Apache-2.0。内置中英双语 Zipformer 模型
-`sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20` 的原模型
-`csukuangfj/k2fsa-zipformer-chinese-english-mixed` 模型卡标记为 Apache-2.0。
+`k2-fsa/sherpa-onnx` 使用 Apache-2.0。内置中英双语 Streaming Paraformer 模型
+`csukuangfj/sherpa-onnx-streaming-paraformer-bilingual-zh-en`
+模型卡标记为 Apache-2.0；正式包只使用其 INT8 encoder/decoder。
 具体来源、文件位置和发布核对项统一记录在根目录 `THIRD_PARTY_NOTICES.md`。
 Git LFS 只负责文件存储，不改变文件的许可证。
 
 
 ## APK 内许可证
 
-正式 APK 在 `assets/licenses/` 内携带主要第三方许可证文本，包括 librime、OpenCC、Snappy、Rime Ice、sherpa-onnx runtime、当前 Zipformer 模型和 Fluent Emoji。根目录 `THIRD_PARTY_NOTICES.md` 记录组件、来源、版本或固定提交与对应文件位置。
+正式 APK 在 `assets/licenses/` 内携带主要第三方许可证文本，包括 librime、OpenCC、Snappy、Rime Ice、sherpa-onnx runtime、当前 Paraformer 模型和 Fluent Emoji。根目录 `THIRD_PARTY_NOTICES.md` 记录组件、来源、版本或固定提交与对应文件位置。
 
 发布工作流同时把 `THIRD_PARTY_NOTICES.md` 作为 GitHub Release 附件上传，便于在 APK 外直接查看。

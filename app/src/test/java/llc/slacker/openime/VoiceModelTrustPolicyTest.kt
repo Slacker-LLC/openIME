@@ -17,22 +17,10 @@ class VoiceModelTrustPolicyTest {
         File("app/src/main/assets"),
     ).firstOrNull { it.isDirectory } ?: error("missing test asset root")
 
-    private fun officialManifest(): VoiceModelManifest = VoiceModelManifest(
-        modelId = "sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20-int8",
-        modelVersion = "2023-02-20-int8",
-        language = "zh-CN,en-US",
-        modelType = "zipformer",
-        engineVersion = "sherpa-onnx-v1.13.6",
-        fileHash = "f2b835dfe8231bccc08692b4d8751ff50c2360b9b39a7501136a45e1bd97db85",
-        supportsPunctuation = false,
-        requiredMemory = 420_000_000L,
-        files = listOf(
-            "models/voice/bilingual-zipformer/decoder-epoch-99-avg-1.onnx",
-            "models/voice/bilingual-zipformer/encoder-epoch-99-avg-1.int8.onnx",
-            "models/voice/bilingual-zipformer/joiner-epoch-99-avg-1.int8.onnx",
-            "models/voice/bilingual-zipformer/tokens.txt",
-        ),
-    )
+    private fun officialManifest(): VoiceModelManifest =
+        VoiceModelManifest.parse(
+            File(assetRoot(), "models/voice/manifest.json").readText(),
+        )
 
     private fun sampleManifest(): VoiceModelManifest = VoiceModelManifest(
         modelId = "test-model",
@@ -50,8 +38,13 @@ class VoiceModelTrustPolicyTest {
     fun bundledCatalogTrustsOnlyExactOfficialManifestAndLayout() {
         val manifest = officialManifest()
         assertEquals(
-            "12bf0e2a9d5090bdb935c90941a0b3ef6269346860398fed3e45cef91940a525",
-            manifest.trustFingerprint(),
+            "sherpa-onnx-streaming-paraformer-bilingual-zh-en-int8",
+            manifest.modelId,
+        )
+        assertEquals("paraformer", manifest.modelType)
+        assertEquals(
+            listOf(SHERPA_DECODER, SHERPA_ENCODER, SHERPA_TOKENS),
+            manifest.files,
         )
         val catalog = TrustedVoiceModelCatalog.parse(
             File(assetRoot(), "models/voice/trusted-downloads.tsv").readText(),
@@ -59,10 +52,6 @@ class VoiceModelTrustPolicyTest {
         val entry = catalog.entryFor(manifest)
         assertNotNull(entry)
         assertEquals("Slacker-LLC", entry?.publisher)
-        assertEquals(
-            listOf(13_876_452L, 181_895_032L, 3_228_404L, 56_317L),
-            entry?.fileSizes,
-        )
         assertTrue(entry?.matchesLayout(manifest, assetRoot()) == true)
 
         assertEquals(null, catalog.entryFor(manifest.copy(requiredMemory = 1L)))

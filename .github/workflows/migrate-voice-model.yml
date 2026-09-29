@@ -1,0 +1,60 @@
+name: One-shot voice model migration
+
+on:
+  push:
+    branches:
+      - feat/visual-language-v1
+    paths:
+      - .github/workflows/migrate-voice-model.yml
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    name: Commit INT8 Paraformer through Git LFS
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout branch without smudging old LFS model
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          lfs: false
+
+      - name: Enable Git LFS
+        shell: bash
+        run: git lfs install --local
+
+      - name: Download official sherpa-onnx model package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/paraformer"
+          curl --fail --location --retry 4 --retry-all-errors \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-paraformer-bilingual-zh-en.tar.bz2 \
+            --output "$RUNNER_TEMP/paraformer/model.tar.bz2"
+          tar -xjf "$RUNNER_TEMP/paraformer/model.tar.bz2" \
+            -C "$RUNNER_TEMP/paraformer"
+
+      - name: Verify and prepare INT8 model
+        shell: bash
+        run: |
+          python3 scripts/migrate_voice_model.py \
+            "$RUNNER_TEMP/paraformer/sherpa-onnx-streaming-paraformer-bilingual-zh-en"
+
+      - name: Commit model and generated trust metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "openIME release bot"
+          git config user.email "128580527+Slacker-LLC@users.noreply.github.com"
+          git add -A app/src/main/assets/models/voice
+          git lfs ls-files
+          if git diff --cached --quiet; then
+            echo "Voice model is already migrated."
+            exit 0
+          fi
+          git commit -m "chore: replace voice model with INT8 Paraformer"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

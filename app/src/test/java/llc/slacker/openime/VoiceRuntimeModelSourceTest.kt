@@ -15,7 +15,7 @@ class VoiceRuntimeModelSourceTest {
         modelId = modelId,
         modelVersion = "1",
         language = "zh-CN,en-US",
-        modelType = "zipformer",
+        modelType = "paraformer",
         engineVersion = "sherpa-test",
         fileHash = "0".repeat(64),
         supportsPunctuation = false,
@@ -23,7 +23,6 @@ class VoiceRuntimeModelSourceTest {
         files = listOf(
             SHERPA_DECODER,
             SHERPA_ENCODER,
-            SHERPA_JOINER,
             SHERPA_TOKENS,
         ),
     )
@@ -42,7 +41,6 @@ class VoiceRuntimeModelSourceTest {
             assertEquals(SherpaRuntimeStorage.ASSETS, source?.storage)
             assertEquals(SHERPA_ENCODER, source?.encoder)
             assertEquals(SHERPA_DECODER, source?.decoder)
-            assertEquals(SHERPA_JOINER, source?.joiner)
             assertEquals(SHERPA_TOKENS, source?.tokens)
         } finally {
             downloadedRoot.deleteRecursively()
@@ -70,10 +68,9 @@ class VoiceRuntimeModelSourceTest {
             assertEquals(SherpaRuntimeStorage.FILES, source?.storage)
             assertEquals(File(packageRoot, SHERPA_ENCODER).canonicalPath, File(source!!.encoder).canonicalPath)
             assertEquals(File(packageRoot, SHERPA_DECODER).canonicalPath, File(source.decoder).canonicalPath)
-            assertEquals(File(packageRoot, SHERPA_JOINER).canonicalPath, File(source.joiner).canonicalPath)
             assertEquals(File(packageRoot, SHERPA_TOKENS).canonicalPath, File(source.tokens).canonicalPath)
             assertTrue(
-                listOf(source.encoder, source.decoder, source.joiner, source.tokens)
+                listOf(source.encoder, source.decoder, source.tokens)
                     .all { File(it).isFile },
             )
         } finally {

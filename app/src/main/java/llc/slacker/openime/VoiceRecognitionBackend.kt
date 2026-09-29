@@ -4,10 +4,10 @@ import android.content.Context
 import android.util.Log
 import com.k2fsa.sherpa.onnx.FeatureConfig
 import com.k2fsa.sherpa.onnx.OnlineModelConfig
+import com.k2fsa.sherpa.onnx.OnlineParaformerModelConfig
 import com.k2fsa.sherpa.onnx.OnlineRecognizer
 import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig
 import com.k2fsa.sherpa.onnx.OnlineStream
-import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -157,7 +157,7 @@ object EmbeddedVoiceRuntimeFactory {
         selection: VoiceModelSelection,
     ): EmbeddedVoiceModelRuntime? {
         val manifest = selection.manifest ?: return null
-        if (manifest.modelType != "zipformer") return null
+        if (manifest.modelType != "paraformer") return null
         val downloadedRoot = File(context.filesDir, VOICE_MODEL_DOWNLOADED_DIR)
         if (resolveSherpaRuntimeModelFiles(selection, downloadedRoot) == null) return null
         return SherpaOnnxStreamingRuntime(context, selection)
@@ -165,7 +165,7 @@ object EmbeddedVoiceRuntimeFactory {
 }
 
 /**
- * Streaming Zipformer runtime for either signed APK assets or a verified
+ * Streaming Paraformer runtime for either signed APK assets or a verified
  * app-private downloaded package. Model loading is lazy and the recognizer is
  * reused until the selected source changes or the lifecycle releases it.
  */
@@ -175,6 +175,7 @@ private class SherpaOnnxStreamingRuntime(
 ) : StreamingEmbeddedVoiceModelRuntime {
     companion object {
         private const val SAMPLE_RATE = LocalVoiceAudioSpec.SAMPLE_RATE
+        private const val PARAFORMER_TAIL_PADDING_SAMPLES = SAMPLE_RATE * 3 / 10
     }
 
     private val runtimeLock = Any()
@@ -189,7 +190,7 @@ private class SherpaOnnxStreamingRuntime(
     override val isReady: Boolean
         get() = synchronized(runtimeLock) {
             val manifest = selection.manifest
-            manifest?.modelType == "zipformer" && modelFiles != null
+            manifest?.modelType == "paraformer" && modelFiles != null
         }
 
     override fun preload() {
@@ -257,21 +258,17 @@ private class SherpaOnnxStreamingRuntime(
         val config = OnlineRecognizerConfig(
             featConfig = FeatureConfig(sampleRate = SAMPLE_RATE, featureDim = 80),
             modelConfig = OnlineModelConfig(
-                transducer = OnlineTransducerModelConfig(
+                paraformer = OnlineParaformerModelConfig(
                     encoder = files.encoder,
                     decoder = files.decoder,
-                    joiner = files.joiner,
                 ),
                 tokens = files.tokens,
                 numThreads = 2,
                 provider = "cpu",
-                modelType = "zipformer",
-                modelingUnit = "cjkchar",
+                modelType = "paraformer",
             ),
             enableEndpoint = false,
-            decodingMethod = "modified_beam_search",
-            maxActivePaths = 4,
-            hotwordsScore = 1.8f,
+            decodingMethod = "greedy_search",
         )
         val assetManager = if (files.storage == SherpaRuntimeStorage.ASSETS) {
             context.assets
@@ -286,12 +283,10 @@ private class SherpaOnnxStreamingRuntime(
         events: VoiceRecognitionEvents,
     ): SherpaSession {
         val currentRecognizer = ensureRecognizerLocked()
-        val hotwords = VoiceHotwordProvider.current()
-        val stream = if (hotwords.isBlank()) {
-            currentRecognizer.createStream()
-        } else {
-            currentRecognizer.createStream(hotwords)
-        }
+        // sherpa-onnx dynamic hotword graphs are implemented by the
+        // transducer recognizer. Streaming Paraformer uses a plain stream;
+        // openIME still applies its local post-ASR correction repository.
+        val stream = currentRecognizer.createStream()
         return SherpaSession(
             streamLease = VoiceStreamLease(stream) { it.release() },
             languageTag = languageTag,
@@ -323,6 +318,9 @@ private class SherpaOnnxStreamingRuntime(
                 checkOpenLocked()
                 val currentRecognizer = checkNotNull(recognizer) { "语音识别器已释放" }
                 val currentStream = streamLease.value
+                // sherpa-onnx's streaming Paraformer examples append 300 ms
+                // silence before InputFinished so the last chunk can flush.
+                currentStream.acceptWaveform(FloatArray(PARAFORMER_TAIL_PADDING_SAMPLES), SAMPLE_RATE)
                 currentStream.inputFinished()
                 val decoded = decodeReadyLocked(currentRecognizer, currentStream)
                 val recognizerFinal = currentRecognizer.getResult(currentStream).text.trim()

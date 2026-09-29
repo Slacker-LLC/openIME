@@ -4,10 +4,9 @@ import java.io.File
 import java.nio.file.Files
 
 internal const val VOICE_MODEL_DOWNLOADED_DIR = "voice-models"
-internal const val SHERPA_MODEL_ROOT = "models/voice/bilingual-zipformer"
-internal const val SHERPA_ENCODER = "$SHERPA_MODEL_ROOT/encoder-epoch-99-avg-1.int8.onnx"
-internal const val SHERPA_DECODER = "$SHERPA_MODEL_ROOT/decoder-epoch-99-avg-1.onnx"
-internal const val SHERPA_JOINER = "$SHERPA_MODEL_ROOT/joiner-epoch-99-avg-1.int8.onnx"
+internal const val SHERPA_MODEL_ROOT = "models/voice/bilingual-paraformer"
+internal const val SHERPA_ENCODER = "$SHERPA_MODEL_ROOT/encoder.int8.onnx"
+internal const val SHERPA_DECODER = "$SHERPA_MODEL_ROOT/decoder.int8.onnx"
 internal const val SHERPA_TOKENS = "$SHERPA_MODEL_ROOT/tokens.txt"
 
 internal enum class SherpaRuntimeStorage {
@@ -19,7 +18,6 @@ internal data class SherpaRuntimeModelFiles(
     val storage: SherpaRuntimeStorage,
     val encoder: String,
     val decoder: String,
-    val joiner: String,
     val tokens: String,
 )
 
@@ -38,8 +36,8 @@ internal fun resolveSherpaRuntimeModelFiles(
     downloadedRoot: File,
 ): SherpaRuntimeModelFiles? {
     val manifest = selection.manifest ?: return null
-    if (manifest.modelType != "zipformer") return null
-    val required = listOf(SHERPA_ENCODER, SHERPA_DECODER, SHERPA_JOINER, SHERPA_TOKENS)
+    if (manifest.modelType != "paraformer") return null
+    val required = listOf(SHERPA_ENCODER, SHERPA_DECODER, SHERPA_TOKENS)
     if (!manifest.files.containsAll(required)) return null
 
     return when (selection.source) {
@@ -47,7 +45,6 @@ internal fun resolveSherpaRuntimeModelFiles(
             storage = SherpaRuntimeStorage.ASSETS,
             encoder = SHERPA_ENCODER,
             decoder = SHERPA_DECODER,
-            joiner = SHERPA_JOINER,
             tokens = SHERPA_TOKENS,
         )
 
@@ -69,7 +66,6 @@ internal fun resolveSherpaRuntimeModelFiles(
                     storage = SherpaRuntimeStorage.FILES,
                     encoder = resolve(SHERPA_ENCODER),
                     decoder = resolve(SHERPA_DECODER),
-                    joiner = resolve(SHERPA_JOINER),
                     tokens = resolve(SHERPA_TOKENS),
                 )
             }.getOrNull()
