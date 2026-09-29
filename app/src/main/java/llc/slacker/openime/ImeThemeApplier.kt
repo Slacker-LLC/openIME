@@ -478,9 +478,9 @@ internal class ImeThemeApplier(
                 view.setTextColor(t.keySecondaryText)
 
             tag == "voice-mic" -> {
-                view.setTextColor(
-                    ImeDrawableFactory.contrastText(t.primary),
-                )
+                val onAccent = ImeDrawableFactory.contrastText(t.primary)
+                view.setTextColor(onAccent)
+                view.compoundDrawableTintList = ColorStateList.valueOf(onAccent)
                 view.background = statefulRounded(
                     t.primary,
                     ImeSurfacePolicy.primaryPressed(t),
