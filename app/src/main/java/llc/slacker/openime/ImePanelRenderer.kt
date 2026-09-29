@@ -443,7 +443,7 @@ internal class ImePanelRenderer(
 
         if (symbolCategory == "自定义") {
             body.addView(
-                createPanelButton("管理自定义符号", 12f, true).apply {
+                createPanelButton("管理自定义符号", ImeTypographyTokens.BODY_SP, true).apply {
                     contentDescription = "管理自定义符号"
                     setOnClickListener {
                         onFeedback()
