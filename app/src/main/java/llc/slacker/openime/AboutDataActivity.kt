@@ -160,6 +160,13 @@ class AboutDataActivity : Activity() {
             return
         }
         val queued = service.exportRimeUserData(rimeDir) { dictionaries ->
+            if (dictionaries == null) {
+                rimeDir.deleteRecursively()
+                runOnUiThread {
+                    showError("Rime 自动学习词库导出失败，未生成不完整备份。")
+                }
+                return@exportRimeUserData
+            }
             runCatching {
                 writeArchive(uri, UserDataRepository.snapshot(this, dictionaries))
             }.onSuccess {
@@ -287,7 +294,7 @@ class AboutDataActivity : Activity() {
             if (imported == null) {
                 sourceDir.deleteRecursively()
                 runOnUiThread {
-                    showError("Rime 自动学习词库导入失败，其他数据未修改。")
+                    showError("Rime 自动学习词库未全部导入；常用语、符号和设置未修改，已成功写入的 Rime 词条可能保留。")
                 }
                 return@importRimeUserData
             }

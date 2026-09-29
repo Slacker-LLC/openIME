@@ -420,13 +420,13 @@ extern "C" JNIEXPORT jobjectArray JNICALL
 Java_llc_slacker_openime_RimeNative_nativeExportUserDictionaries(
     JNIEnv* env, jclass, jstring target_dir) {
   std::lock_guard<std::mutex> lock(g_mutex);
-  if (!g_api || !g_session) return make_strings(env, {});
+  if (!g_api || !g_session) return nullptr;
 
   const std::string target = jstring_to_utf8(env, target_dir);
-  if (target.empty()) return make_strings(env, {});
+  if (target.empty()) return nullptr;
   std::error_code error;
   std::filesystem::create_directories(target, error);
-  if (error) return make_strings(env, {});
+  if (error) return nullptr;
 
   const std::string schema = suspend_session_locked();
   std::vector<std::string> exported;
@@ -435,17 +435,21 @@ Java_llc_slacker_openime_RimeNative_nativeExportUserDictionaries(
     rime::UserDictList dictionaries;
     manager.GetUserDictList(&dictionaries);
     size_t index = 0;
+    bool failed = false;
     for (const auto& name : dictionaries) {
       const std::filesystem::path path =
           std::filesystem::path(target) /
           ("dict-" + std::to_string(index++) + ".userdb.txt");
       const int count = manager.Export(name, path);
-      if (count >= 0) {
-        exported.emplace_back(name + "\t" + path.string());
+      if (count < 0) {
+        failed = true;
+        break;
       }
+      exported.emplace_back(name + "\t" + path.string());
     }
+    const bool resumed = resume_session_locked(schema);
+    if (failed || !resumed) return nullptr;
   }
-  resume_session_locked(schema);
   return make_strings(env, exported);
 }
 

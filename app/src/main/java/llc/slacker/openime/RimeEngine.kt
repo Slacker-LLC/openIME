@@ -355,37 +355,46 @@ class RimeEngine(
 
     fun exportUserDictionaries(
         targetDir: File,
-        onComplete: (List<RimeUserDictionaryArchive>) -> Unit,
+        onComplete: (List<RimeUserDictionaryArchive>?) -> Unit,
     ): Boolean {
         if (!isReady) return false
         return mutationQueue.submit {
             val exported = synchronized(lock) {
                 if (!isReady) {
-                    emptyList()
+                    null
                 } else {
                     runCatching {
-                        if (!syncSchemaFromSettingsLocked()) return@runCatching emptyList()
-                        targetDir.mkdirs()
-                        RimeNative.nativeExportUserDictionaries(targetDir.absolutePath)
-                            .orEmpty()
-                            .mapNotNull { mapping ->
+                        if (!syncSchemaFromSettingsLocked()) return@runCatching null
+                        if (!targetDir.exists() && !targetDir.mkdirs()) {
+                            return@runCatching null
+                        }
+                        val mappings =
+                            RimeNative.nativeExportUserDictionaries(targetDir.absolutePath)
+                                ?: return@runCatching null
+                        buildList {
+                            mappings.forEach { mapping ->
                                 val separator = mapping.indexOf('\t')
                                 if (separator <= 0 || separator >= mapping.lastIndex) {
-                                    return@mapNotNull null
+                                    return@runCatching null
                                 }
                                 val name = mapping.substring(0, separator).trim()
                                 val path = mapping.substring(separator + 1)
                                 val file = File(path)
-                                if (name.isEmpty() || !file.isFile) {
-                                    null
-                                } else {
+                                if (
+                                    !UserDataArchiveCodec.isSafeRimeDictionaryName(name) ||
+                                    !file.isFile
+                                ) {
+                                    return@runCatching null
+                                }
+                                add(
                                     RimeUserDictionaryArchive(
                                         name = name,
                                         content = file.readText(),
-                                    )
-                                }
+                                    ),
+                                )
                             }
-                    }.getOrDefault(emptyList())
+                        }
+                    }.getOrNull()
                 }
             }
             onComplete(exported)

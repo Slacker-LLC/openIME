@@ -1506,7 +1506,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
 
     internal fun exportRimeUserData(
         targetDir: File,
-        onComplete: (List<RimeUserDictionaryArchive>) -> Unit,
+        onComplete: (List<RimeUserDictionaryArchive>?) -> Unit,
     ): Boolean =
         ::rime.isInitialized &&
             rime.exportUserDictionaries(targetDir, onComplete)

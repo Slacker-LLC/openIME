@@ -155,7 +155,7 @@ internal object UserDataArchiveCodec {
                     )
                 }.filter {
                     isSafeRimeDictionaryName(it.name) && it.content.isNotEmpty()
-                },
+                }.distinctBy { it.name },
         )
     }
 

@@ -56,6 +56,7 @@ class UserDataArchiveTest {
             settings = settings,
             rimeUserDictionaries = listOf(
                 RimeUserDictionaryArchive("luna_pinyin", "safe"),
+                RimeUserDictionaryArchive("luna_pinyin", "duplicate"),
                 RimeUserDictionaryArchive("../outside", "unsafe"),
                 RimeUserDictionaryArchive("nested/path", "unsafe"),
                 RimeUserDictionaryArchive("nested\\path", "unsafe"),
