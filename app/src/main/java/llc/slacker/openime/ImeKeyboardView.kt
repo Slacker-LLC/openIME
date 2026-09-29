@@ -2049,7 +2049,7 @@ open class ImeKeyboardView(
 
     private fun sectionTitle(textValue: String): TextView = TextView(context).apply {
         text = textValue
-        textSize = 12f
+        textSize = ImeTypographyTokens.TITLE_SP
         includeFontPadding = false
         setPadding(dp(4), dp(2), 0, dp(8))
         tag = "panel-section-title"
@@ -2586,7 +2586,7 @@ open class ImeKeyboardView(
 
     private fun title(text: String, small: Boolean = false) = TextView(context).apply {
         this.text = text
-        textSize = if (small) 12f else 16f
+        textSize = if (small) ImeTypographyTokens.BODY_SP else ImeTypographyTokens.TITLE_SP
         setPadding(0, 0, 0, dp(4))
     }
 
