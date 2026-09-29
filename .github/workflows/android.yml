@@ -120,6 +120,26 @@ jobs:
           name: openIME-test-apks
           path: ci-apks
 
+      - name: Prepare instrumentation runner
+        shell: bash
+        run: |
+          cat > ci-run-instrumentation.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          api_level="$1"
+          mkdir -p ci-reports
+          app_apk="$(find ci-apks -type f -name 'app-debug.apk' -print -quit)"
+          test_apk="$(find ci-apks -type f -name 'app-debug-androidTest.apk' -print -quit)"
+          test -n "$app_apk"
+          test -n "$test_apk"
+          adb install -r "$app_apk"
+          adb install -r "$test_apk"
+          adb shell am instrument -w -r \
+            llc.slacker.openime.test/androidx.test.runner.AndroidJUnitRunner \
+            | tee "ci-reports/instrumentation-api-${api_level}.txt"
+          EOF
+          chmod +x ci-run-instrumentation.sh
+
       - name: Run compatibility instrumentation
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -129,28 +149,7 @@ jobs:
           profile: pixel_2
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            set -eu
-            mkdir -p ci-reports
-            report="ci-reports/instrumentation-api-${{ matrix.api-level }}.txt"
-            app_apk="$(find ci-apks -type f -name 'app-debug.apk' -print -quit)"
-            test_apk="$(find ci-apks -type f -name 'app-debug-androidTest.apk' -print -quit)"
-            test -n "$app_apk"
-            test -n "$test_apk"
-            adb install -r "$app_apk"
-            adb install -r "$test_apk"
-            if adb shell am instrument -w -r \
-              llc.slacker.openime.test/androidx.test.runner.AndroidJUnitRunner \
-              >"$report" 2>&1; then
-              status=0
-            else
-              status=$?
-            fi
-            cat "$report"
-            if grep -Eq 'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed' "$report"; then
-              exit 1
-            fi
-            exit "$status"
+          script: bash ci-run-instrumentation.sh ${{ matrix.api-level }}
 
       - name: Upload compatibility test report
         if: always()
