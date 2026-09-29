@@ -139,7 +139,7 @@ internal class VoicePanelView(
             ),
         )
 
-        gestureHint = createButton("长按空格开始", 13f, true).apply {
+        gestureHint = createButton("长按空格开始", ImeTypographyTokens.BODY_SP, true).apply {
             tag = "voice-gesture-hint"
             isEnabled = false
             contentDescription = "长按空格开始语音，松开自动上屏，上滑取消"
