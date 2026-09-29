@@ -503,10 +503,16 @@ internal class SettingsPanelController(
                 ),
             )
             addView(
-                TextView(context).apply {
-                    text = "›"
-                    textSize = ImeTypographyTokens.BODY_SP
-                    gravity = Gravity.CENTER
+                ImageView(context).apply {
+                    setImageResource(R.drawable.ic_arrow_back)
+                    rotation = 180f
+                    imageTintList = ColorStateList.valueOf(
+                        ImeTheme.IOS.tokens(
+                            appearance = currentAppearance(),
+                            accentOverride = AccentPalette.parse(currentSkinColor()),
+                        ).keySecondaryText,
+                    )
+                    scaleType = ImageView.ScaleType.CENTER_INSIDE
                     importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                     tag = "setting-chevron"
                 },
@@ -645,11 +651,14 @@ internal class SettingsPanelController(
                         )
                         if (selected) {
                             addView(
-                                TextView(context).apply {
-                                    text = "✓"
-                                    textSize = ImeTypographyTokens.PANEL_BODY_SP
-                                    gravity = Gravity.CENTER
-                                    includeFontPadding = false
+                                ImageView(context).apply {
+                                    setImageResource(R.drawable.ic_check)
+                                    imageTintList = ColorStateList.valueOf(
+                                        ImeDrawableFactory.contrastText(
+                                            AccentPalette.parse(hex),
+                                        ),
+                                    )
+                                    scaleType = ImageView.ScaleType.CENTER_INSIDE
                                     tag = "accent-selected-mark:$hex"
                                     importantForAccessibility =
                                         View.IMPORTANT_FOR_ACCESSIBILITY_NO
