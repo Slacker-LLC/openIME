@@ -27,8 +27,26 @@ internal class KeyPopupController(
     private val feedback: () -> Unit,
     private val onSymbolSelected: (String) -> Unit,
 ) {
+    private val previewPopup = TextView(host.context).apply {
+        visibility = View.GONE
+        includeFontPadding = false
+        maxLines = 1
+        ellipsize = TextUtils.TruncateAt.END
+        gravity = Gravity.CENTER
+        setPadding(dp(8), dp(6), dp(8), dp(6))
+        elevation = dp(2).toFloat()
+    }
     private var popupView: View? = null
     private var keepAfterKeyUp = false
+
+    init {
+        host.addView(
+            previewPopup,
+            FrameLayout.LayoutParams(1, 1).apply {
+                gravity = Gravity.TOP or Gravity.START
+            },
+        )
+    }
 
     fun show(anchor: View, text: String) {
         hide()
@@ -45,15 +63,14 @@ internal class KeyPopupController(
         val popupHeight = dp(
             if (text == "清空") 36 else ImeGeometryTokens.KEY_POPUP_HEIGHT_DP,
         )
-        val popup = TextView(host.context).apply {
+        val popupBackground = if (text == "清空") t.destructive else t.keyBackground
+        previewPopup.apply {
             this.text = text
-            textSize = if (text.length > 1) ImeTypographyTokens.BODY_SP else ImeTypographyTokens.DISPLAY_SP
-            includeFontPadding = false
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-            gravity = Gravity.CENTER
-            setPadding(dp(8), dp(6), dp(8), dp(6))
-            val popupBackground = if (text == "清空") t.destructive else t.keyBackground
+            textSize = if (text.length > 1) {
+                ImeTypographyTokens.BODY_SP
+            } else {
+                ImeTypographyTokens.DISPLAY_SP
+            }
             setTextColor(if (text == "清空") contrastText(popupBackground) else t.keyText)
             background =
                 if (text == "清空") {
@@ -66,12 +83,15 @@ internal class KeyPopupController(
                         dp(1).coerceAtLeast(1),
                     )
                 }
-            elevation = dp(2).toFloat()
         }
 
-        placeAbove(anchor, popup, popupWidth, popupHeight)
-        popupView = popup
-        animateIn(popup, popupWidth, popupHeight)
+        positionAttachedPopup(anchor, previewPopup, popupWidth, popupHeight)
+        previewPopup.visibility = View.VISIBLE
+        previewPopup.alpha = 1f
+        previewPopup.scaleX = 1f
+        previewPopup.scaleY = 1f
+        previewPopup.bringToFront()
+        popupView = previewPopup
     }
 
     fun showChoices(anchor: View, choices: List<String>) {
@@ -148,15 +168,45 @@ internal class KeyPopupController(
     }
 
     fun hide() {
-        popupView?.let {
-            it.animate().cancel()
-            host.removeView(it)
+        popupView?.let { popup ->
+            popup.animate().cancel()
+            if (popup === previewPopup) {
+                popup.visibility = View.GONE
+            } else {
+                host.removeView(popup)
+            }
         }
         popupView = null
         keepAfterKeyUp = false
     }
 
+    private fun positionAttachedPopup(
+        anchor: View,
+        popup: View,
+        popupWidth: Int,
+        popupHeight: Int,
+    ) {
+        val placement = placementAbove(anchor, popupWidth, popupHeight)
+        popup.layoutParams = FrameLayout.LayoutParams(popupWidth, popupHeight).apply {
+            gravity = Gravity.TOP or Gravity.START
+            leftMargin = placement.first
+            topMargin = placement.second
+        }
+    }
+
     private fun placeAbove(anchor: View, popup: View, popupWidth: Int, popupHeight: Int) {
+        val placement = placementAbove(anchor, popupWidth, popupHeight)
+        host.addView(
+            popup,
+            FrameLayout.LayoutParams(popupWidth, popupHeight).apply {
+                gravity = Gravity.TOP or Gravity.START
+                leftMargin = placement.first
+                topMargin = placement.second
+            },
+        )
+    }
+
+    private fun placementAbove(anchor: View, popupWidth: Int, popupHeight: Int): Pair<Int, Int> {
         val anchorLocation = IntArray(2)
         val rootLocation = IntArray(2)
         anchor.getLocationOnScreen(anchorLocation)
@@ -171,15 +221,7 @@ internal class KeyPopupController(
         val top = (
             anchorTop - popupHeight - dp(ImeGeometryTokens.KEY_POPUP_VERTICAL_GAP_DP)
             ).coerceAtLeast(dp(4))
-
-        host.addView(
-            popup,
-            FrameLayout.LayoutParams(popupWidth, popupHeight).apply {
-                gravity = Gravity.TOP or Gravity.START
-                leftMargin = left
-                topMargin = top
-            },
-        )
+        return left to top
     }
 
     private fun animateIn(view: View, popupWidth: Int, popupHeight: Int) {
