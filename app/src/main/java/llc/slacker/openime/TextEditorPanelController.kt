@@ -56,7 +56,7 @@ internal class TextEditorPanelController(
             orientation = LinearLayout.HORIZONTAL
         }
         QUICK_ACTIONS.forEach { (label, action) ->
-            val control = createKey(label, 10f) { onTextEdit(action) }.apply {
+            val control = createKey(label, ImeTypographyTokens.CAPTION_SP) { onTextEdit(action) }.apply {
                 tag = "textedit-action:$action"
             }
             actionControls[action] = ActionControl(label, control)
@@ -85,7 +85,7 @@ internal class TextEditorPanelController(
             center: Boolean = false,
         ): TextView = createPanelButton(
             label ?: "",
-            if (center) 9f else 14f,
+            if (center) ImeTypographyTokens.CAPTION_SP else ImeTypographyTokens.BODY_SP,
             !center,
         ).apply {
             if (action != null) {
