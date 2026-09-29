@@ -7,9 +7,11 @@ import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.os.SystemClock
 import android.util.Log
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.sqrt
 
@@ -179,6 +181,10 @@ class LocalAudioVoiceBackend(
     }
     private val startGeneration = AtomicLong(0L)
     private val stopRequestedGeneration = AtomicLong(-1L)
+    private val stopRequestedAtMs = AtomicLong(0L)
+    private val stopExecutor = Executors.newSingleThreadScheduledExecutor { runnable ->
+        Thread(runnable, "local-voice-tail-stop").apply { isDaemon = true }
+    }
     private val routeManager = VoiceAudioRouteManager(context)
 
     override fun isAvailable(): Boolean = runtimeProvider.isExpectedAvailable()
@@ -200,6 +206,7 @@ class LocalAudioVoiceBackend(
         val traceToken = runtimeProvider.performanceTraceToken() ?: VoicePerformanceTrace.begin()
         val generation = startGeneration.incrementAndGet()
         stopRequestedGeneration.set(-1L)
+        stopRequestedAtMs.set(0L)
         startExecutor.execute {
             initializeSession(generation, languageTag, events, traceToken)
         }
@@ -282,7 +289,11 @@ class LocalAudioVoiceBackend(
             return
         }
         session.stopRequested.set(stopRequestedGeneration.get() == generation)
-        if (session.stopRequested.get()) VoicePerformanceTrace.markVoiceRelease(traceToken)
+        if (session.stopRequested.get()) {
+            session.releaseAtMs = stopRequestedAtMs.get().takeIf { it > 0L }
+                ?: SystemClock.elapsedRealtime()
+            VoicePerformanceTrace.markVoiceRelease(traceToken)
+        }
 
         val modelEvents = object : VoiceRecognitionEvents {
             override fun onPartial(text: String) {
@@ -321,7 +332,7 @@ class LocalAudioVoiceBackend(
             }
             startCaptureThread(session)
             events.onReady()
-            if (session.stopRequested.get()) requestCaptureStop(session)
+            if (session.stopRequested.get()) scheduleCaptureStop(session, generation)
 
             // Waiting for verification/model mapping is safe here: capture is
             // already live and the bounded ring keeps the spoken prefix.
@@ -353,10 +364,13 @@ class LocalAudioVoiceBackend(
             runtimeProvider.performanceTraceToken()?.let(VoicePerformanceTrace::markVoiceRelease)
         }
         val generation = startGeneration.get()
+        val releasedAt = SystemClock.elapsedRealtime()
         stopRequestedGeneration.set(generation)
+        stopRequestedAtMs.set(releasedAt)
         if (current == null) return
+        current.releaseAtMs = releasedAt
         current.stopRequested.set(true)
-        requestCaptureStop(current)
+        if (current.running.get()) scheduleCaptureStop(current, generation)
         if (current.modelReady.get()) startInferenceThread(current)
         // If the first model load is still running, initializeSession keeps
         // this session alive, then drains the buffered PCM and emits one final.
@@ -365,6 +379,7 @@ class LocalAudioVoiceBackend(
     override fun cancel() {
         startGeneration.incrementAndGet()
         stopRequestedGeneration.set(-1L)
+        stopRequestedAtMs.set(0L)
         val current = synchronized(lock) {
             val value = session
             session = null
@@ -405,6 +420,24 @@ class LocalAudioVoiceBackend(
         session.captureThread?.interrupt()
     }
 
+    private fun scheduleCaptureStop(session: Session, generation: Long) {
+        if (!session.captureStopScheduled.compareAndSet(false, true)) return
+        stopExecutor.schedule(
+            {
+                if (
+                    isCurrent(generation, session) &&
+                    session.stopRequested.get() &&
+                    !session.cancelled.get() &&
+                    !session.failed.get()
+                ) {
+                    requestCaptureStop(session)
+                }
+            },
+            TAIL_CAPTURE_MILLIS,
+            TimeUnit.MILLISECONDS,
+        )
+    }
+
     private fun startCaptureThread(session: Session) {
         session.captureFinished.set(false)
         session.captureThread = Thread({ captureLoop(session) }, "local-voice-capture")
@@ -432,7 +465,7 @@ class LocalAudioVoiceBackend(
                             session.degraded.compareAndSet(false, true)
                         ) {
                             Log.w(
-                                "OpenImeVoicePerf",
+                                TAG,
                                 "PCM pipeline degraded droppedPcmSamples=${session.ring.droppedSamples}",
                             )
                         }
@@ -490,7 +523,27 @@ class LocalAudioVoiceBackend(
                 !session.cancelled.get() &&
                 session.finished.compareAndSet(false, true)
             ) {
-                val raw = voiceSession.inputFinished().ifBlank { session.lastPartial }
+                val finalizeStartedAt = SystemClock.elapsedRealtime()
+                val remainingBeforeFinish = session.ring.size
+                Log.i(
+                    TAG,
+                    "inputFinished begin releaseAtMs=${session.releaseAtMs} " +
+                        "nowMs=$finalizeStartedAt ringRemainingSamples=$remainingBeforeFinish " +
+                        "droppedSamples=${session.ring.droppedSamples} " +
+                        "lastPartialLength=${session.lastPartial.length}",
+                )
+                val finalRaw = voiceSession.inputFinished()
+                val usedOuterFallback = finalRaw.isBlank()
+                val raw = finalRaw.ifBlank { session.lastPartial }
+                val finalizeEndedAt = SystemClock.elapsedRealtime()
+                Log.i(
+                    TAG,
+                    "inputFinished end releaseAtMs=${session.releaseAtMs} " +
+                        "nowMs=$finalizeEndedAt finalLength=${finalRaw.length} " +
+                        "resolvedLength=${raw.length} lastPartialLength=${session.lastPartial.length} " +
+                        "fallback=$usedOuterFallback " +
+                        "releaseToFinalMs=${if (session.releaseAtMs > 0L) finalizeEndedAt - session.releaseAtMs else -1L}",
+                )
                 VoicePerformanceTrace.markFinalAsr(session.traceToken)
                 val punctuated = if (raw.isBlank()) raw else voiceSession.punctuate(raw) ?: raw
                 val final = VoiceCorrectionRepository.apply(punctuated)
@@ -544,8 +597,16 @@ class LocalAudioVoiceBackend(
         val finished = AtomicBoolean(false)
         val failed = AtomicBoolean(false)
         val degraded = AtomicBoolean(false)
+        val captureStopScheduled = AtomicBoolean(false)
         var captureThread: Thread? = null
         var inferenceThread: Thread? = null
+        @Volatile
+        var releaseAtMs: Long = 0L
         var lastPartial: String = ""
+    }
+
+    private companion object {
+        const val TAG = "OpenImeVoicePerf"
+        const val TAIL_CAPTURE_MILLIS = 300L
     }
 }
