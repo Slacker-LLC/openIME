@@ -105,7 +105,7 @@ class QuickPhraseEditActivity : Activity() {
         val accent = SetupUi.accent(this)
         val title = TextView(this).apply {
             text = if (phraseId > 0L) "编辑常用语" else "新增常用语"
-            textSize = 22f
+            textSize = ImeTypographyTokens.TITLE_SP
             setTextColor(getColor(R.color.setup_title))
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             gravity = Gravity.CENTER_VERTICAL
@@ -138,7 +138,7 @@ class QuickPhraseEditActivity : Activity() {
             setText(category)
             setSingleLine(true)
             imeOptions = EditorInfo.IME_ACTION_NEXT
-            textSize = 16f
+            textSize = ImeTypographyTokens.BODY_SP
         }
         SetupUi.styleInput(this, categoryEdit)
         codeEdit = EditText(this).apply {
@@ -149,7 +149,7 @@ class QuickPhraseEditActivity : Activity() {
             inputType = android.text.InputType.TYPE_CLASS_TEXT or
                 android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             imeOptions = EditorInfo.IME_ACTION_NEXT
-            textSize = 16f
+            textSize = ImeTypographyTokens.BODY_SP
         }
         SetupUi.styleInput(this, codeEdit)
         phraseEdit = EditText(this).apply {
@@ -160,7 +160,7 @@ class QuickPhraseEditActivity : Activity() {
             maxLines = 8
             gravity = Gravity.TOP or Gravity.START
             imeOptions = EditorInfo.IME_ACTION_DONE
-            textSize = 17f
+            textSize = ImeTypographyTokens.BODY_SP
         }
         SetupUi.styleInput(this, phraseEdit)
         val save = SetupUi.primaryButton(this, "保存") {
@@ -256,7 +256,7 @@ class QuickPhraseEditActivity : Activity() {
             ).apply { bottomMargin = dp(14) })
             addView(TextView(this@QuickPhraseEditActivity).apply {
                 text = "设置后，输入至少 2 个字符的短码即可在候选栏召回这条常用语。"
-                textSize = 12f
+                textSize = ImeTypographyTokens.BODY_SP
                 setTextColor(getColor(R.color.setup_body))
                 setPadding(dp(4), 0, dp(4), dp(12))
             }, LinearLayout.LayoutParams(
@@ -273,7 +273,7 @@ class QuickPhraseEditActivity : Activity() {
             ).apply { bottomMargin = dp(8) })
             addView(TextView(this@QuickPhraseEditActivity).apply {
                 text = "保存后会在剪贴板面板中按分类显示，可直接点选输入。"
-                textSize = 12f
+                textSize = ImeTypographyTokens.BODY_SP
                 setTextColor(getColor(R.color.setup_body))
                 setPadding(dp(4), 0, dp(4), dp(12))
             }, LinearLayout.LayoutParams(
@@ -324,7 +324,7 @@ class QuickPhraseEditActivity : Activity() {
 
     private fun fieldLabel(label: String, targetId: Int) = TextView(this).apply {
         text = label
-        textSize = 12f
+        textSize = ImeTypographyTokens.BODY_SP
         setTextColor(getColor(R.color.setup_body))
         setPadding(dp(4), 0, dp(4), dp(4))
         labelFor = targetId
