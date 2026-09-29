@@ -452,11 +452,11 @@ class AuditInteractionInstrumentedTest {
                 assertTrue("${theme.label} must be selectable from settings", chip != null)
                 assertTrue("${theme.label} must expose a 48dp target", chip!!.minimumHeight >= keyboard.resources.displayMetrics.density * 48f)
             }
-            val cyberpunk = keyboard.findTestTarget(ImeTheme.CYBERPUNK.label)
-            assertTrue(cyberpunk!!.performClick())
+            val ios = keyboard.findTestTarget(ImeTheme.IOS.label)
+            assertTrue(ios!!.performClick())
             assertTrue(
                 "Selected theme must expose its accessible state",
-                keyboard.findTestTarget(ImeTheme.CYBERPUNK.label)!!.contentDescription.toString().contains("已选中"),
+                keyboard.findTestTarget(ImeTheme.IOS.label)!!.contentDescription.toString().contains("已选中"),
             )
             true
         }
