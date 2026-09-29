@@ -312,3 +312,39 @@ internal object ImeFocusRingPolicy {
             ImeContrastPolicy.contrastText(background)
         }
 }
+
+/** User-selectable accents share the same color source as the rest of the IME. */
+object AccentPalette {
+    const val DEFAULT = "#1D9BF0"
+    val presets = listOf(
+        "#1D9BF0" to "蓝色",
+        "#FFD400" to "黄色",
+        "#F91880" to "粉色",
+        "#7856FF" to "紫色",
+        "#FF7A00" to "橙色",
+        "#00BA7C" to "绿色",
+        "#00C2D7" to "青色",
+        "#38BDF8" to "天蓝",
+        "#5865F2" to "靛蓝",
+        "#9B5DE5" to "深紫",
+        "#E94FB8" to "洋红",
+        "#F4212E" to "红色",
+        "#FF5A5F" to "珊瑚红",
+        "#F59E0B" to "琥珀",
+        "#84CC16" to "青柠",
+        "#22C55E" to "翠绿",
+        "#10CFA0" to "薄荷",
+        "#14B8A6" to "蓝绿",
+    )
+
+    fun parse(value: String?): Int = runCatching {
+        val raw = normalize(value).removePrefix("#")
+        (0xFF000000L or raw.toLong(16)).toInt()
+    }.getOrDefault((0xFF000000L or DEFAULT.removePrefix("#").toLong(16)).toInt())
+
+    fun normalize(value: String?): String {
+        val raw = value.orEmpty().trim()
+        val hex = if (raw.startsWith("#")) raw else "#$raw"
+        return if (hex.matches(Regex("#?[0-9a-fA-F]{6}"))) hex.uppercase() else DEFAULT
+    }
+}
