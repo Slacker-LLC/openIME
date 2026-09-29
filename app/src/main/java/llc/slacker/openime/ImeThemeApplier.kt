@@ -221,6 +221,14 @@ internal class ImeThemeApplier(
 
     private fun applyImageView(view: ImageView, t: ImeTheme.Tokens) {
         when {
+            view.tag == "candidate-emoji" || view.tag == "candidate-expand" -> {
+                view.imageTintList = ColorStateList.valueOf(t.keySecondaryText)
+                view.background = statefulRounded(
+                    Color.TRANSPARENT,
+                    ImeSurfacePolicy.pressedSurface(t.candidateBackground, t),
+                    toPx(ImeGeometryTokens.KEY_RADIUS_DP),
+                )
+            }
             view.tag == "setting-icon" -> {
                 view.imageTintList = ColorStateList.valueOf(t.primary)
                 view.background = ImeDrawableFactory.rounded(
