@@ -94,7 +94,7 @@ object SetupUi {
     fun secondaryButton(context: Context, label: String, onClick: () -> Unit): Button =
         Button(context).apply {
             text = label
-            textSize = 12f
+            textSize = ImeTypographyTokens.BODY_SP
             isAllCaps = false
             minHeight = dp(context, 48)
             minWidth = 0
@@ -128,7 +128,7 @@ object SetupUi {
     fun primaryButton(context: Context, label: String, onClick: () -> Unit): Button =
         Button(context).apply {
             text = label
-            textSize = 15f
+            textSize = ImeTypographyTokens.BODY_SP
             isAllCaps = false
             minHeight = dp(context, ImeGeometryTokens.PRIMARY_ROW_HEIGHT_DP)
             background = buttonBackground(
