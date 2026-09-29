@@ -109,7 +109,12 @@ internal class SpaceVoiceGestureController(
             return false
         }
 
-        val cancelNow = downY - rawY >= toPx(CANCEL_DISTANCE_DP)
+        val upwardDistance = downY - rawY
+        val cancelNow = if (cancelPreview) {
+            upwardDistance >= toPx(CANCEL_EXIT_DISTANCE_DP)
+        } else {
+            upwardDistance >= toPx(CANCEL_ENTER_DISTANCE_DP)
+        }
         if (cancelNow != cancelPreview) {
             cancelPreview = cancelNow
             onCancelPreviewChanged(cancelNow)
@@ -185,7 +190,8 @@ internal class SpaceVoiceGestureController(
     }
 
     private companion object {
-        const val CANCEL_DISTANCE_DP = 48
+        const val CANCEL_ENTER_DISTANCE_DP = 72
+        const val CANCEL_EXIT_DISTANCE_DP = 48
         const val CURSOR_MODE_START_DP = 18
         const val CURSOR_STEP_DP = 12
     }
