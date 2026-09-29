@@ -319,7 +319,7 @@ internal class CandidateBarController(
             isClickable = true
             addView(
                 TextView(context).apply {
-                    textSize = 14f
+                    textSize = ImeTypographyTokens.CANDIDATE_SP
                     maxLines = 1
                     includeFontPadding = false
                     setPadding(toPx(12), 0, toPx(12), 0)
