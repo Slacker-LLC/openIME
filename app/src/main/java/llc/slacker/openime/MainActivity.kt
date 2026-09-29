@@ -14,6 +14,7 @@ import android.provider.Settings
 import android.net.Uri
 import android.view.inputmethod.InputMethodManager
 import android.widget.TextView
+import android.widget.ImageView
 import android.widget.EditText
 import android.widget.Toast
 import android.graphics.Color
@@ -136,7 +137,7 @@ class MainActivity : Activity() {
             setText(if (microphoneGranted) R.string.voice_permission_ready else R.string.voice_permission_enable)
             setTextColor(getColor(if (microphoneGranted) R.color.setup_muted_text else R.color.setup_title))
         }
-        findViewById<TextView>(R.id.voice_permission_chevron).visibility =
+        findViewById<ImageView>(R.id.voice_permission_chevron).visibility =
             if (microphoneGranted) View.GONE else View.VISIBLE
         findViewById<View>(R.id.voice_permission).contentDescription = getString(
             if (microphoneGranted) R.string.voice_permission_ready else R.string.voice_permission_enable,
@@ -187,7 +188,7 @@ class MainActivity : Activity() {
         row: View,
         mark: TextView,
         label: TextView,
-        chevron: TextView?,
+        chevron: ImageView?,
         done: Boolean,
         active: Boolean,
         doneText: String,
@@ -242,7 +243,7 @@ class MainActivity : Activity() {
         } else {
             mark.setBackgroundResource(R.drawable.bg_setup_mark)
         }
-        chevron?.setTextColor(
+        chevron?.imageTintList = ColorStateList.valueOf(
             if (active) contrastText(accent) else getColor(R.color.setup_body),
         )
         chevron?.visibility = if (done) View.GONE else View.VISIBLE
