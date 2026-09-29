@@ -140,6 +140,7 @@ jobs:
           OUTPUT="openIME-v${VERSION_NAME}-arm64-release.apk"
           cp "$APK" "$OUTPUT"
           sha256sum "$OUTPUT" > SHA256SUMS.txt
+          cp THIRD_PARTY_NOTICES.md THIRD_PARTY_NOTICES.release.md
           echo "apk=$OUTPUT" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION_NAME" >> "$GITHUB_OUTPUT"
 
@@ -172,6 +173,7 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             "${{ steps.artifact.outputs.apk }}" \
             SHA256SUMS.txt \
+            THIRD_PARTY_NOTICES.release.md \
             --verify-tag \
             --title "openIME $GITHUB_REF_NAME" \
             --notes-file RELEASE_NOTES.md

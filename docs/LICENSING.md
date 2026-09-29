@@ -30,3 +30,10 @@
 `csukuangfj/k2fsa-zipformer-chinese-english-mixed` 模型卡标记为 Apache-2.0。
 具体来源、文件位置和发布核对项统一记录在根目录 `THIRD_PARTY_NOTICES.md`。
 Git LFS 只负责文件存储，不改变文件的许可证。
+
+
+## APK 内许可证
+
+正式 APK 在 `assets/licenses/` 内携带主要第三方许可证文本，包括 librime、OpenCC、Snappy、Rime Ice、sherpa-onnx runtime、当前 Zipformer 模型和 Fluent Emoji。根目录 `THIRD_PARTY_NOTICES.md` 记录组件、来源、版本或固定提交与对应文件位置。
+
+发布工作流同时把 `THIRD_PARTY_NOTICES.md` 作为 GitHub Release 附件上传，便于在 APK 外直接查看。
