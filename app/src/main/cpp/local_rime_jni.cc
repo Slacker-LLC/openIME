@@ -259,6 +259,12 @@ bool select_schema_locked(const std::string& schema_id) {
          g_api->select_schema(g_session, schema_id.c_str());
 }
 
+bool safe_user_dict_name(const std::string& name) {
+  return !name.empty() && name.size() <= 128 && name != "." && name != ".." &&
+         name.find('/') == std::string::npos &&
+         name.find('\\') == std::string::npos;
+}
+
 std::string suspend_session_locked() {
   std::string schema;
   if (g_api && g_session && g_api->get_current_schema) {
@@ -451,7 +457,7 @@ Java_llc_slacker_openime_RimeNative_nativeImportUserDictionary(
 
   const std::string name = jstring_to_utf8(env, dict_name);
   const std::string source = jstring_to_utf8(env, source_file);
-  if (name.empty() || source.empty()) return -1;
+  if (!safe_user_dict_name(name) || source.empty()) return -1;
 
   const std::string schema = suspend_session_locked();
   int imported = -1;
