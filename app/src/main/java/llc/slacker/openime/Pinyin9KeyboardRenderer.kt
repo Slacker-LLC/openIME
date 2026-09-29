@@ -64,7 +64,7 @@ internal class Pinyin9KeyboardRenderer(
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 toPx(keyRowHeightDp()),
-            ).apply { topMargin = toPx(ImeGeometryTokens.KEY_ROW_GAP_DP) },
+            ),
         )
         container.addView(left, adaptiveColumnParams(1f))
 
@@ -111,13 +111,13 @@ internal class Pinyin9KeyboardRenderer(
         }
         side.addView(
             createBackspaceKey().apply { markSideKey(this) },
-            sideKeyParams(keyRowHeightDp(), includeBottomGap = true),
+            sideKeyParams(keyRowHeightDp()),
         )
         side.addView(
             createKey("重输", true, null, 13f, onRetranslate).apply {
                 markSideKey(this)
             },
-            sideKeyParams(keyRowHeightDp(), includeBottomGap = true),
+            sideKeyParams(keyRowHeightDp()),
         )
         side.addView(
             createKey(enterLabel, true, null, 13f, onEnter).apply {
@@ -176,9 +176,7 @@ internal class Pinyin9KeyboardRenderer(
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     toPx(keyRowHeightDp()),
-                ).apply {
-                    if (rowIndex < 2) bottomMargin = toPx(ImeGeometryTokens.KEY_ROW_GAP_DP)
-                },
+                ),
             )
         }
         return grid
@@ -189,30 +187,20 @@ internal class Pinyin9KeyboardRenderer(
             0,
             toPx(keyRowHeightDp()),
             weight,
-        ).apply {
-            marginStart = toPx(ImeGeometryTokens.KEY_SIDE_MARGIN_DP)
-            marginEnd = toPx(ImeGeometryTokens.KEY_SIDE_MARGIN_DP)
-        }
+        )
 
-    private fun sideKeyParams(
-        heightDp: Int,
-        includeBottomGap: Boolean = false,
-    ) = LinearLayout.LayoutParams(
-        LinearLayout.LayoutParams.MATCH_PARENT,
-        toPx(heightDp),
-    ).apply {
-        if (includeBottomGap) bottomMargin = toPx(ImeGeometryTokens.KEY_ROW_GAP_DP)
-    }
+    private fun sideKeyParams(heightDp: Int) =
+        LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            toPx(heightDp),
+        )
 
     private fun adaptiveColumnParams(weight: Float) =
         LinearLayout.LayoutParams(
             0,
             toPx(nineBodyHeightDp()),
             weight,
-        ).apply {
-            marginStart = toPx(ImeGeometryTokens.KEY_SIDE_MARGIN_DP)
-            marginEnd = toPx(ImeGeometryTokens.KEY_SIDE_MARGIN_DP)
-        }
+        )
 
     private companion object {
         val NINE_KEYS = listOf(

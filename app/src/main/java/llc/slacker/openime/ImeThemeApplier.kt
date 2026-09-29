@@ -2,6 +2,7 @@ package llc.slacker.openime
 
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.drawable.InsetDrawable
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -90,7 +91,9 @@ internal class ImeThemeApplier(
         }
 
         view.applyMainTextScale(keyMainTextScale())
-        view.background = statefulRounded(color, pressedColor, skinRadiusPx())
+        val keyFace = statefulRounded(color, pressedColor, skinRadiusPx())
+        val halfGap = toPx(ImeGeometryTokens.KEY_GAP_DP) / 2
+        view.background = InsetDrawable(keyFace, halfGap, halfGap, halfGap, halfGap)
         view.background?.alpha =
             skinOpacity().coerceIn(70, 100) * 255 / 100
         // Keep shadows restrained: ordinary typing surfaces need a slight

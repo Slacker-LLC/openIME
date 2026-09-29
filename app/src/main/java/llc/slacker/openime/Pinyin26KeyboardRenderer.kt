@@ -99,7 +99,7 @@ internal class Pinyin26KeyboardRenderer(
             },
             flexKeyParams(weights.rightOuter),
         )
-        keyboardBody.addView(bottom, rowParams(includeBottomGap = false))
+        keyboardBody.addView(bottom, rowParams())
     }
 
     private fun segmentKey(): ImeKeyView =
@@ -161,23 +161,18 @@ internal class Pinyin26KeyboardRenderer(
         layoutParams = rowParams()
     }
 
-    private fun rowParams(includeBottomGap: Boolean = true) =
+    private fun rowParams() =
         LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             toPx(keyRowHeightDp()),
-        ).apply {
-            if (includeBottomGap) bottomMargin = toPx(ImeGeometryTokens.KEY_ROW_GAP_DP)
-        }
+        )
 
     private fun flexKeyParams(weight: Float = 1f) =
         LinearLayout.LayoutParams(
             0,
             toPx(keyRowHeightDp()),
             weight,
-        ).apply {
-            marginStart = toPx(ImeGeometryTokens.KEY_SIDE_MARGIN_DP)
-            marginEnd = toPx(ImeGeometryTokens.KEY_SIDE_MARGIN_DP)
-        }
+        )
 
     private companion object {
         val ROWS = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")

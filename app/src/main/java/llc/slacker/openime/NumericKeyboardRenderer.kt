@@ -77,7 +77,7 @@ internal class NumericKeyboardRenderer(
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 toPx(keyRowHeightDp()),
-            ).apply { topMargin = toPx(ImeGeometryTokens.KEY_ROW_GAP_DP) },
+            ),
         )
         container.addView(left, adaptiveColumnParams(1f))
 
@@ -101,11 +101,7 @@ internal class NumericKeyboardRenderer(
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     toPx(keyRowHeightDp()),
-                ).apply {
-                    if (rowIndex < DIGIT_ROWS.lastIndex) {
-                        bottomMargin = toPx(ImeGeometryTokens.KEY_ROW_GAP_DP)
-                    }
-                },
+                ),
             )
         }
 
@@ -165,14 +161,14 @@ internal class NumericKeyboardRenderer(
         }
         side.addView(
             createBackspaceKey().apply { markSideKey(this) },
-            sideKeyParams(includeBottomGap = true),
+            sideKeyParams(),
         )
         side.addView(
             createKey("0", false, 22f) { onCommitCharacter("0") }.apply {
                 tag = "key:0"
                 markSideKey(this)
             },
-            sideKeyParams(includeBottomGap = true),
+            sideKeyParams(),
         )
         side.addView(
             createKey(literal("key:@", "@"), true, 15f) {
@@ -181,7 +177,7 @@ internal class NumericKeyboardRenderer(
                 tag = "key:@"
                 markSideKey(this)
             },
-            sideKeyParams(includeBottomGap = true),
+            sideKeyParams(),
         )
         side.addView(
             createKey(enterLabel, true, 13f, onEnter).apply {
@@ -227,28 +223,20 @@ internal class NumericKeyboardRenderer(
             0,
             toPx(keyRowHeightDp()),
             weight,
-        ).apply {
-            marginStart = toPx(ImeGeometryTokens.KEY_SIDE_MARGIN_DP)
-            marginEnd = toPx(ImeGeometryTokens.KEY_SIDE_MARGIN_DP)
-        }
+        )
 
-    private fun sideKeyParams(includeBottomGap: Boolean = false) =
+    private fun sideKeyParams() =
         LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             toPx(keyRowHeightDp()),
-        ).apply {
-            if (includeBottomGap) bottomMargin = toPx(ImeGeometryTokens.KEY_ROW_GAP_DP)
-        }
+        )
 
     private fun adaptiveColumnParams(weight: Float) =
         LinearLayout.LayoutParams(
             0,
             toPx(nineBodyHeightDp()),
             weight,
-        ).apply {
-            marginStart = toPx(ImeGeometryTokens.KEY_SIDE_MARGIN_DP)
-            marginEnd = toPx(ImeGeometryTokens.KEY_SIDE_MARGIN_DP)
-        }
+        )
 
     private companion object {
         const val DIGITS_RAIL_TAG = "digits-symbol-scroll"
