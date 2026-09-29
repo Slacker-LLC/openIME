@@ -2,21 +2,17 @@ package llc.slacker.openime
 
 import android.app.Activity
 import android.content.ClipData
-import android.content.res.ColorStateList
 import android.os.Build
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextUtils
 import android.text.TextWatcher
-import android.util.TypedValue
 import android.view.DragEvent
 import android.view.Gravity
-import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.WindowInsets
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
-import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -91,35 +87,18 @@ class SymbolManagerActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(24), dp(20), dp(24))
         }
-        val title = TextView(this).apply {
-            text = "自定义符号"
-            textSize = ImeTypographyTokens.TITLE_SP
-            setTextColor(getColor(R.color.setup_title))
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            gravity = Gravity.CENTER_VERTICAL
-            includeFontPadding = false
-            if (Build.VERSION.SDK_INT >= 28) setAccessibilityHeading(true)
+        val header = SetupUi.activityTopBar(
+            context = this,
+            title = "自定义符号",
+        ) {
+            requestClose()
         }
-        val header = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            addView(ImageButton(this@SymbolManagerActivity).apply {
-                setImageResource(R.drawable.ic_arrow_back)
-                imageTintList = ColorStateList.valueOf(accent)
-                contentDescription = "返回"
-                setMinimumWidth(dp(ImeGeometryTokens.TOUCH_TARGET_DP))
-                setMinimumHeight(dp(ImeGeometryTokens.TOUCH_TARGET_DP))
-                isClickable = true
-                isFocusable = true
-                applySelectableBackground(this)
-                setOnClickListener {
-                    it.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                    requestClose()
-                }
-            }, LinearLayout.LayoutParams(dp(ImeGeometryTokens.TOUCH_TARGET_DP), dp(56)))
-            addView(title, LinearLayout.LayoutParams(0, dp(56), 1f))
-        }
-        content.addView(header, fullHeight(56).apply { bottomMargin = dp(8) })
+        content.addView(
+            header,
+            fullHeight(ImeGeometryTokens.TOP_BAR_HEIGHT_DP).apply {
+                bottomMargin = dp(ImeSpacingTokens.SM_DP)
+            },
+        )
         content.addView(TextView(this).apply {
             text = "可添加、分类、固定和删除。点击箭头调整顺序，也可长按符号行拖动排序。"
             textSize = ImeTypographyTokens.BODY_SP
@@ -420,19 +399,6 @@ class SymbolManagerActivity : Activity() {
         editingId != initialEditingId ||
             groupEdit.text.toString() != initialGroup ||
             symbolEdit.text.toString() != initialSymbol
-
-    private fun applySelectableBackground(view: View) {
-        val value = TypedValue()
-        if (
-            theme.resolveAttribute(
-                android.R.attr.selectableItemBackgroundBorderless,
-                value,
-                true,
-            ) && value.resourceId != 0
-        ) {
-            view.setBackgroundResource(value.resourceId)
-        }
-    }
 
     private fun fullWrap() = LinearLayout.LayoutParams(
         LinearLayout.LayoutParams.MATCH_PARENT,

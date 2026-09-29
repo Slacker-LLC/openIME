@@ -44,6 +44,10 @@ internal object ImeGeometryTokens {
     // The toolbar itself is compact; the top zone still reserves the larger
     // composed height so typing never moves the keyboard window.
     const val TOOLBAR_HEIGHT_DP = TOUCH_TARGET_DP
+    const val TOP_BAR_HEIGHT_DP = 56
+    const val ICON_SIZE_DP = 24
+    const val STEP_MARK_SIZE_DP = 28
+    const val HERO_MARK_SIZE_DP = 72
     const val COMPOSED_TOP_ZONE_HEIGHT_DP = 70
 }
 

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">openIME</string>
+    <string name="subtitle_zh">Chinese</string>
+    <string name="subtitle_en">English</string>
+    <string name="activity_label_settings">Preferences</string>
+    <string name="activity_label_quick_phrases">Quick phrases</string>
+    <string name="activity_label_symbols">Custom symbols</string>
+</resources>

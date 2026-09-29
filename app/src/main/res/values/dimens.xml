@@ -6,4 +6,18 @@
     <dimen name="ime_text_candidate">18sp</dimen>
     <dimen name="ime_text_key_letter">21sp</dimen>
     <dimen name="ime_text_display">28sp</dimen>
+
+    <dimen name="ime_space_xxs">2dp</dimen>
+    <dimen name="ime_space_xs">4dp</dimen>
+    <dimen name="ime_space_sm">8dp</dimen>
+    <dimen name="ime_space_md">12dp</dimen>
+    <dimen name="ime_space_lg">16dp</dimen>
+    <dimen name="ime_space_xl">24dp</dimen>
+    <dimen name="ime_space_xxl">32dp</dimen>
+    <dimen name="setup_touch_target">48dp</dimen>
+    <dimen name="setup_top_bar_height">56dp</dimen>
+    <dimen name="setup_icon_size">24dp</dimen>
+    <dimen name="setup_step_mark_size">28dp</dimen>
+    <dimen name="setup_card_radius">16dp</dimen>
+    <dimen name="setup_hero_mark_size">72dp</dimen>
 </resources>

@@ -91,7 +91,7 @@ internal class SettingsPanelController(
                 createHeader("偏好设置"),
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
-                    toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
+                    toPx(ImeGeometryTokens.TOP_BAR_HEIGHT_DP),
                 ),
             )
         } else {

@@ -7,6 +7,11 @@ import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.StateListDrawable
 import android.os.Build
+import android.util.TypedValue
+import android.view.Gravity
+import android.view.HapticFeedbackConstants
+import android.widget.ImageButton
+import android.widget.LinearLayout
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
@@ -240,6 +245,73 @@ object SetupUi {
             input.textCursorDrawable = ColorDrawable(accent)
         }
     }
+
+    fun activityTopBar(
+        context: Context,
+        title: String,
+        backContentDescription: String = "返回",
+        onBack: () -> Unit,
+    ): LinearLayout =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(context, ImeGeometryTokens.TOP_BAR_HEIGHT_DP)
+
+            addView(
+                ImageButton(context).apply {
+                    setImageResource(R.drawable.ic_arrow_back)
+                    imageTintList = ColorStateList.valueOf(accent(context))
+                    scaleType = android.widget.ImageView.ScaleType.CENTER
+                    setPadding(
+                        dp(context, ImeSpacingTokens.MD_DP),
+                        dp(context, ImeSpacingTokens.LG_DP),
+                        dp(context, ImeSpacingTokens.MD_DP),
+                        dp(context, ImeSpacingTokens.LG_DP),
+                    )
+                    contentDescription = backContentDescription
+                    minimumWidth = dp(context, ImeGeometryTokens.TOUCH_TARGET_DP)
+                    minimumHeight = dp(context, ImeGeometryTokens.TOUCH_TARGET_DP)
+                    isClickable = true
+                    isFocusable = true
+                    val selectable = TypedValue()
+                    if (
+                        context.theme.resolveAttribute(
+                            android.R.attr.selectableItemBackgroundBorderless,
+                            selectable,
+                            true,
+                        ) && selectable.resourceId != 0
+                    ) {
+                        setBackgroundResource(selectable.resourceId)
+                    } else {
+                        background = null
+                    }
+                    setOnClickListener {
+                        performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                        onBack()
+                    }
+                },
+                LinearLayout.LayoutParams(
+                    dp(context, ImeGeometryTokens.TOUCH_TARGET_DP),
+                    dp(context, ImeGeometryTokens.TOP_BAR_HEIGHT_DP),
+                ),
+            )
+            addView(
+                TextView(context).apply {
+                    text = title
+                    textSize = ImeTypographyTokens.TITLE_SP
+                    setTextColor(context.getColor(R.color.setup_title))
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    gravity = Gravity.CENTER_VERTICAL
+                    includeFontPadding = false
+                    if (Build.VERSION.SDK_INT >= 28) setAccessibilityHeading(true)
+                },
+                LinearLayout.LayoutParams(
+                    0,
+                    dp(context, ImeGeometryTokens.TOP_BAR_HEIGHT_DP),
+                    1f,
+                ),
+            )
+        }
 
     fun styleDialog(dialog: AlertDialog, context: Context, destructivePositive: Boolean = false) {
         val accent = accent(context)

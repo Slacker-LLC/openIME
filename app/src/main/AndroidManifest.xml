@@ -28,19 +28,19 @@
         <activity
             android:name=".ImeSettingsActivity"
             android:exported="false"
-            android:label="偏好设置"
+            android:label="@string/activity_label_settings"
             android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".QuickPhraseEditActivity"
             android:exported="false"
-            android:label="常用语"
+            android:label="@string/activity_label_quick_phrases"
             android:windowSoftInputMode="stateAlwaysVisible|adjustResize" />
 
         <activity
             android:name=".SymbolManagerActivity"
             android:exported="false"
-            android:label="自定义符号"
+            android:label="@string/activity_label_symbols"
             android:windowSoftInputMode="adjustResize" />
 
         <service

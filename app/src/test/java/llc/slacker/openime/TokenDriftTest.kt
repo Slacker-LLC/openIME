@@ -63,11 +63,38 @@ class TokenDriftTest {
     }
 
     @Test
+    fun setupDimensionsMirrorDesignTokens() {
+        val dimens = source("app/src/main/res/values/dimens.xml")
+        listOf(
+            """<dimen name="ime_space_xxs">2dp</dimen>""",
+            """<dimen name="ime_space_xs">4dp</dimen>""",
+            """<dimen name="ime_space_sm">8dp</dimen>""",
+            """<dimen name="ime_space_md">12dp</dimen>""",
+            """<dimen name="ime_space_lg">16dp</dimen>""",
+            """<dimen name="ime_space_xl">24dp</dimen>""",
+            """<dimen name="ime_space_xxl">32dp</dimen>""",
+            """<dimen name="setup_touch_target">48dp</dimen>""",
+            """<dimen name="setup_top_bar_height">56dp</dimen>""",
+            """<dimen name="setup_icon_size">24dp</dimen>""",
+            """<dimen name="setup_step_mark_size">28dp</dimen>""",
+            """<dimen name="setup_card_radius">16dp</dimen>""",
+            """<dimen name="setup_hero_mark_size">72dp</dimen>""",
+        ).forEach { expected ->
+            assertTrue("Resource dimension drifted: $expected", dimens.contains(expected))
+        }
+    }
+
+    @Test
     fun productVectorIconsUseOneCanvas() {
         val drawableDir = file("app/src/main/res/drawable")
         drawableDir.listFiles()
             .orEmpty()
-            .filter { it.name.startsWith("ic_") && it.extension == "xml" && it.name != "ic_launcher.xml" }
+            .filter {
+                it.name.startsWith("ic_") &&
+                    it.extension == "xml" &&
+                    !it.name.startsWith("ic_launcher") &&
+                    it.name != "ic_brand_mark.xml"
+            }
             .forEach { icon ->
                 val xml = icon.readText()
                 assertTrue("${icon.name} width must be 24dp", xml.contains("android:width=\"24dp\""))

@@ -471,6 +471,7 @@ open class ImeKeyboardView(
             previousPanel = { panelBackStack.lastOrNull() },
             onBack = ::closePanelToKeyboard,
             onFeedback = ::feedback,
+            standalone = standalonePanel,
         )
     }
     private val panelRenderer: ImePanelRenderer by lazy {

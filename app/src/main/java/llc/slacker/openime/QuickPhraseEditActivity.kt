@@ -1,19 +1,15 @@
 package llc.slacker.openime
 
 import android.app.Activity
-import android.content.res.ColorStateList
 import android.os.Build
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
-import android.util.TypedValue
 import android.view.Gravity
-import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.WindowInsets
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
-import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -102,34 +98,11 @@ class QuickPhraseEditActivity : Activity() {
     }
 
     private fun render(category: String, code: String, phrase: String) {
-        val accent = SetupUi.accent(this)
-        val title = TextView(this).apply {
-            text = if (phraseId > 0L) "编辑常用语" else "新增常用语"
-            textSize = ImeTypographyTokens.TITLE_SP
-            setTextColor(getColor(R.color.setup_title))
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            gravity = Gravity.CENTER_VERTICAL
-            includeFontPadding = false
-            if (Build.VERSION.SDK_INT >= 28) setAccessibilityHeading(true)
-        }
-        val header = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            addView(ImageButton(this@QuickPhraseEditActivity).apply {
-                setImageResource(R.drawable.ic_arrow_back)
-                imageTintList = ColorStateList.valueOf(accent)
-                contentDescription = "返回"
-                setMinimumWidth(dp(ImeGeometryTokens.TOUCH_TARGET_DP))
-                setMinimumHeight(dp(ImeGeometryTokens.TOUCH_TARGET_DP))
-                isClickable = true
-                isFocusable = true
-                applySelectableBackground(this)
-                setOnClickListener {
-                    it.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                    requestClose()
-                }
-            }, LinearLayout.LayoutParams(dp(ImeGeometryTokens.TOUCH_TARGET_DP), dp(56)))
-            addView(title, LinearLayout.LayoutParams(0, dp(56), 1f))
+        val header = SetupUi.activityTopBar(
+            context = this,
+            title = if (phraseId > 0L) "编辑常用语" else "新增常用语",
+        ) {
+            requestClose()
         }
 
         categoryEdit = EditText(this).apply {
@@ -290,8 +263,8 @@ class QuickPhraseEditActivity : Activity() {
             setPadding(dp(20), dp(24), dp(20), dp(24))
             addView(header, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(56),
-            ).apply { bottomMargin = dp(12) })
+                dp(ImeGeometryTokens.TOP_BAR_HEIGHT_DP),
+            ).apply { bottomMargin = dp(ImeSpacingTokens.MD_DP) })
             addView(form, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -357,16 +330,5 @@ class QuickPhraseEditActivity : Activity() {
         dialog.show()
     }
 
-    private fun applySelectableBackground(view: View) {
-        val value = TypedValue()
-        if (
-            theme.resolveAttribute(
-                android.R.attr.selectableItemBackgroundBorderless,
-                value,
-                true,
-            ) && value.resourceId != 0
-        ) {
-            view.setBackgroundResource(value.resourceId)
-        }
-    }
+
 }

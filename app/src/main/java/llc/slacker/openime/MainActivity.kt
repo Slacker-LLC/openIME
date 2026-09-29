@@ -7,6 +7,8 @@ import android.content.res.ColorStateList
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Build
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.WindowInsets
@@ -58,15 +60,60 @@ class MainActivity : Activity() {
             startActivity(Intent(this, ImeSettingsActivity::class.java))
         }
         setupClick(findViewById(R.id.voice_permission)) {
-            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) return@setupClick
-            val requested = getPreferences(MODE_PRIVATE).getBoolean("microphone_requested", false)
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                return@setupClick
+            }
+            val prefs = getPreferences(MODE_PRIVATE)
+            prefs.edit().putBoolean("microphone_skipped", false).apply()
+            val requested = prefs.getBoolean("microphone_requested", false)
             if (requested && !shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)) {
-                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+                startActivity(
+                    Intent(
+                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.parse("package:$packageName"),
+                    ),
+                )
             } else {
-                getPreferences(MODE_PRIVATE).edit().putBoolean("microphone_requested", true).apply()
+                prefs.edit().putBoolean("microphone_requested", true).apply()
                 requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1)
             }
         }
+        setupClick(findViewById(R.id.voice_permission_skip)) {
+            getPreferences(MODE_PRIVATE)
+                .edit()
+                .putBoolean("microphone_skipped", true)
+                .apply()
+            refreshSetupState()
+        }
+        setupClick(findViewById(R.id.test_step)) {
+            val input = findViewById<EditText>(R.id.test_input)
+            input.requestFocus()
+            getSystemService(InputMethodManager::class.java).showSoftInput(
+                input,
+                InputMethodManager.SHOW_IMPLICIT,
+            )
+        }
+        findViewById<EditText>(R.id.test_input).addTextChangedListener(
+            object : TextWatcher {
+                override fun beforeTextChanged(
+                    s: CharSequence?,
+                    start: Int,
+                    count: Int,
+                    after: Int,
+                ) = Unit
+
+                override fun onTextChanged(
+                    s: CharSequence?,
+                    start: Int,
+                    before: Int,
+                    count: Int,
+                ) {
+                    refreshSetupState()
+                }
+
+                override fun afterTextChanged(s: Editable?) = Unit
+            },
+        )
     }
 
     override fun onResume() {
@@ -84,15 +131,30 @@ class MainActivity : Activity() {
         val enabled = status.enabled
         val selected = status.selected
         val accent = AccentPalette.parse(ImeSettingsRepository.loadSkinColor(this))
-        findViewById<EditText>(R.id.test_input).let { view ->
-            view.background = SetupUi.focusRingBackground(this)
-            SetupUi.styleCursor(this, view)
-        }
-        findViewById<TextView>(R.id.status).setText(when {
-            selected -> R.string.setup_ready
-            enabled -> R.string.setup_choose
-            else -> R.string.setup_enable
-        })
+        val prefs = getPreferences(MODE_PRIVATE)
+        val microphoneGranted =
+            checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        val microphoneRequested = prefs.getBoolean("microphone_requested", false)
+        val microphoneSkipped = prefs.getBoolean("microphone_skipped", false)
+        val microphoneDeniedPermanently =
+            microphoneRequested &&
+                !microphoneGranted &&
+                !shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)
+        val testInput = findViewById<EditText>(R.id.test_input)
+        val testDone = testInput.text?.isNotBlank() == true
+
+        testInput.background = SetupUi.focusRingBackground(this)
+        SetupUi.styleCursor(this, testInput)
+
+        findViewById<TextView>(R.id.status).setText(
+            when {
+                !enabled -> R.string.setup_enable
+                !selected -> R.string.setup_choose
+                testDone -> R.string.setup_ready
+                else -> R.string.test_step
+            },
+        )
+
         styleStep(
             row = findViewById(R.id.open_ime_settings),
             mark = findViewById(R.id.open_ime_settings_mark),
@@ -105,6 +167,7 @@ class MainActivity : Activity() {
             markText = "1",
             accent = accent,
         )
+
         styleStep(
             row = findViewById(R.id.choose_ime),
             mark = findViewById(R.id.choose_ime_mark),
@@ -119,35 +182,80 @@ class MainActivity : Activity() {
         )
         findViewById<View>(R.id.choose_ime).apply {
             isEnabled = enabled
-            alpha = when {
-                selected -> 0.72f
-                enabled -> 1f
-                else -> 0.55f
-            }
+            alpha = if (enabled) 1f else ImeSurfacePolicy.DISABLED_ALPHA
         }
-        val microphoneGranted = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+        val voiceDone = microphoneGranted || microphoneSkipped
+        val voiceActive = selected && !voiceDone
+        val voiceActiveText =
+            if (microphoneDeniedPermanently) {
+                getString(R.string.voice_permission_settings)
+            } else {
+                getString(R.string.voice_permission_enable)
+            }
+        val voiceDoneText =
+            if (microphoneGranted) {
+                getString(R.string.voice_permission_ready)
+            } else {
+                getString(R.string.voice_permission_skipped)
+            }
+        styleStep(
+            row = findViewById(R.id.voice_permission),
+            mark = findViewById(R.id.voice_permission_mark),
+            label = findViewById(R.id.voice_permission_label),
+            chevron = findViewById(R.id.voice_permission_chevron),
+            done = voiceDone,
+            active = voiceActive,
+            doneText = voiceDoneText,
+            activeText = voiceActiveText,
+            markText = "3",
+            accent = accent,
+        )
         findViewById<View>(R.id.voice_permission).apply {
-            isEnabled = !microphoneGranted
-            alpha = if (microphoneGranted) 0.72f else 1f
+            isEnabled = selected && !microphoneGranted
+            alpha = if (selected) 1f else ImeSurfacePolicy.DISABLED_ALPHA
+        }
+        findViewById<TextView>(R.id.voice_permission_description).setText(
+            when {
+                microphoneGranted -> R.string.voice_permission_ready_description
+                microphoneDeniedPermanently -> R.string.voice_permission_denied
+                else -> R.string.voice_permission_description
+            },
+        )
+        findViewById<TextView>(R.id.voice_permission_skip).apply {
+            visibility =
+                if (selected && !microphoneGranted && !microphoneSkipped) {
+                    View.VISIBLE
+                } else {
+                    View.GONE
+                }
+            isEnabled = visibility == View.VISIBLE
             background = SetupUi.secondaryBackground(this@MainActivity)
         }
-        findViewById<TextView>(R.id.voice_permission_label).apply {
-            setText(if (microphoneGranted) R.string.voice_permission_ready else R.string.voice_permission_enable)
-            setTextColor(getColor(if (microphoneGranted) R.color.setup_muted_text else R.color.setup_title))
-        }
-        findViewById<ImageView>(R.id.voice_permission_chevron).visibility =
-            if (microphoneGranted) View.GONE else View.VISIBLE
-        findViewById<View>(R.id.voice_permission).contentDescription = getString(
-            if (microphoneGranted) R.string.voice_permission_ready else R.string.voice_permission_enable,
+
+        styleStep(
+            row = findViewById(R.id.test_step),
+            mark = findViewById(R.id.test_step_mark),
+            label = findViewById(R.id.test_step_label),
+            chevron = null,
+            done = testDone,
+            active = selected && !testDone,
+            doneText = getString(R.string.test_step_done),
+            activeText = getString(R.string.test_step),
+            markText = "4",
+            accent = accent,
         )
-        if (Build.VERSION.SDK_INT >= 30) {
-            findViewById<View>(R.id.voice_permission).stateDescription =
-                if (microphoneGranted) "已授权" else "未授权，可选"
+        findViewById<View>(R.id.test_step).apply {
+            isEnabled = selected
+            alpha = if (selected) 1f else ImeSurfacePolicy.DISABLED_ALPHA
         }
+        testInput.isEnabled = selected
+        testInput.alpha = if (selected) 1f else ImeSurfacePolicy.DISABLED_ALPHA
+
         val ready = enabled && selected
         findViewById<View>(R.id.open_app_settings).apply {
             isEnabled = ready
-            alpha = if (ready) 1f else 0.45f
+            alpha = if (ready) 1f else ImeSurfacePolicy.DISABLED_ALPHA
             background = SetupUi.secondaryBackground(this@MainActivity)
             contentDescription = getString(
                 if (ready) R.string.open_app_settings else R.string.setup_need_switch,
@@ -157,7 +265,6 @@ class MainActivity : Activity() {
             }
         }
     }
-
 
     private fun isImeReady(): Boolean {
         val status = imeStatus()
@@ -219,7 +326,7 @@ class MainActivity : Activity() {
             0,
         )
         mark.compoundDrawableTintList = ColorStateList.valueOf(
-            if (active) accent else if (done) getColor(R.color.setup_ready) else accent,
+            if (done) contrastText(getColor(R.color.setup_ready)) else accent,
         )
         mark.setBackgroundResource(
             when {
@@ -229,18 +336,12 @@ class MainActivity : Activity() {
             },
         )
         mark.setTextColor(
-            if (active) accent else if (done) getColor(R.color.setup_ready) else accent,
+            when {
+                active -> accent
+                done -> contrastText(getColor(R.color.setup_ready))
+                else -> accent
+            },
         )
-        if (active) {
-            mark.background = ImeDrawableFactory.rounded(
-                contrastText(accent),
-                SetupUi.dp(this, ImeGeometryTokens.BADGE_RADIUS_DP).toFloat(),
-            )
-        } else if (done) {
-            mark.setBackgroundResource(R.drawable.bg_setup_mark_done)
-        } else {
-            mark.setBackgroundResource(R.drawable.bg_setup_mark)
-        }
         chevron?.imageTintList = ColorStateList.valueOf(
             if (active) contrastText(accent) else getColor(R.color.setup_body),
         )
