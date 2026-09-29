@@ -153,7 +153,7 @@ class ImeKeyView(
         secondaryTextView = secondary?.takeIf { it.isNotEmpty() }?.let { sub ->
             TextView(context).apply {
                 this.text = sub
-                textSize = 9f
+                textSize = ImeTypographyTokens.CAPTION_SP
                 gravity = Gravity.CENTER
                 isAllCaps = false
                 includeFontPadding = false
