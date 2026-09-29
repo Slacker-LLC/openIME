@@ -38,6 +38,18 @@ object SetupUi {
 
     fun contrastText(background: Int): Int = ImeDrawableFactory.contrastText(background)
 
+    fun rounded(
+        color: Int,
+        radiusPx: Float,
+        strokeColor: Int? = null,
+        strokeWidthPx: Int = 1,
+    ) = ImeDrawableFactory.rounded(
+        color = color,
+        radiusPx = radiusPx,
+        strokeColor = strokeColor,
+        strokeWidthPx = strokeWidthPx,
+    )
+
     fun dim(color: Int, factor: Float): Int =
         ImeDrawableFactory.dim(color, factor, preserveAlpha = false)
 

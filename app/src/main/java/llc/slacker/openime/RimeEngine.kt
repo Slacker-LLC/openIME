@@ -353,55 +353,53 @@ class RimeEngine(
         }
     }
 
-    fun exportUserDictionaries(
+    internal fun exportUserDictionaries(
         targetDir: File,
         onComplete: (List<RimeUserDictionaryArchive>?) -> Unit,
     ): Boolean {
         if (!isReady) return false
         return mutationQueue.submit {
-            val exported = synchronized(lock) {
-                if (!isReady) {
+            val exported: List<RimeUserDictionaryArchive>? = synchronized(lock) {
+                if (!isReady) return@synchronized null
+                try {
+                    if (!syncSchemaFromSettingsLocked()) return@synchronized null
+                    if (!targetDir.exists() && !targetDir.mkdirs()) {
+                        return@synchronized null
+                    }
+                    val mappings =
+                        RimeNative.nativeExportUserDictionaries(targetDir.absolutePath)
+                            ?: return@synchronized null
+                    val result = mutableListOf<RimeUserDictionaryArchive>()
+                    for (mapping in mappings) {
+                        val separator = mapping.indexOf('\t')
+                        if (separator <= 0 || separator >= mapping.lastIndex) {
+                            return@synchronized null
+                        }
+                        val name = mapping.substring(0, separator).trim()
+                        val path = mapping.substring(separator + 1)
+                        val file = File(path)
+                        if (
+                            !UserDataArchiveCodec.isSafeRimeDictionaryName(name) ||
+                            !file.isFile
+                        ) {
+                            return@synchronized null
+                        }
+                        result += RimeUserDictionaryArchive(
+                            name = name,
+                            content = file.readText(),
+                        )
+                    }
+                    result
+                } catch (error: Exception) {
+                    Log.w(TAG, "Rime user dictionary export failed", error)
                     null
-                } else {
-                    runCatching {
-                        if (!syncSchemaFromSettingsLocked()) return@runCatching null
-                        if (!targetDir.exists() && !targetDir.mkdirs()) {
-                            return@runCatching null
-                        }
-                        val mappings =
-                            RimeNative.nativeExportUserDictionaries(targetDir.absolutePath)
-                                ?: return@runCatching null
-                        buildList {
-                            mappings.forEach { mapping ->
-                                val separator = mapping.indexOf('\t')
-                                if (separator <= 0 || separator >= mapping.lastIndex) {
-                                    return@runCatching null
-                                }
-                                val name = mapping.substring(0, separator).trim()
-                                val path = mapping.substring(separator + 1)
-                                val file = File(path)
-                                if (
-                                    !UserDataArchiveCodec.isSafeRimeDictionaryName(name) ||
-                                    !file.isFile
-                                ) {
-                                    return@runCatching null
-                                }
-                                add(
-                                    RimeUserDictionaryArchive(
-                                        name = name,
-                                        content = file.readText(),
-                                    ),
-                                )
-                            }
-                        }
-                    }.getOrNull()
                 }
             }
             onComplete(exported)
         }
     }
 
-    fun importUserDictionaries(
+    internal fun importUserDictionaries(
         sourceDir: File,
         dictionaries: List<RimeUserDictionaryArchive>,
         onComplete: (Int?) -> Unit,
