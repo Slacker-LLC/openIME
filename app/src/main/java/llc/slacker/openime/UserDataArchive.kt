@@ -153,9 +153,17 @@ internal object UserDataArchiveCodec {
                         name = item.optString("name", "").trim(),
                         content = item.optString("content", ""),
                     )
-                }.filter { it.name.isNotEmpty() && it.content.isNotEmpty() },
+                }.filter {
+                    isSafeRimeDictionaryName(it.name) && it.content.isNotEmpty()
+                },
         )
     }
+
+    internal fun isSafeRimeDictionaryName(name: String): Boolean =
+        name.length in 1..128 &&
+            name != "." &&
+            name != ".." &&
+            name.none { char -> char == '/' || char == '\\' || char == '\u0000' }
 
     private fun settingsToJson(value: ArchiveSettings): JSONObject =
         JSONObject()
