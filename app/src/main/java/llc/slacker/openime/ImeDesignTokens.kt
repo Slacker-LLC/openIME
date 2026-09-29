@@ -91,11 +91,7 @@ internal object ImeTypographyTokens {
  * compatibility, but the product intentionally exposes only this skin.
  */
 enum class ImeTheme(val key: String, val label: String) {
-    IOS("theme-ios", "iOS 极简玻璃"),
-    DARK("theme-dark", "午夜深色"),
-    CYBERPUNK("theme-cyberpunk", "赛博霓虹"),
-    CLASSIC("theme-classic", "经典桌面"),
-    MACOS("theme-macos", "macOS Tahoe 极简"),
+    IOS("theme-ios", "iOS 极简"),
     ;
 
     data class Tokens(
@@ -146,56 +142,21 @@ enum class ImeTheme(val key: String, val label: String) {
             ImeAppearance.LIGHT -> false
             ImeAppearance.DARK -> true
         }
-        val base = when (this) {
-            // minis_ime_dual_theme_renderer.html 的 Dark Obsidian / Light Crystal
-            // 调色板。390 × 296 只是设计基准，尺寸仍由原生 View 的实际窗口计算。
-            IOS -> if (useDark) {
-                // Dark mode is a separate neutral scale rather than an
-                // inverted light palette. The keyboard base stays darkest,
-                // controls sit one surface above it, and typing keys occupy
-                // the clearest foreground plane.
-                Tokens(
-                    c("#6EC3F7"), c("#1C1C1E"), c("#242426"), c("#262628"), c("#F2F2F7"),
-                    c("#3A3A3C"), c("#F2F2F7"), c("#AEAEB2"), c("#2C2C2E"), c("#F2F2F7"), c("#4A4A4D"),
-                    c("#242426"), c("#48484A"), c("#2C2C2E"), c("#202022"), c("#242426"),
-                    c("#3A3A3C"), c("#F2F2F7"), c("#2C2C2E"), c("#F2F2F7"), c("#303033"), c("#242426"),
-                    success = c("#5BD08A"),
-                )
-            } else {
-                // Light mode deliberately separates the cool-gray keyboard
-                // base, secondary controls and near-white typing surfaces.
-                // Text remains neutral instead of using absolute black.
-                Tokens(
-                    c("#1D9BF0"), c("#D5D8DE"), c("#EEF0F3"), c("#F7F8FA"), c("#1F2023"),
-                    c("#FFFFFF"), c("#1C1C1E"), c("#6E6E73"), c("#C5C9D1"), c("#2C2D31"), c("#DDE1E7"),
-                    c("#F2F3F5"), c("#B7BCC5"), c("#C5C9D1"), c("#F1F2F4"), c("#F8F9FA"),
-                    c("#FFFFFF"), c("#1C1C1E"), c("#C5C9D1"), c("#2C2D31"), c("#FFFFFF"), c("#E4E7EB"),
-                    success = c("#1F8A4C"),
-                )
-            }
-            DARK -> Tokens(
-                c("#3b82f6"), c("#1e293b"), c("#0f172a"), c("#0f172a"), c("#f1f5f9"),
-                c("#334155"), c("#f8fafc"), c("#94a3b8"), c("#1e293b"), c("#94a3b8"), c("#475569"),
-                c("#1e3a8a"), Color.argb(20, 255, 255, 255), c("#475569"), c("#0f172a"), c("#0f172a"),
-                c("#e2e8f0"), c("#0f172a"), c("#475569"), c("#f1f5f9"), c("#1e293b"), c("#0f172a"),
+        val base = if (useDark) {
+            Tokens(
+                c("#6EC3F7"), c("#1C1C1E"), c("#242426"), c("#262628"), c("#F2F2F7"),
+                c("#3A3A3C"), c("#F2F2F7"), c("#AEAEB2"), c("#2C2C2E"), c("#F2F2F7"), c("#4A4A4D"),
+                c("#242426"), c("#48484A"), c("#2C2C2E"), c("#202022"), c("#242426"),
+                c("#3A3A3C"), c("#F2F2F7"), c("#2C2C2E"), c("#F2F2F7"), c("#303033"), c("#242426"),
+                success = c("#5BD08A"),
             )
-            CYBERPUNK -> Tokens(
-                c("#ff007f"), c("#0d0e1f"), c("#12142e"), c("#080918"), c("#00f0ff"),
-                c("#161838"), c("#00f0ff"), c("#ffe600"), c("#090a18"), c("#00f0ff"), c("#ff007f"),
-                c("#2a0845"), Color.argb(76, 0, 240, 255), c("#161838"), c("#080918"), c("#080918"),
-                c("#161838"), c("#00f0ff"), c("#090a18"), c("#ffe600"), c("#12142e"), c("#0d0e1f"),
-            )
-            CLASSIC -> Tokens(
-                c("#e11d48"), c("#f3f4f6"), c("#ffffff"), c("#ffffff"), c("#111827"),
-                c("#ffffff"), c("#111827"), c("#9ca3af"), c("#e5e7eb"), c("#374151"), c("#d1d5db"),
-                c("#fee2e2"), c("#d1d5db"), c("#e5e7eb"), c("#ffffff"), c("#ffffff"),
-                c("#ffffff"), c("#111827"), c("#e5e7eb"), c("#111827"), c("#f8fafc"), c("#e2e8f0"),
-            )
-            MACOS -> Tokens(
-                c("#0ea5e9"), c("#e2e8f0"), c("#ffffff"), c("#ffffff"), c("#1e293b"),
-                c("#ffffff"), c("#0f172a"), c("#64748b"), c("#cbd5e1"), c("#475569"), c("#94a3b8"),
-                c("#e0f2fe"), Color.argb(15, 0, 0, 0), c("#cbd5e1"), c("#ffffff"), c("#ffffff"),
-                c("#ffffff"), c("#0f172a"), c("#cbd5e1"), c("#0f172a"), c("#f1f5f9"), c("#e2e8f0"),
+        } else {
+            Tokens(
+                c("#1D9BF0"), c("#D5D8DE"), c("#EEF0F3"), c("#F7F8FA"), c("#1F2023"),
+                c("#FFFFFF"), c("#1C1C1E"), c("#6E6E73"), c("#C5C9D1"), c("#2C2D31"), c("#DDE1E7"),
+                c("#F2F3F5"), c("#B7BCC5"), c("#C5C9D1"), c("#F1F2F4"), c("#F8F9FA"),
+                c("#FFFFFF"), c("#1C1C1E"), c("#C5C9D1"), c("#2C2D31"), c("#FFFFFF"), c("#E4E7EB"),
+                success = c("#1F8A4C"),
             )
         }
         val accent = accentOverride ?: return base
