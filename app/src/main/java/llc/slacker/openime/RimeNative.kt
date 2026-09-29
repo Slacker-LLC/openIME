@@ -34,6 +34,15 @@ internal object RimeNative {
     @JvmStatic
     external fun nativeDeleteCandidate(index: Int): Boolean
 
+    /** Export every available Rime user dictionary as UTF-8 text files. */
+    @JvmStatic
+    external fun nativeExportUserDictionaries(targetDir: String): Array<String>?
+
+    /** Merge one UTF-8 user dictionary snapshot back into the named Rime dictionary. */
+    @JvmStatic
+    external fun nativeImportUserDictionary(dictName: String, sourceFile: String): Int
+
+
     @JvmStatic
     external fun nativeCommitFirst(): String?
 

@@ -43,6 +43,11 @@
             android:label="@string/activity_label_symbols"
             android:windowSoftInputMode="adjustResize" />
 
+        <activity
+            android:name=".AboutDataActivity"
+            android:exported="false"
+            android:label="@string/activity_label_about_data" />
+
         <service
             android:name=".LocalVoiceImeService"
             android:exported="true"

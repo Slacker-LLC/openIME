@@ -1,5 +1,6 @@
 package llc.slacker.openime
 
+import android.content.Intent
 import android.inputmethodservice.InputMethodService
 import android.os.Handler
 import android.os.Looper
@@ -11,6 +12,7 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.view.inputmethod.InputMethodSubtype
+import java.io.File
 
 /**
  * Native system IME service. The view is a thin native renderer; all candidate
@@ -1496,6 +1498,28 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     private fun invalidateCandidateQueries() {
         candidateQueries.invalidate()
         renderedCandidateSnapshot = null
+    }
+
+    internal fun exportRimeUserData(
+        targetDir: File,
+        onComplete: (List<RimeUserDictionaryArchive>) -> Unit,
+    ): Boolean =
+        ::rime.isInitialized &&
+            rime.exportUserDictionaries(targetDir, onComplete)
+
+    internal fun importRimeUserData(
+        sourceDir: File,
+        dictionaries: List<RimeUserDictionaryArchive>,
+        onComplete: (Int?) -> Unit,
+    ): Boolean =
+        ::rime.isInitialized &&
+            rime.importUserDictionaries(sourceDir, dictionaries, onComplete)
+
+    override fun onOpenAboutData() {
+        startActivity(
+            Intent(this, AboutDataActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
     }
 
     internal companion object {

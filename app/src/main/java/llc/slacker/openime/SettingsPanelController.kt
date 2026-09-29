@@ -63,6 +63,7 @@ internal class SettingsPanelController(
     private val onKeyboardHeightChanged: (Int) -> Unit,
     private val onFloatingStyleChanged: (Int, Int) -> Unit,
     private val onShowFuzzySettings: () -> Unit,
+    private val onOpenAboutData: () -> Unit,
     private val onFeedback: () -> Unit,
     private val applyTheme: () -> Unit,
     private val onHierarchyRebuilt: () -> Unit,
@@ -256,6 +257,18 @@ internal class SettingsPanelController(
             groupParams(),
         )
 
+        content.addView(createSectionTitle("数据"), wrapParams())
+        content.addView(
+            settingGroup(
+                settingNavigationRow(
+                    "关于与数据",
+                    "版本、隐私、导出与导入",
+                    onOpenAboutData,
+                ),
+            ),
+            groupParams(),
+        )
+
         scroll.addView(
             content,
             ViewGroup.LayoutParams(
@@ -396,6 +409,7 @@ internal class SettingsPanelController(
                     "触感震动" -> R.drawable.ic_vibration
                     "按键气泡" -> R.drawable.ic_bubble
                     "模糊音与智能纠错", "启用模糊音" -> R.drawable.ic_tune
+                    "关于与数据" -> R.drawable.ic_info
                     else -> R.drawable.ic_tune
                 },
             )

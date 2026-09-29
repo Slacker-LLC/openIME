@@ -353,6 +353,78 @@ class RimeEngine(
         }
     }
 
+    fun exportUserDictionaries(
+        targetDir: File,
+        onComplete: (List<RimeUserDictionaryArchive>) -> Unit,
+    ): Boolean {
+        if (!isReady) return false
+        return mutationQueue.submit {
+            val exported = synchronized(lock) {
+                if (!isReady) {
+                    emptyList()
+                } else {
+                    runCatching {
+                        if (!syncSchemaFromSettingsLocked()) return@runCatching emptyList()
+                        targetDir.mkdirs()
+                        RimeNative.nativeExportUserDictionaries(targetDir.absolutePath)
+                            .orEmpty()
+                            .mapNotNull { mapping ->
+                                val separator = mapping.indexOf('\t')
+                                if (separator <= 0 || separator >= mapping.lastIndex) {
+                                    return@mapNotNull null
+                                }
+                                val name = mapping.substring(0, separator).trim()
+                                val path = mapping.substring(separator + 1)
+                                val file = File(path)
+                                if (name.isEmpty() || !file.isFile) {
+                                    null
+                                } else {
+                                    RimeUserDictionaryArchive(
+                                        name = name,
+                                        content = file.readText(),
+                                    )
+                                }
+                            }
+                    }.getOrDefault(emptyList())
+                }
+            }
+            onComplete(exported)
+        }
+    }
+
+    fun importUserDictionaries(
+        sourceDir: File,
+        dictionaries: List<RimeUserDictionaryArchive>,
+        onComplete: (Int?) -> Unit,
+    ): Boolean {
+        if (!isReady) return false
+        return mutationQueue.submit {
+            val imported = synchronized(lock) {
+                if (!isReady) {
+                    null
+                } else {
+                    runCatching {
+                        if (!syncSchemaFromSettingsLocked()) return@runCatching null
+                        sourceDir.mkdirs()
+                        var total = 0
+                        dictionaries.forEachIndexed { index, item ->
+                            val file = File(sourceDir, "dict-$index.userdb.txt")
+                            file.writeText(item.content)
+                            val count = RimeNative.nativeImportUserDictionary(
+                                item.name,
+                                file.absolutePath,
+                            )
+                            if (count < 0) return@runCatching null
+                            total += count
+                        }
+                        total
+                    }.getOrNull()
+                }
+            }
+            onComplete(imported)
+        }
+    }
+
     fun commitFirst(input: String, allowLearning: Boolean = true): String {
         if (!allowLearning) return candidates(input).firstOrNull().orEmpty()
         val normalized = RimeInputNormalizer.normalize(input)

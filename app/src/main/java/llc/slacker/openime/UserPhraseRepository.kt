@@ -191,6 +191,57 @@ object UserPhraseRepository {
         }
     }
 
+    internal fun exportArchiveEntries(): List<ArchiveUserPhrase> =
+        synchronized(lock) {
+            entries.values
+                .sortedWith(
+                    compareByDescending<Entry> { it.lastUsed }
+                        .thenByDescending { it.frequency },
+                )
+                .map { entry ->
+                    ArchiveUserPhrase(
+                        code = entry.code,
+                        text = entry.text,
+                        frequency = entry.frequency,
+                        lastUsed = entry.lastUsed,
+                    )
+                }
+        }
+
+    internal fun mergeArchiveEntries(incoming: List<ArchiveUserPhrase>): Int {
+        var added = 0
+        synchronized(lock) {
+            incoming.forEach { item ->
+                val code = normalize(item.code)
+                val text = item.text.trim()
+                if (code.isEmpty() || text.isEmpty() || text == code) return@forEach
+                val key = "$code\u0000$text"
+                val current = entries[key]
+                if (current == null) {
+                    entries[key] = Entry(
+                        code = code,
+                        text = text,
+                        frequency = item.frequency.coerceIn(1, 1_000_000),
+                        lastUsed = item.lastUsed.coerceAtLeast(0L),
+                    )
+                    added += 1
+                } else {
+                    current.frequency = maxOf(
+                        current.frequency,
+                        item.frequency.coerceIn(1, 1_000_000),
+                    )
+                    current.lastUsed = maxOf(
+                        current.lastUsed,
+                        item.lastUsed.coerceAtLeast(0L),
+                    )
+                }
+            }
+            trimLocked()
+            if (incoming.isNotEmpty()) scheduleSaveLocked()
+        }
+        return added
+    }
+
     fun clear() {
         synchronized(persistenceLock) {
             synchronized(lock) {

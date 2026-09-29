@@ -102,6 +102,7 @@ open class ImeKeyboardView(
         fun onHandednessChanged(handedness: ImeHandedness) {}
         fun onKeyboardHeightChanged(percent: Int) {}
         fun onFloatingStyleChanged(widthPercent: Int, opacityPercent: Int) {}
+        fun onOpenAboutData() {}
     }
 
     /** Visual class marker for white keys (nine/digits grid). */
@@ -603,6 +604,7 @@ open class ImeKeyboardView(
             onKeyboardHeightChanged = ::setKeyboardHeightPercent,
             onFloatingStyleChanged = ::setFloatingStyle,
             onShowFuzzySettings = { showPanel(Panel.FUZZY_SETTINGS) },
+            onOpenAboutData = listener::onOpenAboutData,
             onFeedback = ::feedback,
             applyTheme = ::applyTheme,
             onHierarchyRebuilt = ::onViewHierarchyRebuilt,

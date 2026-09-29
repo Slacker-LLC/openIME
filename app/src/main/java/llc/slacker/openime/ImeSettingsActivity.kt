@@ -1,6 +1,7 @@
 package llc.slacker.openime
 
 import android.app.Activity
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -208,5 +209,9 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
         ImeSettingsRepository.saveFloatingWidthPercent(this, widthPercent)
         ImeSettingsRepository.saveFloatingOpacityPercent(this, opacityPercent)
         refreshLiveIme()
+    }
+
+    override fun onOpenAboutData() {
+        startActivity(Intent(this, AboutDataActivity::class.java))
     }
 }

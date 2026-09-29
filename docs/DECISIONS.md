@@ -7,3 +7,4 @@
 - 2026-09-29｜语音松手尾部｜松手后保留 300ms 采集窗口，并用 generation/session 所有权阻止旧会话影响新会话｜修复 AudioRecord 尾部被立即截断，同时保持取消即时生效。
 - 2026-09-29｜九键解码线程策略｜先记录 `publishNineKeyDigits -> resolveNineKey` 的 20 次窗口 P50/P95；未取得中低端机 P95 前保持现有线程，不提前迁移｜只有 P95 超过 8ms 才按规范迁到 `CandidateQueryCoordinator`。
 - 2026-09-29｜九键首帧与 Rime 刷新｜候选按压或滚动期间暂缓应用异步 Rime 结果；同时记录从请求到结果可应用的端到端延迟｜防止手指下的候选列表重排；是否在 Rime 就绪时跳过首帧回退，等实测 P95 是否低于 40ms 后再定。
+- 2026-09-29｜Rime 用户词库导出｜vendored librime 1.17.0 已编入 levers 模块，`UserDictManager::Export/Import` 可在关闭用户库会话后导出/合并 UTF-8 快照｜用户数据 JSON 在 Rime 会话已加载时包含自动学习词库；不可用时必须明确提示，不静默遗漏。

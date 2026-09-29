@@ -6,4 +6,5 @@
     <string name="activity_label_settings">Preferences</string>
     <string name="activity_label_quick_phrases">Quick phrases</string>
     <string name="activity_label_symbols">Custom symbols</string>
+    <string name="activity_label_about_data">About &amp; data</string>
 </resources>
