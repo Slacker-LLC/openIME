@@ -41,7 +41,7 @@ keystore 不进入仓库，不提交到 Issue、PR、Actions artifact 或 Releas
 
 ## 社交预览
 
-仓库内提供 `docs/images/social-preview.svg` 作为 1280×640 源文件。GitHub 的仓库 Social preview 不是源码文件配置项，因此需要仓库管理员在 **Settings → General → Social preview** 上传由该 SVG 导出的 PNG/JPEG；这一步不能通过当前仓库代码提交自动完成。
+仓库内提供 `docs/images/social-preview.png`（1280×640），由 `scripts/generate_brand_assets.py` 生成。GitHub 的仓库 Social preview 不是源码文件配置项，因此需要仓库管理员在 **Settings → General → Social preview** 上传该 PNG；这一步不能通过当前仓库代码提交自动完成。
 
 ## 发布前检查
 
