@@ -187,7 +187,7 @@ internal class NineKeySymbolRailController(
             content.addView(
                 TextView(content.context).apply {
                     text = displayPath(choice)
-                    textSize = 12f
+                    textSize = ImeTypographyTokens.BODY_SP
                     gravity = Gravity.CENTER
                     tag = if (active) SELECTED_FILTER_TAG else FILTER_TAG
                     contentDescription =
