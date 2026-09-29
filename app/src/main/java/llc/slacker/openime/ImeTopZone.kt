@@ -136,7 +136,7 @@ internal class ImeTopZone(
         composition.apply {
             tag = "pinyin-composition-editor"
             contentDescription = "可编辑拼音预编辑"
-            textSize = 13f
+            textSize = ImeTypographyTokens.BODY_SP
             gravity = Gravity.CENTER_VERTICAL or Gravity.START
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             setSingleLine(true)
@@ -197,7 +197,7 @@ internal class ImeTopZone(
         candidateEmojiButton.apply {
             tag = "candidate-emoji"
             text = "☺"
-            textSize = 17f
+            textSize = ImeTypographyTokens.BODY_SP
             gravity = Gravity.CENTER
             contentDescription = "表情"
             setPadding(toPx(7), 0, toPx(7), 0)
@@ -213,7 +213,7 @@ internal class ImeTopZone(
         candidateExpandButton.apply {
             tag = "candidate-expand"
             text = "⌄"
-            textSize = 15f
+            textSize = ImeTypographyTokens.BODY_SP
             gravity = Gravity.CENTER
             contentDescription = "展开更多候选"
             setPadding(toPx(7), 0, toPx(7), 0)
@@ -270,7 +270,7 @@ internal class ImeTopZone(
         voiceInlineStatus.apply {
             tag = "voice-inline-status"
             text = "正在聆听…"
-            textSize = 14f
+            textSize = ImeTypographyTokens.BODY_SP
             setTextColor(Color.WHITE)
             includeFontPadding = false
             maxLines = 1
