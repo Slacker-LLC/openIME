@@ -47,7 +47,7 @@ internal class KeyPopupController(
         )
         val popup = TextView(host.context).apply {
             this.text = text
-            textSize = if (text.length > 1) 13f else 16f
+            textSize = if (text.length > 1) ImeTypographyTokens.BODY_SP else ImeTypographyTokens.DISPLAY_SP
             includeFontPadding = false
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
@@ -97,7 +97,7 @@ internal class KeyPopupController(
             row.addView(
                 TextView(host.context).apply {
                     text = symbol
-                    textSize = 16f
+                    textSize = ImeTypographyTokens.BODY_SP
                     includeFontPadding = false
                     gravity = Gravity.CENTER
                     setTextColor(t.keyText)
