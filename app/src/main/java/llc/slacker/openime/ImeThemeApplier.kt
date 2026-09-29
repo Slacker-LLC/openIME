@@ -3,6 +3,7 @@ package llc.slacker.openime
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.InsetDrawable
+import android.graphics.drawable.LayerDrawable
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -92,15 +93,15 @@ internal class ImeThemeApplier(
 
         view.applyMainTextScale(keyMainTextScale())
         val keyFace = statefulRounded(color, pressedColor, skinRadiusPx())
+        val keyEdge = ImeDrawableFactory.rounded(pressedColor, skinRadiusPx())
+        val keyCap = LayerDrawable(arrayOf(keyEdge, keyFace)).apply {
+            setLayerInset(1, 0, 0, 0, toPx(1).coerceAtLeast(1))
+        }
         val halfGap = toPx(ImeGeometryTokens.KEY_GAP_DP) / 2
-        view.background = InsetDrawable(keyFace, halfGap, halfGap, halfGap, halfGap)
+        view.background = InsetDrawable(keyCap, halfGap, halfGap, halfGap, halfGap)
         view.background?.alpha =
             skinOpacity().coerceIn(70, 100) * 255 / 100
-        // Keep shadows restrained: ordinary typing surfaces need a slight
-        // separation from the keyboard deck, while side/function controls
-        // stay visually embedded in that deck.
-        view.elevation =
-            if (side || function) 0f else toPx(1).toFloat()
+        view.elevation = 0f
 
         when {
             primary -> {
