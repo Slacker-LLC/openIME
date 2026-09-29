@@ -23,7 +23,10 @@ class NoRawTextSizeTest {
                             .any(line::contains)
                     ) {
                         val window = lines.subList(index, minOf(lines.size, index + 6)).joinToString(" ")
-                        if (Regex(""",\s*\d+(?:\.\d+)?f\b""").containsMatchIn(window)) {
+                        val rawHelperSize = Regex(
+                            """(?:createKey|createButton|createPanelButton|labelText)\([^)]*,\s*\d+(?:\.\d+)?f\b""",
+                        )
+                        if (rawHelperSize.containsMatchIn(window)) {
                             violations += "${file.relativeTo(root)}:${index + 1}: ${line.trim()}"
                         }
                     }

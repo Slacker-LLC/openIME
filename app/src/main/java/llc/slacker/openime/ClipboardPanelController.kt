@@ -209,7 +209,7 @@ internal class ClipboardPanelController(
 
     private fun addRefreshAction(column: LinearLayout) {
         column.addView(
-            createPanelButton("重新读取", 12f, true).apply {
+            createPanelButton("重新读取", ImeTypographyTokens.CAPTION_SP, true).apply {
                 tag = "clipboard-refresh"
                 contentDescription = "重新读取剪贴板"
                 setOnClickListener {
@@ -226,7 +226,7 @@ internal class ClipboardPanelController(
 
     private fun renderQuickPhrases(column: LinearLayout) {
         column.addView(
-            createPanelButton("新增常用语", 13f, true).apply {
+            createPanelButton("新增常用语", ImeTypographyTokens.BODY_SP, true).apply {
                 tag = "quick-phrase-add"
                 setOnClickListener {
                     onFeedback()
@@ -270,7 +270,7 @@ internal class ClipboardPanelController(
             orientation = LinearLayout.HORIZONTAL
             tag = "phrase-card"
             addView(
-                createKey(phrase.text, 13f) {
+                createKey(phrase.text, ImeTypographyTokens.BODY_SP) {
                     onCharacter(phrase.text)
                 }.apply {
                     setPadding(toPx(12), 0, toPx(12), 0)
@@ -287,7 +287,7 @@ internal class ClipboardPanelController(
                 },
             )
             addView(
-                createPanelButton("编辑", 11f, true).apply {
+                createPanelButton("编辑", ImeTypographyTokens.CAPTION_SP, true).apply {
                     tag = "phrase-edit:${phrase.id}"
                     setOnClickListener {
                         onFeedback()
@@ -299,7 +299,7 @@ internal class ClipboardPanelController(
                 },
             )
             addView(
-                createPanelButton("删除", 11f, true).apply {
+                createPanelButton("删除", ImeTypographyTokens.CAPTION_SP, true).apply {
                     tag = "phrase-delete:${phrase.id}"
                     setOnClickListener {
                         onFeedback()
@@ -374,7 +374,7 @@ internal class ClipboardPanelController(
             meta.addView(
                 createPanelButton(
                     if (entry.pinned) "取消置顶" else "置顶",
-                    10f,
+                    ImeTypographyTokens.CAPTION_SP,
                     true,
                 ).apply {
                     tag = "clip-pin:${entry.text}"
@@ -387,7 +387,7 @@ internal class ClipboardPanelController(
                 wrapParams(),
             )
             meta.addView(
-                createPanelButton("使用", 10f, true).apply {
+                createPanelButton("使用", ImeTypographyTokens.CAPTION_SP, true).apply {
                     tag = "clip-use:${entry.text}"
                     setOnClickListener {
                         onFeedback()

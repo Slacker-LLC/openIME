@@ -4,7 +4,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.os.Build
-import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.inputmethod.ExtractedText
 import android.view.inputmethod.ExtractedTextRequest
@@ -43,7 +42,7 @@ class InputConnectionGateway(
     private val context: Context?,
     private val connection: () -> InputConnection?,
     private val isPassword: () -> Boolean = { false },
-    private val nowMs: () -> Long = { SystemClock.elapsedRealtime() },
+    private val nowMs: () -> Long = { System.nanoTime() / 1_000_000L },
 ) {
 
     data class CursorSnapshot(

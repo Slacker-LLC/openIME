@@ -152,6 +152,7 @@ internal class NineKeyLocalDecoder(
         val preview = when {
             stable != null -> stable
             continuous != null -> continuous
+            bounded.length == 1 -> bounded
             paths.isEmpty() -> bounded
             continuationBase != null && validPreset.isEmpty() && prefixPreview != null -> prefixPreview
             paths.isNotEmpty() -> paths.first()

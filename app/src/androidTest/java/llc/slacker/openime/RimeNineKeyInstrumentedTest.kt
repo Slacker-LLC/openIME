@@ -65,7 +65,7 @@ class RimeNineKeyInstrumentedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         assumeTrue(
             "manual production preset audit; pass -e runPresetAudit true",
-            instrumentation.arguments.getString("runPresetAudit") == "true",
+            InstrumentationRegistry.getArguments().getString("runPresetAudit") == "true",
         )
         val context = instrumentation.targetContext
         val originalFuzzy = ImeSettingsRepository.loadFuzzy(context)
