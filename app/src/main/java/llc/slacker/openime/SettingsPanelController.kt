@@ -438,9 +438,9 @@ internal class SettingsPanelController(
                 LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
                     gravity = Gravity.CENTER_VERTICAL
-                    addView(labelText(label, 14f), wrapParams())
+                    addView(labelText(label, ImeTypographyTokens.BODY_SP), wrapParams())
                     addView(
-                        labelText(sub, 11f).apply {
+                        labelText(sub, ImeTypographyTokens.CAPTION_SP).apply {
                             setPadding(0, toPx(3), 0, 0)
                         },
                         wrapParams(),
@@ -487,9 +487,9 @@ internal class SettingsPanelController(
                 LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
                     gravity = Gravity.CENTER_VERTICAL
-                    addView(labelText(label, 14f), wrapParams())
+                    addView(labelText(label, ImeTypographyTokens.BODY_SP), wrapParams())
                     addView(
-                        labelText(sub, 11f).apply {
+                        labelText(sub, ImeTypographyTokens.CAPTION_SP).apply {
                             setPadding(0, toPx(3), 0, 0)
                         },
                         wrapParams(),
