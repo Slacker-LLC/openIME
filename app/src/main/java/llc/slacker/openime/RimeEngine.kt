@@ -290,6 +290,34 @@ class RimeEngine(
         return ""
     }
 
+    fun isUserLearnedCandidate(
+        input: String,
+        candidate: String,
+        onComplete: (Boolean) -> Unit,
+    ): Boolean {
+        val normalized = RimeInputNormalizer.normalize(input)
+        val visible = candidate.trim()
+        if (!isReady || normalized.isBlank() || visible.isEmpty()) return false
+
+        return mutationQueue.submit {
+            val learned = synchronized(lock) {
+                if (!isReady) {
+                    false
+                } else {
+                    runCatching {
+                        if (!syncSchemaFromSettingsLocked()) return@runCatching false
+                        val snapshot = RimeNative.nativeSetInput(normalized)
+                        val entry = snapshotCandidateEntries(snapshot)
+                            .firstOrNull { it.text == visible }
+                            ?: return@runCatching false
+                        RimeNative.nativeIsUserLearnedCandidate(entry.nativeIndex)
+                    }.getOrDefault(false)
+                }
+            }
+            onComplete(learned)
+        }
+    }
+
     /**
      * Delete one user-learned candidate without blocking the IME thread.
      * Built-in dictionary entries are not deletable and report false.
@@ -314,6 +342,9 @@ class RimeEngine(
                         val entry = snapshotCandidateEntries(snapshot)
                             .firstOrNull { it.text == visible }
                             ?: return@runCatching false
+                        if (!RimeNative.nativeIsUserLearnedCandidate(entry.nativeIndex)) {
+                            return@runCatching false
+                        }
                         RimeNative.nativeDeleteCandidate(entry.nativeIndex)
                     }.getOrDefault(false)
                 }

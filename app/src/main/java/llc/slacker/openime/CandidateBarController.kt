@@ -1,5 +1,6 @@
 package llc.slacker.openime
 
+import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
@@ -367,6 +368,19 @@ internal class CandidateBarController(
             onCandidateLongPressed(candidate)
             true
         }
+    }
+
+    fun confirmCandidateDeletion(candidate: String, onConfirm: () -> Unit) {
+        val dialog = AlertDialog.Builder(context)
+            .setTitle("删除此词")
+            .setMessage("从个人学习词中删除“$candidate”？")
+            .setPositiveButton("删除") { _, _ -> onConfirm() }
+            .setNegativeButton("取消", null)
+            .create()
+        dialog.setOnShowListener {
+            SetupUi.styleDialog(dialog, context, destructivePositive = true)
+        }
+        dialog.show()
     }
 
     private companion object {

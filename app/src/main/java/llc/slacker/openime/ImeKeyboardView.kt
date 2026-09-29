@@ -1557,6 +1557,12 @@ open class ImeKeyboardView(
         if (visualChanged) applyTheme()
     }
 
+    fun confirmCandidateDeletion(candidate: String, onConfirm: () -> Unit) {
+        if (::candidateBarController.isInitialized) {
+            candidateBarController.confirmCandidateDeletion(candidate, onConfirm)
+        }
+    }
+
     fun showClearUndo() {
         if (::topZone.isInitialized) topZone.showUndoClear()
     }

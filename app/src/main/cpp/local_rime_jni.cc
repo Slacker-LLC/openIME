@@ -7,6 +7,9 @@
 #include <vector>
 
 #include <rime_api.h>
+#include <rime/candidate.h>
+#include <rime/context.h>
+#include <rime/service.h>
 
 namespace {
 
@@ -161,6 +164,27 @@ jobjectArray make_strings(JNIEnv* env, const std::vector<std::string>& values) {
   }
   env->DeleteLocalRef(string_class);
   return result;
+}
+
+bool candidate_is_user_learned(size_t index) {
+  if (!g_session) return false;
+  auto session = rime::Service::instance().GetSession(g_session);
+  if (!session) return false;
+  auto* context = session->context();
+  if (!context || context->composition().empty()) return false;
+  auto candidate = context->composition().back().GetCandidateAt(index);
+  if (!candidate) return false;
+
+  const auto genuine_candidates =
+      rime::Candidate::GetGenuineCandidates(candidate);
+  for (const auto& genuine : genuine_candidates) {
+    if (!genuine) continue;
+    const auto& type = genuine->type();
+    if (type == "user_phrase" || type == "user_table") {
+      return true;
+    }
+  }
+  return false;
 }
 
 std::string take_commit() {
@@ -328,6 +352,16 @@ Java_llc_slacker_openime_RimeNative_nativeSelectCandidate(
   // remaining segmented input is preserved, and the Android pre-edit can be
   // cleared atomically after the click.
   return utf8_to_jstring(env, finish_selection());
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_llc_slacker_openime_RimeNative_nativeIsUserLearnedCandidate(
+    JNIEnv*, jclass, jint index) {
+  std::lock_guard<std::mutex> lock(g_mutex);
+  if (!g_api || !g_session || index < 0) return JNI_FALSE;
+  return candidate_is_user_learned(static_cast<size_t>(index))
+             ? JNI_TRUE
+             : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL

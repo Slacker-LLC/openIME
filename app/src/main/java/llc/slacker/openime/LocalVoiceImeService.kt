@@ -989,11 +989,11 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
                 limit = 16,
             ).contains(candidate)
         ) {
-            showTextEditFeedback("这是常用语，请在常用语面板中编辑或删除")
             return
         }
 
         val modeAtRequest = state.keyboardMode
+
         fun refreshAfterDelete() {
             if (lastComposition != composition || state.keyboardMode != modeAtRequest) return
             val fallback = fallbackCandidatesFor(composition, modeAtRequest)
@@ -1004,30 +1004,50 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             )
         }
 
+        fun confirmDelete(onConfirm: () -> Unit) {
+            if (lastComposition != composition || state.keyboardMode != modeAtRequest) return
+            keyboardView?.confirmCandidateDeletion(candidate, onConfirm)
+        }
+
         if (!rime.isReady) {
-            if (UserPhraseRepository.forget(composition, candidate)) {
-                PersonalizationRepository.forget(candidate)
-                refreshAfterDelete()
-                showTextEditFeedback("已移除个人候选")
-            } else {
-                showTextEditFeedback("该候选不是个人学习词")
+            if (!UserPhraseRepository.contains(composition, candidate)) return
+            confirmDelete {
+                if (UserPhraseRepository.forget(composition, candidate)) {
+                    PersonalizationRepository.forget(candidate)
+                    refreshAfterDelete()
+                    showTextEditFeedback("已删除个人学习词")
+                }
             }
             return
         }
 
-        val queued = rime.deleteCandidate(composition, candidate) { deleted ->
+        val queued = rime.isUserLearnedCandidate(composition, candidate) { learned ->
             mainHandler.post {
-                if (deleted) {
-                    PersonalizationRepository.forget(candidate)
-                    refreshAfterDelete()
-                    showTextEditFeedback("已移除个人候选")
-                } else {
-                    showTextEditFeedback("系统词条不可删除")
+                if (
+                    !learned ||
+                    lastComposition != composition ||
+                    state.keyboardMode != modeAtRequest
+                ) {
+                    return@post
+                }
+                confirmDelete {
+                    val deleteQueued = rime.deleteCandidate(composition, candidate) { deleted ->
+                        mainHandler.post {
+                            if (deleted) {
+                                PersonalizationRepository.forget(candidate)
+                                refreshAfterDelete()
+                                showTextEditFeedback("已删除个人学习词")
+                            }
+                        }
+                    }
+                    if (!deleteQueued) {
+                        showTextEditFeedback("暂时无法修改个人词")
+                    }
                 }
             }
         }
         if (!queued) {
-            showTextEditFeedback("暂时无法修改个人词")
+            return
         }
     }
 

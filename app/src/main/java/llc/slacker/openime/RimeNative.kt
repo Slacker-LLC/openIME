@@ -26,6 +26,10 @@ internal object RimeNative {
     @JvmStatic
     external fun nativeSelectCandidate(index: Int): String?
 
+    /** True only when the active visible candidate is backed by Rime user data. */
+    @JvmStatic
+    external fun nativeIsUserLearnedCandidate(index: Int): Boolean
+
     /** Remove a deletable candidate from the active Rime user dictionary. */
     @JvmStatic
     external fun nativeDeleteCandidate(index: Int): Boolean
