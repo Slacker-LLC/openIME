@@ -178,6 +178,9 @@ enum class ImeTheme(val key: String, val label: String) {
  */
 internal object ImeSurfacePolicy {
     const val DISABLED_ALPHA = 0.42f
+    private const val TEXT_CONTRAST = 4.5
+    private const val SHADE_STEP = 0.03f
+    private const val MAX_SHADE_STEPS = 24
 
     fun isDark(tokens: ImeTheme.Tokens): Boolean =
         ImeContrastPolicy.relativeLuminance(tokens.keyboardBackground) < 0.16
@@ -189,8 +192,29 @@ internal object ImeSurfacePolicy {
             if (isDark(tokens)) 0.24f else 0.14f,
         )
 
+    /**
+     * The accent as text on the keyboard surface. Derived from the active
+     * accent (never a fixed blue) so a custom accent stays one colour family
+     * across pre-edit text, selected items and icons.
+     */
     fun selectedText(tokens: ImeTheme.Tokens): Int =
-        if (isDark(tokens)) tokens.primary else Color.parseColor("#006AB1")
+        accentTextOn(tokens.primary, tokens.keyboardBackground)
+
+    /**
+     * [accent] itself when it already reads on [background] (4.5:1); otherwise
+     * the nearest shade of the same hue that does. Light surfaces get a
+     * darker shade, dark surfaces a lighter one.
+     */
+    fun accentTextOn(accent: Int, background: Int): Int {
+        if (ImeContrastPolicy.contrastRatio(accent, background) >= TEXT_CONTRAST) return accent
+        val darker = ImeContrastPolicy.relativeLuminance(background) >= 0.2
+        var shade = accent
+        repeat(MAX_SHADE_STEPS) {
+            shade = adjustHslLightness(shade, if (darker) -SHADE_STEP else SHADE_STEP)
+            if (ImeContrastPolicy.contrastRatio(shade, background) >= TEXT_CONTRAST) return shade
+        }
+        return shade
+    }
 
     fun pressedSurface(base: Int, tokens: ImeTheme.Tokens): Int =
         ImeDrawableFactory.blend(

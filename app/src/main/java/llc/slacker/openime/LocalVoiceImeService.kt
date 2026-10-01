@@ -721,6 +721,8 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         return true
     }
 
+    override fun hasClearUndo(): Boolean = ::gateway.isInitialized && gateway.hasClearUndo()
+
     override fun onUndoClearExpired() {
         gateway.discardClearUndo()
         keyboardView?.hideClearUndo()

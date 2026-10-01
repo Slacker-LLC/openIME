@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.util.Log
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
@@ -44,6 +45,9 @@ open class ImeKeyboardView(
         fun onClearAll()
         fun onUndoClear(): Boolean = false
         fun onUndoClearExpired() {}
+
+        /** Whether the last clear-all can still be restored (drives the swipe-down hint). */
+        fun hasClearUndo(): Boolean = false
         fun onSpace()
         fun onFloatingKeyboardChanged(floating: Boolean)
         fun onFloatingKeyboardDragged(deltaX: Float, deltaY: Float)
@@ -123,10 +127,10 @@ open class ImeKeyboardView(
         onDeleteOne = ::performBackspaceOnce,
         onClearAll = listener::onClearAll,
         onUndoClear = listener::onUndoClear,
+        hasUndoSnapshot = listener::hasClearUndo,
         onPressFeedback = ::feedback,
         onHapticFeedback = ::hapticFeedback,
-        onShowClearPopup = { anchor -> showPopup(anchor, "清空") },
-        onShowUndoPopup = { anchor -> showPopup(anchor, "撤回") },
+        onGestureHint = { anchor, hint -> keyPopupController.showGestureHint(anchor, hint) },
         onHidePopup = ::hidePopup,
     )
     private val backspaceKeyFactory: BackspaceKeyFactory by lazy {
@@ -1080,6 +1084,7 @@ open class ImeKeyboardView(
             },
             onUndoClear = { if (!listener.onUndoClear()) listener.onTextEdit("undo") },
             onUndoClearExpired = listener::onUndoClearExpired,
+            onAssociationDismiss = ::clearAssociationCandidates,
         )
         candidateBarController = CandidateBarController(
             context = context,
@@ -1457,13 +1462,13 @@ open class ImeKeyboardView(
                     tag = "association-candidate"
                     isClickable = true
                     isFocusable = true
-                    setPadding(dp(8), 0, dp(8), 0)
+                    setPadding(dp(12), 0, dp(12), 0)
                     setOnClickListener { feedback(); listener.onAssociationSelected(candidate) }
                 },
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-                ).apply { marginEnd = dp(5) },
+                ),
             )
         }
         topZone.showAssociations(candidates.isNotEmpty())
@@ -1724,7 +1729,7 @@ open class ImeKeyboardView(
         anchor.getLocationOnScreen(location)
         val rawX = location[0] + anchor.width / 2f
         val rawY = location[1] + anchor.height / 2f
-        backspaceGestureController.begin(anchor, pointerId = 0, rawX, rawY) { }
+        backspaceGestureController.begin(anchor, pointerId = 0, rawX, rawY)
         backspaceGestureController.update(rawX, rawY - dp(BackspaceGestureController.CLEAR_ARM_DP + 8))
         backspaceGestureController.finish(commit = true)
         return true
@@ -1959,10 +1964,28 @@ open class ImeKeyboardView(
                 MotionEvent.ACTION_POINTER_UP -> if (
                     event.getPointerId(event.actionIndex) == backspaceGestureController.pointerId
                 ) {
-                    backspaceGestureController.finish(commit = true)
+                    val index = event.actionIndex
+                    backspaceGestureController.finish(
+                        commit = true,
+                        rawX = event.rawX + event.getX(index) - event.x,
+                        rawY = event.rawY + event.getY(index) - event.y,
+                    )
                 }
-                MotionEvent.ACTION_UP -> backspaceGestureController.finish(commit = true)
-                MotionEvent.ACTION_CANCEL -> backspaceGestureController.finish(commit = false)
+                MotionEvent.ACTION_UP -> {
+                    // The release position is part of the gesture: a quick flick
+                    // can cross the threshold on the UP itself.
+                    val index = event.findPointerIndex(backspaceGestureController.pointerId)
+                        .takeIf { it >= 0 } ?: 0
+                    backspaceGestureController.finish(
+                        commit = true,
+                        rawX = event.rawX + event.getX(index) - event.x,
+                        rawY = event.rawY + event.getY(index) - event.y,
+                    )
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    Log.d("OpenIme", "bs touch CANCEL while gesture active (system or parent took the touch)")
+                    backspaceGestureController.finish(commit = false)
+                }
             }
         }
         if (spaceVoiceGestureController.active) {
@@ -2877,7 +2900,8 @@ open class ImeKeyboardView(
         expandedPanel.setBackgroundColor(if (standalonePanel) t.toolbarBackground else t.keyboardBackground)
         candidateOverlay.setBackgroundColor(t.expandedBackground)
         themeApplier.apply(this, t)
-        composition.setTextColor(if (ImeSurfacePolicy.isDark(t)) t.primary else android.graphics.Color.parseColor("#006AB1"))
+        topZone.applyTokens(t)
+        composition.setTextColor(ImeSurfacePolicy.selectedText(t))
         topZone.candidateExpandButton.imageTintList = android.content.res.ColorStateList.valueOf(t.keyText)
         topZone.candidateEmojiButton.imageTintList = android.content.res.ColorStateList.valueOf(t.keySecondaryText)
         floatingKeyboardController.applyTheme(t)

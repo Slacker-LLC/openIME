@@ -272,7 +272,7 @@ internal class ImeThemeApplier(
                 view.parent is LinearLayout &&
                     (view.parent as LinearLayout).tag == "toolbar-row"
                 ) || hasAncestorTag(view, "tools-panel") -> {
-                view.imageTintList = ColorStateList.valueOf(if (hasAncestorTag(view, "tools-panel") && !ImeSurfacePolicy.isDark(t)) Color.parseColor("#006AB1") else if (hasAncestorTag(view, "tools-panel")) t.primary else t.keyText)
+                view.imageTintList = ColorStateList.valueOf(if (hasAncestorTag(view, "tools-panel")) ImeSurfacePolicy.selectedText(t) else t.keyText)
                 if (view.isClickable) {
                     view.background = statefulRounded(
                         Color.TRANSPARENT,
@@ -441,7 +441,7 @@ internal class ImeThemeApplier(
 
             tag == "nine-pinyin-path-selected" -> {
                 val selected = ImeDrawableFactory.blend(t.primary, t.sideKeyBackground, 0.22f)
-                view.setTextColor(if (ImeSurfacePolicy.isDark(t)) t.primary else Color.parseColor("#006AB1"))
+                view.setTextColor(ImeSurfacePolicy.selectedText(t))
                 view.background = statefulRounded(
                     selected,
                     ImeSurfacePolicy.pressedSurface(selected, t),

@@ -39,6 +39,24 @@ internal class KeyPopupController(
     private var popupView: View? = null
     private var keepAfterKeyUp = false
 
+    /**
+     * The one bubble for every delete-key gesture state (clear / restore, and
+     * both before and after they arm). Purely visual and never touchable.
+     */
+    private val gestureHintView = TextView(host.context).apply {
+        visibility = View.GONE
+        includeFontPadding = false
+        maxLines = 1
+        gravity = Gravity.CENTER
+        setPadding(dp(16), 0, dp(16), 0)
+        elevation = dp(3).toFloat()
+        textSize = ImeTypographyTokens.BODY_SP
+        typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+        isClickable = false
+        isFocusable = false
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
+
     init {
         host.addView(
             previewPopup,
@@ -46,6 +64,93 @@ internal class KeyPopupController(
                 gravity = Gravity.TOP or Gravity.START
             },
         )
+        host.addView(
+            gestureHintView,
+            FrameLayout.LayoutParams(1, 1).apply {
+                gravity = Gravity.TOP or Gravity.START
+            },
+        )
+    }
+
+    /**
+     * Show (or restyle) the delete-key gesture bubble. It sits beside the key
+     * on the side with room, never above it: the thumb moves up over the key
+     * to clear and would hide a bubble placed there. Armed states change only
+     * the label and fill, so clear and restore read as the same control.
+     */
+    fun showGestureHint(anchor: View, hint: GestureHint) {
+        if (hint == GestureHint.NONE) {
+            hideGestureHint()
+            return
+        }
+        val t = tokens()
+        val clear = hint == GestureHint.CLEAR_PREVIEW || hint == GestureHint.CLEAR_ARMED
+        val armed = hint == GestureHint.CLEAR_ARMED || hint == GestureHint.UNDO_ARMED
+        val label = when (hint) {
+            GestureHint.CLEAR_PREVIEW -> "上滑清空"
+            GestureHint.CLEAR_ARMED -> "松手清空"
+            GestureHint.UNDO_PREVIEW -> "下滑撤回"
+            else -> "松手撤回"
+        }
+        val fill = when {
+            !armed -> ImeDrawableFactory.withAlpha(t.keyText, 0xE0)
+            clear -> t.destructive
+            else -> t.primary
+        }
+        val textColor = if (armed) contrastText(fill) else t.keyBackground
+
+        val height = dp(GESTURE_HINT_HEIGHT_DP)
+        gestureHintView.text = label
+        gestureHintView.setTextColor(textColor)
+        gestureHintView.background = rounded(fill, height / 2)
+        val width = (gestureHintView.paint.measureText(label) + dp(32))
+            .toInt()
+            .coerceAtLeast(dp(GESTURE_HINT_MIN_WIDTH_DP))
+
+        val anchorLocation = IntArray(2)
+        val hostLocation = IntArray(2)
+        anchor.getLocationOnScreen(anchorLocation)
+        host.getLocationOnScreen(hostLocation)
+        val anchorLeft = anchorLocation[0] - hostLocation[0]
+        val anchorTop = anchorLocation[1] - hostLocation[1]
+        val margin = dp(8)
+        val gap = dp(8)
+        val inset = contentInsetPx()
+        val placeLeft = anchorLeft + anchor.width / 2 > host.width / 2
+        val rawLeft = if (placeLeft) anchorLeft - gap - width else anchorLeft + anchor.width + gap
+        val left = rawLeft.coerceIn(
+            inset + margin,
+            (host.width - width - inset - margin).coerceAtLeast(inset + margin),
+        )
+        val top = (anchorTop + (anchor.height - height) / 2).coerceAtLeast(dp(4))
+
+        gestureHintView.layoutParams = FrameLayout.LayoutParams(width, height).apply {
+            gravity = Gravity.TOP or Gravity.START
+            leftMargin = left
+            topMargin = top
+        }
+        if (gestureHintView.visibility != View.VISIBLE) {
+            gestureHintView.visibility = View.VISIBLE
+            gestureHintView.bringToFront()
+            gestureHintView.animate().cancel()
+            gestureHintView.pivotX = width / 2f
+            gestureHintView.pivotY = height / 2f
+            gestureHintView.scaleX = 0.9f
+            gestureHintView.scaleY = 0.9f
+            gestureHintView.alpha = 0f
+            gestureHintView.animate()
+                .scaleX(1f)
+                .scaleY(1f)
+                .alpha(1f)
+                .setDuration(ImeMotionTokens.POPUP_ENTER_MS)
+                .setInterpolator(DecelerateInterpolator(1.5f))
+                .start()
+        }
+    }
+
+    fun hideGestureHint() {
+        gestureHintView.animate().cancel()
+        gestureHintView.visibility = View.GONE
     }
 
     fun show(anchor: View, text: String) {
@@ -60,10 +165,7 @@ internal class KeyPopupController(
         val availableWidth = (host.width - contentInsetPx() * 2)
             .coerceAtLeast(minimumWidth)
         val popupWidth = desiredWidth.coerceAtMost(availableWidth)
-        val popupHeight = dp(
-            if (text == "清空") 36 else ImeGeometryTokens.KEY_POPUP_HEIGHT_DP,
-        )
-        val popupBackground = if (text == "清空") t.destructive else t.keyBackground
+        val popupHeight = dp(ImeGeometryTokens.KEY_POPUP_HEIGHT_DP)
         previewPopup.apply {
             this.text = text
             textSize = if (text.length > 1) {
@@ -71,18 +173,13 @@ internal class KeyPopupController(
             } else {
                 ImeTypographyTokens.DISPLAY_SP
             }
-            setTextColor(if (text == "清空") contrastText(popupBackground) else t.keyText)
-            background =
-                if (text == "清空") {
-                    rounded(popupBackground, dp(ImeGeometryTokens.CONTROL_RADIUS_DP))
-                } else {
-                    ImeDrawableFactory.rounded(
-                        popupBackground,
-                        dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                        ImeSurfacePolicy.divider(t),
-                        dp(1).coerceAtLeast(1),
-                    )
-                }
+            setTextColor(t.keyText)
+            background = ImeDrawableFactory.rounded(
+                t.keyBackground,
+                dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
+                ImeSurfacePolicy.divider(t),
+                dp(1).coerceAtLeast(1),
+            )
         }
 
         positionAttachedPopup(anchor, previewPopup, popupWidth, popupHeight)
@@ -178,6 +275,11 @@ internal class KeyPopupController(
         }
         popupView = null
         keepAfterKeyUp = false
+    }
+
+    private companion object {
+        const val GESTURE_HINT_HEIGHT_DP = 36
+        const val GESTURE_HINT_MIN_WIDTH_DP = 88
     }
 
     private fun positionAttachedPopup(

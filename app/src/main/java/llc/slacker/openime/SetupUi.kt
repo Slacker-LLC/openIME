@@ -369,7 +369,7 @@ object SetupUi {
 
     fun styleDialog(dialog: AlertDialog, context: Context, destructivePositive: Boolean = false) {
         val palette = tokensForAccent(context)
-        val accent = if (!ImeSurfacePolicy.isDark(palette) && ImeSettingsRepository.loadSkinColor(context) == AccentPalette.DEFAULT) Color.parseColor("#006AB1") else palette.primary
+        val accent = ImeSurfacePolicy.selectedText(palette)
         val alertTitleId = context.resources.getIdentifier("alertTitle", "id", "android")
         if (alertTitleId != 0) {
             dialog.findViewById<TextView>(alertTitleId)?.setTextColor(
