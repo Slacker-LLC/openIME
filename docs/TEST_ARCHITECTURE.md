@@ -64,11 +64,20 @@ GitHub Actions 当前兼容矩阵运行 API 29 和 API 31。更高 API 和真机
 
 `.github/workflows/android.yml` 当前执行：
 
-1. `:app:testDebugUnitTest`
-2. `:app:lintDebug`
-3. `:app:assembleDebug`
-4. API 29 `:app:connectedDebugAndroidTest`
-5. API 31 `:app:connectedDebugAndroidTest`
+1. 版本与变更记录检查：`scripts/test_release_check.py`、`scripts/release_check.py check`
+2. `:app:testDebugUnitTest`
+3. `:app:lintDebug`
+4. `:app:assembleDebug`、`:app:assembleDebugAndroidTest`，并校验 APK 内的包名与版本
+5. API 29 全部仪器测试
+6. API 31 全部仪器测试
+
+`am instrument` 即使有测试失败也以 0 退出，所以兼容矩阵会检查输出末尾的 `OK (N tests)`，
+否则让 job 失败；报告保存在 `compatibility-api-*` artifact 里。
+
+`main` 要求 **Build and verify** 通过才能合并；兼容矩阵在 PR 上同样运行并会真实变红，
+但不阻止合并（原因与如何改成必须通过见 [REPOSITORY.md](REPOSITORY.md)）。
+发布工作流额外要求这三项检查都通过，并在 PR 改到发布流水线时用一次性密钥演练
+`lintRelease` + `assembleRelease`（见 [RELEASE.md](RELEASE.md)）。
 
 PR 或分支上的“最新 HEAD”必须对应最新 CI；旧 SHA 的绿色结果不能证明新提交通过。
 

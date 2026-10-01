@@ -12,9 +12,15 @@ openIME 是独立 Android 系统输入法，包名 `llc.slacker.openime`。拼�
 
 ## 下载
 
-正式版本从 [GitHub Releases](https://github.com/Slacker-LLC/openIME/releases/latest) 下载。发布 APK 使用固定发布签名，文件名为 `openIME-v{versionName}-arm64-release.apk`，同一 Release 同时提供 `SHA256SUMS.txt`。
+正式版本从 [GitHub Releases](https://github.com/Slacker-LLC/openIME/releases/latest) 下载，各版本的变化见 [CHANGELOG.md](CHANGELOG.md)。发布 APK 使用固定发布签名，文件名为 `openIME-v{版本}-arm64-release.apk`，同一 Release 同时提供 `SHA256SUMS.txt` 和第三方许可清单。下载后先校验再安装：
+
+```bash
+sha256sum -c SHA256SUMS.txt
+```
 
 当前正式发布包只包含 `arm64-v8a`；开发用 Debug APK 仍保留 `x86_64`，用于模拟器回归。
+
+版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)，唯一来源是根目录 `VERSION`；发布流程见 [docs/RELEASE.md](docs/RELEASE.md)。
 
 ## 安装四步
 
@@ -68,10 +74,12 @@ InputConnection
 
 ```text
 app/                  Android APK、IME Service、Rime JNI、内置模型与词典
-scripts/              PowerShell/Bash 构建、回归、性能和视觉检查脚本
-docs/                 架构、适配、测试证据和本地模型接入文档
+scripts/              PowerShell/Bash 构建、回归、性能、视觉检查与发布脚本
+docs/                 架构、适配、测试、发布与仓库管理文档
 gradle/               Gradle Wrapper
-.github/              GitHub Actions、Issue 模板和 PR 模板
+.github/              GitHub Actions（CI 与发布）、Dependabot、Issue 与 PR 模板
+VERSION               版本号的唯一来源（MAJOR.MINOR.PATCH）
+CHANGELOG.md          各版本变更记录，同时是 Release 说明的来源
 ```
 
 第三方 C/C++ 源码位于 `app/src/main/cpp/vendor/`，其上游许可证随源代码保留。
@@ -170,7 +178,9 @@ bash scripts/verify_linux.sh emulator-5554
 - [适配与坐标规范](docs/COORDINATE_SYSTEM.md)
 - [测试流程 SOP](docs/TEST_SOP.md)
 - [脚本说明](scripts/README.md)
-- [发布流程](docs/RELEASE.md)
+- [发布与版本管理](docs/RELEASE.md)
+- [仓库管理](docs/REPOSITORY.md)
+- [贡献指南](CONTRIBUTING.md)
 
 ## 隐私与安全
 
