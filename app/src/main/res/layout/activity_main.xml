@@ -1,331 +1,55 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/main_scroll"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@color/setup_page_bg"
-    android:fillViewport="true">
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:focusableInTouchMode="true"
-        android:orientation="vertical"
-        android:paddingStart="@dimen/ime_space_xl"
-        android:paddingTop="@dimen/ime_space_xxl"
-        android:paddingEnd="@dimen/ime_space_xl"
-        android:paddingBottom="@dimen/ime_space_xxl">
-
-        <ImageView
-            android:layout_width="@dimen/setup_hero_mark_size"
-            android:layout_height="@dimen/setup_hero_mark_size"
-            android:layout_gravity="center_horizontal"
-            android:importantForAccessibility="no"
-            android:src="@drawable/ic_brand_mark" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/ime_space_lg"
-            android:accessibilityHeading="true"
-            android:gravity="center"
-            android:letterSpacing="-0.02"
-            android:text="@string/app_name"
-            android:textColor="@color/setup_title"
-            android:textSize="@dimen/ime_text_display"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/ime_space_sm"
-            android:gravity="center"
-            android:text="@string/main_description"
-            android:textColor="@color/setup_body"
-            android:textSize="@dimen/ime_text_body" />
-
-        <TextView
-            android:id="@+id/status"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/ime_space_xl"
-            android:accessibilityLiveRegion="polite"
-            android:gravity="center"
-            android:text="@string/setup_enable"
-            android:textColor="@color/setup_title"
-            android:textSize="@dimen/ime_text_body" />
-
-        <LinearLayout
-            android:id="@+id/open_ime_settings"
-            android:layout_width="match_parent"
-            android:layout_height="@dimen/setup_touch_target"
-            android:layout_marginTop="@dimen/ime_space_lg"
-            android:clickable="true"
-            android:contentDescription="@string/open_ime_settings"
-            android:focusable="true"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingStart="@dimen/ime_space_lg"
-            android:paddingEnd="@dimen/ime_space_lg">
-
-            <TextView
-                android:id="@+id/open_ime_settings_mark"
-                android:layout_width="@dimen/setup_step_mark_size"
-                android:layout_height="@dimen/setup_step_mark_size"
-                android:gravity="center"
-                android:importantForAccessibility="no"
-                android:text="1"
-                android:textColor="@color/setup_primary"
-                android:textSize="@dimen/ime_text_body"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/open_ime_settings_label"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="@dimen/ime_space_md"
-                android:layout_weight="1"
-                android:importantForAccessibility="no"
-                android:text="@string/open_ime_settings"
-                android:textColor="@color/setup_title"
-                android:textSize="@dimen/ime_text_title"
-                android:textStyle="bold" />
-
-            <ImageView
-                android:id="@+id/open_ime_settings_chevron"
-                android:layout_width="@dimen/setup_icon_size"
-                android:layout_height="@dimen/setup_icon_size"
-                android:importantForAccessibility="no"
-                android:rotation="180"
-                android:src="@drawable/ic_arrow_back"
-                android:tint="@color/setup_body" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/choose_ime"
-            android:layout_width="match_parent"
-            android:layout_height="@dimen/setup_touch_target"
-            android:layout_marginTop="@dimen/ime_space_md"
-            android:clickable="true"
-            android:contentDescription="@string/choose_ime"
-            android:focusable="true"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingStart="@dimen/ime_space_lg"
-            android:paddingEnd="@dimen/ime_space_lg">
-
-            <TextView
-                android:id="@+id/choose_ime_mark"
-                android:layout_width="@dimen/setup_step_mark_size"
-                android:layout_height="@dimen/setup_step_mark_size"
-                android:gravity="center"
-                android:importantForAccessibility="no"
-                android:text="2"
-                android:textColor="@color/setup_primary"
-                android:textSize="@dimen/ime_text_body"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/choose_ime_label"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="@dimen/ime_space_md"
-                android:layout_weight="1"
-                android:importantForAccessibility="no"
-                android:text="@string/choose_ime"
-                android:textColor="@color/setup_title"
-                android:textSize="@dimen/ime_text_title"
-                android:textStyle="bold" />
-
-            <ImageView
-                android:id="@+id/choose_ime_chevron"
-                android:layout_width="@dimen/setup_icon_size"
-                android:layout_height="@dimen/setup_icon_size"
-                android:importantForAccessibility="no"
-                android:rotation="180"
-                android:src="@drawable/ic_arrow_back"
-                android:tint="@color/setup_body" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/voice_permission_card"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/ime_space_md"
-            android:background="@drawable/bg_setup_card"
-            android:orientation="vertical"
-            android:padding="@dimen/ime_space_sm">
-
-            <LinearLayout
-                android:id="@+id/voice_permission"
-                android:layout_width="match_parent"
-                android:layout_height="@dimen/setup_touch_target"
-                android:clickable="true"
-                android:contentDescription="@string/voice_permission_enable"
-                android:focusable="true"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="@dimen/ime_space_sm"
-                android:paddingEnd="@dimen/ime_space_sm">
-
-                <TextView
-                    android:id="@+id/voice_permission_mark"
-                    android:layout_width="@dimen/setup_step_mark_size"
-                    android:layout_height="@dimen/setup_step_mark_size"
-                    android:gravity="center"
-                    android:importantForAccessibility="no"
-                    android:text="3"
-                    android:textColor="@color/setup_primary"
-                    android:textSize="@dimen/ime_text_body"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/voice_permission_label"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="@dimen/ime_space_md"
-                    android:layout_weight="1"
-                    android:importantForAccessibility="no"
-                    android:text="@string/voice_permission_enable"
-                    android:textColor="@color/setup_title"
-                    android:textSize="@dimen/ime_text_title"
-                    android:textStyle="bold" />
-
-                <ImageView
-                    android:id="@+id/voice_permission_chevron"
-                    android:layout_width="@dimen/setup_icon_size"
-                    android:layout_height="@dimen/setup_icon_size"
-                    android:importantForAccessibility="no"
-                    android:rotation="180"
-                    android:src="@drawable/ic_arrow_back"
-                    android:tint="@color/setup_body" />
-            </LinearLayout>
-
-            <TextView
-                android:id="@+id/voice_permission_description"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="@dimen/ime_space_sm"
-                android:layout_marginTop="@dimen/ime_space_xs"
-                android:layout_marginEnd="@dimen/ime_space_sm"
-                android:text="@string/voice_permission_description"
-                android:textColor="@color/setup_body"
-                android:textSize="@dimen/ime_text_body" />
-
-            <TextView
-                android:id="@+id/voice_permission_skip"
-                android:layout_width="match_parent"
-                android:layout_height="@dimen/setup_touch_target"
-                android:layout_marginTop="@dimen/ime_space_sm"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:text="@string/voice_permission_skip"
-                android:textColor="@color/setup_primary"
-                android:textSize="@dimen/ime_text_body"
-                android:textStyle="bold" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/test_step_card"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/ime_space_md"
-            android:background="@drawable/bg_setup_card"
-            android:orientation="vertical"
-            android:padding="@dimen/ime_space_sm">
-
-            <LinearLayout
-                android:id="@+id/test_step"
-                android:layout_width="match_parent"
-                android:layout_height="@dimen/setup_touch_target"
-                android:clickable="true"
-                android:contentDescription="@string/test_step"
-                android:focusable="true"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="@dimen/ime_space_sm"
-                android:paddingEnd="@dimen/ime_space_sm">
-
-                <TextView
-                    android:id="@+id/test_step_mark"
-                    android:layout_width="@dimen/setup_step_mark_size"
-                    android:layout_height="@dimen/setup_step_mark_size"
-                    android:gravity="center"
-                    android:importantForAccessibility="no"
-                    android:text="4"
-                    android:textColor="@color/setup_primary"
-                    android:textSize="@dimen/ime_text_body"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/test_step_label"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="@dimen/ime_space_md"
-                    android:layout_weight="1"
-                    android:importantForAccessibility="no"
-                    android:text="@string/test_step"
-                    android:textColor="@color/setup_title"
-                    android:textSize="@dimen/ime_text_title"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-            <EditText
-                android:id="@+id/test_input"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/ime_space_sm"
-                android:background="@drawable/bg_setup_test_field"
-                android:gravity="top|start"
-                android:hint="@string/test_hint"
-                android:importantForAutofill="no"
-                android:inputType="textMultiLine|textCapSentences"
-                android:maxLines="6"
-                android:minLines="3"
-                android:textColor="@color/setup_title"
-                android:textColorHint="@color/setup_muted_text"
-                android:textSize="@dimen/ime_text_title" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/ime_space_sm"
-                android:text="@string/typing_tips"
-                android:textColor="@color/setup_body"
-                android:textSize="@dimen/ime_text_body" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/open_app_settings"
-            android:layout_width="match_parent"
-            android:layout_height="@dimen/setup_touch_target"
-            android:layout_marginTop="@dimen/ime_space_lg"
-            android:clickable="true"
-            android:contentDescription="@string/open_app_settings"
-            android:focusable="true"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingStart="@dimen/ime_space_lg"
-            android:paddingEnd="@dimen/ime_space_lg">
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:importantForAccessibility="no"
-                android:text="@string/open_app_settings"
-                android:textColor="@color/setup_title"
-                android:textSize="@dimen/ime_text_title"
-                android:textStyle="bold" />
-
-            <ImageView
-                android:layout_width="@dimen/setup_icon_size"
-                android:layout_height="@dimen/setup_icon_size"
-                android:importantForAccessibility="no"
-                android:rotation="180"
-                android:src="@drawable/ic_arrow_back"
-                android:tint="@color/setup_body" />
-        </LinearLayout>
-    </LinearLayout>
-</ScrollView>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/main_scroll" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:background="@color/setup_page_bg" android:focusableInTouchMode="true">
+<ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:fillViewport="true" android:scrollbars="none">
+<LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingHorizontal="16dp" android:paddingTop="44dp" android:paddingBottom="16dp">
+<ImageView android:layout_width="72dp" android:layout_height="72dp" android:layout_gravity="center_horizontal" android:src="@drawable/ic_brand_mark" android:importantForAccessibility="no"/>
+<TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="openIME" android:textColor="@color/setup_title" android:textSize="28sp" android:fontFamily="sans-serif-medium" android:gravity="center"/>
+<TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="本地拼音输入法\n词库和语音都在设备内运行" android:textColor="@color/setup_body" android:textSize="14sp" android:gravity="center" android:lineSpacingExtra="4dp"/>
+<TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content" android:visibility="gone"/>
+<LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginTop="24dp" android:background="@drawable/bg_setup_card">
+<LinearLayout android:id="@+id/open_ime_settings" android:layout_width="match_parent" android:layout_height="68dp" android:orientation="horizontal" android:gravity="center_vertical" android:paddingHorizontal="16dp" android:clickable="true" android:focusable="true">
+ <TextView android:id="@+id/open_ime_settings_mark" android:layout_width="28dp" android:layout_height="28dp" android:gravity="center" android:text="1" android:textSize="14sp" android:fontFamily="sans-serif-medium"/>
+ <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="14dp">
+ <TextView android:id="@+id/open_ime_settings_label" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="启用输入法" android:textColor="@color/setup_title" android:textSize="16sp" android:fontFamily="sans-serif-medium"/>
+ <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="在系统设置中打开 openIME" android:textColor="@color/setup_body" android:textSize="12sp" android:layout_marginTop="2dp"/>
+ </LinearLayout>
+ <ImageView android:id="@+id/open_ime_settings_chevron" android:layout_width="24dp" android:layout_height="24dp" android:rotation="180" android:src="@drawable/ic_arrow_back" android:tint="@color/setup_body"/>
+ </LinearLayout>
+<View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginHorizontal="16dp" android:background="@color/setup_input_line" android:alpha="0.25"/>
+<LinearLayout android:id="@+id/choose_ime" android:layout_width="match_parent" android:layout_height="68dp" android:orientation="horizontal" android:gravity="center_vertical" android:paddingHorizontal="16dp" android:clickable="true" android:focusable="true">
+ <TextView android:id="@+id/choose_ime_mark" android:layout_width="28dp" android:layout_height="28dp" android:gravity="center" android:text="2" android:textSize="14sp" android:fontFamily="sans-serif-medium"/>
+ <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="14dp">
+ <TextView android:id="@+id/choose_ime_label" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="切换到 openIME" android:textColor="@color/setup_title" android:textSize="16sp" android:fontFamily="sans-serif-medium"/>
+ <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="选择此键盘输入法" android:textColor="@color/setup_body" android:textSize="12sp" android:layout_marginTop="2dp"/>
+ </LinearLayout>
+ <ImageView android:id="@+id/choose_ime_chevron" android:layout_width="24dp" android:layout_height="24dp" android:rotation="180" android:src="@drawable/ic_arrow_back" android:tint="@color/setup_body"/>
+ </LinearLayout>
+<View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginHorizontal="16dp" android:background="@color/setup_input_line" android:alpha="0.25"/>
+<LinearLayout android:id="@+id/test_step" android:layout_width="match_parent" android:layout_height="68dp" android:orientation="horizontal" android:gravity="center_vertical" android:paddingHorizontal="16dp" android:clickable="true" android:focusable="true">
+ <TextView android:id="@+id/test_step_mark" android:layout_width="28dp" android:layout_height="28dp" android:gravity="center" android:text="3" android:textSize="14sp" android:fontFamily="sans-serif-medium"/>
+ <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="14dp">
+ <TextView android:id="@+id/test_step_label" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="试打" android:textColor="@color/setup_title" android:textSize="16sp" android:fontFamily="sans-serif-medium"/>
+ <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="输入 nihao 得到你好；点候选上屏，点空格选首选" android:textColor="@color/setup_body" android:textSize="12sp" android:layout_marginTop="2dp"/>
+ </LinearLayout>
+ <ImageView android:id="@+id/test_step_chevron" android:layout_width="24dp" android:layout_height="24dp" android:rotation="180" android:src="@drawable/ic_arrow_back" android:tint="@color/setup_body"/>
+ </LinearLayout>
+</LinearLayout>
+<EditText android:id="@+id/test_input" android:layout_width="match_parent" android:layout_height="56dp" android:layout_marginTop="24dp" android:hint="在这里试打" android:background="@drawable/bg_setup_test_field" android:paddingHorizontal="16dp" android:inputType="textMultiLine|textCapSentences" android:textColor="@color/setup_title" android:textColorHint="@color/setup_muted_text" android:textSize="16sp" android:importantForAutofill="no"/>
+<LinearLayout android:id="@+id/voice_permission_card" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:orientation="vertical" android:background="@drawable/bg_setup_card" android:padding="16dp">
+<LinearLayout android:id="@+id/voice_permission" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="40dp" android:orientation="horizontal" android:gravity="center_vertical" android:clickable="true" android:focusable="true">
+<TextView android:id="@+id/voice_permission_mark" android:layout_width="32dp" android:layout_height="32dp" android:gravity="center" android:text="♩"/>
+<LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="12dp" android:orientation="vertical">
+<TextView android:id="@+id/voice_permission_label" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="语音输入（可选）" android:fontFamily="sans-serif-medium" android:textSize="16sp" android:textColor="@color/setup_title"/>
+<TextView android:id="@+id/voice_permission_description" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="需要麦克风权限；音频只在本机处理，不会上传。" android:textSize="12sp" android:textColor="@color/setup_body"/>
+</LinearLayout>
+<ImageView android:id="@+id/voice_permission_chevron" android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/ic_arrow_back" android:rotation="180"/>
+</LinearLayout>
+<LinearLayout android:id="@+id/voice_permission_actions" android:layout_width="match_parent" android:layout_height="38dp" android:layout_marginStart="44dp" android:layout_marginTop="12dp" android:orientation="horizontal">
+<TextView android:id="@+id/voice_permission_authorize" android:layout_width="66dp" android:layout_height="38dp" android:text="授权" android:textSize="14sp" android:fontFamily="sans-serif-medium" android:gravity="center" android:textColor="@color/setup_title" android:clickable="true" android:focusable="true"/>
+<TextView android:id="@+id/voice_permission_skip" android:layout_width="72dp" android:layout_height="38dp" android:layout_marginStart="10dp" android:text="跳过" android:textSize="14sp" android:gravity="center" android:textColor="@color/setup_primary" android:clickable="true" android:focusable="true"/>
+</LinearLayout>
+</LinearLayout>
+</LinearLayout></ScrollView>
+<LinearLayout android:id="@+id/open_app_settings" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginHorizontal="16dp" android:layout_marginVertical="16dp" android:gravity="center" android:clickable="true" android:focusable="true">
+<TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="打开偏好设置" android:textColor="@color/setup_title" android:textSize="16sp" android:fontFamily="sans-serif-medium"/>
+</LinearLayout></LinearLayout>

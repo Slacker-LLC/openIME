@@ -25,7 +25,7 @@ internal object ImeGeometryTokens {
     const val FIELD_HEIGHT_DP = 56
     const val PRIMARY_ROW_HEIGHT_DP = 56
     const val SETTING_ROW_HEIGHT_DP = 56
-    const val TOOL_CARD_HEIGHT_DP = 64
+    const val TOOL_CARD_HEIGHT_DP = 92
     const val VOICE_CONTROL_HEIGHT_DP = TOUCH_TARGET_DP
     const val SWITCH_WIDTH_DP = 48
     const val SWITCH_HEIGHT_DP = 28
@@ -44,7 +44,7 @@ internal object ImeGeometryTokens {
     // The toolbar itself is compact; the top zone still reserves the larger
     // composed height so typing never moves the keyboard window.
     const val TOOLBAR_HEIGHT_DP = TOUCH_TARGET_DP
-    const val TOP_BAR_HEIGHT_DP = 56
+    const val TOP_BAR_HEIGHT_DP = 48
     const val ICON_SIZE_DP = 24
     const val STEP_MARK_SIZE_DP = 28
     const val HERO_MARK_SIZE_DP = 72
@@ -149,23 +149,24 @@ enum class ImeTheme(val key: String, val label: String) {
         }
         val base = if (useDark) {
             Tokens(
-                c("#6EC3F7"), c("#1C1C1E"), c("#242426"), c("#262628"), c("#F2F2F7"),
+                c("#6EC3F7"), c("#1C1C1E"), c("#242426"), c("#242426"), c("#F2F2F7"),
                 c("#3A3A3C"), c("#F2F2F7"), c("#AEAEB2"), c("#2C2C2E"), c("#F2F2F7"), c("#4A4A4D"),
-                c("#242426"), c("#48484A"), c("#2C2C2E"), c("#202022"), c("#242426"),
-                c("#3A3A3C"), c("#F2F2F7"), c("#2C2C2E"), c("#F2F2F7"), c("#303033"), c("#242426"),
+                c("#242426"), c("#48484A"), c("#2C2C2E"), c("#1C1C1E"), c("#242426"),
+                c("#3A3A3C"), c("#F2F2F7"), c("#2C2C2E"), c("#F2F2F7"), c("#303032"), c("#242426"),
                 success = c("#5BD08A"),
             )
         } else {
             Tokens(
-                c("#1D9BF0"), c("#D5D8DE"), c("#EEF0F3"), c("#F7F8FA"), c("#1F2023"),
-                c("#FFFFFF"), c("#1C1C1E"), c("#6E6E73"), c("#C5C9D1"), c("#2C2D31"), c("#DDE1E7"),
-                c("#F2F3F5"), c("#B7BCC5"), c("#C5C9D1"), c("#F1F2F4"), c("#F8F9FA"),
-                c("#FFFFFF"), c("#1C1C1E"), c("#C5C9D1"), c("#2C2D31"), c("#FFFFFF"), c("#E4E7EB"),
+                c("#1D9BF0"), c("#D5D8DF"), c("#EFF0F4"), c("#EFF0F4"), c("#1F2023"),
+                c("#FFFFFF"), c("#1C1C1E"), c("#6D6D72"), c("#C5C9D2"), c("#2C2D31"), c("#DDE1E7"),
+                c("#F2F3F5"), c("#B7BCC5"), c("#C5C9D2"), c("#F1F2F4"), c("#F8F9FA"),
+                c("#FFFFFF"), c("#1C1C1E"), c("#C5C9D2"), c("#2C2D31"), c("#FFFFFF"), c("#E4E7EC"),
                 success = c("#1F8A4C"),
                 textSecondaryRole = c("#6D6D72"),
             )
         }
         val accent = accentOverride ?: return base
+        if (accent == AccentPalette.parse(AccentPalette.DEFAULT)) return base
         return base.copy(primary = accent)
     }
 }
@@ -184,18 +185,12 @@ internal object ImeSurfacePolicy {
     fun selectedSurface(tokens: ImeTheme.Tokens): Int =
         ImeDrawableFactory.blend(
             tokens.primary,
-            tokens.candidateBackground,
-            if (isDark(tokens)) 0.24f else 0.12f,
+            tokens.keyboardBackground,
+            if (isDark(tokens)) 0.24f else 0.14f,
         )
 
     fun selectedText(tokens: ImeTheme.Tokens): Int =
-        if (
-            ImeContrastPolicy.contrastRatio(tokens.primary, selectedSurface(tokens)) >= 4.5
-        ) {
-            tokens.primary
-        } else {
-            tokens.keyText
-        }
+        if (isDark(tokens)) tokens.primary else Color.parseColor("#006AB1")
 
     fun pressedSurface(base: Int, tokens: ImeTheme.Tokens): Int =
         ImeDrawableFactory.blend(

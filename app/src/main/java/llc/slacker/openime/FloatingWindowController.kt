@@ -158,7 +158,7 @@ internal class FloatingWindowController(
     private fun floatingWidth(screenWidth: Int): Int {
         val landscape =
             resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-        val percent = floatingWidthPercent().coerceIn(72, 96)
+        val percent = floatingWidthPercent().coerceIn(72, 100)
         val preferred = (screenWidth * percent / 100f).toInt()
         val maximum = dp(
             if (landscape) ImeGeometryTokens.FLOATING_LANDSCAPE_WIDTH_DP else 420,

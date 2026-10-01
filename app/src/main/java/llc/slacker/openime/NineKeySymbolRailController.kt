@@ -15,8 +15,8 @@ import android.widget.TextView
 /**
  * Owns the Chinese 9-key side rail.
  *
- * With no ambiguity it behaves as the normal vertically scrollable symbol
- * rail. Once one digit sequence maps to multiple Pinyin paths, the same rail
+ * With no composition it behaves as the normal vertically scrollable symbol
+ * rail. During composition, the same rail
  * becomes a directly selectable Pinyin list. This mirrors mature 9-key IMEs:
  * the user sees all useful spellings at once instead of cycling one hidden
  * option through a single button.
@@ -26,6 +26,8 @@ internal class NineKeySymbolRailController(
     private val composition: EditText,
     private val onCommit: (String) -> Unit,
     private val onFeedback: () -> Unit,
+    private val cellHeightDp: () -> Int,
+    private val toPx: (Int) -> Int = { (it * context.resources.displayMetrics.density).toInt() },
     private val onRailChanged: (View) -> Unit,
 ) {
     private enum class RailMode { SYMBOLS, PINYIN }
@@ -64,6 +66,8 @@ internal class NineKeySymbolRailController(
             contentTag = NINE_CONTENT_TAG,
             contentDescription = "九键拼音筛选或常用符号，上下滑动查看更多",
             symbols = commonSymbols(),
+            cellHeightDp = cellHeightDp(),
+            toPx = toPx,
             tagPrefix = "punct:",
             onCommit = onCommit,
             onFeedback = onFeedback,
@@ -119,9 +123,9 @@ internal class NineKeySymbolRailController(
             .take(MAX_VISIBLE_PATHS)
             .toList()
 
-        // One spelling needs no disambiguation. Keep the valuable symbol rail
-        // available instead of occupying the whole column with redundant UI.
-        if (choices.size <= 1) {
+        // Keep the selected spelling visible throughout composition, even when
+        // this digit sequence currently has only one complete display path.
+        if (choices.isEmpty()) {
             renderSymbols()
             return
         }
@@ -149,6 +153,8 @@ internal class NineKeySymbolRailController(
         SymbolRailRenderer.populate(
             scroll = scroll,
             symbols = commonSymbols(),
+            cellHeightDp = cellHeightDp(),
+            toPx = toPx,
             tagPrefix = "punct:",
             onCommit = onCommit,
             onFeedback = onFeedback,
@@ -187,7 +193,7 @@ internal class NineKeySymbolRailController(
             content.addView(
                 TextView(content.context).apply {
                     text = displayPath(choice)
-                    textSize = ImeTypographyTokens.BODY_SP
+                    textSize = 18f
                     gravity = Gravity.CENTER
                     tag = if (active) SELECTED_FILTER_TAG else FILTER_TAG
                     contentDescription =
@@ -204,7 +210,7 @@ internal class NineKeySymbolRailController(
                     isClickable = true
                     isFocusable = true
                     maxLines = 2
-                    minimumHeight = SymbolRailRenderer.cellHeightPx(content.context)
+                    includeFontPadding = false
                     inheritedTextColor?.let(::setTextColor)
                     setOnClickListener {
                         onFeedback()
@@ -214,6 +220,8 @@ internal class NineKeySymbolRailController(
                 SymbolRailRenderer.cellParams(
                     content.context,
                     withGap = index < choices.lastIndex,
+                    heightDp = cellHeightDp(),
+                    toPx = toPx,
                 ),
             )
         }
@@ -233,21 +241,17 @@ internal class NineKeySymbolRailController(
     }
 
     private fun displayPath(path: String): String =
-        path.replace(" ", "·").replace("|", "·").replace("'", "·")
+        path.replace(" ", "'").replace("|", "'")
 
     private fun speakablePath(path: String): String =
         path.replace(" ", "、").replace("|", "、").replace("'", "、")
 
     private fun commonSymbols(): List<String> =
-        CustomSymbolRepository.load(context)
-            .map { it.symbol }
-            .filter { it.isNotBlank() } +
-            ImeData.symbols["常用"].orEmpty()
-                .asSequence()
-                .filter { it.isNotBlank() }
-                .distinct()
-                .toList()
-                .ifEmpty { listOf("，", "。", "？", "！") }
+        (listOf("，", "。", "？", "！") +
+            CustomSymbolRepository.load(context).map { it.symbol } +
+            ImeData.symbols["常用"].orEmpty())
+            .filter { it.isNotBlank() }
+            .distinct()
 
     private companion object {
         const val NINE_RAIL_TAG = "nine-punct-stack"

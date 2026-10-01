@@ -226,16 +226,19 @@ open class ImeKeyboardView(
     }
     // Only these configuration values change the derived row and IME heights.
     private var appliedOrientation = resources.configuration.orientation
+    private var appliedScreenWidthDp = resources.configuration.screenWidthDp
     private var appliedFontScale = resources.configuration.fontScale
     private var appliedDensityDpi = resources.displayMetrics.densityDpi
     private var keyboardHandedness = ImeSettingsRepository.loadHandedness(context)
     private var keyboardHeightPercent = ImeSettingsRepository.loadKeyboardHeightPercent(context)
     private var floatingWidthPercent = ImeSettingsRepository.loadFloatingWidthPercent(context)
     private var floatingOpacityPercent = ImeSettingsRepository.loadFloatingOpacityPercent(context)
+    private var referenceScale = ImeReferenceSizing.scale(context)
     private var layoutMetrics = KeyboardLayoutMetrics(
         landscape = appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE,
         fontScale = appliedFontScale,
         heightPercent = keyboardHeightPercent,
+            availableWidthDp = resources.configuration.screenWidthDp,
     )
     private var lastTextMode = KeyboardMode.PINYIN_26
     private var preferredChineseMode = ImeSettingsRepository.loadPreferredChineseMode(context)
@@ -247,6 +250,11 @@ open class ImeKeyboardView(
     fun currentPanel(): Panel = panel
 
     /** Persist the standalone settings panel's viewport across Activity recreation. */
+    internal fun editAccentColor() {
+        showPanel(Panel.SKIN_SETTINGS)
+        settingsPanelController.showCustomAccentDialog()
+    }
+
     internal fun settingsScrollPosition(): Int =
         settingsPanelController.scrollPosition()
 
@@ -277,13 +285,13 @@ open class ImeKeyboardView(
     }
 
     private var shiftState = ShiftState.LOWERCASE
-    private var soundEnabled = true
-    private var hapticEnabled = true
+    private var soundEnabled = ImeSettingsRepository.loadSound(context)
+    private var hapticEnabled = ImeSettingsRepository.loadHaptic(context)
     private val audioManager by lazy {
         context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
     }
-    private var popupEnabled = false
-    private var fuzzyEnabled = false
+    private var popupEnabled = ImeSettingsRepository.loadPopup(context)
+    private var fuzzyEnabled = ImeSettingsRepository.loadFuzzy(context)
     private var skinRadius = ImeSettingsRepository.loadSkinRadius(context)
     private var skinOpacity = ImeSettingsRepository.loadSkinOpacity(context)
     private var skinFontSize = ImeSettingsRepository.loadSkinFont(context)
@@ -311,13 +319,14 @@ open class ImeKeyboardView(
             onDock = { listener.onFloatingKeyboardChanged(false) },
         )
     }
-    private var contentInsetPx = dp(5)
+    private var contentInsetPx = dp(0)
     private var navigationBottomInsetPx = 0
     private val themeApplier: ImeThemeApplier by lazy {
         ImeThemeApplier(
             toPx = ::dp,
             statefulRounded = ::statefulRounded,
             keyMainTextScale = ::skinFontScale,
+            referenceScale = { referenceScale },
             skinRadiusPx = { dp(skinRadius) },
             skinOpacity = { skinOpacity },
             skinPrimaryColor = { skinPrimaryColor },
@@ -428,16 +437,16 @@ open class ImeKeyboardView(
             onEnter = listener::onEnter,
         )
     }
+    private var floatingWindowMode = false
     private var systemBottomInsetPx = 0
     private val maxContentWidthDp = 600
-    // Portrait keeps the historical 296dp total. Landscape uses a compact
-    // keyboard, and key rows grow with the system font scale so sp labels are
-    // never clipped inside a fixed-height key.
+    // Portrait row height follows the available screen width. Landscape stays
+    // compact; larger system fonts and the height preference grow the rows.
     private fun keyRowHeightDp(): Int = layoutMetrics.keyRowHeightDp
     private fun nineGridHeightDp(): Int = layoutMetrics.nineGridHeightDp
     private fun nineBodyHeightDp(): Int = layoutMetrics.nineBodyHeightDp
     private fun doubleKeyHeightDp(): Int = layoutMetrics.doubleKeyHeightDp
-    private fun imeHeightDp(): Int = layoutMetrics.imeHeightDp
+    private fun imeHeightDp(): Int = layoutMetrics.imeHeightDp + if (floatingWindowMode) 20 else 0
 
     /** The top zone is reserved at its composed height in every state. */
     private fun topZoneHeightDp(): Int = layoutMetrics.topZoneHeightDp
@@ -461,6 +470,7 @@ open class ImeKeyboardView(
     private val emojiCellFactory: EmojiCellFactory by lazy {
         EmojiCellFactory(
             context = context,
+            toPx = ::dp,
             onFeedback = ::feedback,
             onEmojiSelected = listener::onEmojiSelected,
         )
@@ -566,7 +576,7 @@ open class ImeKeyboardView(
             toPx = ::dp,
             createHeader = panelHeaderFactory::create,
             createSectionTitle = ::sectionTitle,
-            createChipScroll = panelRenderer::panelChipScroll,
+            createChipScroll = { labels, selected, onSelected -> panelRenderer.panelChipScroll(labels, selected, onSelected) },
             currentTheme = { theme },
             currentAppearance = { appearance },
             currentSound = { soundEnabled },
@@ -604,6 +614,7 @@ open class ImeKeyboardView(
             onKeyboardHeightChanged = ::setKeyboardHeightPercent,
             onFloatingStyleChanged = ::setFloatingStyle,
             onShowFuzzySettings = { showPanel(Panel.FUZZY_SETTINGS) },
+            onShowSkinSettings = { showPanel(Panel.SKIN_SETTINGS) },
             onOpenAboutData = listener::onOpenAboutData,
             onFeedback = ::feedback,
             applyTheme = ::applyTheme,
@@ -628,7 +639,7 @@ open class ImeKeyboardView(
             },
             createPanelButton = ::button,
             createSectionTitle = ::sectionTitle,
-            createChipScroll = panelRenderer::panelChipScroll,
+            createChipScroll = { labels, selected, onSelected -> panelRenderer.panelChipScroll(labels, selected, onSelected) },
             createVerticalScroll = panelRenderer::panelVerticalScroll,
             rememberVerticalScroll = panelRenderer::rememberPanelVerticalScroll,
             onCharacter = listener::onCharacter,
@@ -696,20 +707,6 @@ open class ImeKeyboardView(
 
     init {
         tag = "ime_root"
-        setOnApplyWindowInsetsListener { _, insets ->
-            val reported = if (Build.VERSION.SDK_INT >= 30) {
-                insets.getInsets(WindowInsets.Type.navigationBars()).bottom
-            } else {
-                @Suppress("DEPRECATION")
-                insets.systemWindowInsetBottom
-            }
-            val next = ImeBottomInsetPolicy.clampInset(reported, dp(32))
-            if (next != navigationBottomInsetPx) {
-                navigationBottomInsetPx = next
-                requestLayout()
-            }
-            insets
-        }
         // Some IME windows inherit the host's disabled sound-effect flag.
         // Keep the view channel enabled; the preference still gates feedback().
         isSoundEffectsEnabled = true
@@ -745,7 +742,7 @@ open class ImeKeyboardView(
         }
         keyboardBody.orientation = LinearLayout.VERTICAL
         keyboardBody.tag = "keyboard-body"
-        keyboardBody.setPadding(dp(5), dp(6), dp(5), dp(16))
+        keyboardBody.setPadding(dp(0), dp(6), dp(0), dp(10))
         expandedPanel.orientation = LinearLayout.VERTICAL
         expandedPanel.tag = "panel-overlay"
         expandedPanel.visibility = View.GONE
@@ -767,12 +764,9 @@ open class ImeKeyboardView(
                 FrameLayout.LayoutParams.MATCH_PARENT,
             ),
         )
-        keyboardHost.addView(
+        mainDock.addView(
             floatingKeyboardController.handle,
-            FrameLayout.LayoutParams(dp(ImeGeometryTokens.TOUCH_TARGET_DP), dp(24)).apply {
-                gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-                bottomMargin = dp(4)
-            },
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(20)),
         )
 
         buildTopZone()
@@ -804,6 +798,12 @@ open class ImeKeyboardView(
                 @Suppress("DEPRECATION")
                 insets.systemWindowInsetBottom
             }.coerceAtMost(dp(32))
+            val next = if (floatingWindowMode) 0 else ImeBottomInsetPolicy.clampInset(systemBottomInsetPx, dp(32))
+            if (next != navigationBottomInsetPx) {
+                navigationBottomInsetPx = next
+                applyDynamicHeights()
+                requestLayout()
+            }
             updateResponsiveGeometry(width)
             insets
         }
@@ -821,9 +821,11 @@ open class ImeKeyboardView(
         // font rows take effect. Unrelated configuration changes (locale, UI mode,
         // keyboard presence) do not alter the derived geometry, so they must not
         // tear down the key surface.
-        val geometryChanged = newConfig.orientation != appliedOrientation ||
+        val geometryChanged = newConfig.screenWidthDp != appliedScreenWidthDp ||
+            newConfig.orientation != appliedOrientation ||
             newConfig.fontScale != appliedFontScale ||
             newConfig.densityDpi != appliedDensityDpi
+        appliedScreenWidthDp = newConfig.screenWidthDp
         appliedOrientation = newConfig.orientation
         appliedFontScale = newConfig.fontScale
         appliedDensityDpi = newConfig.densityDpi
@@ -831,6 +833,7 @@ open class ImeKeyboardView(
             landscape = appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE,
             fontScale = appliedFontScale,
             heightPercent = keyboardHeightPercent,
+            availableWidthDp = resources.configuration.screenWidthDp,
         )
         if (!geometryChanged) return
         // Do not yank the user out of an open panel.
@@ -918,8 +921,8 @@ open class ImeKeyboardView(
         val totalPx = dp(imeHeightDp())
         val bodyPx = dp(keyboardBodyHeightDp())
         (layoutParams as? FrameLayout.LayoutParams)?.let {
-            if (it.height != totalPx) {
-                it.height = totalPx
+            if (it.height != totalPx + navigationBottomInsetPx) {
+                it.height = totalPx + navigationBottomInsetPx
                 layoutParams = it
             }
         }
@@ -944,7 +947,7 @@ open class ImeKeyboardView(
     }
 
     /**
-     * The 390dp prototype is a design reference only. Runtime geometry is
+     * The 390dp prototype is a design reference only. Runtime content width is
      * derived from the measured IME width, with a 600dp maximum on tablets and
      * foldables. The bottom inset is added only when the system reports one so
      * the last row cannot sit underneath a gesture/navigation bar.
@@ -960,6 +963,18 @@ open class ImeKeyboardView(
                     .coerceAtLeast(dp(280))
                     .coerceAtMost(measuredWidthPx)
             }
+
+        val nextScale = ImeReferenceSizing.scale(context, dockWidthPx)
+        if (kotlin.math.abs(nextScale - referenceScale) > 0.001f) {
+            val ratio = nextScale / referenceScale
+            referenceScale = nextScale
+            rescaleTopZone(topZone, ratio)
+            applyDynamicHeights()
+            if (!standalonePanel) {
+                if (panel == Panel.NONE) renderModeBody() else renderPanel(panel)
+            }
+            applyTheme()
+        }
 
         (mainDock.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
             if (dockWidthPx == measuredWidthPx) {
@@ -980,16 +995,16 @@ open class ImeKeyboardView(
             // A configuration pass can briefly report the physical display
             // width before WindowManager applies the floating window bounds.
             // Keep the normal keyboard's content inset local to its window.
-            contentInsetPx = dp(5)
-            keyboardBody.setPadding(contentInsetPx, dp(6), contentInsetPx, dp(16))
+            contentInsetPx = dp(0)
+            keyboardBody.setPadding(contentInsetPx, dp(6), contentInsetPx, dp(10))
             keyboardBody.findViewWithTag<View>("key-row-secondary")?.let { row ->
                 // The portrait layout narrows this row to 90% of the full
                 // display for optical centering. A floating window can be
                 // narrower than the display, so that cached width would clip
                 // the first and last keys. Let the row fill its local window.
                 (row.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
-                    params.width = LinearLayout.LayoutParams.MATCH_PARENT
-                    params.gravity = Gravity.NO_GRAVITY
+                    params.width = (dockWidthPx * 0.9f).toInt()
+                    params.gravity = Gravity.CENTER_HORIZONTAL
                     row.layoutParams = params
                 }
             }
@@ -999,14 +1014,14 @@ open class ImeKeyboardView(
             requestLayout()
             return
         }
-        val minimumInset = dp(5)
-        val maxWidth = dp(maxContentWidthDp)
+        val minimumInset = dp(0)
+        val maxWidth = (minOf(maxContentWidthDp.toFloat(), 390f * referenceScale) * resources.displayMetrics.density).toInt()
         contentInsetPx = maxOf(minimumInset, (dockWidthPx - maxWidth) / 2)
         keyboardBody.setPadding(
             contentInsetPx,
             dp(6),
             contentInsetPx,
-            dp(16),
+            dp(10),
         )
         keyboardBody.findViewWithTag<View>("key-row-secondary")?.let { row ->
             val rowWidth = ((dockWidthPx - contentInsetPx * 2) * 0.9f).toInt()
@@ -1023,6 +1038,21 @@ open class ImeKeyboardView(
         requestLayout()
     }
 
+    private fun rescaleTopZone(view: View, ratio: Float) {
+        view.layoutParams?.let { params ->
+            if (params.width > 0) params.width = kotlin.math.round(params.width * ratio).toInt()
+            if (params.height > 0) params.height = kotlin.math.round(params.height * ratio).toInt()
+            if (params is ViewGroup.MarginLayoutParams) {
+                params.setMargins((params.leftMargin * ratio).toInt(), (params.topMargin * ratio).toInt(), (params.rightMargin * ratio).toInt(), (params.bottomMargin * ratio).toInt())
+            }
+            view.layoutParams = params
+        }
+        view.minimumHeight = (view.minimumHeight * ratio).toInt()
+        view.minimumWidth = (view.minimumWidth * ratio).toInt()
+        view.setPadding((view.paddingLeft * ratio).toInt(), (view.paddingTop * ratio).toInt(), (view.paddingRight * ratio).toInt(), (view.paddingBottom * ratio).toInt())
+        if (view is ViewGroup) for (i in 0 until view.childCount) rescaleTopZone(view.getChildAt(i), ratio)
+    }
+
     /** Keep the top zone at one height so composing never relayouts the keyboard. */
     private fun buildTopZone() {
         topZone = ImeTopZone(
@@ -1035,6 +1065,7 @@ open class ImeKeyboardView(
             onClipboard = { showPanel(Panel.CLIPBOARD) },
             onEmoji = { showPanel(Panel.EMOJI) },
             onSymbols = { showPanel(Panel.SYMBOLS) },
+            onTextEditor = { showPanel(Panel.TEXT_EDITOR) },
             onHideKeyboard = ::hideKeyboard,
             onTools = { showPanel(Panel.TOOLS) },
             onExpandCandidates = {
@@ -1047,7 +1078,7 @@ open class ImeKeyboardView(
                 updateTopZone(composition.text?.isNotEmpty() == true)
                 listener.onCandidateExpanded(open)
             },
-            onUndoClear = { listener.onUndoClear() },
+            onUndoClear = { if (!listener.onUndoClear()) listener.onTextEdit("undo") },
             onUndoClearExpired = listener::onUndoClearExpired,
         )
         candidateBarController = CandidateBarController(
@@ -1061,7 +1092,7 @@ open class ImeKeyboardView(
             keyRowHeightPx = { dp(keyRowHeightDp()) },
             createHeader = { panelHeaderFactory.create("候选字词") },
             createExpandedCandidate = { candidate ->
-                key(candidate, false, null, 1f, 15f) {
+                key(candidate, false, null, 1f, ImeTypographyTokens.CANDIDATE_SP) {
                     listener.onCandidateSelected(candidate)
                 }.apply {
                     allowTwoLineLabel()
@@ -1091,7 +1122,7 @@ open class ImeKeyboardView(
             topZone,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(64),
+                dp(topZoneHeightDp()),
             ),
         )
         candidateBarController.syncExpandControl(
@@ -1216,10 +1247,13 @@ open class ImeKeyboardView(
 
     /** Keep content geometry local when the service changes the window bounds. */
     fun setFloatingWindowMode(enabled: Boolean) {
+        floatingWindowMode = enabled
+        navigationBottomInsetPx = if (enabled) 0 else ImeBottomInsetPolicy.clampInset(systemBottomInsetPx, dp(32))
         floatingKeyboardController.setEnabled(enabled)
+        applyDynamicHeights()
         if (enabled) {
-            contentInsetPx = dp(5)
-            keyboardBody.setPadding(contentInsetPx, dp(6), contentInsetPx, dp(16))
+            contentInsetPx = dp(0)
+            keyboardBody.setPadding(contentInsetPx, dp(6), contentInsetPx, dp(10))
             expandedPanel.setPadding(contentInsetPx, 0, contentInsetPx, 0)
             candidateOverlay.setPadding(contentInsetPx, 0, contentInsetPx, 0)
             topZone.setContentInset(contentInsetPx)
@@ -1370,8 +1404,10 @@ open class ImeKeyboardView(
     private fun syncEnterKeyPresentation(imeOptions: Int?) {
         val options = imeOptions ?: return
         val enter = findViewWithTag<ImeKeyView>("key-enter") ?: return
-        val label = enterKeyPresentationFor(options).label
+        val composing = composition.text?.isNotEmpty() == true
+        val label = if (composing) "确定" else if (mode == KeyboardMode.PINYIN_9 || mode == KeyboardMode.DIGITS) "↵" else enterKeyPresentationFor(options).label
         enter.setMainText(label)
+        enter.applyMainTextScale(skinFontScale())
         enter.contentDescription = label
     }
 
@@ -1430,11 +1466,12 @@ open class ImeKeyboardView(
                 ).apply { marginEnd = dp(5) },
             )
         }
+        topZone.showAssociations(candidates.isNotEmpty())
         applyAssociationTheme()
     }
 
     fun clearAssociationCandidates() {
-        if (::topZone.isInitialized) associationRow.removeAllViews()
+        if (::topZone.isInitialized) { associationRow.removeAllViews(); topZone.showAssociations(false) }
     }
 
     fun setTheme(newTheme: ImeTheme) {
@@ -1475,7 +1512,7 @@ open class ImeKeyboardView(
     }
 
     private fun setKeyboardHeightPercent(percent: Int) {
-        val bounded = percent.coerceIn(92, 120)
+        val bounded = percent.coerceIn(80, 120)
         if (keyboardHeightPercent == bounded) return
         keyboardHeightPercent = bounded
         ImeSettingsRepository.saveKeyboardHeightPercent(context, bounded)
@@ -1485,6 +1522,7 @@ open class ImeKeyboardView(
             landscape = appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE,
             fontScale = appliedFontScale,
             heightPercent = keyboardHeightPercent,
+            availableWidthDp = resources.configuration.screenWidthDp,
         )
         applyDynamicHeights()
         if (!standalonePanel && panel == Panel.NONE) {
@@ -1541,6 +1579,7 @@ open class ImeKeyboardView(
                 landscape = appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE,
                 fontScale = appliedFontScale,
                 heightPercent = keyboardHeightPercent,
+            availableWidthDp = resources.configuration.screenWidthDp,
             )
             applyDynamicHeights()
             if (!standalonePanel && panel == Panel.NONE) {
@@ -1647,6 +1686,10 @@ open class ImeKeyboardView(
 
     internal fun findTestTarget(query: String): View? {
         findViewWithTag<View>(query)?.let { return it }
+        // Replay scripts address letters independently of the visible shift/case.
+        if (query.length == 1 && query[0].lowercaseChar() in 'a'..'z') {
+            findViewWithTag<View>("key:${query.lowercase()}")?.let { return it }
+        }
         fun deep(view: View): View? {
             val description = view.contentDescription?.toString()
             if (view.isClickable && (description == query || description?.substringBefore('，') == query)) return view
@@ -1707,8 +1750,10 @@ open class ImeKeyboardView(
     }
 
     internal fun normalizedBoundsReport(): String {
-        val out = StringBuilder()
+        val origin = IntArray(2).also(::getLocationOnScreen)
+        val out = StringBuilder("window=${origin[0]},${origin[1]},$width,$height\n")
         fun deep(view: View) {
+            if (view.visibility != View.VISIBLE) return
             if (view.tag is String || (view.isClickable && !view.contentDescription.isNullOrEmpty())) {
                 val normalized = NormalizedBounds.fromView(view, this)
                 out.append(
@@ -1747,13 +1792,19 @@ open class ImeKeyboardView(
             contentInsetPx,
             dp(6),
             contentInsetPx,
-            dp(16),
+            dp(10),
         )
         val state = when {
             inlineVoicePresenter.active -> ImeTopZoneState.VOICE_INLINE
             candidateBarController.expandedOpen -> ImeTopZoneState.CANDIDATE_EXPANDED
             composing -> ImeTopZoneState.COMPOSING
             else -> ImeTopZoneState.IDLE
+        }
+        syncEnterKeyPresentation((context as? android.inputmethodservice.InputMethodService)?.currentInputEditorInfo?.imeOptions)
+        findViewWithTag<View>("key-enter")?.let(::applyThemeToSubtree)
+        findViewWithTag<View>("key-retype")?.apply {
+            isEnabled = composing
+            alpha = if (composing) 1f else ImeSurfacePolicy.DISABLED_ALPHA
         }
         topZone.renderState(
             state = state,
@@ -1852,7 +1903,7 @@ open class ImeKeyboardView(
     }
 
     private fun renderPinyin9() {
-        pinyin9Renderer.render(enterLabel = enterKeyLabel(false))
+        pinyin9Renderer.render(enterLabel = if (composition.text?.isNotEmpty() == true) "确定" else "↵")
     }
 
     private fun requireNineKeySymbolRailController(): NineKeySymbolRailController {
@@ -1861,6 +1912,8 @@ open class ImeKeyboardView(
             composition = composition,
             onCommit = listener::onCharacter,
             onFeedback = ::feedback,
+            cellHeightDp = ::keyRowHeightDp,
+            toPx = ::dp,
             onRailChanged = ::applyThemeToSubtree,
         ).also { nineKeySymbolRailController = it }
     }
@@ -1870,7 +1923,7 @@ open class ImeKeyboardView(
             ?.currentInputEditorInfo
         numericKeyboardRenderer.render(
             editorKind = EditorInfoAdapter.kind(info),
-            enterLabel = enterKeyLabel(false, "换行"),
+            enterLabel = "↵",
         )
     }
 
@@ -2012,6 +2065,7 @@ open class ImeKeyboardView(
             Panel.TEXT_EDITOR -> textEditorPanelController.render()
             Panel.SETTINGS -> settingsPanelController.renderSettings()
             Panel.FUZZY_SETTINGS -> settingsPanelController.renderFuzzySettings()
+            Panel.SKIN_SETTINGS -> settingsPanelController.renderSettings(skinOnly = true)
             else -> closePanelToKeyboard()
         }
         applyTheme()
@@ -2074,9 +2128,9 @@ open class ImeKeyboardView(
 
     private fun sectionTitle(textValue: String): TextView = TextView(context).apply {
         text = textValue
-        textSize = ImeTypographyTokens.TITLE_SP
+        textSize = 12f
         includeFontPadding = false
-        setPadding(dp(4), dp(2), 0, dp(8))
+        setPadding(dp(16), dp(4), 0, dp(8))
         tag = "panel-section-title"
     }
 
@@ -2540,7 +2594,7 @@ open class ImeKeyboardView(
     }
 
     /** Key main-text size is scaled around the 17sp default from the skin font slider. */
-    private fun skinFontScale(): Float = skinFontSize / 17f.coerceAtLeast(1f)
+    private fun skinFontScale(): Float = skinFontSize / 21f * referenceScale
 
     private fun key(
         text: String,
@@ -2562,6 +2616,7 @@ open class ImeKeyboardView(
                 ImeTypographyTokens.KEY_LETTER_SP
             },
             fitMainText = func || text.length > 2,
+            toPx = ::dp,
         ).apply {
             tag = "key:$text"
             setTag(MARK_FUNCTION_KEY, func)
@@ -2651,11 +2706,11 @@ open class ImeKeyboardView(
         mainDock.setBackgroundColor(t.keyboardBackground)
         keyboardBody.setBackgroundColor(t.keyboardBackground)
         topZone.setBackgroundColor(t.toolbarBackground)
-        expandedPanel.setBackgroundColor(t.expandedBackground)
+        expandedPanel.setBackgroundColor(if (standalonePanel) t.toolbarBackground else t.keyboardBackground)
         candidateOverlay.setBackgroundColor(t.expandedBackground)
         themeApplier.apply(this, t)
-        composition.setTextColor(t.keySecondaryText)
-        topZone.candidateExpandButton.imageTintList = android.content.res.ColorStateList.valueOf(t.keySecondaryText)
+        composition.setTextColor(if (ImeSurfacePolicy.isDark(t)) t.primary else android.graphics.Color.parseColor("#006AB1"))
+        topZone.candidateExpandButton.imageTintList = android.content.res.ColorStateList.valueOf(t.keyText)
         topZone.candidateEmojiButton.imageTintList = android.content.res.ColorStateList.valueOf(t.keySecondaryText)
         floatingKeyboardController.applyTheme(t)
         inlineVoicePresenter.refreshPalette()
@@ -2690,23 +2745,16 @@ open class ImeKeyboardView(
         return ImeFocusRingPolicy.resolve(background, AccentPalette.parse(skinPrimaryColor))
     }
 
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+    private fun dp(value: Int): Int = kotlin.math.round(value * resources.displayMetrics.density * referenceScale).toInt()
     private fun gridCellParams(
         heightDp: Int,
         columns: Int,
         gapDp: Int,
     ): LinearLayout.LayoutParams {
-        val available = (width - contentInsetPx * 2 - dp(20)).coerceAtLeast(0)
-        val gap = dp(gapDp)
-        val cellWidth = if (width > 0) {
-            ((available - gap * (columns - 1)) / columns).coerceAtLeast(dp(1))
-        } else {
-            0
-        }
-        return if (width > 0) {
-            LinearLayout.LayoutParams(cellWidth, dp(heightDp)).apply { marginEnd = gap }
-        } else {
-            LinearLayout.LayoutParams(0, dp(heightDp), 1f).apply { marginEnd = gap }
+        require(columns > 0)
+        return LinearLayout.LayoutParams(0, dp(heightDp), 1f).apply {
+            marginStart = dp(gapDp) / 2
+            marginEnd = dp(gapDp) / 2
         }
     }
 

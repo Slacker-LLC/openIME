@@ -65,21 +65,21 @@ object ImeSettingsRepository {
     fun loadKeyboardHeightPercent(context: Context): Int =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getInt(KEY_KEYBOARD_HEIGHT, 100)
-            .coerceIn(92, 120)
+            .coerceIn(80, 120)
 
     fun saveKeyboardHeightPercent(context: Context, percent: Int) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putInt(KEY_KEYBOARD_HEIGHT, percent.coerceIn(92, 120)).apply()
+            .edit().putInt(KEY_KEYBOARD_HEIGHT, percent.coerceIn(80, 120)).apply()
     }
 
     fun loadFloatingWidthPercent(context: Context): Int =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getInt(KEY_FLOATING_WIDTH, 88)
-            .coerceIn(72, 96)
+            .getInt(KEY_FLOATING_WIDTH, 100)
+            .coerceIn(72, 100)
 
     fun saveFloatingWidthPercent(context: Context, percent: Int) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putInt(KEY_FLOATING_WIDTH, percent.coerceIn(72, 96)).apply()
+            .edit().putInt(KEY_FLOATING_WIDTH, percent.coerceIn(72, 100)).apply()
     }
 
     fun loadFloatingOpacityPercent(context: Context): Int =
@@ -127,7 +127,7 @@ object ImeSettingsRepository {
 
     fun loadSound(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean(KEY_SOUND, true)
+            .getBoolean(KEY_SOUND, false)
 
     fun saveSound(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -145,7 +145,7 @@ object ImeSettingsRepository {
 
     fun loadPopup(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean(KEY_POPUP, false)
+            .getBoolean(KEY_POPUP, true)
 
     fun savePopup(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -163,7 +163,7 @@ object ImeSettingsRepository {
 
     fun loadSkinOpacity(context: Context): Int =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getInt(KEY_SKIN_OPACITY, 95)
+            .getInt(KEY_SKIN_OPACITY, 100)
 
     fun loadSkinRadius(context: Context): Int =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -171,7 +171,7 @@ object ImeSettingsRepository {
 
     fun loadSkinFont(context: Context): Int =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getInt(KEY_SKIN_FONT, 17)
+            .getInt(KEY_SKIN_FONT, 21)
 
     fun loadSkinColor(context: Context): String =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

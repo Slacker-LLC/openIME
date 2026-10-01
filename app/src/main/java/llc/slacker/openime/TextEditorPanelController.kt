@@ -47,92 +47,43 @@ internal class TextEditorPanelController(
         )
 
         val body = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(toPx(10), toPx(10), toPx(10), toPx(10))
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(toPx(12), toPx(18), toPx(12), toPx(18))
             tag = "text_editor_panel"
         }
-
-        val quick = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-        }
-        QUICK_ACTIONS.forEach { (label, action) ->
-            val control = createKey(label, ImeTypographyTokens.CAPTION_SP) { onTextEdit(action) }.apply {
-                tag = "textedit-action:$action"
-            }
-            actionControls[action] = ActionControl(label, control)
-            quick.addView(
-                control,
-                LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f).apply {
-                    marginEnd = toPx(5)
-                },
-            )
-        }
-        body.addView(
-            quick,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
-            ).apply { bottomMargin = toPx(10) },
-        )
-
-        val cross = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            tag = "textedit-cross"
-        }
-        fun cell(
-            label: String? = null,
-            action: String? = null,
-            center: Boolean = false,
-        ): TextView = createPanelButton(
-            label ?: "",
-            if (center) ImeTypographyTokens.CAPTION_SP else ImeTypographyTokens.BODY_SP,
-            !center,
-        ).apply {
-            if (action != null) {
-                setOnClickListener {
-                    onFeedback()
-                    onTextEdit(action)
+        val cross = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; tag = "textedit-cross" }
+        fun cell(label: String = "", action: String? = null, center: Boolean = false): TextView =
+            createPanelButton(label, if (center) 14f else 24f, false).apply {
+                if (action != null) {
+                    contentDescription = when (action) { "up" -> "上"; "down" -> "下"; "left" -> "左"; else -> "右" }
+                    setOnClickListener { onFeedback(); onTextEdit(action) }
+                } else {
+                    tag = if (center) "textedit-center" else "textedit-spacer"
+                    isClickable = false; isFocusable = false
                 }
-            } else {
-                tag = "textedit-spacer"
-                isClickable = false
-                isFocusable = false
-                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                contentDescription = null
             }
-            if (center) text = "光标"
-        }
-
         listOf(
-            listOf(cell(), cell("上", "up"), cell()),
-            listOf(cell("左", "left"), cell(center = true), cell("右", "right")),
-            listOf(cell(), cell("下", "down"), cell()),
-        ).forEach { rowItems ->
-            val row = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-            }
-            rowItems.forEach { item ->
-                row.addView(
-                    item,
-                    LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f).apply {
-                        marginEnd = toPx(5)
-                    },
-                )
-            }
-            cross.addView(
-                row,
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
-                ).apply { bottomMargin = toPx(5) },
-            )
+            listOf(cell(), cell("↑", "up"), cell()),
+            listOf(cell("←", "left"), cell("光标", center = true), cell("→", "right")),
+            listOf(cell(), cell("↓", "down"), cell()),
+        ).forEach { items ->
+            val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+            items.forEach { row.addView(it, LinearLayout.LayoutParams(0, toPx(56), 1f).apply { setMargins(toPx(3), toPx(3), toPx(3), toPx(3)) }) }
+            cross.addView(row, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(62)))
         }
-        body.addView(
-            cross,
-            LinearLayout.LayoutParams(toPx(158), toPx(150)).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-            },
-        )
+        body.addView(cross, LinearLayout.LayoutParams(0, toPx(186), 1.15f).apply { marginEnd = toPx(12) })
+        val actions = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        listOf(listOf("全选" to "select-all", "撤销" to "undo"), listOf("复制" to "copy", "剪切" to "cut"), listOf("粘贴" to "paste")).forEach { entries ->
+            val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+            entries.forEach { (label, action) ->
+                val control = createKey(label, 14f) { onTextEdit(action) }.apply { tag = "textedit-action:$action" }
+                actionControls[action] = ActionControl(label, control)
+                row.addView(control, LinearLayout.LayoutParams(0, toPx(62), 1f))
+            }
+            actions.addView(row, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(62)))
+        }
+        body.addView(actions, LinearLayout.LayoutParams(0, toPx(186), 1f))
 
         expandedPanel.addView(
             body,

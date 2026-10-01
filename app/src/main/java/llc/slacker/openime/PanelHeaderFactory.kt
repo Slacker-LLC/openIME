@@ -38,7 +38,7 @@ internal class PanelHeaderFactory(
         return LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(toPx(10), 0, toPx(10), 0)
+            setPadding(toPx(4), 0, toPx(8), 0)
             minimumHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
             tag = "panel-head"
 
@@ -70,7 +70,8 @@ internal class PanelHeaderFactory(
                 TextView(context).apply {
                     text = name
                     textSize = ImeTypographyTokens.PANEL_TITLE_SP
-                    setPadding(toPx(8), 0, 0, 0)
+                    setPadding(0, 0, 0, 0)
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
                     tag = "panel-title"
                 },
                 LinearLayout.LayoutParams(
@@ -92,6 +93,7 @@ internal class PanelHeaderFactory(
         Panel.TEXT_EDITOR -> "文本编辑"
         Panel.SETTINGS -> "设置"
         Panel.FUZZY_SETTINGS -> "模糊音纠错"
+        Panel.SKIN_SETTINGS -> "强调色与按键皮肤"
         Panel.NONE, Panel.CANDIDATE_EXPANDED -> "键盘"
     }
 }

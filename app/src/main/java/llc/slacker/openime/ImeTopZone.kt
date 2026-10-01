@@ -39,6 +39,7 @@ internal class ImeTopZone(
     onClipboard: () -> Unit,
     onEmoji: () -> Unit,
     onSymbols: () -> Unit,
+    onTextEditor: () -> Unit,
     onHideKeyboard: () -> Unit,
     onTools: () -> Unit,
     onExpandCandidates: () -> Unit,
@@ -49,6 +50,7 @@ internal class ImeTopZone(
     val composeZone = LinearLayout(context)
     val composition = EditText(context)
     val candidateField = LinearLayout(context)
+    val expandedCaption = TextView(context)
     val candidateRow = LinearLayout(context)
     val candidateScroll = HorizontalScrollView(context)
     val associationRow = LinearLayout(context)
@@ -60,8 +62,8 @@ internal class ImeTopZone(
     val voiceInlineWaves = mutableListOf<View>()
     val undoClearAction = TextView(context)
     private val hideUndoClearRunnable = Runnable {
-        if (undoClearAction.visibility == View.VISIBLE) {
-            undoClearAction.visibility = View.GONE
+        if (toolbarRow.findViewWithTag<View>("undo-toolbar")?.isActivated == true) {
+            toolbarRow.findViewWithTag<View>("undo-toolbar")?.isActivated = false
             onUndoClearExpired()
         }
     }
@@ -76,25 +78,19 @@ internal class ImeTopZone(
             tag = "toolbar-row"
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(toPx(10), 0, toPx(10), 0)
+            setPadding(toPx(6), 0, toPx(6), 0)
             minimumHeight = toPx(ImeGeometryTokens.TOOLBAR_HEIGHT_DP)
         }
-        toolbarRow.addView(
-            toolbarIcon(R.drawable.ic_grid, "切换键盘", "keyboard-selector", onKeyboardSelect),
-            touchTargetParams(),
-        )
-        toolbarRow.addView(
+        val toolbarActions = listOf(
+            toolbarIcon(R.drawable.ic_keyboard, "切换键盘", "keyboard-selector", onKeyboardSelect),
             toolbarIcon(R.drawable.ic_clipboard, "剪贴板", "clipboard-toolbar", onClipboard),
-            touchTargetParams(),
-        )
-        toolbarRow.addView(
             toolbarIcon(R.drawable.ic_emoji, "表情", "toolbar", onEmoji),
-            touchTargetParams(),
+            toolbarIcon(R.drawable.ic_text_cursor, "文本编辑", "toolbar", onTextEditor),
+            toolbarIcon(R.drawable.ic_undo, "撤销", "undo-toolbar") { onUndoClear() },
+            toolbarIcon(R.drawable.ic_grid, "更多", "toolbar", onTools),
+            toolbarIcon(R.drawable.ic_chevron_down, "收起键盘", "keyboard-hide", onHideKeyboard),
         )
-        toolbarRow.addView(
-            toolbarIcon(R.drawable.ic_symbols, "符号", "toolbar", onSymbols),
-            touchTargetParams(),
-        )
+        toolbarActions.forEach { toolbarRow.addView(it, LinearLayout.LayoutParams(0, toPx(48), 1f)) }
 
         associationRow.apply {
             orientation = LinearLayout.HORIZONTAL
@@ -103,6 +99,7 @@ internal class ImeTopZone(
         }
         val associationScroll = HorizontalScrollView(context).apply {
             tag = "association-scroll"
+            visibility = View.GONE
             isHorizontalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
             addView(
@@ -147,19 +144,11 @@ internal class ImeTopZone(
                 toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
             ),
         )
-        toolbarRow.addView(
-            toolbarIcon(R.drawable.ic_keyboard_hide, "收起键盘", "keyboard-hide", onHideKeyboard),
-            touchTargetParams(),
-        )
-        toolbarRow.addView(
-            toolbarIcon(R.drawable.ic_more, "更多", "toolbar", onTools),
-            touchTargetParams(),
-        )
         addView(
             toolbarRow,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(ImeGeometryTokens.TOOLBAR_HEIGHT_DP),
+                toPx(ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP),
             ),
         )
 
@@ -172,6 +161,8 @@ internal class ImeTopZone(
             tag = "pinyin-composition-editor"
             contentDescription = "可编辑拼音预编辑"
             textSize = ImeTypographyTokens.BODY_SP
+            letterSpacing = 0.04f
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
             gravity = Gravity.CENTER_VERTICAL or Gravity.START
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             setSingleLine(true)
@@ -208,7 +199,7 @@ internal class ImeTopZone(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             tag = "candidate-field"
-            setPadding(toPx(8), 0, toPx(8), 0)
+            setPadding(toPx(6), 0, toPx(0), 0)
         }
         candidateRow.apply {
             orientation = LinearLayout.HORIZONTAL
@@ -224,6 +215,11 @@ internal class ImeTopZone(
                 ),
             )
         }
+        expandedCaption.apply {
+            text = "候选字词"; textSize = 14f; gravity = Gravity.CENTER_VERTICAL
+            setPadding(toPx(10), 0, 0, 0); tag = "panel-note"; visibility = View.GONE
+        }
+        candidateField.addView(expandedCaption, LinearLayout.LayoutParams(0, toPx(48), 1f))
         candidateField.addView(
             candidateScroll,
             LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f),
@@ -242,8 +238,6 @@ internal class ImeTopZone(
                 onEmoji()
             }
         }
-        candidateField.addView(candidateEmojiButton, touchTargetParams())
-
         candidateExpandButton.apply {
             tag = "candidate-expand"
             setImageResource(R.drawable.ic_chevron_down)
@@ -258,15 +252,6 @@ internal class ImeTopZone(
             }
         }
         candidateField.addView(candidateExpandButton, touchTargetParams())
-        candidateField.addView(
-            toolbarIcon(
-                R.drawable.ic_keyboard_hide,
-                "收起键盘",
-                "keyboard-hide-composing",
-                onHideKeyboard,
-            ),
-            touchTargetParams(),
-        )
         composeZone.addView(
             candidateField,
             LinearLayout.LayoutParams(
@@ -302,7 +287,7 @@ internal class ImeTopZone(
         )
         voiceInlineStatus.apply {
             tag = "voice-inline-status"
-            text = "正在聆听…"
+            text = "正在聆听"
             textSize = ImeTypographyTokens.BODY_SP
             setTextColor(Color.WHITE)
             includeFontPadding = false
@@ -320,7 +305,7 @@ internal class ImeTopZone(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
         }
-        repeat(6) { index ->
+        repeat(10) { index ->
             val bar = View(context).apply {
                 tag = "voice-inline-wave-$index"
                 background = ImeDrawableFactory.rounded(
@@ -339,37 +324,53 @@ internal class ImeTopZone(
                 },
             )
         }
-        voiceInlineZone.addView(
-            inlineWave,
-            LinearLayout.LayoutParams(toPx(42), LinearLayout.LayoutParams.MATCH_PARENT),
-        )
+        voiceInlineZone.addView(inlineWave, 0,
+            LinearLayout.LayoutParams(toPx(64), LinearLayout.LayoutParams.MATCH_PARENT).apply { marginEnd = toPx(12) })
+        voiceInlineIcon.visibility = View.GONE
+        voiceInlineZone.addView(TextView(context).apply {
+            text = "↑ 上滑取消"
+            textSize = 12f
+            gravity = Gravity.CENTER
+            tag = "voice-cancel-hint"
+            includeFontPadding = false
+        }, LinearLayout.LayoutParams(toPx(88), toPx(30)))
         addView(
             voiceInlineZone,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
+                toPx(54),
             ).apply {
                 setMargins(toPx(8), toPx(8), toPx(8), toPx(8))
             },
         )
     }
 
+    fun showAssociations(show: Boolean) {
+        for (index in 0 until toolbarRow.childCount) {
+            val child = toolbarRow.getChildAt(index)
+            child.visibility = if (show) View.GONE else View.VISIBLE
+        }
+        undoClearAction.visibility = View.GONE
+        toolbarRow.findViewWithTag<View>("association-scroll").visibility = if (show) View.VISIBLE else View.GONE
+        if (show) toolbarRow.findViewWithTag<View>("keyboard-hide").visibility = View.VISIBLE
+    }
+
     fun showUndoClear() {
         removeCallbacks(hideUndoClearRunnable)
-        undoClearAction.visibility = View.VISIBLE
-        undoClearAction.bringToFront()
+        toolbarRow.findViewWithTag<View>("undo-toolbar")?.isActivated = true
         postDelayed(hideUndoClearRunnable, CLEAR_UNDO_VISIBLE_MS)
     }
 
     fun hideUndoClear(discardSnapshot: Boolean = false) {
         removeCallbacks(hideUndoClearRunnable)
-        val wasVisible = undoClearAction.visibility == View.VISIBLE
+        val wasVisible = toolbarRow.findViewWithTag<View>("undo-toolbar")?.isActivated == true
+        toolbarRow.findViewWithTag<View>("undo-toolbar")?.isActivated = false
         undoClearAction.visibility = View.GONE
         if (discardSnapshot && wasVisible) onUndoClearExpired()
     }
 
     fun setContentInset(contentInsetPx: Int) {
-        toolbarRow.setPadding(contentInsetPx + toPx(10), 0, contentInsetPx + toPx(10), 0)
+        toolbarRow.setPadding(contentInsetPx + toPx(6), 0, contentInsetPx + toPx(6), 0)
         composition.setPadding(contentInsetPx + toPx(14), toPx(3), contentInsetPx + toPx(14), 0)
     }
 
@@ -384,6 +385,9 @@ internal class ImeTopZone(
         voiceInlineZone.visibility = if (state == ImeTopZoneState.VOICE_INLINE) View.VISIBLE else View.GONE
         composition.visibility = if (composing && showCompositionEditor) View.VISIBLE else View.GONE
         candidateField.visibility = if (composing) View.VISIBLE else View.GONE
+        val expanded = state == ImeTopZoneState.CANDIDATE_EXPANDED
+        candidateScroll.visibility = if (expanded) View.GONE else View.VISIBLE
+        expandedCaption.visibility = if (expanded) View.VISIBLE else View.GONE
     }
 
     private fun toolbarIcon(
@@ -394,7 +398,7 @@ internal class ImeTopZone(
     ): ImageView = ImageView(context).apply {
         contentDescription = description
         tag = tagValue
-        minimumWidth = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
+        minimumWidth = 0
         minimumHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
         scaleType = ImageView.ScaleType.CENTER_INSIDE
         setImageResource(iconRes)

@@ -56,6 +56,8 @@ internal class NumericKeyboardRenderer(
             contentTag = DIGITS_CONTENT_TAG,
             contentDescription = "数字键盘符号，上下滑动查看更多",
             symbols = digitSymbols(),
+            cellHeightDp = keyRowHeightDp(),
+            toPx = toPx,
             tagPrefix = "digit-symbol:",
             onCommit = onCommitCharacter,
             onFeedback = onFeedback,
@@ -89,7 +91,7 @@ internal class NumericKeyboardRenderer(
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             rowDigits.forEach { digit ->
                 row.addView(
-                    createKey(digit, false, ImeTypographyTokens.KEY_LETTER_SP) { onCommitCharacter(digit) }.apply {
+                    createKey(digit, false, 24f) { onCommitCharacter(digit) }.apply {
                         tag = "key:$digit"
                         markWhiteKey(this)
                     },
@@ -138,10 +140,10 @@ internal class NumericKeyboardRenderer(
             flexKeyParams(),
         )
         centerBottom.addView(
-            createKey(literal("key:.", "."), false, ImeTypographyTokens.KEY_LETTER_SP) {
-                onCommitCharacter(literal("key:.", "."))
+            createKey(literal("key:0", "0"), false, 24f) {
+                onCommitCharacter(literal("key:0", "0"))
             }.apply {
-                tag = "key:."
+                tag = "key:0"
                 markWhiteKey(this)
             },
             flexKeyParams(),
@@ -151,9 +153,9 @@ internal class NumericKeyboardRenderer(
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 toPx(keyRowHeightDp()),
-            ).apply { topMargin = toPx(ImeGeometryTokens.KEY_ROW_GAP_DP) },
+            ),
         )
-        container.addView(center, adaptiveColumnParams(3.7f))
+        container.addView(center, adaptiveColumnParams(25f / 7f))
 
         val side = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -164,8 +166,8 @@ internal class NumericKeyboardRenderer(
             sideKeyParams(),
         )
         side.addView(
-            createKey("0", false, ImeTypographyTokens.KEY_LETTER_SP) { onCommitCharacter("0") }.apply {
-                tag = "key:0"
+            createKey(".", true, ImeTypographyTokens.KEY_LETTER_SP) { onCommitCharacter(".") }.apply {
+                tag = "key:."
                 markSideKey(this)
             },
             sideKeyParams(),
@@ -202,6 +204,8 @@ internal class NumericKeyboardRenderer(
         SymbolRailRenderer.populate(
             scroll = rail,
             symbols = digitSymbols(),
+            cellHeightDp = keyRowHeightDp(),
+            toPx = toPx,
             tagPrefix = "digit-symbol:",
             onCommit = onCommitCharacter,
             onFeedback = onFeedback,

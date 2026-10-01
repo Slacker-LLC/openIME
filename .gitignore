@@ -32,6 +32,8 @@ artifacts/
 !app/src/main/assets/emoji/
 !app/src/main/assets/emoji/fluent/
 !app/src/main/assets/emoji/fluent/*.png
+!app/src/main/assets/emoji/reference/
+!app/src/main/assets/emoji/reference/*.png
 
 # Optional local test evidence (the canonical evidence in docs is curated)
 .local/

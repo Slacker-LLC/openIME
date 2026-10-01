@@ -47,7 +47,7 @@ internal class Pinyin26KeyboardRenderer(
             }
             if (rowIndex == 2) {
                 row.addView(
-                    if (english) shiftKey(shiftState) else segmentKey(),
+                    shiftKey(shiftState),
                     flexKeyParams(1.25f),
                 )
             }
@@ -72,7 +72,7 @@ internal class Pinyin26KeyboardRenderer(
             createKey("123", true, null, ImeTypographyTokens.BODY_SP, 0, onDigits),
             flexKeyParams(weights.leftOuter),
         )
-        val punctuation = if (english) "." else "，"
+        val punctuation = "中/英"
         bottom.addView(
             createKey(
                 punctuation,
@@ -80,18 +80,12 @@ internal class Pinyin26KeyboardRenderer(
                 null,
                 ImeTypographyTokens.BODY_SP,
                 0,
-            ) { onCommitCharacter(punctuation) },
+            ) { onModeSwitch() }.apply { tag = "key:mode" },
             flexKeyParams(weights.leftInner),
         )
         bottom.addView(
-            createSpaceVoiceKey(if (english) "space" else "空格", onSpace),
+            createSpaceVoiceKey("空格", onSpace),
             flexKeyParams(weights.space),
-        )
-        bottom.addView(
-            createKey("中/英", true, null, ImeTypographyTokens.BODY_SP, 0, onModeSwitch).apply {
-                tag = "key:mode"
-            },
-            flexKeyParams(weights.rightInner),
         )
         bottom.addView(
             createKey(enterLabel, true, null, ImeTypographyTokens.BODY_SP, 0, onEnter).apply {
@@ -135,6 +129,8 @@ internal class Pinyin26KeyboardRenderer(
         val base = character.toString()
         val main = if (english && shiftState != ShiftState.LOWERCASE) {
             character.uppercaseChar().toString()
+        } else if (!english) {
+            character.uppercaseChar().toString()
         } else {
             base
         }
@@ -145,7 +141,7 @@ internal class Pinyin26KeyboardRenderer(
             tag = "key:$base"
             if (secondary != null) {
                 setSecondaryVisible(true)
-                setSecondaryAlpha(0.4f)
+                setSecondaryAlpha(1f)
                 setOnLongClickListener {
                     onCommitCharacter(secondary)
                     true

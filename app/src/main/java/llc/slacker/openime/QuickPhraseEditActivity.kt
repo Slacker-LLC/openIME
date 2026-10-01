@@ -17,6 +17,10 @@ import android.window.OnBackInvokedCallback
 
 /** Full-screen editor so the active IME can be used to edit the phrase itself. */
 class QuickPhraseEditActivity : Activity() {
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(SetupUi.appearanceContext(newBase))
+    }
+
     companion object {
         const val EXTRA_ID = "quick_phrase_id"
         const val EXTRA_CATEGORY = "quick_phrase_category"
@@ -111,7 +115,7 @@ class QuickPhraseEditActivity : Activity() {
             setText(category)
             setSingleLine(true)
             imeOptions = EditorInfo.IME_ACTION_NEXT
-            textSize = ImeTypographyTokens.BODY_SP
+            textSize = 16f
         }
         SetupUi.styleInput(this, categoryEdit)
         codeEdit = EditText(this).apply {
@@ -122,7 +126,7 @@ class QuickPhraseEditActivity : Activity() {
             inputType = android.text.InputType.TYPE_CLASS_TEXT or
                 android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             imeOptions = EditorInfo.IME_ACTION_NEXT
-            textSize = ImeTypographyTokens.BODY_SP
+            textSize = 16f
         }
         SetupUi.styleInput(this, codeEdit)
         phraseEdit = EditText(this).apply {
@@ -133,7 +137,7 @@ class QuickPhraseEditActivity : Activity() {
             maxLines = 8
             gravity = Gravity.TOP or Gravity.START
             imeOptions = EditorInfo.IME_ACTION_DONE
-            textSize = ImeTypographyTokens.BODY_SP
+            textSize = 16f
         }
         SetupUi.styleInput(this, phraseEdit)
         val save = SetupUi.primaryButton(this, "保存") {
@@ -200,104 +204,55 @@ class QuickPhraseEditActivity : Activity() {
         }
         val actions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            addView(save, LinearLayout.LayoutParams(0, dp(ImeGeometryTokens.PRIMARY_ROW_HEIGHT_DP), 1f).apply { marginEnd = dp(8) })
-            addView(cancel, LinearLayout.LayoutParams(0, dp(ImeGeometryTokens.PRIMARY_ROW_HEIGHT_DP), 1f))
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            addView(cancel, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(10) })
+            addView(save, LinearLayout.LayoutParams(0, dp(48), 1.7f))
         }
         val form = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(16), dp(16), dp(16))
-            background = SetupUi.rounded(
-                getColor(R.color.setup_surface),
-                dp(ImeGeometryTokens.CARD_RADIUS_DP).toFloat(),
-                getColor(R.color.setup_input_line),
-            )
-            addView(fieldLabel("分类（可选）", R.id.quick_phrase_category_editor), LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ))
-            addView(categoryEdit, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(ImeGeometryTokens.FIELD_HEIGHT_DP),
-            ).apply { bottomMargin = dp(14) })
-            addView(fieldLabel("输入码（可选）", R.id.quick_phrase_code_editor), LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ))
-            addView(codeEdit, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(ImeGeometryTokens.FIELD_HEIGHT_DP),
-            ).apply { bottomMargin = dp(14) })
+            setPadding(dp(16), dp(12), dp(16), dp(16))
+            val fields = LinearLayout(this@QuickPhraseEditActivity).apply { orientation = LinearLayout.HORIZONTAL }
+            listOf(Triple("分类（可选）", R.id.quick_phrase_category_editor, categoryEdit), Triple("输入码（可选）", R.id.quick_phrase_code_editor, codeEdit)).forEachIndexed { index, (label, target, field) ->
+                fields.addView(LinearLayout(this@QuickPhraseEditActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    addView(fieldLabel(label, target))
+                    addView(field, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)))
+                }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { if (index == 0) marginEnd = dp(12) })
+            }
+            addView(fields)
+            addView(fieldLabel("常用语内容", R.id.quick_phrase_text_editor), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(18) })
+            addView(phraseEdit, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(132)))
             addView(TextView(this@QuickPhraseEditActivity).apply {
-                text = "设置后，输入至少 2 个字符的短码即可在候选栏召回这条常用语。"
-                textSize = ImeTypographyTokens.BODY_SP
-                setTextColor(getColor(R.color.setup_body))
-                setPadding(dp(4), 0, dp(4), dp(12))
-            }, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ))
-            addView(fieldLabel("常用语内容", R.id.quick_phrase_text_editor), LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ))
-            addView(phraseEdit, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(154),
-            ).apply { bottomMargin = dp(8) })
-            addView(TextView(this@QuickPhraseEditActivity).apply {
-                text = "保存后会在剪贴板面板中按分类显示，可直接点选输入。"
-                textSize = ImeTypographyTokens.BODY_SP
-                setTextColor(getColor(R.color.setup_body))
-                setPadding(dp(4), 0, dp(4), dp(12))
-            }, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ))
-            addView(actions, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(ImeGeometryTokens.PRIMARY_ROW_HEIGHT_DP),
-            ))
+                text = "保存后会在剪贴板面板的“常用语”中按分类显示，点选即输入。\n\n设置输入码后，输入至少 2 个字符的短码即可在候选栏召回这条常用语。"
+                textSize = 12f; setTextColor(getColor(R.color.setup_body)); setLineSpacing(0f, 1.25f)
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
         }
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(24), dp(20), dp(24))
-            addView(header, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(ImeGeometryTokens.TOP_BAR_HEIGHT_DP),
-            ).apply { bottomMargin = dp(ImeSpacingTokens.MD_DP) })
-            addView(form, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ))
-        }
-        setContentView(ScrollView(this).apply {
-            id = R.id.quick_phrase_scroll
-            setBackgroundColor(getColor(R.color.setup_page_bg))
-            isFillViewport = true
+        val scroll = ScrollView(this).apply {
+            id = R.id.quick_phrase_scroll; isFillViewport = true; isVerticalScrollBarEnabled = false
             setOnScrollChangeListener { _, _, scrollY, _, _ -> savedScrollY = scrollY }
+            addView(form); post { scrollTo(0, savedScrollY.coerceAtLeast(0)) }
+        }
+        setContentView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setBackgroundColor(getColor(R.color.setup_page_bg))
+            addView(header, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)))
+            addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+            addView(actions)
             setOnApplyWindowInsetsListener { view, insets ->
                 if (Build.VERSION.SDK_INT >= 30) {
                     val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
                     view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
                 } else {
                     @Suppress("DEPRECATION")
-                    view.setPadding(
-                        insets.systemWindowInsetLeft,
-                        insets.systemWindowInsetTop,
-                        insets.systemWindowInsetRight,
-                        insets.systemWindowInsetBottom,
-                    )
+                    view.setPadding(insets.systemWindowInsetLeft, insets.systemWindowInsetTop, insets.systemWindowInsetRight, insets.systemWindowInsetBottom)
                 }
                 insets
             }
-            addView(content)
-            post { scrollTo(0, savedScrollY.coerceAtLeast(0)) }
         })
     }
 
     private fun fieldLabel(label: String, targetId: Int) = TextView(this).apply {
         text = label
-        textSize = ImeTypographyTokens.BODY_SP
+        textSize = 16f
         setTextColor(getColor(R.color.setup_body))
         setPadding(dp(4), 0, dp(4), dp(4))
         labelFor = targetId
@@ -321,7 +276,7 @@ class QuickPhraseEditActivity : Activity() {
             .setPositiveButton("放弃", null)
             .create()
         dialog.setOnShowListener {
-            SetupUi.styleDialog(dialog, this@QuickPhraseEditActivity)
+            SetupUi.styleDialog(dialog, this@QuickPhraseEditActivity, destructivePositive = true)
             dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setOnClickListener {
                 dialog.dismiss()
                 finish()

@@ -103,7 +103,7 @@ internal class InlineVoicePresenter(
         if (!active) return
         val palette = tokens()
         val backgroundColor =
-            if (cancelling || error) palette.destructive else palette.primary
+            if (cancelling || error) palette.destructive else ImeDrawableFactory.blend(palette.primary, palette.toolbarBackground, 0.16f)
         if (paletteColor == backgroundColor) return
         paletteColor = backgroundColor
 
@@ -111,12 +111,16 @@ internal class InlineVoicePresenter(
             backgroundColor,
             toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
         )
-        val foregroundColor = ImeDrawableFactory.contrastText(backgroundColor)
+        val foregroundColor = palette.keyText
+        zone().findViewWithTag<TextView>("voice-cancel-hint")?.apply {
+            setTextColor(foregroundColor)
+            background = ImeDrawableFactory.rounded(palette.functionKeyBackground, toPx(99))
+        }
         icon().imageTintList = ColorStateList.valueOf(foregroundColor)
         status().setTextColor(foregroundColor)
         waves().forEach { bar ->
             bar.background = ImeDrawableFactory.rounded(
-                foregroundColor,
+                palette.primary,
                 toPx(ImeGeometryTokens.PILL_RADIUS_DP),
             )
         }

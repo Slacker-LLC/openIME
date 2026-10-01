@@ -54,25 +54,26 @@ internal data class KeyboardLayoutMetrics(
     val landscape: Boolean,
     val fontScale: Float,
     val heightPercent: Int = 100,
+    val availableWidthDp: Int = 390,
 ) {
     val keyRowHeightDp: Int = run {
         val base = if (landscape) {
             ImeGeometryTokens.LANDSCAPE_KEY_ROW_HEIGHT_DP
         } else {
-            ImeGeometryTokens.TOUCH_TARGET_DP
+            54
         }
         val fontGrow = ((fontScale - 1f).coerceAtLeast(0f) * 12f)
             .toInt()
             .coerceAtMost(12)
-        val scaled = ((base + fontGrow) * heightPercent.coerceIn(92, 120) / 100f).toInt()
+        val scaled = ((base + fontGrow) * heightPercent.coerceIn(80, 120) / 100f).toInt()
         scaled.coerceAtLeast(if (landscape) 38 else 44)
     }
 
     val nineGridHeightDp: Int =
-        keyRowHeightDp * 3 + ImeGeometryTokens.KEY_ROW_GAP_DP * 2
+        keyRowHeightDp * 3
 
     val nineBodyHeightDp: Int =
-        nineGridHeightDp + ImeGeometryTokens.KEY_ROW_GAP_DP + keyRowHeightDp
+        nineGridHeightDp + keyRowHeightDp
 
     val doubleKeyHeightDp: Int =
         keyRowHeightDp * 2 + ImeGeometryTokens.KEY_ROW_GAP_DP
@@ -81,12 +82,10 @@ internal data class KeyboardLayoutMetrics(
 
     val imeHeightDp: Int = run {
         val derived = topZoneHeightDp +
-            keyRowHeightDp * 4 +
-            ImeGeometryTokens.KEY_ROW_GAP_DP * 3 +
-            22
-        val baseMinimum = if (landscape) 264 else 302
+            keyRowHeightDp * 4 + 16
+        val baseMinimum = if (landscape) 256 else 0
         val scaledMinimum =
-            (baseMinimum * heightPercent.coerceIn(92, 120) / 100f).toInt()
+            (baseMinimum * heightPercent.coerceIn(80, 120) / 100f).toInt()
         maxOf(scaledMinimum, derived)
     }
 
@@ -96,3 +95,16 @@ internal data class KeyboardLayoutMetrics(
         (imeHeightDp - ImeGeometryTokens.TOUCH_TARGET_DP).coerceAtLeast(0)
 }
 
+
+/** All reference dimensions scale together from the PDF's 390-unit canvas. */
+internal object ImeReferenceSizing {
+    fun scale(context: android.content.Context, widthPx: Int = 0): Float {
+        val config = context.resources.configuration
+        val metrics = context.resources.displayMetrics
+        val widthDp = if (widthPx > 0) widthPx / metrics.density else config.screenWidthDp.toFloat()
+        val widthScale = widthDp.coerceAtMost(600f) / 390f
+        return if (config.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) {
+            minOf(widthScale, config.screenHeightDp * 0.55f / 256f)
+        } else widthScale
+    }
+}

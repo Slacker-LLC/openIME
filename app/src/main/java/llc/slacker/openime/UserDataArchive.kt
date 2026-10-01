@@ -201,7 +201,7 @@ internal object UserDataArchiveCodec {
             ),
             handedness = value.optString("handedness", ImeHandedness.STANDARD.name),
             keyboardHeightPercent =
-                value.optInt("keyboard_height_percent", 100).coerceIn(92, 120),
+                value.optInt("keyboard_height_percent", 100).coerceIn(80, 120),
             floatingWidthPercent =
                 value.optInt("floating_width_percent", 88).coerceIn(72, 96),
             floatingOpacityPercent =

@@ -16,10 +16,17 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.ImageView
+import android.widget.PopupMenu
+import android.content.res.ColorStateList
 import android.window.OnBackInvokedCallback
 
 /** Touch-friendly manager for user symbols and their order. */
 class SymbolManagerActivity : Activity() {
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(SetupUi.appearanceContext(newBase))
+    }
+
     private val density by lazy { resources.displayMetrics.density }
     private lateinit var content: LinearLayout
     private lateinit var groupEdit: EditText
@@ -85,7 +92,7 @@ class SymbolManagerActivity : Activity() {
         val accent = SetupUi.accent(this)
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(24), dp(20), dp(24))
+            setPadding(dp(16), 0, dp(16), dp(16))
         }
         val header = SetupUi.activityTopBar(
             context = this,
@@ -96,38 +103,36 @@ class SymbolManagerActivity : Activity() {
         content.addView(
             header,
             fullHeight(ImeGeometryTokens.TOP_BAR_HEIGHT_DP).apply {
-                bottomMargin = dp(ImeSpacingTokens.SM_DP)
+                marginStart = -dp(16); marginEnd = -dp(16)
             },
         )
-        content.addView(TextView(this).apply {
-            text = "可添加、分类、固定和删除。点击箭头调整顺序，也可长按符号行拖动排序。"
-            textSize = ImeTypographyTokens.BODY_SP
-            setTextColor(getColor(R.color.setup_body))
-            setLineSpacing(dp(2).toFloat(), 1f)
-            setPadding(0, 0, 0, dp(12))
-        }, fullWrap())
-        content.addView(fieldLabel("分组（可选）", R.id.custom_symbol_group_editor), fullWrap())
+        val form = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(16))
+            background = SetupUi.rounded(getColor(R.color.setup_surface), dp(16).toFloat())
+        }
+        content.addView(form, fullWrap().apply { topMargin = dp(12); bottomMargin = dp(18) })
+        form.addView(fieldLabel("分组（可选）", R.id.custom_symbol_group_editor), fullWrap())
         groupEdit = EditText(this).apply {
             id = R.id.custom_symbol_group_editor
-            hint = "分组，例如：常用箭头"
+            hint = "例如：常用箭头"
             setSingleLine(true)
             imeOptions = EditorInfo.IME_ACTION_NEXT
-            textSize = ImeTypographyTokens.BODY_SP
+            textSize = 16f
             setText(draftGroup)
         }
         SetupUi.styleInput(this, groupEdit)
-        content.addView(groupEdit, fullHeight(ImeGeometryTokens.FIELD_HEIGHT_DP).apply { bottomMargin = dp(10) })
-        content.addView(fieldLabel("符号或自定义文本", R.id.custom_symbol_text_editor), fullWrap().apply { bottomMargin = dp(2) })
+        form.addView(groupEdit, fullHeight(48).apply { bottomMargin = dp(10) })
+        form.addView(fieldLabel("符号或自定义文本", R.id.custom_symbol_text_editor), fullWrap().apply { bottomMargin = dp(2) })
         symbolEdit = EditText(this).apply {
             id = R.id.custom_symbol_text_editor
-            hint = "符号，例如：⇢ 或 自定义文本"
+            hint = "符号或自定义文本"
             setSingleLine(true)
             imeOptions = EditorInfo.IME_ACTION_DONE
-            textSize = ImeTypographyTokens.BODY_SP
+            textSize = 16f
             setText(draftSymbol)
         }
         SetupUi.styleInput(this, symbolEdit)
-        content.addView(symbolEdit, fullHeight(ImeGeometryTokens.FIELD_HEIGHT_DP).apply { bottomMargin = dp(12) })
+        form.addView(symbolEdit, fullHeight(48).apply { bottomMargin = dp(12) })
         val save = SetupUi.primaryButton(this, "保存符号") {
             if (symbolEdit.text.isNullOrBlank()) {
                 symbolEdit.error = "请输入符号或自定义文本"
@@ -184,12 +189,12 @@ class SymbolManagerActivity : Activity() {
             override fun afterTextChanged(s: Editable?) = Unit
         })
         refreshSaveState()
-        content.addView(save, fullHeight(ImeGeometryTokens.PRIMARY_ROW_HEIGHT_DP).apply { bottomMargin = dp(20) })
+        form.addView(save, fullHeight(48).apply { bottomMargin = dp(0) })
         content.addView(TextView(this).apply {
             text = "已保存符号"
-            textSize = ImeTypographyTokens.TITLE_SP
-            setTextColor(getColor(R.color.setup_title))
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            textSize = 12f
+            setTextColor(getColor(R.color.setup_body))
+            setPadding(dp(16), 0, 0, dp(8))
             setPadding(0, 0, 0, dp(8))
             if (Build.VERSION.SDK_INT >= 28) setAccessibilityHeading(true)
         }, fullWrap())
@@ -204,29 +209,33 @@ class SymbolManagerActivity : Activity() {
                 tag = "symbol-empty-state"
             }, fullWrap())
         } else {
-            symbols.groupBy { it.group }
-                .forEach { (group, groupedSymbols) ->
-                    content.addView(TextView(this).apply {
-                        text = group
-                        textSize = ImeTypographyTokens.TITLE_SP
-                        setTextColor(accent)
-                        setTypeface(typeface, android.graphics.Typeface.BOLD)
-                        setPadding(0, dp(8), 0, dp(4))
-                    }, fullWrap())
-                    groupedSymbols.forEach { item ->
-                        content.addView(symbolRow(item, accent), fullWrap().apply { bottomMargin = dp(12) })
-                    }
-                }
+            val list = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = SetupUi.rounded(getColor(R.color.setup_surface), dp(16).toFloat())
+            }
+            symbols.forEachIndexed { index, item ->
+                if (index > 0) list.addView(View(this).apply { setBackgroundColor(getColor(R.color.setup_input_line)); alpha = 0.25f }, fullHeight(1))
+                list.addView(symbolRow(item, accent), fullHeight(56))
+            }
+            content.addView(list, fullWrap())
         }
-        content.addView(SetupUi.primaryButton(this, "完成") {
-            requestClose()
-        }, fullHeight(ImeGeometryTokens.PRIMARY_ROW_HEIGHT_DP).apply { topMargin = dp(12) })
+        content.addView(TextView(this).apply {
+            text = "点击图钉固定；长按左侧把手拖动排序，也可从菜单上移、下移。"
+            textSize = 12f; setTextColor(getColor(R.color.setup_body))
+        }, fullWrap().apply { topMargin = dp(16) })
+        val done = SetupUi.secondaryButton(this, "完成") { requestClose() }
         val scroll = ScrollView(this).apply {
             setBackgroundColor(getColor(R.color.setup_page_bg))
             isFillViewport = true
             isVerticalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
             setOnScrollChangeListener { _, _, scrollY, _, _ -> savedScrollY = scrollY }
+            addView(content)
+        }
+        setContentView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setBackgroundColor(getColor(R.color.setup_page_bg))
+            addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+            addView(done, fullHeight(48).apply { setMargins(dp(16), dp(12), dp(16), dp(12)) })
             setOnApplyWindowInsetsListener { view, insets ->
                 if (android.os.Build.VERSION.SDK_INT >= 30) {
                     val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
@@ -242,35 +251,32 @@ class SymbolManagerActivity : Activity() {
                 }
                 insets
             }
-            addView(content)
-        }
-        setContentView(scroll)
+        })
         scroll.post { scroll.scrollTo(0, savedScrollY.coerceAtLeast(0)) }
     }
 
     private fun symbolRow(item: CustomSymbol, accent: Int): LinearLayout = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        setPadding(dp(16), dp(14), dp(12), dp(10))
-        background = SetupUi.rounded(
-            getColor(R.color.setup_surface),
-            dp(ImeGeometryTokens.CARD_RADIUS_DP).toFloat(),
-            getColor(R.color.setup_input_line),
-        )
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(8), 0, dp(8), 0)
         addView(TextView(this@SymbolManagerActivity).apply {
-            text = item.symbol
-            textSize = ImeTypographyTokens.KEY_LETTER_SP
-            setTextColor(getColor(R.color.setup_title))
-            maxLines = 2
-            ellipsize = TextUtils.TruncateAt.END
-            contentDescription = "自定义符号：${item.symbol}，${if (item.pinned) "已固定" else "未固定"}"
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
-        }, fullWrap())
+            text = "⠿"; textSize = 20f; gravity = Gravity.CENTER; setTextColor(getColor(R.color.setup_body))
+            contentDescription = "拖动排序"; isLongClickable = true
+            setOnLongClickListener { this@apply.performLongClick() }
+        }, LinearLayout.LayoutParams(dp(32), dp(48)))
         addView(TextView(this@SymbolManagerActivity).apply {
-            text = if (item.pinned) "已固定" else "未固定"
-            textSize = ImeTypographyTokens.CAPTION_SP
-            setTextColor(if (item.pinned) accent else getColor(R.color.setup_body))
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-        }, fullWrap())
+            text = item.symbol; textSize = 24f; gravity = Gravity.CENTER; maxLines = 2
+            setTextColor(getColor(R.color.setup_title)); contentDescription = "自定义符号：${item.symbol}"
+        }, LinearLayout.LayoutParams(dp(52), dp(52)))
+        addView(TextView(this@SymbolManagerActivity).apply {
+            text = item.group; textSize = 14f; maxLines = 1; ellipsize = TextUtils.TruncateAt.END
+            setTextColor(getColor(R.color.setup_body))
+        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        addView(ImageView(this@SymbolManagerActivity).apply {
+            setImageResource(R.drawable.ic_pin); scaleType = ImageView.ScaleType.CENTER_INSIDE
+            imageTintList = ColorStateList.valueOf(if (item.pinned) accent else getColor(R.color.setup_body))
+            contentDescription = if (item.pinned) "取消固定" else "固定"; isClickable = true; isFocusable = true
+            setOnClickListener { CustomSymbolRepository.togglePinned(this@SymbolManagerActivity, item.id); render() }
+        }, LinearLayout.LayoutParams(dp(40), dp(48)))
         val actions = LinearLayout(this@SymbolManagerActivity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -324,7 +330,17 @@ class SymbolManagerActivity : Activity() {
             }
             dialog.show()
         }
-        addView(actions, fullWrap())
+        addView(TextView(this@SymbolManagerActivity).apply {
+            text = "⋯"; textSize = 24f; gravity = Gravity.CENTER; setTextColor(getColor(R.color.setup_body))
+            contentDescription = "符号菜单"; isClickable = true; isFocusable = true
+            setOnClickListener { anchor ->
+                PopupMenu(this@SymbolManagerActivity, anchor).apply {
+                    listOf(0, 2, 3, 4).forEach { index -> menu.add(0, index, index, (actions.getChildAt(index) as TextView).text) }
+                    setOnMenuItemClickListener { entry -> actions.getChildAt(entry.itemId).performClick() }
+                    show()
+                }
+            }
+        }, LinearLayout.LayoutParams(dp(36), dp(48)))
         tag = "symbol-row:${item.id}"
         contentDescription = null
         isFocusable = false
@@ -386,7 +402,7 @@ class SymbolManagerActivity : Activity() {
             .setPositiveButton("放弃", null)
             .create()
         dialog.setOnShowListener {
-            SetupUi.styleDialog(dialog, this@SymbolManagerActivity)
+            SetupUi.styleDialog(dialog, this@SymbolManagerActivity, destructivePositive = true)
             dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setOnClickListener {
                 dialog.dismiss()
                 finish()
