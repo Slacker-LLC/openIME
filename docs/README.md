@@ -9,6 +9,7 @@
 - [MAPPING.md](MAPPING.md)：Android 产品能力到真实实现的映射。
 - [COORDINATE_SYSTEM.md](COORDINATE_SYSTEM.md)：归一化坐标与窗口自适应规则。
 - [REFERENCE_IME_GUIDE.md](REFERENCE_IME_GUIDE.md)：参考输入法 UI 基线与取舍。
+- [NINE_KEY_REFERENCE.md](NINE_KEY_REFERENCE.md)：九键 / 左栏 / 删除手势：商业与开源输入法的做法及 openIME 的取舍。
 - [LOCAL_VOICE_MODEL.md](LOCAL_VOICE_MODEL.md)：本地语音模型目录、校验和运行边界。
 - [TEST_ARCHITECTURE.md](TEST_ARCHITECTURE.md)：自动化层级、debug harness 和 CI 门禁。
 - [TEST_SOP.md](TEST_SOP.md)：L0～L3 正式测试流程。
