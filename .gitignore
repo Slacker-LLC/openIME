@@ -43,3 +43,10 @@ output/
 
 # Scratch files
 test_patch_probe.txt
+__pycache__/
+*.pyc
+
+# Release signing material must never be committed
+*.jks
+*.keystore
+*.p12
