@@ -49,7 +49,7 @@ internal class VoicePanelView(
         val modelReady = initialModelState in setOf(VoiceModelLifecycleState.HOT, VoiceModelLifecycleState.RECORDING, VoiceModelLifecycleState.COOLDOWN)
         modelStatus.apply {
             text = if (modelReady) "离线模型已就绪 · 音频不出设备" else "离线模型准备中 · 音频不出设备"
-            textSize = 12f; gravity = Gravity.CENTER; tag = "voice-model-status"
+            textSize = ImeTypographyTokens.SMALL_SP; gravity = Gravity.CENTER; tag = "voice-model-status"
             includeFontPadding = false; accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         }
         transcript.apply {
@@ -60,7 +60,7 @@ internal class VoicePanelView(
         val hero = FrameLayout(context).apply {
             background = ImeDrawableFactory.rounded(ImeDrawableFactory.blend(palette.primary, palette.keyboardBackground, 0.16f), toPx(99))
         }
-        micButton = createButton("", 14f, false).apply {
+        micButton = createButton("", ImeTypographyTokens.BODY_SP, false).apply {
             tag = "voice-mic"
             setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_mic, 0, 0, 0)
             gravity = Gravity.CENTER
@@ -72,7 +72,7 @@ internal class VoicePanelView(
         }
         hero.addView(micButton, FrameLayout.LayoutParams(toPx(60), toPx(60)).apply { gravity = Gravity.CENTER })
         addView(hero, LayoutParams(toPx(88), toPx(88)).apply { bottomMargin = toPx(14) })
-        languageButton = createButton(LANGUAGES[0].first, 14f, true).apply {
+        languageButton = createButton(LANGUAGES[0].first, ImeTypographyTokens.BODY_SP, true).apply {
             tag = "voice-language"
             setOnClickListener { onFeedback(); languageIndex = 0; onLanguageChanged(languageIndex); updateLanguagePresentation(false) }
         }
@@ -81,7 +81,7 @@ internal class VoicePanelView(
         }
         languageTrack.addView(languageButton, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
         englishButton = TextView(context).apply {
-            text = LANGUAGES[1].first; textSize = 14f; gravity = Gravity.CENTER
+            text = LANGUAGES[1].first; textSize = ImeTypographyTokens.BODY_SP; gravity = Gravity.CENTER
             isClickable = true; isFocusable = true
             setOnClickListener {
                 if (!languageButton.isEnabled) return@setOnClickListener
@@ -91,7 +91,7 @@ internal class VoicePanelView(
         }
         languageTrack.addView(englishButton, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
         addView(languageTrack, LayoutParams(toPx(200), toPx(34)).apply { bottomMargin = toPx(14) })
-        gestureHint = createButton("长按说话 · 松开上屏 · 上滑取消", 14f, false).apply {
+        gestureHint = createButton("长按说话 · 松开上屏 · 上滑取消", ImeTypographyTokens.BODY_SP, false).apply {
             tag = "voice-gesture-hint"; isClickable = false; isFocusable = false
             background = null
             typeface = android.graphics.Typeface.DEFAULT
@@ -101,7 +101,7 @@ internal class VoicePanelView(
             setPadding(toPx(12), 0, toPx(12), 0)
             background = ImeDrawableFactory.rounded(palette.toolCardBackground, toPx(12))
             addView(TextView(context).apply {
-                text = "空格"; textSize = 14f; gravity = Gravity.CENTER
+                text = "空格"; textSize = ImeTypographyTokens.BODY_SP; gravity = Gravity.CENTER
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
                 background = ImeDrawableFactory.rounded(palette.toolCardBackground, toPx(8), palette.border, toPx(1))
             }, LayoutParams(toPx(44), toPx(28)).apply { marginEnd = toPx(10) })

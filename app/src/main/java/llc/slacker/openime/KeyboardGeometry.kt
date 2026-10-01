@@ -60,7 +60,7 @@ internal data class KeyboardLayoutMetrics(
         val base = if (landscape) {
             ImeGeometryTokens.LANDSCAPE_KEY_ROW_HEIGHT_DP
         } else {
-            54
+            ImeGeometryTokens.KEY_ROW_HEIGHT_DP
         }
         val fontGrow = ((fontScale - 1f).coerceAtLeast(0f) * 12f)
             .toInt()

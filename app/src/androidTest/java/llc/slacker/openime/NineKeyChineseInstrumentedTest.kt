@@ -56,19 +56,21 @@ class NineKeyChineseInstrumentedTest {
 
         val paths = harness.awaitMain { activity ->
             val root = activity.findViewById<ViewGroup>(android.R.id.content) ?: return@awaitMain emptyList()
-            val content = findView(root) { it.tag == "nine-symbol-scroll-content" } as? ViewGroup
+            val content = findView(root) { it.tag == "nine-pinyin-panel" } as? ViewGroup
                 ?: return@awaitMain emptyList()
             (0 until content.childCount).mapNotNull { index ->
                 (content.getChildAt(index) as? TextView)?.text?.toString()
             }
         }
-        assertTrue("64 must keep ni as an available path: $paths", "ni" in paths)
-        assertTrue("64 must keep mi as an available path: $paths", "mi" in paths)
+        // While composing, the rail is the reading list ("nine-pinyin-panel"),
+        // not the punctuation stack.
+        assertTrue("64 must keep ni as an available reading: $paths", "ni" in paths)
+        assertTrue("64 must keep mi as an available reading: $paths", "mi" in paths)
         assertFalse("64 must not show the non-Pinyin spelling oh: $paths", "oh" in paths)
 
         val selected = harness.awaitMain { activity ->
             val root = activity.findViewById<ViewGroup>(android.R.id.content) ?: return@awaitMain false
-            val content = findView(root) { it.tag == "nine-symbol-scroll-content" } as? ViewGroup
+            val content = findView(root) { it.tag == "nine-pinyin-panel" } as? ViewGroup
                 ?: return@awaitMain false
             val choice = (0 until content.childCount)
                 .mapNotNull { content.getChildAt(it) as? TextView }

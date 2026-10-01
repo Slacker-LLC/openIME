@@ -91,7 +91,7 @@ internal class NumericKeyboardRenderer(
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             rowDigits.forEach { digit ->
                 row.addView(
-                    createKey(digit, false, 24f) { onCommitCharacter(digit) }.apply {
+                    createKey(digit, false, ImeTypographyTokens.SYMBOL_SP) { onCommitCharacter(digit) }.apply {
                         tag = "key:$digit"
                         markWhiteKey(this)
                     },

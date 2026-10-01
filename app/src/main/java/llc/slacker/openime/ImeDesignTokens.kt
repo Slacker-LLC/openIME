@@ -11,6 +11,8 @@ import android.graphics.Color
  * prevents each panel from inventing another near-identical radius or size.
  */
 internal object ImeGeometryTokens {
+    /** Portrait key row height on the reference design's 390-unit canvas. */
+    const val KEY_ROW_HEIGHT_DP = 54
     const val KEY_RADIUS_DP = 8
     const val CONTROL_RADIUS_DP = 12
     const val CARD_RADIUS_DP = 16
@@ -70,13 +72,21 @@ internal object ImeMotionTokens {
     const val STANDARD_TRANSITION_MS = 160L
 }
 
-/** Six text roles shared by the keyboard and every app surface. */
+/**
+ * Text roles shared by the keyboard and every app surface. The six keyboard
+ * roles come first; the last three are the sizes the reference design uses
+ * outside them (helper text on setup/data pages, a glyph handle, and the large
+ * digit / symbol keys), named here so no screen invents its own number.
+ */
 internal object ImeTypographyTokens {
     const val CAPTION_SP = 11f
+    const val SMALL_SP = 12f
     const val BODY_SP = 14f
     const val TITLE_SP = 16f
     const val CANDIDATE_SP = 18f
+    const val GLYPH_SP = 20f
     const val KEY_LETTER_SP = 21f
+    const val SYMBOL_SP = 24f
     const val DISPLAY_SP = 28f
 
     // Compatibility names for existing callers; every alias resolves to the
@@ -280,6 +290,10 @@ internal object ImeSurfacePolicy {
             tokens.toolCardBackground,
             if (isDark(tokens)) 0.18f else 0.10f,
         )
+
+    /** Outlined destructive controls (clear / delete): a red tuned to read on panel heads. */
+    fun destructiveLabel(tokens: ImeTheme.Tokens): Int =
+        if (isDark(tokens)) Color.parseColor("#FF6771") else Color.parseColor("#D60016")
 
     fun destructiveText(tokens: ImeTheme.Tokens): Int {
         val surface = destructiveSurface(tokens)

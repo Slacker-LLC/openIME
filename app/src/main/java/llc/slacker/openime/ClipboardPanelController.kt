@@ -65,7 +65,7 @@ internal class ClipboardPanelController(
             setPadding(toPx(2), toPx(2), toPx(2), toPx(2))
             listOf("剪贴板", "常用语").forEachIndexed { index, label ->
                 addView(TextView(context).apply {
-                    text = label; textSize = 14f; gravity = Gravity.CENTER; includeFontPadding = false
+                    text = label; textSize = ImeTypographyTokens.BODY_SP; gravity = Gravity.CENTER; includeFontPadding = false
                     tag = if (tab == index) "segment-selected" else "segment-option"
                     contentDescription = label; isClickable = true; isFocusable = true
                     setOnClickListener { onFeedback(); tab = index; render(true) }
@@ -251,7 +251,7 @@ internal class ClipboardPanelController(
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             tag = "phrase-card"; setPadding(toPx(14), 0, toPx(4), 0)
             addView(TextView(context).apply {
-                text = phrase.text; textSize = 16f; maxLines = 2; ellipsize = TextUtils.TruncateAt.END
+                text = phrase.text; textSize = ImeTypographyTokens.TITLE_SP; maxLines = 2; ellipsize = TextUtils.TruncateAt.END
                 tag = "phrase:${phrase.id}"; contentDescription = "常用语：${phrase.text}"
                 isClickable = true; isFocusable = true
                 setOnClickListener { onFeedback(); onCharacter(phrase.text) }
@@ -273,7 +273,7 @@ internal class ClipboardPanelController(
             tag = "clip-card"; contentDescription = "剪贴板：${entry.text}，点击使用"
             isClickable = true; isFocusable = true
             setOnClickListener { onFeedback(); onCharacter(entry.text) }
-            addView(TextView(context).apply { text = entry.text; textSize = 16f; maxLines = 1; ellipsize = TextUtils.TruncateAt.END },
+            addView(TextView(context).apply { text = entry.text; textSize = ImeTypographyTokens.TITLE_SP; maxLines = 1; ellipsize = TextUtils.TruncateAt.END },
                 LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             addView(iconButton(R.drawable.ic_pin, if (entry.pinned) "取消置顶" else "置顶", "clip-pin:${entry.text}") {
                 ClipboardHistoryRepository.togglePin(context, entry.text); render(true)
@@ -300,7 +300,7 @@ internal class ClipboardPanelController(
                 render(reusePanel = true)
                 focusEntryPoint()
             },
-            LinearLayout.LayoutParams(0, toPx(36), 1f).apply {
+            LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f).apply {
                 marginEnd = toPx(6)
             },
         )
@@ -308,14 +308,16 @@ internal class ClipboardPanelController(
             retentionAction("清空全部", destructive = true) {
                 showClearConfirmation(body)
             },
-            LinearLayout.LayoutParams(0, toPx(36), 1f),
+            LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f),
         )
+        // The buttons are painted 36dp inside this 48dp row (see the theme),
+        // so the visible gap above them is unchanged.
         body.addView(
             row,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(36),
-            ).apply { topMargin = toPx(6) },
+                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
+            ),
         )
         applyTheme()
     }
@@ -333,7 +335,7 @@ internal class ClipboardPanelController(
                 render(reusePanel = true)
                 focusEntryPoint()
             },
-            LinearLayout.LayoutParams(0, toPx(36), 1f).apply {
+            LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f).apply {
                 marginEnd = toPx(6)
             },
         )
@@ -346,14 +348,14 @@ internal class ClipboardPanelController(
                 tag = "clipboard-clear-confirm"
                 contentDescription = "确认清空全部剪贴历史"
             },
-            LinearLayout.LayoutParams(0, toPx(36), 1f),
+            LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f),
         )
         body.addView(
             row,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(36),
-            ).apply { topMargin = toPx(6) },
+                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
+            ),
         )
         applyTheme()
         row.findViewWithTag<View>("clipboard-clear-confirm")?.requestFocus()
@@ -368,7 +370,7 @@ internal class ClipboardPanelController(
         textSize = ImeTypographyTokens.PANEL_NOTE_SP
         gravity = Gravity.CENTER
         minHeight = 0
-        minimumHeight = 0
+        minimumHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
         isClickable = true
         isFocusable = true
         tag = if (destructive) {

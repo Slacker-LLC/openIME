@@ -236,7 +236,7 @@ try:
             ('文本编辑','text-editor',('textedit-cross', 'textedit-action:paste')),
             ('语音输入','voice',('voice-mic', 'segment-selected')),
             ('剪贴板','clipboard',('segmented-track',)),
-            ('设置','preferences',('segmented-track', 'settings-slider:键盘高度')),
+            ('设置','preferences',('segmented-track-tall', 'settings-slider:键盘高度')),
         ]:
             panel(label, stem + '-' + target, required)
         tap('强调色与按键皮肤')

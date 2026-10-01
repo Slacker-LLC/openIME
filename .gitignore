@@ -38,5 +38,8 @@ artifacts/
 # Optional local test evidence (the canonical evidence in docs is curated)
 .local/
 
+# Design-reference captures and review renders produced by scripts/*.py
+output/
+
 # Scratch files
 test_patch_probe.txt

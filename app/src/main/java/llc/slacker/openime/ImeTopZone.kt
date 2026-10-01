@@ -258,7 +258,7 @@ internal class ImeTopZone(
             )
         }
         expandedCaption.apply {
-            text = "候选字词"; textSize = 14f; gravity = Gravity.CENTER_VERTICAL
+            text = "候选字词"; textSize = ImeTypographyTokens.BODY_SP; gravity = Gravity.CENTER_VERTICAL
             setPadding(toPx(10), 0, 0, 0); tag = "panel-note"; visibility = View.GONE
         }
         candidateField.addView(expandedCaption, LinearLayout.LayoutParams(0, toPx(48), 1f))
@@ -371,7 +371,7 @@ internal class ImeTopZone(
         voiceInlineIcon.visibility = View.GONE
         voiceInlineZone.addView(TextView(context).apply {
             text = "↑ 上滑取消"
-            textSize = 12f
+            textSize = ImeTypographyTokens.SMALL_SP
             gravity = Gravity.CENTER
             tag = "voice-cancel-hint"
             includeFontPadding = false

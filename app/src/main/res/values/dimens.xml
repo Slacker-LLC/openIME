@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <dimen name="ime_text_caption">11sp</dimen>
+    <dimen name="ime_text_small">12sp</dimen>
     <dimen name="ime_text_body">14sp</dimen>
     <dimen name="ime_text_title">16sp</dimen>
     <dimen name="ime_text_candidate">18sp</dimen>

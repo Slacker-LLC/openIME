@@ -117,7 +117,7 @@ class SymbolManagerActivity : Activity() {
             hint = "例如：常用箭头"
             setSingleLine(true)
             imeOptions = EditorInfo.IME_ACTION_NEXT
-            textSize = 16f
+            textSize = ImeTypographyTokens.TITLE_SP
             setText(draftGroup)
         }
         SetupUi.styleInput(this, groupEdit)
@@ -128,7 +128,7 @@ class SymbolManagerActivity : Activity() {
             hint = "符号或自定义文本"
             setSingleLine(true)
             imeOptions = EditorInfo.IME_ACTION_DONE
-            textSize = 16f
+            textSize = ImeTypographyTokens.TITLE_SP
             setText(draftSymbol)
         }
         SetupUi.styleInput(this, symbolEdit)
@@ -192,7 +192,7 @@ class SymbolManagerActivity : Activity() {
         form.addView(save, fullHeight(48).apply { bottomMargin = dp(0) })
         content.addView(TextView(this).apply {
             text = "已保存符号"
-            textSize = 12f
+            textSize = ImeTypographyTokens.SMALL_SP
             setTextColor(getColor(R.color.setup_body))
             setPadding(dp(16), 0, 0, dp(8))
             setPadding(0, 0, 0, dp(8))
@@ -221,7 +221,7 @@ class SymbolManagerActivity : Activity() {
         }
         content.addView(TextView(this).apply {
             text = "点击图钉固定；长按左侧把手拖动排序，也可从菜单上移、下移。"
-            textSize = 12f; setTextColor(getColor(R.color.setup_body))
+            textSize = ImeTypographyTokens.SMALL_SP; setTextColor(getColor(R.color.setup_body))
         }, fullWrap().apply { topMargin = dp(16) })
         val done = SetupUi.secondaryButton(this, "完成") { requestClose() }
         val scroll = ScrollView(this).apply {
@@ -259,16 +259,16 @@ class SymbolManagerActivity : Activity() {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
         setPadding(dp(8), 0, dp(8), 0)
         addView(TextView(this@SymbolManagerActivity).apply {
-            text = "⠿"; textSize = 20f; gravity = Gravity.CENTER; setTextColor(getColor(R.color.setup_body))
+            text = "⠿"; textSize = ImeTypographyTokens.GLYPH_SP; gravity = Gravity.CENTER; setTextColor(getColor(R.color.setup_body))
             contentDescription = "拖动排序"; isLongClickable = true
             setOnLongClickListener { this@apply.performLongClick() }
         }, LinearLayout.LayoutParams(dp(32), dp(48)))
         addView(TextView(this@SymbolManagerActivity).apply {
-            text = item.symbol; textSize = 24f; gravity = Gravity.CENTER; maxLines = 2
+            text = item.symbol; textSize = ImeTypographyTokens.SYMBOL_SP; gravity = Gravity.CENTER; maxLines = 2
             setTextColor(getColor(R.color.setup_title)); contentDescription = "自定义符号：${item.symbol}"
         }, LinearLayout.LayoutParams(dp(52), dp(52)))
         addView(TextView(this@SymbolManagerActivity).apply {
-            text = item.group; textSize = 14f; maxLines = 1; ellipsize = TextUtils.TruncateAt.END
+            text = item.group; textSize = ImeTypographyTokens.BODY_SP; maxLines = 1; ellipsize = TextUtils.TruncateAt.END
             setTextColor(getColor(R.color.setup_body))
         }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         addView(ImageView(this@SymbolManagerActivity).apply {
@@ -331,7 +331,7 @@ class SymbolManagerActivity : Activity() {
             dialog.show()
         }
         addView(TextView(this@SymbolManagerActivity).apply {
-            text = "⋯"; textSize = 24f; gravity = Gravity.CENTER; setTextColor(getColor(R.color.setup_body))
+            text = "⋯"; textSize = ImeTypographyTokens.SYMBOL_SP; gravity = Gravity.CENTER; setTextColor(getColor(R.color.setup_body))
             contentDescription = "符号菜单"; isClickable = true; isFocusable = true
             setOnClickListener { anchor ->
                 PopupMenu(this@SymbolManagerActivity, anchor).apply {

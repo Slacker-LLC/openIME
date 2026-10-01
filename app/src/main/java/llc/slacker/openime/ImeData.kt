@@ -609,6 +609,15 @@ object ImeData {
         ),
     )
 
+    /** First screen of the 笑脸 tab: the order the reference design shows. */
+    val referenceSmileys: List<String> = listOf(
+        "😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣",
+        "🥹", "😊", "😇", "🙂", "🙃", "😉", "😌", "😍",
+        "🥰", "😘", "😗", "😙", "😚", "☺️", "😛", "😝",
+        "😜", "🤪", "😳", "🥺", "🤓", "😎", "🥸", "🤩",
+        "🥳", "😏", "😒", "😞", "😔", "😟", "😕", "🙁",
+    )
+
     /** Unicode Smileys & Emotion collection used by the Fluent asset bundle. */
     val fluentSmileys: List<String> = listOf(
         "😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😂", "🙂", "🙃", "🫠", "😉", "😊", "😇",

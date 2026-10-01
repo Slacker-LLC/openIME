@@ -539,13 +539,7 @@ internal class ImePanelRenderer(
             (EmojiRecentRepository.load(context) + ImeData.emojiByCategory.values.flatten()).distinct()
         } else {
             val catalog = ImeData.emojiByCategory[emojiCategory].orEmpty()
-            if (emojiCategory == "笑脸") (listOf(
-                "😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣",
-                "🥹", "😊", "😇", "🙂", "🙃", "😉", "😌", "😍",
-                "🥰", "😘", "😗", "😙", "😚", "☺️", "😛", "😝",
-                "😜", "🤪", "😳", "🥺", "🤓", "😎", "🥸", "🤩",
-                "🥳", "😏", "😒", "😞", "😔", "😟", "😕", "🙁",
-            ) + catalog).distinct() else catalog
+            if (emojiCategory == "笑脸") (ImeData.referenceSmileys + catalog).distinct() else catalog
         }
         if (items.isEmpty() && emojiCategory == "最近") {
             grid.addView(
@@ -708,11 +702,14 @@ internal class ImePanelRenderer(
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                addView(TextView(context).apply { text = label; textSize = 14f; typeface = Typeface.DEFAULT_BOLD }, LinearLayout.LayoutParams(0, toPx(28), 1f))
-                addView(TextView(context).apply {
-                    text = if (selected) "✓" else "○"
-                    tag = if (selected) "keyboard-radio-selected" else "panel-note"
-                    gravity = Gravity.CENTER; textSize = 20f
+                addView(TextView(context).apply { text = label; textSize = ImeTypographyTokens.BODY_SP; typeface = Typeface.DEFAULT_BOLD }, LinearLayout.LayoutParams(0, toPx(28), 1f))
+                // A vector mark, not a text glyph: it is tinted and sized like every other icon.
+                addView(ImageView(context).apply {
+                    setImageResource(if (selected) R.drawable.ic_check else R.drawable.ic_radio_off)
+                    tag = if (selected) "keyboard-radio-selected" else "keyboard-radio-off"
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    setPadding(toPx(2), toPx(2), toPx(2), toPx(2))
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                 }, LinearLayout.LayoutParams(toPx(24), toPx(24)))
             }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(28)))
         }

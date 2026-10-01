@@ -229,22 +229,25 @@ internal class SettingsPanelController(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(toPx(16), 0, toPx(16), 0)
-            addView(labelText(label, 14f).apply { typeface = android.graphics.Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER_VERTICAL },
+            addView(labelText(label, ImeTypographyTokens.BODY_SP).apply { typeface = android.graphics.Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER_VERTICAL },
                 LinearLayout.LayoutParams(0, toPx(56), 1f))
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
-                tag = "segmented-track"
+                // The painted track is 34dp (inset in the theme) but every option is a
+                // full 48dp touch target.
+                tag = "segmented-track-tall"
                 setPadding(toPx(2), toPx(2), toPx(2), toPx(2))
                 labels.forEach { value ->
                     addView(TextView(context).apply {
-                        text = value; textSize = 14f; gravity = Gravity.CENTER; includeFontPadding = false
-                        tag = if (value == selected) "segment-selected" else "segment-option"
+                        text = value; textSize = ImeTypographyTokens.BODY_SP; gravity = Gravity.CENTER; includeFontPadding = false
+                        minimumHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
+                        tag = if (value == selected) "segment-selected-tall" else "segment-option-tall"
                         contentDescription = "$value，${if (value == selected) "已选中" else "未选中"}"
                         isClickable = true; isFocusable = true
                         setOnClickListener { onFeedback(); onSelected(value) }
                     }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
                 }
-            }, LinearLayout.LayoutParams(0, toPx(34), 2f))
+            }, LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 2f))
         }
 
     fun renderFuzzySettings() {
@@ -731,8 +734,8 @@ internal class SettingsPanelController(
             addView(View(context).apply {
                 background = ImeDrawableFactory.rounded(palette.primary, toPx(99))
             }, LinearLayout.LayoutParams(toPx(16), toPx(16)).apply { marginEnd = toPx(8) })
-            addView(TextView(context).apply { text = "#"; textSize = 14f; setTextColor(palette.keyText) }, wrapParams())
-            field.textSize = 14f; field.background = null; field.setPadding(0, 0, 0, 0)
+            addView(TextView(context).apply { text = "#"; textSize = ImeTypographyTokens.BODY_SP; setTextColor(palette.keyText) }, wrapParams())
+            field.textSize = ImeTypographyTokens.BODY_SP; field.background = null; field.setPadding(0, 0, 0, 0)
             field.setTextColor(palette.keyText)
             addView(field, LinearLayout.LayoutParams(0, toPx(44), 1f))
         }

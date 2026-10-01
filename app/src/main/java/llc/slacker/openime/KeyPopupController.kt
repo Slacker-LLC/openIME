@@ -39,6 +39,9 @@ internal class KeyPopupController(
     private var popupView: View? = null
     private var keepAfterKeyUp = false
 
+    /** True while a key preview or a long-press choice popup is on screen. */
+    val isShowing: Boolean get() = popupView != null
+
     /**
      * The one bubble for every delete-key gesture state (clear / restore, and
      * both before and after they arm). Purely visual and never touchable.

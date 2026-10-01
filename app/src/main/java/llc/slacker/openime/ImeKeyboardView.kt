@@ -116,6 +116,9 @@ open class ImeKeyboardView(
     private val MARK_FUNCTION_KEY = 0x1F000003
 
     companion object {
+        /** Scale differences below this are rounding noise, not a new geometry. */
+        private const val SCALE_CHANGE_EPSILON = 0.01f
+
         /** How often a deferred row rebuild re-checks whether the press ended. */
         private const val ROW_REBUILD_POLL_MS = 40L
     }
@@ -972,7 +975,13 @@ open class ImeKeyboardView(
             }
 
         val nextScale = ImeReferenceSizing.scale(context, dockWidthPx)
-        if (kotlin.math.abs(nextScale - referenceScale) > 0.001f) {
+        // Configuration.screenWidthDp is a whole number while the measured width
+        // is not (411dp vs 411.43dp on a 1080px / 420dpi screen), so the two
+        // scales differ by up to 1/390 for the same window. That rounding noise
+        // used to cross the old 0.001 threshold and rebuilt every key from
+        // onSizeChanged, in the middle of the first layout pass. Only a real
+        // change (one-handed dock, floating window, rotation) rescales.
+        if (kotlin.math.abs(nextScale - referenceScale) > SCALE_CHANGE_EPSILON) {
             val ratio = nextScale / referenceScale
             referenceScale = nextScale
             rescaleTopZone(topZone, ratio)
@@ -981,6 +990,14 @@ open class ImeKeyboardView(
                 if (panel == Panel.NONE) renderModeBody() else renderPanel(panel)
             }
             applyTheme()
+            // This runs from onSizeChanged, i.e. in the middle of a layout pass.
+            // Rows rebuilt there are added after their parent was measured and
+            // would stay at 0x0 (a blank keyboard on first show) until something
+            // else happened to request a layout. Ask for a fresh pass.
+            post {
+                requestLayout()
+                invalidate()
+            }
         }
 
         (mainDock.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
@@ -2157,7 +2174,7 @@ open class ImeKeyboardView(
 
     private fun sectionTitle(textValue: String): TextView = TextView(context).apply {
         text = textValue
-        textSize = 12f
+        textSize = ImeTypographyTokens.SMALL_SP
         includeFontPadding = false
         setPadding(dp(16), dp(4), 0, dp(8))
         tag = "panel-section-title"
@@ -2927,6 +2944,18 @@ open class ImeKeyboardView(
     private fun hidePopup() {
         keyPopupController.hide()
     }
+
+    /**
+     * The key preview is a permanent child that only toggles visibility, so
+     * tests cannot detect it by counting children.
+     */
+    internal fun isKeyPopupShown(): Boolean = keyPopupController.isShowing
+
+    /**
+     * dp -> px exactly as the gesture thresholds compute it, i.e. including the
+     * reference scale, so tests can drive gestures in the controllers' units.
+     */
+    internal fun scaledPx(dp: Int): Int = dp(dp)
 
     private fun currentThemeTokens(): ImeTheme.Tokens =
         theme.tokens(

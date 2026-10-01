@@ -11,6 +11,7 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.view.HapticFeedbackConstants
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowInsets
 import android.provider.Settings
 import android.net.Uri
@@ -278,6 +279,24 @@ class MainActivity : Activity() {
             if (Build.VERSION.SDK_INT >= 30) {
                 stateDescription = if (ready) "可用" else "需先完成输入法设置"
             }
+            hideDecorationFromAccessibility(this)
+        }
+    }
+
+    /**
+     * A setup card is one focusable, described node. Its number, label,
+     * hint, status pill and chevron are decoration for the same action, so a
+     * screen reader must not also land on each of them (and, being inside the
+     * card, they cannot be separate actions anyway). Applied in code because
+     * the status pill is added at runtime and a layout edit must not be able
+     * to bring the duplicates back.
+     */
+    private fun hideDecorationFromAccessibility(card: View) {
+        val group = card as? ViewGroup ?: return
+        for (index in 0 until group.childCount) {
+            val child = group.getChildAt(index)
+            child.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            hideDecorationFromAccessibility(child)
         }
     }
 
@@ -354,7 +373,7 @@ class MainActivity : Activity() {
             val layout = row as android.widget.LinearLayout
             (layout.getChildAt(1) as? android.widget.LinearLayout)?.getChildAt(1)?.visibility = if (done) View.GONE else View.VISIBLE
             val status = (layout.findViewWithTag<View>("setup-result") as? TextView) ?: TextView(this).apply {
-                tag = "setup-result"; textSize = 12f; setTextColor(getColor(R.color.setup_body))
+                tag = "setup-result"; textSize = ImeTypographyTokens.SMALL_SP; setTextColor(getColor(R.color.setup_body))
                 layout.addView(this, android.widget.LinearLayout.LayoutParams(android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT))
             }
             val enableStep = row.id == R.id.open_ime_settings
@@ -373,6 +392,7 @@ class MainActivity : Activity() {
 
         }
         if (row.id == R.id.test_step) (row as android.widget.LinearLayout).getChildAt(2)?.visibility = View.GONE
+        hideDecorationFromAccessibility(row)
         row.alpha = 1f
         row.contentDescription = when {
             done -> doneText

@@ -77,7 +77,7 @@ internal class TextEditorPanelController(
         listOf(listOf("全选" to "select-all", "撤销" to "undo"), listOf("复制" to "copy", "剪切" to "cut"), listOf("粘贴" to "paste")).forEach { entries ->
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             entries.forEach { (label, action) ->
-                val control = createKey(label, 14f) { onTextEdit(action) }.apply { tag = "textedit-action:$action" }
+                val control = createKey(label, ImeTypographyTokens.BODY_SP) { onTextEdit(action) }.apply { tag = "textedit-action:$action" }
                 actionControls[action] = ActionControl(label, control)
                 row.addView(control, LinearLayout.LayoutParams(0, toPx(62), 1f))
             }

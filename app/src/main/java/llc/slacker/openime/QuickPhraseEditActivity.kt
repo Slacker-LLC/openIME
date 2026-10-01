@@ -115,7 +115,7 @@ class QuickPhraseEditActivity : Activity() {
             setText(category)
             setSingleLine(true)
             imeOptions = EditorInfo.IME_ACTION_NEXT
-            textSize = 16f
+            textSize = ImeTypographyTokens.TITLE_SP
         }
         SetupUi.styleInput(this, categoryEdit)
         codeEdit = EditText(this).apply {
@@ -126,7 +126,7 @@ class QuickPhraseEditActivity : Activity() {
             inputType = android.text.InputType.TYPE_CLASS_TEXT or
                 android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             imeOptions = EditorInfo.IME_ACTION_NEXT
-            textSize = 16f
+            textSize = ImeTypographyTokens.TITLE_SP
         }
         SetupUi.styleInput(this, codeEdit)
         phraseEdit = EditText(this).apply {
@@ -137,7 +137,7 @@ class QuickPhraseEditActivity : Activity() {
             maxLines = 8
             gravity = Gravity.TOP or Gravity.START
             imeOptions = EditorInfo.IME_ACTION_DONE
-            textSize = 16f
+            textSize = ImeTypographyTokens.TITLE_SP
         }
         SetupUi.styleInput(this, phraseEdit)
         val save = SetupUi.primaryButton(this, "保存") {
@@ -224,7 +224,7 @@ class QuickPhraseEditActivity : Activity() {
             addView(phraseEdit, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(132)))
             addView(TextView(this@QuickPhraseEditActivity).apply {
                 text = "保存后会在剪贴板面板的“常用语”中按分类显示，点选即输入。\n\n设置输入码后，输入至少 2 个字符的短码即可在候选栏召回这条常用语。"
-                textSize = 12f; setTextColor(getColor(R.color.setup_body)); setLineSpacing(0f, 1.25f)
+                textSize = ImeTypographyTokens.SMALL_SP; setTextColor(getColor(R.color.setup_body)); setLineSpacing(0f, 1.25f)
             }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
         }
         val scroll = ScrollView(this).apply {
@@ -252,7 +252,7 @@ class QuickPhraseEditActivity : Activity() {
 
     private fun fieldLabel(label: String, targetId: Int) = TextView(this).apply {
         text = label
-        textSize = 16f
+        textSize = ImeTypographyTokens.TITLE_SP
         setTextColor(getColor(R.color.setup_body))
         setPadding(dp(4), 0, dp(4), dp(4))
         labelFor = targetId

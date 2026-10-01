@@ -90,7 +90,7 @@ class AboutDataActivity : Activity() {
                 wrap().apply { topMargin = dp(ImeSpacingTokens.LG_DP) },
             )
             addView(TextView(this@AboutDataActivity).apply {
-                text = "openIME · 版本 " + versionName(); textSize = 12f; gravity = android.view.Gravity.CENTER
+                text = "openIME · 版本 " + versionName(); textSize = ImeTypographyTokens.SMALL_SP; gravity = android.view.Gravity.CENTER
                 setTextColor(getColor(R.color.setup_body))
             }, wrap().apply { topMargin = dp(18) })
         }
@@ -346,10 +346,10 @@ class AboutDataActivity : Activity() {
                 addView(LinearLayout(this@AboutDataActivity).apply {
                     orientation = LinearLayout.VERTICAL
                     addView(TextView(this@AboutDataActivity).apply {
-                        text = title; textSize = 14f; setTextColor(getColor(R.color.setup_title)); typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+                        text = title; textSize = ImeTypographyTokens.BODY_SP; setTextColor(getColor(R.color.setup_title)); typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
                     }, wrap())
                     addView(TextView(this@AboutDataActivity).apply {
-                        text = body; textSize = 14f; setTextColor(getColor(R.color.setup_body)); setLineSpacing(0f, 1.3f)
+                        text = body; textSize = ImeTypographyTokens.BODY_SP; setTextColor(getColor(R.color.setup_body)); setLineSpacing(0f, 1.3f)
                     }, wrap().apply { topMargin = dp(4) })
                 }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             }, wrap())
