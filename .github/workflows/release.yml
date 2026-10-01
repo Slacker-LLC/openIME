@@ -1,24 +1,86 @@
 name: Android Release
 
+# A release is a signed arm64 APK built from a vX.Y.Z tag on main. The same build
+# and verification script (scripts/release_build.sh) is rehearsed with a throwaway
+# key on manual runs and on pull requests that touch the release pipeline, so the
+# first real release is not the first time it runs. See docs/RELEASE.md.
 on:
   push:
     tags:
-      - 'v*'
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/release.yml'
+      - 'scripts/release_build.sh'
+      - 'scripts/release_check.py'
+      - 'VERSION'
+      - 'CHANGELOG.md'
+      - 'app/build.gradle.kts'
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 jobs:
-  release:
-    name: Build signed arm64 release
+  # Holds the signing key but cannot write to the repository.
+  build:
+    name: ${{ github.ref_type == 'tag' && 'Build signed arm64 release' || 'Release rehearsal (throwaway key)' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: read
+      checks: read
 
     steps:
       - name: Checkout source and LFS files
         uses: actions/checkout@v7
         with:
           lfs: true
+          fetch-depth: 0
+
+      - name: Release tag is on main and its CI passed
+        if: github.ref_type == 'tag'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_REF_NAME must point at a commit on main"
+            exit 1
+          fi
+
+          required=("Build and verify" "Compatibility API 29" "Compatibility API 31")
+          deadline=$((SECONDS + 2400))
+          while true; do
+            runs="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" --jq '.check_runs')"
+            waiting=0
+            for name in "${required[@]}"; do
+              latest="$(jq -c --arg n "$name" '[.[] | select(.name == $n)] | sort_by(.started_at) | last // {}' <<<"$runs")"
+              conclusion="$(jq -r '.conclusion // "pending"' <<<"$latest")"
+              case "$conclusion" in
+                success) ;;
+                pending) waiting=1 ;;
+                *)
+                  echo "::error::CI check '$name' ended as '$conclusion' for $GITHUB_SHA"
+                  exit 1
+                  ;;
+              esac
+            done
+            [[ "$waiting" -eq 0 ]] && break
+            if (( SECONDS >= deadline )); then
+              echo "::error::CI for $GITHUB_SHA did not finish within 40 minutes"
+              exit 1
+            fi
+            echo "Waiting for CI on $GITHUB_SHA ..."
+            sleep 30
+          done
+          echo "CI passed for $GITHUB_SHA"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v6
@@ -57,7 +119,10 @@ jobs:
         shell: bash
         run: chmod +x gradlew
 
-      - name: Validate signing secrets
+      # Only this step ever reads the signing secrets, and only for tags. Pull
+      # requests and manual runs sign with a key that exists for this job alone.
+      - name: Use the release signing key
+        if: github.ref_type == 'tag'
         shell: bash
         env:
           OPENIME_KEYSTORE_B64: ${{ secrets.OPENIME_KEYSTORE_B64 }}
@@ -65,115 +130,115 @@ jobs:
           OPENIME_KEY_ALIAS: ${{ secrets.OPENIME_KEY_ALIAS }}
           OPENIME_KEY_PASSWORD: ${{ secrets.OPENIME_KEY_PASSWORD }}
         run: |
-          for name in \
-            OPENIME_KEYSTORE_B64 \
-            OPENIME_KEYSTORE_PASSWORD \
-            OPENIME_KEY_ALIAS \
-            OPENIME_KEY_PASSWORD
-          do
+          for name in OPENIME_KEYSTORE_B64 OPENIME_KEYSTORE_PASSWORD OPENIME_KEY_ALIAS OPENIME_KEY_PASSWORD; do
             if [[ -z "${!name}" ]]; then
-              echo "Missing required release signing secret: ${name}" >&2
+              echo "::error::Missing release signing secret ${name}. Run scripts/setup_release_signing.sh (docs/RELEASE.md)."
               exit 1
             fi
           done
-
-      - name: Decode release keystore
-        shell: bash
-        env:
-          OPENIME_KEYSTORE_B64: ${{ secrets.OPENIME_KEYSTORE_B64 }}
-        run: |
-          printf '%s' "$OPENIME_KEYSTORE_B64" \
-            | base64 --decode \
-            > "$RUNNER_TEMP/openime-release.jks"
+          printf '%s' "$OPENIME_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/openime-release.jks"
           chmod 600 "$RUNNER_TEMP/openime-release.jks"
+          {
+            echo "OPENIME_KEYSTORE_PATH=$RUNNER_TEMP/openime-release.jks"
+            echo "OPENIME_KEYSTORE_PASSWORD=$OPENIME_KEYSTORE_PASSWORD"
+            echo "OPENIME_KEY_ALIAS=$OPENIME_KEY_ALIAS"
+            echo "OPENIME_KEY_PASSWORD=$OPENIME_KEY_PASSWORD"
+            echo "OPENIME_RELEASE_TAG=$GITHUB_REF_NAME"
+          } >> "$GITHUB_ENV"
 
-      - name: Run tests, lint, and release build
-        shell: bash
-        env:
-          OPENIME_KEYSTORE_PATH: ${{ runner.temp }}/openime-release.jks
-          OPENIME_KEYSTORE_PASSWORD: ${{ secrets.OPENIME_KEYSTORE_PASSWORD }}
-          OPENIME_KEY_ALIAS: ${{ secrets.OPENIME_KEY_ALIAS }}
-          OPENIME_KEY_PASSWORD: ${{ secrets.OPENIME_KEY_PASSWORD }}
-        run: |
-          ./gradlew \
-            :app:testDebugUnitTest \
-            :app:lintRelease \
-            :app:assembleRelease \
-            --no-daemon \
-            --console=plain
-
-      - name: Verify signed arm64 artifact
-        id: artifact
+      - name: Use a throwaway rehearsal key
+        if: github.ref_type != 'tag'
         shell: bash
         run: |
-          APK="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name 'app-release*.apk' | head -n 1)"
-          if [[ -z "$APK" || ! -f "$APK" ]]; then
-            echo "Release APK not found" >&2
-            exit 1
-          fi
+          password="$(openssl rand -hex 16)"
+          echo "::add-mask::$password"
+          keytool -genkeypair -keystore "$RUNNER_TEMP/rehearsal.jks" -storetype PKCS12 \
+            -alias rehearsal -keyalg RSA -keysize 2048 -validity 2 \
+            -storepass "$password" -keypass "$password" \
+            -dname "CN=openIME Rehearsal, O=CI throwaway"
+          {
+            echo "OPENIME_KEYSTORE_PATH=$RUNNER_TEMP/rehearsal.jks"
+            echo "OPENIME_KEYSTORE_PASSWORD=$password"
+            echo "OPENIME_KEY_ALIAS=rehearsal"
+            echo "OPENIME_KEY_PASSWORD=$password"
+            echo "OPENIME_REHEARSAL=1"
+          } >> "$GITHUB_ENV"
 
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+      - name: Test, lint, build and verify the release APK
+        id: release
+        shell: bash
+        run: bash scripts/release_build.sh
 
-          mapfile -t ABIS < <(
-            unzip -Z1 "$APK" \
-              | awk -F/ '/^lib\/[^/]+\/[^/]+$/ {print $2}' \
-              | sort -u
-          )
-          if [[ "${#ABIS[@]}" -ne 1 || "${ABIS[0]}" != "arm64-v8a" ]]; then
-            echo "Release APK must contain only arm64-v8a; found: ${ABIS[*]:-none}" >&2
-            exit 1
-          fi
-
-          VERSION_NAME="$(
-            sed -n 's/^[[:space:]]*versionName = "\(.*\)"/\1/p' app/build.gradle.kts \
-              | head -n 1
-          )"
-          if [[ -z "$VERSION_NAME" ]]; then
-            echo "Unable to read versionName" >&2
-            exit 1
-          fi
-          if [[ "$GITHUB_REF_NAME" != "v$VERSION_NAME" ]]; then
-            echo "Tag $GITHUB_REF_NAME does not match versionName $VERSION_NAME" >&2
-            exit 1
-          fi
-
-          OUTPUT="openIME-v${VERSION_NAME}-arm64-release.apk"
-          cp "$APK" "$OUTPUT"
-          sha256sum "$OUTPUT" > SHA256SUMS.txt
-          cp THIRD_PARTY_NOTICES.md THIRD_PARTY_NOTICES.release.md
-          echo "apk=$OUTPUT" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION_NAME" >> "$GITHUB_OUTPUT"
-
-      - name: Create release notes
+      - name: Summary
         shell: bash
         run: |
-          cat > RELEASE_NOTES.md <<'EOF'
-          ## 更新内容
-          - 此版本包含标签所对应提交中的 openIME 功能、稳定性与界面更新。
+          {
+            echo "### openIME ${{ steps.release.outputs.version }}"
+            echo
+            echo "- APK: \`${{ steps.release.outputs.apk }}\`"
+            echo "- Signing certificate SHA-256: \`${{ steps.release.outputs.cert_sha256 }}\`"
+            if [[ "$GITHUB_REF_TYPE" != "tag" ]]; then
+              echo "- **Rehearsal only**: signed with a throwaway key, nothing is published."
+            fi
+            echo
+            echo '```'
+            cat "${{ steps.release.outputs.out_dir }}/SHA256SUMS.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
-          ## 已知问题
-          - 首次安装时，完整 Rime 词典可能需要完成首次部署后才达到稳定候选表现。
-          - 发布 APK 仅包含 arm64-v8a；模拟器继续使用 Debug 构建。
+      - name: Upload release files for publishing
+        if: github.ref_type == 'tag'
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-files
+          path: ${{ steps.release.outputs.out_dir }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
 
-          ## 校验方式
-          下载 APK 后，在同一目录执行：
+  # Can write to the repository but never sees the signing key.
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
 
-          ```bash
+    steps:
+      - name: Download release files
+        uses: actions/download-artifact@v7
+        with:
+          name: release-files
+          path: release-files
+
+      - name: Verify checksums
+        shell: bash
+        run: |
+          cd release-files
           sha256sum -c SHA256SUMS.txt
-          ```
 
-          校验通过后再安装。
-          EOF
-
-      - name: Publish GitHub Release
+      # Created as a draft and only published once every asset is attached, so a
+      # failed upload never leaves a public release without its APK.
+      - name: Create draft, check assets, publish
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "${{ steps.artifact.outputs.apk }}" \
-            SHA256SUMS.txt \
-            THIRD_PARTY_NOTICES.release.md \
+            release-files/openIME-*-arm64-release.apk \
+            release-files/SHA256SUMS.txt \
+            release-files/THIRD_PARTY_NOTICES.release.md \
+            --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
+            --draft \
             --title "openIME $GITHUB_REF_NAME" \
-            --notes-file RELEASE_NOTES.md
+            --notes-file release-files/RELEASE_NOTES.md
+
+          count="$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets | length')"
+          if [[ "$count" -ne 3 ]]; then
+            echo "::error::Expected 3 release assets, found $count; the draft was left unpublished."
+            exit 1
+          fi
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest
