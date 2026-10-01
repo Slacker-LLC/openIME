@@ -1405,17 +1405,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             currentMode = mode,
         ) ?: return
         invalidateCandidateQueries()
-        val reference = entry.nativeReference
-        val nativeCommit = if (
-            reference != null &&
-            rime.isReady &&
-            (mode == KeyboardMode.PINYIN_26 || mode == KeyboardMode.PINYIN_9)
-        ) {
-            rime.selectCandidate(reference.input, reference.nativeIndex, allowsPersonalizedLearning())
-        } else {
-            ""
-        }
-        finishCandidateCommit(composition, nativeCommit.ifBlank { entry.text })
+        commitSnapshotEntry(composition, mode, entry)
     }
 
     /** Commit the pre-edit pinyin as typed (separators dropped); no word is chosen or learned. */
@@ -1447,7 +1437,17 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             currentMode = mode,
         ) ?: return
         invalidateCandidateQueries()
+        commitSnapshotEntry(composition, mode, entry)
+    }
+
+    /** Commit one rendered candidate; a partial match keeps the rest of the input composing. */
+    private fun commitSnapshotEntry(composition: String, mode: KeyboardMode, entry: CandidateSnapshotEntry) {
         val reference = entry.nativeReference
+        val remaining = partialRemainder(reference, mode)
+        if (remaining != null) {
+            finishPartialCandidateCommit(entry.text, remaining)
+            return
+        }
         val nativeCommit = if (
             reference != null &&
             rime.isReady &&
@@ -1458,6 +1458,39 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             ""
         }
         finishCandidateCommit(composition, nativeCommit.ifBlank { entry.text })
+    }
+
+    /**
+     * Input left over when [reference] spells only the start of its input, or
+     * null when it spells all of it (or the extent is unknown). Previously the
+     * leftover was discarded, and the native whole-composition commit also
+     * taught the user dictionary a phrase the user never chose.
+     */
+    private fun partialRemainder(reference: NativeCandidateReference?, mode: KeyboardMode): String? {
+        val ref = reference ?: return null
+        if (ref.consumed <= 0 || ref.nativeIndex < 0) return null
+        if (mode != KeyboardMode.PINYIN_26 && mode != KeyboardMode.PINYIN_9) return null
+        val normalized = RimeInputNormalizer.normalize(ref.input)
+        if (ref.consumed >= normalized.length) return null
+        return normalized.substring(ref.consumed).trim('\'').ifEmpty { null }
+    }
+
+    private fun finishPartialCandidateCommit(committed: String, remaining: String) {
+        if (committed.isEmpty()) return
+        // One atomic edit: commit the word and start the next composing span
+        // together, so the editor never reports a half-way selection state.
+        gateway.batchEdit {
+            gateway.commitText(committed)
+            gateway.finishComposing()
+            voiceCorrectionTracker.finalizeIfNeeded()
+            rime.clear()
+            lastComposition = ""
+            state = state.copy(composition = "", candidates = emptyList())
+            keyboardView?.clearAssociationCandidates()
+            // The view republishes the leftover; this calls back into
+            // handleCompositionChanged, which starts a fresh composing span.
+            keyboardView?.continueCompositionAfterPartial(remaining)
+        }
     }
 
     private fun finishCandidateCommit(composition: String, committed: String) {

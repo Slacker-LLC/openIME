@@ -392,6 +392,34 @@ Java_llc_slacker_openime_RimeNative_nativeSelectCandidate(
   return utf8_to_jstring(env, finish_selection());
 }
 
+// How much of the current input each candidate spells, as an absolute offset
+// into the input string (the candidate's end()). A candidate whose end is
+// shorter than the input is a partial match: choosing it must leave the rest
+// of the input composing instead of dropping it.
+extern "C" JNIEXPORT jintArray JNICALL
+Java_llc_slacker_openime_RimeNative_nativeCandidateEnds(
+    JNIEnv* env, jclass, jint count) {
+  std::lock_guard<std::mutex> lock(g_mutex);
+  const jsize size = count > 0 ? static_cast<jsize>(count) : 0;
+  std::vector<jint> ends(static_cast<size_t>(size), -1);
+  if (g_api && g_session && size > 0) {
+    auto session = rime::Service::instance().GetSession(g_session);
+    auto* context = session ? session->context() : nullptr;
+    if (context && !context->composition().empty()) {
+      auto& segment = context->composition().back();
+      for (jsize i = 0; i < size; ++i) {
+        auto candidate = segment.GetCandidateAt(static_cast<size_t>(i));
+        if (!candidate) continue;
+        ends[static_cast<size_t>(i)] = static_cast<jint>(candidate->end());
+      }
+    }
+  }
+  jintArray result = env->NewIntArray(size);
+  if (!result) return nullptr;
+  if (size > 0) env->SetIntArrayRegion(result, 0, size, ends.data());
+  return result;
+}
+
 extern "C" JNIEXPORT jboolean JNICALL
 Java_llc_slacker_openime_RimeNative_nativeIsUserLearnedCandidate(
     JNIEnv*, jclass, jint index) {

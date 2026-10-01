@@ -99,6 +99,22 @@ class InputConnectionGateway(
         connection()?.commitText(text, 1)
     }
 
+    /**
+     * Run [block] as one atomic editor edit. The editor then reports a single
+     * final selection/composing state; without it a commit followed by a new
+     * composing span produces an intermediate callback (cursor moved, no
+     * composing region) that the service reads as the user leaving the span.
+     */
+    fun <T> batchEdit(block: () -> T): T {
+        val ic = connection()
+        ic?.beginBatchEdit()
+        try {
+            return block()
+        } finally {
+            ic?.endBatchEdit()
+        }
+    }
+
     fun setComposingText(text: String) {
         if (isPassword()) return
         if (text.isNotEmpty()) invalidateClearUndo()

@@ -3,6 +3,8 @@ package llc.slacker.openime
 internal data class NativeCandidateReference(
     val input: String,
     val nativeIndex: Int,
+    /** Normalized-input characters the candidate spells; -1 when unknown. */
+    val consumed: Int = -1,
 ) {
     companion object {
         private const val DEFERRED_PREFIX = "\u0000openime-deferred\u0000"
@@ -89,7 +91,7 @@ internal object NativeCandidatePipeline {
                 if (!seen.add(entry.text)) continue
                 result += NativeCandidateChoice(
                     text = entry.text,
-                    reference = NativeCandidateReference(input, entry.nativeIndex),
+                    reference = NativeCandidateReference(input, entry.nativeIndex, entry.consumed),
                 )
                 if (result.size >= limit) return result
             }

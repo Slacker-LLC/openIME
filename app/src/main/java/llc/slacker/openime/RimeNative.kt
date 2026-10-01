@@ -26,6 +26,13 @@ internal object RimeNative {
     @JvmStatic
     external fun nativeSelectCandidate(index: Int): String?
 
+    /**
+     * Absolute input offset each of the first [count] candidates of the current
+     * input spells (-1 when unknown). Shorter than the input = partial match.
+     */
+    @JvmStatic
+    external fun nativeCandidateEnds(count: Int): IntArray?
+
     /** True only when the active visible candidate is backed by Rime user data. */
     @JvmStatic
     external fun nativeIsUserLearnedCandidate(index: Int): Boolean

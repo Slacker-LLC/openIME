@@ -88,4 +88,13 @@ class NativeCandidatePipelineTest {
 
         assertTrue(merged.isEmpty())
     }
+
+    @Test
+    fun partialExtentSurvivesTheMergeSoCommitCanKeepTheRest() {
+        val merged = NativeCandidatePipeline.mergeRoundRobin(
+            listOf("64426" to listOf(RimeCandidateEntry("你好", 0, consumed = 5), RimeCandidateEntry("你", 1, consumed = 2))),
+        )
+        assertEquals(5, merged[0].reference.consumed)
+        assertEquals(2, merged[1].reference.consumed)
+    }
 }

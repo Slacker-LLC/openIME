@@ -2423,6 +2423,37 @@ open class ImeKeyboardView(
         )
     }
 
+    /**
+     * A candidate spelling only the start of the input was committed; keep
+     * typing on what is left. Nine-key leftovers can start with letters the
+     * user had already fixed (they stay fixed) followed by open digits.
+     */
+    internal fun continueCompositionAfterPartial(remaining: String) {
+        when (mode) {
+            KeyboardMode.PINYIN_9 -> {
+                val letters = remaining.takeWhile { it in 'a'..'z' || it == '\'' }
+                val digits = remaining.substring(letters.length).filter { it in '2'..'9' }
+                val fixed = letters.replace('\'', ' ').trim()
+                val prefix = if (fixed.isEmpty()) "" else "$fixed "
+                lastNineSegmentPrefix = prefix
+                lastNineDigits = ""
+                lastNinePinyinPaths = emptyList()
+                if (digits.isNotEmpty()) {
+                    publishNineKeyDigits(digits)
+                } else if (prefix.isNotEmpty()) {
+                    publishComposition(prefix, candidatesForComposition(prefix), prefix.length)
+                }
+            }
+            KeyboardMode.PINYIN_26 -> {
+                val text = remaining.replace('\'', ' ')
+                if (text.isNotBlank()) {
+                    publishComposition(text, candidatesForComposition(text), text.length)
+                }
+            }
+            else -> Unit
+        }
+    }
+
     /** The prefix the user has explicitly fixed, for the Pinyin rail. */
     internal fun nineKeyFixedPrefix(): String =
         lastNineSegmentPrefix.takeIf { composition.text.toString().startsWith(it) }.orEmpty()
