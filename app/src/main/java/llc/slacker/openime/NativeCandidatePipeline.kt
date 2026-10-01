@@ -69,7 +69,7 @@ internal class NineKeyFallbackRegistry {
     }
 
     private fun isNineKeyCode(value: String): Boolean =
-        value.isNotEmpty() && value.all { it in '2'..'9' || it == '\'' }
+        value.isNotEmpty() && value.all { it in '2'..'9' || it in 'a'..'z' || it == '\'' }
 }
 
 /** Pure merge policy for one or more native Rime query batches. */

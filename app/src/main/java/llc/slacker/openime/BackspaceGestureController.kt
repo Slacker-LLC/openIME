@@ -116,7 +116,7 @@ internal class BackspaceGestureController(
         val shouldUndo = undoAvailable && if (undoArmed) {
             downward > toPx(16) && horizontal <= toPx(120)
         } else {
-            downward >= toPx(36) && horizontal <= toPx(96)
+            downward >= toPx(CLEAR_ARM_DP) && horizontal <= toPx(96)
         }
         if (shouldUndo != undoArmed) {
             undoArmed = shouldUndo
@@ -138,7 +138,7 @@ internal class BackspaceGestureController(
         val shouldClear = if (clearArmed) {
             upward > toPx(16) && horizontal <= toPx(120)
         } else {
-            upward >= toPx(56) && horizontal <= toPx(96)
+            upward >= toPx(CLEAR_ARM_DP) && horizontal <= toPx(96)
         }
         if (shouldClear == clearArmed) return
 
@@ -210,7 +210,17 @@ internal class BackspaceGestureController(
         undoAvailable = false
     }
 
-    private companion object {
+    internal companion object {
         const val REPEAT_INTERVAL_MS = 60L
+
+        /**
+         * Travel from the press point that arms clear (up) or restore (down).
+         * Half a key height past its edge: a normal thumb flick reaches it, a
+         * wobble while holding repeat-delete does not (the 8dp vertical
+         * command check and 96dp drift limit still apply). It used to be
+         * 56dp, more than a full key above the key centre, so ordinary
+         * flicks fell through to a single delete.
+         */
+        const val CLEAR_ARM_DP = 32
     }
 }

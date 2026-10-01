@@ -127,12 +127,20 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         segmentPrefix: String,
         preferredSuffix: String?,
         fuzzy: Boolean,
+        lockPreferred: Boolean,
     ): CandidatePipeline.NineKeyResolution = candidatePipeline.resolveNineKey(
         digits = digits,
         segmentPrefix = segmentPrefix,
         preferredSuffix = preferredSuffix,
         fuzzy = fuzzy,
+        lockPreferred = lockPreferred,
     )
+
+    override fun nineKeySyllablesFor(digits: String, preferred: String?): List<String> =
+        candidatePipeline.nineKeySyllablesFor(digits, preferred)
+
+    override fun nineKeyReadingFor(digits: String, candidate: String): List<String>? =
+        candidatePipeline.nineKeyReadingFor(digits, candidate)
 
     override fun nineKeyPathsFor(code: String?): List<String> =
         candidatePipeline.nineKeyPathsFor(code)
@@ -885,7 +893,10 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     override fun onEnter() {
         prepareForManualInput()
         if (lastComposition.isNotEmpty()) {
-            commitFirstCandidate()
+            // Space picks the first word; Enter ("确定") keeps what was typed,
+            // as Rime, fcitx, Sogou and Gboard Pinyin do. Collapsing both into
+            // "commit the first candidate" left no way to enter pinyin as text.
+            commitRawComposition()
             return
         }
         voiceCorrectionTracker.finalizeIfNeeded()
@@ -1364,6 +1375,11 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
                     nativeReferences = nativeReferences,
                 )
                 keyboardView?.renderState(state)
+                if (mode == KeyboardMode.PINYIN_9 && native.isNotEmpty()) {
+                    finalCandidates.firstOrNull()?.let { top ->
+                        keyboardView?.alignNineKeyPreview(composition, top)
+                    }
+                }
             }
                 applyWhenCandidateSurfaceIdle()
             },
@@ -1400,6 +1416,24 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             ""
         }
         finishCandidateCommit(composition, nativeCommit.ifBlank { entry.text })
+    }
+
+    /** Commit the pre-edit pinyin as typed (separators dropped); no word is chosen or learned. */
+    private fun commitRawComposition() {
+        val composition = lastComposition
+        if (composition.isEmpty()) return
+        val raw = composition
+            .filterNot { it == ' ' || it == '\'' || it == '|' }
+            .ifEmpty { composition }
+        invalidateCandidateQueries()
+        gateway.commitText(raw)
+        gateway.finishComposing()
+        voiceCorrectionTracker.finalizeIfNeeded()
+        rime.clear()
+        lastComposition = ""
+        state = state.copy(composition = "", candidates = emptyList())
+        keyboardView?.clearAssociationCandidates()
+        keyboardView?.renderState(state)
     }
 
     private fun selectCandidate(candidate: String) {

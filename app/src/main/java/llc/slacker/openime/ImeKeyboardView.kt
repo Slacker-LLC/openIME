@@ -1725,7 +1725,7 @@ open class ImeKeyboardView(
         val rawX = location[0] + anchor.width / 2f
         val rawY = location[1] + anchor.height / 2f
         backspaceGestureController.begin(anchor, pointerId = 0, rawX, rawY) { }
-        backspaceGestureController.update(rawX, rawY - dp(48))
+        backspaceGestureController.update(rawX, rawY - dp(BackspaceGestureController.CLEAR_ARM_DP + 8))
         backspaceGestureController.finish(commit = true)
         return true
     }
@@ -1915,6 +1915,8 @@ open class ImeKeyboardView(
             cellHeightDp = ::keyRowHeightDp,
             toPx = ::dp,
             onRailChanged = ::applyThemeToSubtree,
+            onChooseSyllable = ::chooseNineKeySyllable,
+            fixedPrefix = ::nineKeyFixedPrefix,
         ).also { nineKeySymbolRailController = it }
     }
 
@@ -2243,22 +2245,33 @@ open class ImeKeyboardView(
             val selStart = minOf(rawStart, rawEnd)
             val selEnd = maxOf(rawStart, rawEnd)
 
-            val lastSpace = current.lastIndexOf(' ')
-            if (selStart > lastSpace) {
-                val prefix = if (lastSpace >= 0) current.substring(0, lastSpace + 1) else ""
-                val suffix = if (lastSpace >= 0) current.substring(lastSpace + 1) else current
+            val (prefix, suffix) = splitNineKeyText(current)
+            if (selStart >= prefix.length) {
                 val suffixStart = (selStart - prefix.length).coerceIn(0, suffix.length)
                 val suffixEnd = (selEnd - prefix.length).coerceIn(0, suffix.length)
                 val isAtEnd = (selStart == selEnd && selStart == current.length && prefix == lastNineSegmentPrefix && lastNineDigits.isNotEmpty())
                 val suffixDigits = if (isAtEnd) {
                     lastNineDigits
-                } else if (lastNineDigits.isNotEmpty() && lastNineDigits.length == suffix.length && prefix == lastNineSegmentPrefix) {
+                } else if (lastNineDigits.isNotEmpty() &&
+                    lastNineDigits.length == nineKeyLetterCount(suffix, suffix.length) &&
+                    prefix == lastNineSegmentPrefix
+                ) {
                     lastNineDigits
                 } else {
-                    CandidatePipeline.nineKeyDigitsFor(suffix) ?: lastNineDigits
+                    nineKeyDigitsOfTail(suffix) ?: lastNineDigits
                 }
-                val insertPos = if (isAtEnd) suffixDigits.length else suffixStart
-                val deleteEnd = if (isAtEnd) suffixDigits.length else suffixEnd
+                // The tail may carry decoder dividers; cursor columns are text
+                // positions, digits are letter positions.
+                val insertPos = if (isAtEnd) {
+                    suffixDigits.length
+                } else {
+                    nineKeyLetterCount(suffix, suffixStart).coerceAtMost(suffixDigits.length)
+                }
+                val deleteEnd = if (isAtEnd) {
+                    suffixDigits.length
+                } else {
+                    nineKeyLetterCount(suffix, suffixEnd).coerceIn(insertPos, suffixDigits.length)
+                }
                 val newDigits = (suffixDigits.substring(0, insertPos) + num + suffixDigits.substring(deleteEnd)).take(64)
                 lastNineSegmentPrefix = prefix
                 val newCursor = if (isAtEnd) null else (prefix.length + suffixStart + 1)
@@ -2289,6 +2302,7 @@ open class ImeKeyboardView(
         digits: String,
         preferredSuffix: String? = null,
         cursorPosition: Int? = null,
+        lockPreferred: Boolean = false,
     ) {
         val resolveStartedAt = SystemClock.elapsedRealtimeNanos()
         val resolution = requireCandidateProvider().resolveNineKey(
@@ -2296,6 +2310,7 @@ open class ImeKeyboardView(
             segmentPrefix = lastNineSegmentPrefix,
             preferredSuffix = preferredSuffix,
             fuzzy = fuzzyEnabled,
+            lockPreferred = lockPreferred,
         )
         NineKeyPerformanceTrace.recordResolve(
             digitLength = digits.length,
@@ -2325,6 +2340,114 @@ open class ImeKeyboardView(
             pinyinPaths = pinyinPaths,
             candidates = candidates,
         )
+    }
+
+    /**
+     * Split the pre-edit text into the part the user fixed (a tapped syllable
+     * or the segment key) and the still-open tail. Spaces the local decoder
+     * puts between guessed syllables belong to the tail: treating them as fixed
+     * boundaries froze guesses such as "woyi a m" and fed them to Rime.
+     */
+    private fun splitNineKeyText(text: String): Pair<String, String> {
+        val fixed = lastNineSegmentPrefix
+        if (fixed.isEmpty()) return "" to text
+        if (text.startsWith(fixed)) return fixed to text.substring(fixed.length)
+        val boundary = text.lastIndexOf(' ')
+        return if (boundary >= 0) {
+            text.substring(0, boundary + 1) to text.substring(boundary + 1)
+        } else {
+            "" to text
+        }
+    }
+
+    /** Release the last fixed syllable of [prefix] back into open digits (keeping its spelling shown). */
+    private fun unlockLastNineKeySyllable(prefix: String): Boolean {
+        val trimmed = prefix.trimEnd()
+        val cut = trimmed.lastIndexOf(' ')
+        val last = trimmed.substring(cut + 1)
+        val digits = NineKeyLocalDecoder.digitsForPinyin(last) ?: return false
+        lastNineSegmentPrefix = if (cut >= 0) trimmed.substring(0, cut + 1) else ""
+        publishNineKeyDigits(digits, preferredSuffix = last)
+        return true
+    }
+
+    private fun nineKeyIsDivider(ch: Char): Boolean = ch == ' ' || ch == '\''
+
+    /** Letters (not dividers) in the first [end] characters of [text]. */
+    private fun nineKeyLetterCount(text: String, end: Int): Int =
+        (0 until end.coerceIn(0, text.length)).count { !nineKeyIsDivider(text[it]) }
+
+    /** T9 digits of an open tail, ignoring decoder-inserted dividers. */
+    private fun nineKeyDigitsOfTail(tail: String): String? =
+        CandidatePipeline.nineKeyDigitsFor(tail.filterNot(::nineKeyIsDivider))
+
+    /**
+     * Rime ranked [topCandidate] first for the current digits. Show that
+     * word's own pinyin so the pre-edit text and the candidates agree, instead
+     * of the local decoder's independent guess. Display-only: digits, the
+     * fixed prefix and the native query are unchanged.
+     */
+    internal fun alignNineKeyPreview(expected: String, topCandidate: String) {
+        if (mode != KeyboardMode.PINYIN_9 || composition.text.toString() != expected) return
+        val selection = composition.selectionStart
+        if (selection >= 0 && selection != expected.length) return // user is editing mid-text
+        val (prefix, tail) = splitNineKeyText(expected)
+        val digits = lastNineDigits
+        if (digits.isEmpty() || digits.length != nineKeyLetterCount(tail, tail.length)) return
+        // The word also covers the fixed syllables in front; only its tail
+        // characters spell the still-open digits.
+        val fixedSyllables = prefix.split(' ').count { it.isNotEmpty() }
+        val skipped = if (fixedSyllables == 0) 0 else {
+            if (topCandidate.codePointCount(0, topCandidate.length) <= fixedSyllables) return
+            topCandidate.offsetByCodePoints(0, fixedSyllables)
+        }
+        val syllables = candidateProvider
+            ?.nineKeyReadingFor(digits, topCandidate.substring(skipped))
+            ?.takeIf { it.isNotEmpty() }
+            ?: return
+        val aligned = prefix + syllables.joinToString("'")
+        if (aligned == expected) return
+        setCompositionText(aligned, aligned.length)
+        pinyinBuffer.clear()
+        pinyinBuffer.append(aligned)
+        candidateBarController.render(
+            candidates = currentCandidates,
+            compositionPreview = aligned,
+            showCompositionWhenEmpty = composeZone.visibility == View.VISIBLE,
+        )
+        listener.onNineKeyCompositionChanged(
+            composition = aligned,
+            digitBuffer = digits,
+            pinyinPaths = lastNinePinyinPaths,
+            candidates = currentCandidates,
+        )
+    }
+
+    /** The prefix the user has explicitly fixed, for the Pinyin rail. */
+    internal fun nineKeyFixedPrefix(): String =
+        lastNineSegmentPrefix.takeIf { composition.text.toString().startsWith(it) }.orEmpty()
+
+    /**
+     * The user tapped a syllable in the left Pinyin rail. It becomes a fixed
+     * boundary: the remaining digits keep decoding after it, and the candidates
+     * are re-queried with the syllable's letters so every word agrees with it.
+     * Choosing the syllable that spans all open digits fixes just that tail.
+     */
+    internal fun chooseNineKeySyllable(syllable: String) {
+        if (mode != KeyboardMode.PINYIN_9) return
+        val chosen = syllable.lowercase().trim()
+        val chosenDigits = NineKeyLocalDecoder.digitsForPinyin(chosen) ?: return
+        val (prefix, tail) = splitNineKeyText(composition.text.toString())
+        val digits = lastNineDigits.ifEmpty { CandidatePipeline.nineKeyDigitsFor(tail).orEmpty() }
+        if (digits.isEmpty() || !digits.startsWith(chosenDigits)) return
+        lastNineSegmentPrefix = prefix
+        val rest = digits.substring(chosenDigits.length)
+        if (rest.isEmpty()) {
+            publishNineKeyDigits(digits, preferredSuffix = chosen, lockPreferred = true)
+        } else {
+            lastNineSegmentPrefix = prefix + chosen + " "
+            publishNineKeyDigits(rest)
+        }
     }
 
     /** Insert an editable syllable boundary without committing the text. */
@@ -2436,31 +2559,45 @@ open class ImeKeyboardView(
                 val start = minOf(rawStart, rawEnd)
                 val end = maxOf(rawStart, rawEnd)
 
-                val lastSpace = current.lastIndexOf(' ')
-                if (start > lastSpace) {
-                    val prefix = if (lastSpace >= 0) current.substring(0, lastSpace + 1) else ""
-                    val suffix = if (lastSpace >= 0) current.substring(lastSpace + 1) else current
+                val (prefix, suffix) = splitNineKeyText(current)
+                if (start >= prefix.length) {
+                    // Nothing left to delete after the fixed syllables: undo
+                    // the last fix (tapped syllable or the segment key) and
+                    // hand its digits back, rather than eating its letters.
+                    if (suffix.isEmpty() && prefix.isNotEmpty() && start == end && start == current.length &&
+                        unlockLastNineKeySyllable(prefix)
+                    ) {
+                        return true
+                    }
                     val suffixStart = (start - prefix.length).coerceIn(0, suffix.length)
                     val suffixEnd = (end - prefix.length).coerceIn(0, suffix.length)
-                    val suffixDigits = if (lastNineDigits.isNotEmpty() && lastNineDigits.length == suffix.length && prefix == lastNineSegmentPrefix) {
+                    val suffixDigits = if (lastNineDigits.isNotEmpty() &&
+                        lastNineDigits.length == nineKeyLetterCount(suffix, suffix.length) &&
+                        prefix == lastNineSegmentPrefix
+                    ) {
                         lastNineDigits
                     } else {
-                        CandidatePipeline.nineKeyDigitsFor(suffix)
+                        nineKeyDigitsOfTail(suffix)
                     }
 
                     if (suffixDigits != null && suffixDigits.isNotEmpty()) {
+                        // Decoder dividers make text columns differ from digit
+                        // columns; delete by letter position.
+                        val digitStart = nineKeyLetterCount(suffix, suffixStart).coerceAtMost(suffixDigits.length)
+                        val digitEnd = nineKeyLetterCount(suffix, suffixEnd).coerceIn(digitStart, suffixDigits.length)
+                        val letters = suffix.filterNot(::nineKeyIsDivider)
                         val (nextDigits, newCursor, expectedSuffix) = if (suffixStart == suffixEnd) {
-                            if (suffixStart == 0) {
+                            if (digitStart == 0) {
                                 Triple(null, null, null)
                             } else {
-                                val deleteIdx = suffixStart - 1
-                                val remDigits = suffixDigits.removeRange(deleteIdx, suffixStart)
-                                val remSuffix = if (suffix.length >= suffixStart) suffix.removeRange(deleteIdx, suffixStart) else null
-                                Triple(remDigits, prefix.length + deleteIdx, remSuffix)
+                                val deleteIdx = digitStart - 1
+                                val remDigits = suffixDigits.removeRange(deleteIdx, digitStart)
+                                val remSuffix = if (letters.length >= digitStart) letters.removeRange(deleteIdx, digitStart) else null
+                                Triple(remDigits, prefix.length + (suffixStart - 1).coerceAtLeast(0), remSuffix)
                             }
                         } else {
-                            val remDigits = suffixDigits.removeRange(suffixStart, suffixEnd)
-                            val remSuffix = if (suffix.length >= suffixEnd) suffix.removeRange(suffixStart, suffixEnd) else null
+                            val remDigits = suffixDigits.removeRange(digitStart, digitEnd)
+                            val remSuffix = if (letters.length >= digitEnd) letters.removeRange(digitStart, digitEnd) else null
                             Triple(remDigits, prefix.length + suffixStart, remSuffix)
                         }
 

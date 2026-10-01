@@ -13,7 +13,14 @@ interface CandidateResolver {
         segmentPrefix: String,
         preferredSuffix: String?,
         fuzzy: Boolean,
+        lockPreferred: Boolean = false,
     ): CandidatePipeline.NineKeyResolution
+
+    /** Syllables of [candidate] if it spells exactly all of [digits]; null otherwise. */
+    fun nineKeyReadingFor(digits: String, candidate: String): List<String>? = null
+
+    /** Pinyin syllables that can start [digits], best first, for the left rail. */
+    fun nineKeySyllablesFor(digits: String, preferred: String?): List<String> = emptyList()
 
     fun nineKeyPathsFor(code: String?): List<String>
     fun selectedNineKeyPathFor(code: String?): String?
@@ -122,6 +129,7 @@ class CandidatePipeline internal constructor(
         segmentPrefix: String,
         preferredSuffix: String?,
         fuzzy: Boolean,
+        lockPreferred: Boolean,
     ): NineKeyResolution {
         val boundedDigits = digits
             .filter { it in '2'..'9' }
@@ -136,7 +144,18 @@ class CandidatePipeline internal constructor(
             )
         }
 
-        val nativeInput = NineKeyLocalDecoder.nativeCode(segmentPrefix, boundedDigits)
+        // A syllable the user tapped on the rail is a decision, not a guess:
+        // hand Rime its letters so zhong/xiong (same digits) stay distinct and
+        // the candidates agree with the pinyin shown.
+        val locked = preferredSuffix
+            ?.lowercase()
+            ?.trim()
+            ?.takeIf { lockPreferred && NineKeyLocalDecoder.digitsForPinyin(it) == boundedDigits }
+        val nativeInput = if (locked != null) {
+            NineKeyLocalDecoder.nativeCode(segmentPrefix + locked, "", lockLetters = true)
+        } else {
+            NineKeyLocalDecoder.nativeCode(segmentPrefix, boundedDigits, lockLetters = true)
+        }
         val effectivePreferred = preferredSuffix
             ?: nineKeyUiState.preferredSuffixFor(nativeInput, segmentPrefix)
         val local = nineKeyDecoder.resolve(
@@ -193,6 +212,12 @@ class CandidatePipeline internal constructor(
 
     internal fun nineKeyFallbackCandidatesFor(code: String): List<String> =
         nineKeyFallbackRegistry.candidatesFor(code)
+
+    override fun nineKeySyllablesFor(digits: String, preferred: String?): List<String> =
+        nineKeyDecoder.syllableOptions(digits, preferred)
+
+    override fun nineKeyReadingFor(digits: String, candidate: String): List<String>? =
+        nineKeyDecoder.readingFor(digits, candidate)
 
     override fun nineKeyPathsFor(code: String?): List<String> =
         nineKeyUiState.pathsFor(code)

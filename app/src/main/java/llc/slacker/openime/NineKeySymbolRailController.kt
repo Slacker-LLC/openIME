@@ -29,6 +29,8 @@ internal class NineKeySymbolRailController(
     private val cellHeightDp: () -> Int,
     private val toPx: (Int) -> Int = { (it * context.resources.displayMetrics.density).toInt() },
     private val onRailChanged: (View) -> Unit,
+    private val onChooseSyllable: (String) -> Unit,
+    private val fixedPrefix: () -> String,
 ) {
     private enum class RailMode { SYMBOLS, PINYIN }
 
@@ -99,51 +101,49 @@ internal class NineKeySymbolRailController(
             return
         }
 
-        val lastSpace = text.lastIndexOf(' ')
-        val prefix = if (lastSpace >= 0) text.substring(0, lastSpace + 1) else ""
-        val suffix = if (lastSpace >= 0) text.substring(lastSpace + 1) else text
-        val digits = CandidatePipeline.nineKeyDigitsFor(suffix)
-        val code = digits?.let { NineKeyLocalDecoder.nativeCode(prefix, it) }
-        if (code.isNullOrEmpty()) {
-            renderSymbols()
-            return
-        }
-
+        // Text before the last boundary is already fixed. The rail always
+        // offers the syllables that can start the still-open tail.
+        val tail = text.removePrefix(fixedPrefix()).lowercase()
+        val digits = openTailDigits(tail)
         val resolver = context as? CandidateResolver
-        if (resolver == null) {
+        if (digits == null || resolver == null) {
             renderSymbols()
             return
         }
 
-        val choices = resolver.nineKeyPathsFor(code)
+        val choices = resolver.nineKeySyllablesFor(digits, tail)
             .asSequence()
             .map { it.trim() }
             .filter { it.isNotEmpty() }
             .distinct()
             .take(MAX_VISIBLE_PATHS)
             .toList()
-
-        // Keep the selected spelling visible throughout composition, even when
-        // this digit sequence currently has only one complete display path.
         if (choices.isEmpty()) {
             renderSymbols()
             return
         }
 
-        val selected = resolver.selectedNineKeyPathFor(code)
-            ?.takeIf { it in choices }
-            ?: text.takeIf { it in choices }
-            ?: choices.first()
-
-        renderPinyinChoices(
-            choices = choices,
-            selected = selected,
-        ) { chosen ->
-            resolver.selectNineKeyPath(code, chosen)
-            if (chosen == composition.text?.toString()) return@renderPinyinChoices
-            composition.setText(chosen)
-            composition.setSelection(chosen.length)
+        // Highlight the syllable the visible pinyin starts with, so the rail
+        // and the pre-edit text can never disagree.
+        val selected = choices.firstOrNull { tail.startsWith(it) } ?: choices.first()
+        renderPinyinChoices(choices = choices, selected = selected) { chosen ->
+            onChooseSyllable(chosen)
         }
+    }
+
+    /** Digits for an open tail made of letters and/or still-undecoded digits. */
+    private fun openTailDigits(tail: String): String? {
+        if (tail.isEmpty()) return null
+        val out = StringBuilder(tail.length)
+        tail.forEach { ch ->
+            when {
+                // The local decoder separates guessed syllables with spaces.
+                ch == ' ' || ch == '\'' -> Unit
+                ch in '2'..'9' -> out.append(ch)
+                else -> out.append(CandidatePipeline.nineKeyDigitsFor(ch.toString()) ?: return null)
+            }
+        }
+        return out.toString().ifEmpty { null }
     }
 
     private fun renderSymbols(force: Boolean = false) {
@@ -193,7 +193,11 @@ internal class NineKeySymbolRailController(
             content.addView(
                 TextView(content.context).apply {
                     text = displayPath(choice)
-                    textSize = 18f
+                    // One syllable per cell, never wrapped mid-word: shrink
+                    // long spellings (zhuang, shuang) instead.
+                    setAutoSizeTextTypeUniformWithConfiguration(
+                        12, 18, 1, android.util.TypedValue.COMPLEX_UNIT_SP,
+                    )
                     gravity = Gravity.CENTER
                     tag = if (active) SELECTED_FILTER_TAG else FILTER_TAG
                     contentDescription =
@@ -209,7 +213,7 @@ internal class NineKeySymbolRailController(
                     typeface = if (active) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
                     isClickable = true
                     isFocusable = true
-                    maxLines = 2
+                    maxLines = 1
                     includeFontPadding = false
                     inheritedTextColor?.let(::setTextColor)
                     setOnClickListener {

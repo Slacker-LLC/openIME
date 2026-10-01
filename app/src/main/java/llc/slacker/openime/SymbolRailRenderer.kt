@@ -1,6 +1,8 @@
 package llc.slacker.openime
 
 import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Rect
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -116,7 +118,7 @@ internal object SymbolRailRenderer {
         tagPrefix: String,
         onCommit: (String) -> Unit,
         onFeedback: () -> Unit,
-    ): TextView = TextView(context).apply {
+    ): TextView = InkCenteredTextView(context).apply {
         text = symbol
         textSize = when (symbol) { "！", "!", "？", "?" -> 24f; "，", "、", "%", "+", "−", "-" -> 22f; else -> 20f }
         gravity = Gravity.CENTER
@@ -135,4 +137,35 @@ internal object SymbolRailRenderer {
 
     private fun dp(context: Context, value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
+
+    /**
+     * Full-width punctuation is drawn in the corner of its em box (the comma
+     * and full stop at bottom-left, the exclamation and question marks at the
+     * left), so plain gravity centering looks off-center. Shift the canvas so
+     * the glyph's real ink bounds, not its em box, sit at the cell center.
+     */
+    private class InkCenteredTextView(context: Context) : TextView(context) {
+        private val ink = Rect()
+
+        override fun onDraw(canvas: Canvas) {
+            val value = text?.toString().orEmpty()
+            if (value.isEmpty() || value.codePointCount(0, value.length) != 1) {
+                super.onDraw(canvas)
+                return
+            }
+            val paint = paint
+            paint.getTextBounds(value, 0, value.length, ink)
+            if (ink.isEmpty) {
+                super.onDraw(canvas)
+                return
+            }
+            val metrics = paint.fontMetrics
+            val dx = paint.measureText(value) / 2f - ink.exactCenterX()
+            val dy = (metrics.ascent + metrics.descent) / 2f - ink.exactCenterY()
+            canvas.save()
+            canvas.translate(dx, dy)
+            super.onDraw(canvas)
+            canvas.restore()
+        }
+    }
 }
