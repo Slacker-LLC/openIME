@@ -191,6 +191,15 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         return true
     }
 
+    override fun onEvaluateFullscreenMode(): Boolean {
+        // The framework default turns the whole screen into the IME in landscape:
+        // the app's editor is hidden behind an unthemed copy of the field (the
+        // extract view) and the conversation, search results or form the user is
+        // typing into disappear. Every mainstream keyboard stays a bottom panel
+        // in every orientation and lets the app resize or pan, so do the same.
+        return false
+    }
+
     private fun ensureInputViewAfterFinish() {
         if (keyboardView != null) return
         // InputMethodService keeps the old view instance after
