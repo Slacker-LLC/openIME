@@ -22,6 +22,11 @@ cd "$(dirname "$0")/.."
 
 die() { echo "release_build: $*" >&2; exit 1; }
 
+# mapfile and empty-array expansion under `set -u` need bash 4.4+ (macOS ships 3.2).
+if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4) )); then
+  die "bash 4.4 or newer is required (found $BASH_VERSION)"
+fi
+
 for name in OPENIME_KEYSTORE_PATH OPENIME_KEYSTORE_PASSWORD OPENIME_KEY_ALIAS OPENIME_KEY_PASSWORD; do
   [[ -n "${!name:-}" ]] || die "missing $name"
 done

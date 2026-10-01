@@ -136,6 +136,13 @@ jobs:
               exit 1
             fi
           done
+          # These three go to GITHUB_ENV as NAME=value lines; a newline would inject more.
+          for name in OPENIME_KEYSTORE_PASSWORD OPENIME_KEY_ALIAS OPENIME_KEY_PASSWORD; do
+            if [[ "${!name}" == *$'\n'* ]]; then
+              echo "::error::${name} must be a single line"
+              exit 1
+            fi
+          done
           printf '%s' "$OPENIME_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/openime-release.jks"
           chmod 600 "$RUNNER_TEMP/openime-release.jks"
           {
