@@ -136,8 +136,8 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         lockPreferred = lockPreferred,
     )
 
-    override fun nineKeySyllablesFor(digits: String, preferred: String?): List<String> =
-        candidatePipeline.nineKeySyllablesFor(digits, preferred)
+    override fun nineKeyReadingsFor(digits: String, preferred: String?): List<NineKeyReading> =
+        candidatePipeline.nineKeyReadingsFor(digits, preferred)
 
     override fun nineKeyReadingFor(digits: String, candidate: String): List<String>? =
         candidatePipeline.nineKeyReadingFor(digits, candidate)
@@ -1319,7 +1319,13 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
                     emptyList()
                 }
                 val finalCandidates = if (native.isNotEmpty()) {
-                    val nativeText = native.map { it.text }
+                    val nativeText = native.map { it.text }.let { texts ->
+                        if (mode == KeyboardMode.PINYIN_9) {
+                            candidatePipeline.preferExactNineKeyMatches(queryInputs.firstOrNull(), texts)
+                        } else {
+                            texts
+                        }
+                    }
                     val exactQuickPhrases =
                         if (mode == KeyboardMode.PINYIN_26 || mode == KeyboardMode.ENGLISH_26) {
                             QuickPhraseRepository.candidatesForInputCode(

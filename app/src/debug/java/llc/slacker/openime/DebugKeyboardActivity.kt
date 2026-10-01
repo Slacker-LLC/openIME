@@ -91,8 +91,8 @@ class DebugKeyboardActivity : Activity(), ImeKeyboardView.Listener, CandidateRes
         lockPreferred = lockPreferred,
     )
 
-    override fun nineKeySyllablesFor(digits: String, preferred: String?): List<String> =
-        candidatePipeline.nineKeySyllablesFor(digits, preferred)
+    override fun nineKeyReadingsFor(digits: String, preferred: String?): List<NineKeyReading> =
+        candidatePipeline.nineKeyReadingsFor(digits, preferred)
 
     override fun nineKeyReadingFor(digits: String, candidate: String): List<String>? =
         candidatePipeline.nineKeyReadingFor(digits, candidate)

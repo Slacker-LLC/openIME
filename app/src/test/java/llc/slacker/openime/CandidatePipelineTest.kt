@@ -157,16 +157,37 @@ class CandidatePipelineTest {
     }
 
     @Test
-    fun syllableRailOffersRealSyllablesLongestFirstAndLeadsWithPreview() {
-        val options = pipeline.nineKeySyllablesFor("94664486", "zhongguo")
-        assertEquals("zhong", options.first())
-        assertTrue("xiong" in options)
-        assertTrue(options.all { option -> option.all { it in 'a'..'z' } && option.length <= 6 })
-        assertEquals(options.distinct(), options)
+    fun shortInputOffersWholeReadingsAndTheWordReadingLeads() {
+        val readings = pipeline.nineKeyReadingsFor("64426", null)
+        assertEquals("ni'hao", readings.first().display)
+        assertTrue(readings.all { it.coversAll })
+        assertTrue("mi'hao" in readings.map { it.display })
+        assertTrue("ni'gao" in readings.map { it.display })
+        // A lone vowel between syllables is a digit-grid artefact, not a reading.
+        assertTrue(readings.none { reading -> reading.syllables.any { it.length == 1 } })
+        assertEquals(readings.map { it.display }.distinct(), readings.map { it.display })
+    }
 
-        // A lone digit must never be a dead end.
-        assertEquals(setOf("w", "x", "y", "z"), pipeline.nineKeySyllablesFor("9", null).filter { it.length == 1 }.toSet() - setOf("a", "e", "o"))
-        assertTrue(pipeline.nineKeySyllablesFor("", null).isEmpty())
+    @Test
+    fun readingPreviewLeadsWhenItIsOneOfTheReadings() {
+        val readings = pipeline.nineKeyReadingsFor("64426", "migao")
+        assertEquals("mi'gao", readings.first().display)
+    }
+
+    @Test
+    fun longInputOffersFirstSyllablesOnlyAndNeverADeadEnd() {
+        val readings = pipeline.nineKeyReadingsFor("9694264244326", null)
+        assertTrue(readings.isNotEmpty())
+        assertTrue(readings.all { it.syllables.size == 1 })
+        assertEquals("wo", readings.first().syllables.single())
+    }
+
+    @Test
+    fun aLoneDigitOffersLettersThatAreOrientationOnly() {
+        val readings = pipeline.nineKeyReadingsFor("9", null)
+        assertEquals(listOf("w", "x", "y", "z"), readings.map { it.display })
+        assertTrue(readings.none { it.complete })
+        assertTrue(pipeline.nineKeyReadingsFor("", null).isEmpty())
     }
 
     @Test
@@ -179,5 +200,23 @@ class CandidatePipelineTest {
         assertNull(pipeline.nineKeyReadingFor("64426", "你"))
         assertNull(pipeline.nineKeyReadingFor("64426", "我想"))
         assertNull(pipeline.nineKeyReadingFor("64426", "nihao"))
+    }
+
+    @Test
+    fun wordsTheDigitsSpellExactlyComeBeforePredictions() {
+        // 64 spells ni/mi: 你 fits; 你好 needs three more digits (a prediction).
+        assertEquals(
+            listOf("你", "你好"),
+            pipeline.preferExactNineKeyMatches("64", listOf("你好", "你")),
+        )
+        // The same holds for a code whose first syllable the user fixed.
+        assertEquals(
+            listOf("你好", "你"),
+            pipeline.preferExactNineKeyMatches("ni'426", listOf("你", "你好")),
+        )
+        // Nothing exact (or nothing else): Rime's order is left alone.
+        assertEquals(listOf("你好"), pipeline.preferExactNineKeyMatches("64", listOf("你好")))
+        assertEquals(listOf("你好", "你敢好"), pipeline.preferExactNineKeyMatches("9", listOf("你好", "你敢好")))
+        assertEquals(listOf("a", "b"), pipeline.preferExactNineKeyMatches(null, listOf("a", "b")))
     }
 }

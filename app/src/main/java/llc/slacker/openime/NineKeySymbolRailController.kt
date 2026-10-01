@@ -29,15 +29,15 @@ internal class NineKeySymbolRailController(
     private val cellHeightDp: () -> Int,
     private val toPx: (Int) -> Int = { (it * context.resources.displayMetrics.density).toInt() },
     private val onRailChanged: (View) -> Unit,
-    private val onChooseSyllable: (String) -> Unit,
+    private val onChooseReading: (NineKeyReading) -> Unit,
     private val fixedPrefix: () -> String,
 ) {
     private enum class RailMode { SYMBOLS, PINYIN }
 
     private var rail: ScrollView? = null
     private var railMode = RailMode.SYMBOLS
-    private var renderedChoices: List<String> = emptyList()
-    private var renderedSelected: String? = null
+    private var renderedChoices: List<NineKeyReading> = emptyList()
+    private var renderedSelected: NineKeyReading? = null
 
     init {
         composition.addTextChangedListener(object : TextWatcher {
@@ -111,11 +111,10 @@ internal class NineKeySymbolRailController(
             return
         }
 
-        val choices = resolver.nineKeySyllablesFor(digits, tail)
+        val choices = resolver.nineKeyReadingsFor(digits, tail)
             .asSequence()
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .distinct()
+            .filter { it.syllables.isNotEmpty() }
+            .distinctBy { it.display }
             .take(MAX_VISIBLE_PATHS)
             .toList()
         if (choices.isEmpty()) {
@@ -123,11 +122,14 @@ internal class NineKeySymbolRailController(
             return
         }
 
-        // Highlight the syllable the visible pinyin starts with, so the rail
-        // and the pre-edit text can never disagree.
-        val selected = choices.firstOrNull { tail.startsWith(it) } ?: choices.first()
+        // Highlight the reading the visible pinyin shows, so the rail and the
+        // pre-edit text can never disagree.
+        val shown = tail.filter { it in 'a'..'z' }
+        val selected = choices.firstOrNull { it.coversAll && it.syllables.joinToString("") == shown }
+            ?: choices.firstOrNull { shown.startsWith(it.syllables.joinToString("")) }
+            ?: choices.first()
         renderPinyinChoices(choices = choices, selected = selected) { chosen ->
-            onChooseSyllable(chosen)
+            onChooseReading(chosen)
         }
     }
 
@@ -162,15 +164,16 @@ internal class NineKeySymbolRailController(
         railMode = RailMode.SYMBOLS
         renderedChoices = emptyList()
         renderedSelected = null
+        (scroll.getChildAt(0) as? LinearLayout)?.tag = NINE_CONTENT_TAG
         if (scroll.scrollY != 0) scroll.post { scroll.scrollTo(0, 0) }
         scroll.contentDescription = "九键常用符号，上下滑动查看更多"
         onRailChanged(scroll)
     }
 
     private fun renderPinyinChoices(
-        choices: List<String>,
-        selected: String,
-        onSelect: (String) -> Unit,
+        choices: List<NineKeyReading>,
+        selected: NineKeyReading,
+        onSelect: (NineKeyReading) -> Unit,
     ) {
         val scroll = rail ?: return
         if (
@@ -188,13 +191,18 @@ internal class NineKeySymbolRailController(
             ?.currentTextColor
 
         content.removeAllViews()
+        // One continuous panel with flat items (the theme paints it), not a
+        // stack of separate keys: it reads as a list to pick from.
+        content.tag = PINYIN_PANEL_TAG
         choices.forEachIndexed { index, choice ->
             val active = choice == selected
             content.addView(
                 TextView(content.context).apply {
-                    text = displayPath(choice)
-                    // One syllable per cell, never wrapped mid-word: shrink
-                    // long spellings (zhuang, shuang) instead.
+                    // A break after each apostrophe lets a long reading wrap into
+                    // two lines instead of shrinking to nothing.
+                    text = choice.display.replace("'", "'\u200B")
+                    // Whole readings (ni'hao) can run long: let them wrap to two
+                    // lines and shrink within a readable range.
                     setAutoSizeTextTypeUniformWithConfiguration(
                         12, 18, 1, android.util.TypedValue.COMPLEX_UNIT_SP,
                     )
@@ -202,9 +210,9 @@ internal class NineKeySymbolRailController(
                     tag = if (active) SELECTED_FILTER_TAG else FILTER_TAG
                     contentDescription =
                         if (active) {
-                            "九键拼音${speakablePath(choice)}，已选择"
+                            "九键拼音${speakablePath(choice.display)}，已选择"
                         } else {
-                            "九键拼音${speakablePath(choice)}，双击选择"
+                            "九键拼音${choice.display}，双击选择"
                         }
                     if (Build.VERSION.SDK_INT >= 30) {
                         stateDescription = if (active) "已选择" else "未选择"
@@ -213,8 +221,9 @@ internal class NineKeySymbolRailController(
                     typeface = if (active) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
                     isClickable = true
                     isFocusable = true
-                    maxLines = 1
+                    maxLines = 2
                     includeFontPadding = false
+                    setPadding(toPx(4), 0, toPx(4), 0)
                     inheritedTextColor?.let(::setTextColor)
                     setOnClickListener {
                         onFeedback()
@@ -233,7 +242,7 @@ internal class NineKeySymbolRailController(
         railMode = RailMode.PINYIN
         renderedChoices = choices.toList()
         renderedSelected = selected
-        scroll.contentDescription = "九键拼音筛选，上下滑动查看更多"
+        scroll.contentDescription = "九键拼音读法，上下滑动查看更多"
         onRailChanged(scroll)
         val selectedIndex = choices.indexOf(selected).coerceAtLeast(0)
         scroll.post {
@@ -262,6 +271,7 @@ internal class NineKeySymbolRailController(
         const val NINE_CONTENT_TAG = "nine-symbol-scroll-content"
         const val FILTER_TAG = "nine-pinyin-path-filter"
         const val SELECTED_FILTER_TAG = "nine-pinyin-path-selected"
+        const val PINYIN_PANEL_TAG = "nine-pinyin-panel"
         const val MAX_VISIBLE_PATHS = 16
     }
 }

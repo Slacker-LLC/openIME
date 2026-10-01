@@ -208,7 +208,16 @@ internal class ImeThemeApplier(
     }
 
     private fun applyScrollView(view: ScrollView, t: ImeTheme.Tokens) {
-        if (view.tag == "nine-punct-stack" || view.tag == "digits-symbol-scroll") view.background = null
+        if (view.tag == "nine-punct-stack" && view.getChildAt(0)?.tag == "nine-pinyin-panel") {
+            // Reading list: the whole rail is one panel and its items are flat.
+            // Inset by half a key gap so the panel lines up with the key grid.
+            view.background = InsetDrawable(
+                ImeDrawableFactory.rounded(t.sideKeyBackground, toPx(ImeGeometryTokens.KEY_RADIUS_DP)),
+                toPx(ImeGeometryTokens.KEY_GAP_DP) / 2,
+            )
+        } else if (view.tag == "nine-punct-stack" || view.tag == "digits-symbol-scroll") {
+            view.background = null
+        }
     }
 
     private fun applyImageView(view: ImageView, t: ImeTheme.Tokens) {
@@ -441,7 +450,7 @@ internal class ImeThemeApplier(
 
             tag == "nine-pinyin-path-selected" -> {
                 val selected = ImeDrawableFactory.blend(t.primary, t.sideKeyBackground, 0.22f)
-                view.setTextColor(ImeSurfacePolicy.selectedText(t))
+                view.setTextColor(ImeSurfacePolicy.accentTextOn(t.primary, selected))
                 view.background = statefulRounded(
                     selected,
                     ImeSurfacePolicy.pressedSurface(selected, t),
@@ -452,7 +461,7 @@ internal class ImeThemeApplier(
             tag == "nine-pinyin-path-filter" -> {
                 view.setTextColor(t.sideKeyText)
                 view.background = statefulRounded(
-                    t.sideKeyBackground,
+                    Color.TRANSPARENT,
                     ImeSurfacePolicy.pressedSurface(t.sideKeyBackground, t),
                     toPx(ImeGeometryTokens.KEY_RADIUS_DP),
                 )

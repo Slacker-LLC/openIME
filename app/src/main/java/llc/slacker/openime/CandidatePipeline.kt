@@ -1,5 +1,20 @@
 package llc.slacker.openime
 
+/**
+ * One way to read the open nine-key digits as pinyin, for the left rail.
+ * [syllables] are in order; [coversAll] is true when they spell every open
+ * digit (a whole reading such as `ni'hao`) and false for a first-syllable
+ * choice (`zhong`) after which the rest is still open.
+ */
+data class NineKeyReading(
+    val syllables: List<String>,
+    val coversAll: Boolean,
+    /** False for a bare initial such as `w`: shown for orientation, not fixable. */
+    val complete: Boolean = true,
+) {
+    val display: String get() = syllables.joinToString("'")
+}
+
 /** Capability exposed by the service to a thin keyboard renderer. */
 interface CandidateResolver {
     fun candidatesFor(
@@ -19,8 +34,8 @@ interface CandidateResolver {
     /** Syllables of [candidate] if it spells exactly all of [digits]; null otherwise. */
     fun nineKeyReadingFor(digits: String, candidate: String): List<String>? = null
 
-    /** Pinyin syllables that can start [digits], best first, for the left rail. */
-    fun nineKeySyllablesFor(digits: String, preferred: String?): List<String> = emptyList()
+    /** Readings of [digits] for the left rail, best first (see [NineKeyReading]). */
+    fun nineKeyReadingsFor(digits: String, preferred: String?): List<NineKeyReading> = emptyList()
 
     fun nineKeyPathsFor(code: String?): List<String>
     fun selectedNineKeyPathFor(code: String?): String?
@@ -163,7 +178,10 @@ class CandidatePipeline internal constructor(
             preferredSuffix = effectivePreferred,
             fuzzy = fuzzy,
         )
-        val preview = segmentPrefix + local.previewSuffix
+        // The decoder separates guessed syllables with spaces; the pre-edit shows
+        // apostrophes everywhere (ni'hao), and only the user-fixed prefix may
+        // carry a boundary of its own.
+        val preview = segmentPrefix + local.previewSuffix.replace(' ', '\'')
         val displayPaths = buildList {
             // An incomplete-but-valid continuation (for example nia after
             // selecting ni and typing one more digit) must stay visible in the
@@ -213,8 +231,36 @@ class CandidatePipeline internal constructor(
     internal fun nineKeyFallbackCandidatesFor(code: String): List<String> =
         nineKeyFallbackRegistry.candidatesFor(code)
 
-    override fun nineKeySyllablesFor(digits: String, preferred: String?): List<String> =
-        nineKeyDecoder.syllableOptions(digits, preferred)
+    override fun nineKeyReadingsFor(digits: String, preferred: String?): List<NineKeyReading> =
+        nineKeyDecoder.readingOptions(digits, preferred)
+            .map { NineKeyReading(it.syllables, it.coversAll, it.complete) }
+
+    /**
+     * Put the words the typed digits spell *exactly* ahead of longer words that
+     * merely start with them. Rime ranks by weight, so typing xian (9426) could
+     * lead with 自从 (zi'cong, a prediction) while the pre-edit says xian; nine-key
+     * keyboards list exact readings first and predictions after. Rime's own
+     * order is kept inside each group; nothing is dropped.
+     */
+    fun preferExactNineKeyMatches(code: String?, candidates: List<String>): List<String> {
+        val digits = code?.let(::digitsOfNineKeyCode) ?: return candidates
+        if (digits.isEmpty() || candidates.size < 2) return candidates
+        val (exact, rest) = candidates.partition { nineKeyDecoder.readingFor(digits, it) != null }
+        return if (exact.isEmpty() || rest.isEmpty()) candidates else exact + rest
+    }
+
+    /** `ni'426` / `64'hao` / `64426` -> the digits all of them type: 64426. */
+    private fun digitsOfNineKeyCode(code: String): String? {
+        val out = StringBuilder(code.length)
+        code.forEach { ch ->
+            when {
+                ch in '2'..'9' -> out.append(ch)
+                ch == '\'' || ch == ' ' || ch == '|' -> Unit
+                else -> out.append(NineKeyLocalDecoder.digitsForPinyin(ch.toString()) ?: return null)
+            }
+        }
+        return out.toString()
+    }
 
     override fun nineKeyReadingFor(digits: String, candidate: String): List<String>? =
         nineKeyDecoder.readingFor(digits, candidate)

@@ -161,7 +161,7 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
         // A space or | is an explicit syllable boundary from the 9-key
         // "分词" key. Keep the boundary in the composing field so it stays
         // editable, but never expose it as a literal candidate character.
-        if (py.any { it == '|' || it.isWhitespace() }) {
+        if (py.any { it == '|' || it == '\'' || it.isWhitespace() }) {
             return getSegmentedCandidates(py, fuzzy)
         }
 
@@ -253,6 +253,7 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
     private fun getSegmentedCandidates(raw: String, fuzzy: Boolean): List<String> {
         val parts = raw
             .replace('|', ' ')
+            .replace('\'', ' ')
             .trim()
             .split(Regex("\\s+"))
             .map { it.filter(Char::isLetter) }

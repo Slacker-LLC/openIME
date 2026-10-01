@@ -305,6 +305,9 @@ open class ImeKeyboardView(
 
     private val pinyinBuffer = StringBuilder()
     private var lastNineDigits = ""
+
+    /** A syllable the user fixed that is still the open tail; typing more digits seals it. */
+    private var lockedNineTail: String? = null
     private var lastNineCandidates = emptyList<String>()
     private var lastNineSegmentPrefix = ""
     private var lastNinePinyinPaths = emptyList<String>()
@@ -1372,6 +1375,7 @@ open class ImeKeyboardView(
         if (state.composition.isEmpty()) {
             pinyinBuffer.clear()
             lastNineDigits = ""
+            lockedNineTail = null
             lastNineCandidates = emptyList()
             lastNineSegmentPrefix = ""
             lastNinePinyinPaths = emptyList()
@@ -1920,7 +1924,7 @@ open class ImeKeyboardView(
             cellHeightDp = ::keyRowHeightDp,
             toPx = ::dp,
             onRailChanged = ::applyThemeToSubtree,
-            onChooseSyllable = ::chooseNineKeySyllable,
+            onChooseReading = ::chooseNineKeyReading,
             fixedPrefix = ::nineKeyFixedPrefix,
         ).also { nineKeySymbolRailController = it }
     }
@@ -2262,6 +2266,7 @@ open class ImeKeyboardView(
             return
         }
         if (mode == KeyboardMode.PINYIN_9) {
+            sealLockedNineTail()
             val current = composition.text.toString()
             val rawStart = composition.selectionStart.takeIf { it >= 0 }?.coerceIn(0, current.length) ?: current.length
             val rawEnd = composition.selectionEnd.takeIf { it >= 0 }?.coerceIn(0, current.length) ?: rawStart
@@ -2327,6 +2332,7 @@ open class ImeKeyboardView(
         cursorPosition: Int? = null,
         lockPreferred: Boolean = false,
     ) {
+        lockedNineTail = if (lockPreferred) preferredSuffix?.lowercase()?.takeIf { it.isNotEmpty() } else null
         val resolveStartedAt = SystemClock.elapsedRealtimeNanos()
         val resolution = requireCandidateProvider().resolveNineKey(
             digits = digits,
@@ -2375,7 +2381,7 @@ open class ImeKeyboardView(
         val fixed = lastNineSegmentPrefix
         if (fixed.isEmpty()) return "" to text
         if (text.startsWith(fixed)) return fixed to text.substring(fixed.length)
-        val boundary = text.lastIndexOf(' ')
+        val boundary = text.indexOfLast(::nineKeyIsDivider)
         return if (boundary >= 0) {
             text.substring(0, boundary + 1) to text.substring(boundary + 1)
         } else {
@@ -2385,8 +2391,8 @@ open class ImeKeyboardView(
 
     /** Release the last fixed syllable of [prefix] back into open digits (keeping its spelling shown). */
     private fun unlockLastNineKeySyllable(prefix: String): Boolean {
-        val trimmed = prefix.trimEnd()
-        val cut = trimmed.lastIndexOf(' ')
+        val trimmed = prefix.trimEnd(' ', '\'')
+        val cut = trimmed.indexOfLast(::nineKeyIsDivider)
         val last = trimmed.substring(cut + 1)
         val digits = NineKeyLocalDecoder.digitsForPinyin(last) ?: return false
         lastNineSegmentPrefix = if (cut >= 0) trimmed.substring(0, cut + 1) else ""
@@ -2395,6 +2401,23 @@ open class ImeKeyboardView(
     }
 
     private fun nineKeyIsDivider(ch: Char): Boolean = ch == ' ' || ch == '\''
+
+    /**
+     * More digits are coming after a syllable the user fixed: seal it with a
+     * boundary so it stays fixed, and let the digits start a new open tail.
+     */
+    private fun sealLockedNineTail() {
+        val locked = lockedNineTail ?: return
+        lockedNineTail = null
+        val current = composition.text.toString()
+        val atEnd = composition.selectionStart.let { it < 0 || it == current.length } &&
+            composition.selectionEnd.let { it < 0 || it == current.length }
+        val (prefix, tail) = splitNineKeyText(current)
+        if (!atEnd || tail != locked) return
+        lastNineSegmentPrefix = "$prefix$tail'"
+        lastNineDigits = ""
+        setCompositionText(lastNineSegmentPrefix, lastNineSegmentPrefix.length)
+    }
 
     /** Letters (not dividers) in the first [end] characters of [text]. */
     private fun nineKeyLetterCount(text: String, end: Int): Int =
@@ -2412,6 +2435,7 @@ open class ImeKeyboardView(
      */
     internal fun alignNineKeyPreview(expected: String, topCandidate: String) {
         if (mode != KeyboardMode.PINYIN_9 || composition.text.toString() != expected) return
+        if (lockedNineTail != null) return
         val selection = composition.selectionStart
         if (selection >= 0 && selection != expected.length) return // user is editing mid-text
         val (prefix, tail) = splitNineKeyText(expected)
@@ -2419,7 +2443,7 @@ open class ImeKeyboardView(
         if (digits.isEmpty() || digits.length != nineKeyLetterCount(tail, tail.length)) return
         // The word also covers the fixed syllables in front; only its tail
         // characters spell the still-open digits.
-        val fixedSyllables = prefix.split(' ').count { it.isNotEmpty() }
+        val fixedSyllables = prefix.split(' ', '\'').count { it.isNotEmpty() }
         val skipped = if (fixedSyllables == 0) 0 else {
             if (topCandidate.codePointCount(0, topCandidate.length) <= fixedSyllables) return
             topCandidate.offsetByCodePoints(0, fixedSyllables)
@@ -2456,8 +2480,8 @@ open class ImeKeyboardView(
             KeyboardMode.PINYIN_9 -> {
                 val letters = remaining.takeWhile { it in 'a'..'z' || it == '\'' }
                 val digits = remaining.substring(letters.length).filter { it in '2'..'9' }
-                val fixed = letters.replace('\'', ' ').trim()
-                val prefix = if (fixed.isEmpty()) "" else "$fixed "
+                val fixed = letters.trim('\'')
+                val prefix = if (fixed.isEmpty()) "" else "$fixed'"
                 lastNineSegmentPrefix = prefix
                 lastNineDigits = ""
                 lastNinePinyinPaths = emptyList()
@@ -2468,7 +2492,7 @@ open class ImeKeyboardView(
                 }
             }
             KeyboardMode.PINYIN_26 -> {
-                val text = remaining.replace('\'', ' ')
+                val text = remaining
                 if (text.isNotBlank()) {
                     publishComposition(text, candidatesForComposition(text), text.length)
                 }
@@ -2482,24 +2506,43 @@ open class ImeKeyboardView(
         lastNineSegmentPrefix.takeIf { composition.text.toString().startsWith(it) }.orEmpty()
 
     /**
-     * The user tapped a syllable in the left Pinyin rail. It becomes a fixed
-     * boundary: the remaining digits keep decoding after it, and the candidates
-     * are re-queried with the syllable's letters so every word agrees with it.
-     * Choosing the syllable that spans all open digits fixes just that tail.
+     * The user tapped a reading in the left Pinyin rail. A tap fixes exactly
+     * what the item shows: a whole reading (`ni'gao`) fixes every syllable,
+     * a first syllable (`zhong`) fixes that one and the list moves on to the
+     * next position. The candidates are re-queried with the fixed letters so
+     * every word agrees with the choice.
+     *
+     * The last syllable of a whole reading stays the open tail (shown, and sent
+     * to Rime as letters) rather than being sealed with a boundary; typing more
+     * digits then seals it ([lockedNineTail]), so a fixed syllable is never lost.
      */
-    internal fun chooseNineKeySyllable(syllable: String) {
+    internal fun chooseNineKeyReading(reading: NineKeyReading) {
         if (mode != KeyboardMode.PINYIN_9) return
-        val chosen = syllable.lowercase().trim()
-        val chosenDigits = NineKeyLocalDecoder.digitsForPinyin(chosen) ?: return
+        val syllables = reading.syllables.map { it.lowercase().trim() }.filter { it.isNotEmpty() }
+        if (syllables.isEmpty()) return
         val (prefix, tail) = splitNineKeyText(composition.text.toString())
-        val digits = lastNineDigits.ifEmpty { CandidatePipeline.nineKeyDigitsFor(tail).orEmpty() }
-        if (digits.isEmpty() || !digits.startsWith(chosenDigits)) return
-        lastNineSegmentPrefix = prefix
-        val rest = digits.substring(chosenDigits.length)
+        val digits = lastNineDigits.ifEmpty { nineKeyDigitsOfTail(tail).orEmpty() }
+        val spelled = StringBuilder()
+        syllables.forEach { spelled.append(NineKeyLocalDecoder.digitsForPinyin(it) ?: return) }
+        if (digits.isEmpty() || !digits.startsWith(spelled)) return
+
+        if (!reading.complete) {
+            // A bare initial is orientation, not a decision: show it, fix nothing.
+            lastNineSegmentPrefix = prefix
+            publishNineKeyDigits(digits, preferredSuffix = syllables.single())
+            return
+        }
+        val rest = digits.substring(spelled.length)
         if (rest.isEmpty()) {
-            publishNineKeyDigits(digits, preferredSuffix = chosen, lockPreferred = true)
+            val last = syllables.last()
+            lastNineSegmentPrefix = prefix + syllables.dropLast(1).joinToString("") { "$it'" }
+            publishNineKeyDigits(
+                NineKeyLocalDecoder.digitsForPinyin(last).orEmpty(),
+                preferredSuffix = last,
+                lockPreferred = true,
+            )
         } else {
-            lastNineSegmentPrefix = prefix + chosen + " "
+            lastNineSegmentPrefix = prefix + syllables.joinToString("") { "$it'" }
             publishNineKeyDigits(rest)
         }
     }
@@ -2509,12 +2552,13 @@ open class ImeKeyboardView(
         if (mode != KeyboardMode.PINYIN_26 && mode != KeyboardMode.PINYIN_9) return
         if (insertIntoInlineEditor(" ")) return
         val current = composition.text.toString()
-        if (current.isBlank() || current.endsWith(' ')) return
+        if (current.isBlank() || nineKeyIsDivider(current.last())) return
         if (mode == KeyboardMode.PINYIN_9) {
             lastNineDigits = ""
+            lockedNineTail = null
             lastNinePinyinPaths = emptyList()
         }
-        val (next, selection) = replaceCompositionSelection(" ")
+        val (next, selection) = replaceCompositionSelection(if (mode == KeyboardMode.PINYIN_9) "'" else " ")
         publishComposition(next, candidatesForComposition(next), selection)
         if (mode == KeyboardMode.PINYIN_9) lastNineSegmentPrefix = next
     }
