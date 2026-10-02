@@ -10,6 +10,7 @@ verify both the repository and a built APK.
                                             section for it right below [Unreleased], and
                                             (with --tag) the tag is exactly v<VERSION>
   release_check.py notes [--version X.Y.Z]  print that CHANGELOG section (release notes body)
+  release_check.py channel                  print "beta" or "stable" for VERSION
   release_check.py apk PATH [--aapt2 PATH]  versionName / versionCode / package inside the APK
                                             match VERSION
 
@@ -32,7 +33,9 @@ from typing import NamedTuple, Optional
 ROOT = Path(__file__).resolve().parent.parent
 APPLICATION_ID = "llc.slacker.openime"
 
-SEMVER = re.compile(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)")
+# X.Y.Z, or X.Y.Z-beta.N for a pre-release. Nothing else is published.
+SEMVER = re.compile(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-beta\.([1-9]\d*))?")
+STABLE_STAGE = 99  # a stable release sorts above every beta of the same X.Y.Z
 UNRELEASED_HEADING = re.compile(r"##\s+\[Unreleased\]\s*")
 RELEASE_HEADING = re.compile(
     r"##\s+\[(?P<version>[^\]]+)\]\s+-\s+(?P<date>\d{4}-\d{2}-\d{2})(?P<yanked>\s+\[YANKED\])?\s*"
@@ -50,24 +53,32 @@ class Section(NamedTuple):
     body: str
 
 
-def parse_version(text: str) -> tuple[int, int, int]:
+def parse_version(text: str) -> tuple[int, int, int, int]:
+    """(major, minor, patch, stage); stage is N for X.Y.Z-beta.N and 99 for X.Y.Z."""
     match = SEMVER.fullmatch(text.strip())
     if not match:
         raise ReleaseCheckError(
-            f"version '{text.strip()}' must be MAJOR.MINOR.PATCH without a prefix or suffix"
+            f"version '{text.strip()}' must be MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-beta.N "
+            "(no 'v' prefix, no other suffix)"
         )
-    major, minor, patch = (int(part) for part in match.groups())
-    if major < 1 or minor > 99 or patch > 99:
+    major, minor, patch = (int(part) for part in match.groups()[:3])
+    beta = match.group(4)
+    stage = int(beta) if beta else STABLE_STAGE
+    if (major, minor, patch) == (0, 0, 0) or major > 2000 or minor > 99 or patch > 99 or stage > 98 and beta:
         raise ReleaseCheckError(
-            f"version {text.strip()} is out of range (major >= 1, minor and patch <= 99)"
+            f"version {text.strip()} is out of range (not 0.0.0, major <= 2000, minor and patch <= 99, beta <= 98)"
         )
-    return major, minor, patch
+    return major, minor, patch, stage
+
+
+def is_prerelease(version: str) -> bool:
+    return parse_version(version)[3] != STABLE_STAGE
 
 
 def version_code(version: str) -> int:
-    """Same formula as app/build.gradle.kts: major * 10000 + minor * 100 + patch."""
-    major, minor, patch = parse_version(version)
-    return major * 10_000 + minor * 100 + patch
+    """Same formula as app/build.gradle.kts: (major * 10000 + minor * 100 + patch) * 100 + stage."""
+    major, minor, patch, stage = parse_version(version)
+    return (major * 10_000 + minor * 100 + patch) * 100 + stage
 
 
 def read_version(root: Path = ROOT) -> str:
@@ -95,7 +106,7 @@ def parse_changelog(text: str) -> tuple[bool, list[Section]]:
                 continue
             raise ReleaseCheckError(
                 f"CHANGELOG.md heading '{heading}' must be '## [Unreleased]' or "
-                "'## [X.Y.Z] - YYYY-MM-DD'"
+                "'## [X.Y.Z] - YYYY-MM-DD' (or [X.Y.Z-beta.N])"
             )
         end = headings[position + 1][0] if position + 1 < len(headings) else len(lines)
         body_lines = lines[index + 1:end]
@@ -122,7 +133,7 @@ def check_changelog(text: str, version: str) -> None:
     if not sections:
         raise ReleaseCheckError(f"CHANGELOG.md has no section for {version}")
 
-    previous: Optional[tuple[int, int, int]] = None
+    previous: Optional[tuple[int, int, int, int]] = None
     previous_date: Optional[datetime.date] = None
     for section in sections:
         numbers = parse_version(section.version)
@@ -225,6 +236,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     sub.add_parser("version")
     check = sub.add_parser("check")
     check.add_argument("--tag", help="release tag that must equal v<VERSION>")
+    sub.add_parser("channel")
     notes = sub.add_parser("notes")
     notes.add_argument("--version")
     apk = sub.add_parser("apk")
@@ -242,6 +254,8 @@ def main(argv: Optional[list[str]] = None) -> int:
                 raise ReleaseCheckError(f"tag {args.tag} does not match VERSION {version} (expected v{version})")
             check_changelog(changelog, version)
             print(f"OK: {version} (versionCode {version_code(version)})")
+        elif args.command == "channel":
+            print("beta" if is_prerelease(version) else "stable")
         elif args.command == "notes":
             print(changelog_notes(changelog, args.version or version))
         elif args.command == "apk":

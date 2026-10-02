@@ -6,13 +6,19 @@
 
 ## 版本号
 
-- 语义化版本 `MAJOR.MINOR.PATCH`，只发布 `X.Y.Z` 稳定版，不使用 `-rc`、`-beta` 等后缀。
-- `VERSION` 是一行文本（例如 `1.0.0`）。`app/build.gradle.kts` 读取它：
-  `versionName = VERSION`，`versionCode = MAJOR × 10000 + MINOR × 100 + PATCH`
-  （`1.0.0` → `10000`，`1.2.3` → `10203`）。要求 `MAJOR ≥ 1`，`MINOR`、`PATCH` 不超过 99。
-  这样 `versionCode` 不会被忘记升级，也永远严格递增。
+- 语义化版本：稳定版 `MAJOR.MINOR.PATCH`，测试版 `MAJOR.MINOR.PATCH-beta.N`（`N` 从 1 起）。
+  不使用 `-rc`、`-alpha` 等其他后缀。项目目前处于 `0.0.x` 测试阶段；`1.0.0` 只在功能和稳定性
+  都达到可以让用户日常依赖时才发布。
+- `VERSION` 是一行文本（例如 `0.0.1-beta.1`）。`app/build.gradle.kts` 读取它：
+  `versionName = VERSION`，`versionCode = (MAJOR × 10000 + MINOR × 100 + PATCH) × 100 + 阶段`，
+  阶段对测试版是 `N`，对稳定版是 `99`（`0.0.1-beta.1` → `101`，`0.0.1` → `199`，`1.0.0` → `1000099`）。
+  要求 `MINOR`、`PATCH` 不超过 99，`N` 不超过 98，`MAJOR` 不超过 2000，且不能是 `0.0.0`。
+  这样 `versionCode` 不会被忘记升级，同一个 `X.Y.Z` 的稳定版永远高于它的测试版。
 - `scripts/release_check.py` 用同一公式检查仓库，并用 `aapt2` 校验构建出的 APK 里的
   包名、`versionName`、`versionCode`；PR 的 CI 和发布工作流都会运行它。
+- 测试版以 GitHub **pre-release** 发布，不标记为 latest，发布说明顶部有 Beta 提示。
+  标签是 `vX.Y.Z-beta.N`，发布时由流水线按标签自动识别。
+- 注意：Android 不允许 `versionCode` 变小的覆盖安装。一旦公开发布过某个版本，后续版本必须更大。
 
 什么时候升哪一位：
 
@@ -21,6 +27,7 @@
 | MAJOR | 用户数据格式不兼容或需要用户手动迁移；`minSdk` 提高；包名或签名变化 |
 | MINOR | 新功能、新面板或键盘；词库、语音模型、第三方 runtime 的版本变化（需重新核对许可证） |
 | PATCH | 缺陷修复、性能、文案、依赖的安全更新 |
+| `-beta.N` | 同一个 `X.Y.Z` 的第 N 个测试快照，修复后递增 N；正式确认后去掉后缀发布 |
 
 Rime 共享数据以 `versionCode` 作为部署标记：每次升级后首次启动都会重新部署共享词典
 （用户词库在独立目录，不受影响）。所以 PATCH 版本也会触发一次重新部署。
@@ -32,11 +39,11 @@ Rime 共享数据以 `versionCode` 作为部署标记：每次升级后首次启
 [CHANGELOG.md](../CHANGELOG.md) 遵循 Keep a Changelog：
 
 - 日常 PR 把用户可见的改动写进 `## [Unreleased]`，**不改 `VERSION`**。
-- 最新的 `## [X.Y.Z] - YYYY-MM-DD` 小节必须正好等于 `VERSION`，写法上不允许空小节、
+- 最新的 `## [版本] - YYYY-MM-DD` 小节必须正好等于 `VERSION`，写法上不允许空小节、
   版本或日期倒序。`release_check.py check` 在 CI 里强制这些规则，所以版本号与
   变更记录只能一起变化。
 - 这一小节的正文就是 GitHub Release 的发布说明，请按用户能读懂的方式写。
-- 已撤回的版本在标题后加 ` [YANKED]`，并发布更高的 PATCH 版本。
+- 已撤回的版本在标题后加 ` [YANKED]`，并发布更高的版本（测试版递增 `N`）。
 
 ## 发布产物
 
@@ -79,7 +86,7 @@ bash scripts/setup_release_signing.sh
 ## 发布步骤
 
 1. `main` 上最近一次 CI 全绿（包括 API 29 / 31 兼容测试）。
-2. 发布 PR：把 `[Unreleased]` 整理成 `## [X.Y.Z] - YYYY-MM-DD`，同时修改 `VERSION`。
+2. 发布 PR：把 `[Unreleased]` 整理成 `## [版本] - YYYY-MM-DD`，同时修改 `VERSION`。
    本地先运行：
 
    ```bash
@@ -91,7 +98,7 @@ bash scripts/setup_release_signing.sh
 
    ```bash
    git switch main && git pull
-   git tag -a vX.Y.Z -m "openIME X.Y.Z"
+   git tag -a vX.Y.Z -m "openIME X.Y.Z"   # 测试版：vX.Y.Z-beta.N
    git push origin vX.Y.Z
    ```
 
@@ -101,8 +108,8 @@ bash scripts/setup_release_signing.sh
    - 单元测试、`lintRelease`、`assembleRelease`；
    - APK 签名校验（不能是 Debug 证书）、只含 `arm64-v8a`、APK 内版本与 `VERSION` 一致、
      签名证书与 `release-cert.sha256` 一致；
-   - 生成 SHA-256 和发布说明；
-   - 另一个只有写权限、不接触密钥的 job 先建**草稿** Release，确认三个附件齐全后才公开。
+   - 生成 SHA-256 和发布说明（测试版带 Beta 提示）；
+   - 另一个只有写权限、不接触密钥的 job 先建**草稿** Release，确认三个附件齐全后才公开（测试版标为 pre-release，不是 latest）。
 5. 发布后核对：下载 APK，`sha256sum -c SHA256SUMS.txt`，`apksigner verify --print-certs`，
    在真机上安装、启用、试打。
 

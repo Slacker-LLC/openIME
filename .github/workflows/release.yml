@@ -1,6 +1,7 @@
 name: Android Release
 
-# A release is a signed arm64 APK built from a vX.Y.Z tag on main. The same build
+# A release is a signed arm64 APK built from a vX.Y.Z or vX.Y.Z-beta.N tag on main
+# (a beta is published as a GitHub pre-release and never as "latest"). The same build
 # and verification script (scripts/release_build.sh) is rehearsed with a throwaway
 # key on manual runs and on pull requests that touch the release pipeline, so the
 # first real release is not the first time it runs. See docs/RELEASE.md.
@@ -8,6 +9,7 @@ on:
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-beta.[0-9]+'
   workflow_dispatch:
   pull_request:
     branches: [main]
@@ -233,6 +235,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          channel_flags=()
+          latest_flag=--latest
+          if [[ "$GITHUB_REF_NAME" == *-beta.* ]]; then
+            channel_flags=(--prerelease)
+            latest_flag=--latest=false
+          fi
           gh release create "$GITHUB_REF_NAME" \
             release-files/openIME-*-arm64-release.apk \
             release-files/SHA256SUMS.txt \
@@ -240,6 +248,7 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
             --draft \
+            "${channel_flags[@]}" \
             --title "openIME $GITHUB_REF_NAME" \
             --notes-file release-files/RELEASE_NOTES.md
 
@@ -248,4 +257,4 @@ jobs:
             echo "::error::Expected 3 release assets, found $count; the draft was left unpublished."
             exit 1
           fi
-          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false "$latest_flag"

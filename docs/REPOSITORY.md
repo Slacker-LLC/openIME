@@ -33,7 +33,7 @@
 ## 标签
 
 规则集 `release-tags` 作用于 `v*`：只有仓库管理员能创建，创建后任何人（管理员除外）都不能移动或删除。
-发布标签格式固定为 `vX.Y.Z`，必须与 `VERSION` 一致，详见 [RELEASE.md](RELEASE.md)。
+发布标签格式固定为 `vX.Y.Z` 或 `vX.Y.Z-beta.N`，必须与 `VERSION` 一致，详见 [RELEASE.md](RELEASE.md)。
 
 ## 安全
 
