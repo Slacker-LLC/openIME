@@ -89,8 +89,43 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
     }
 
+    /**
+     * One bad key press must not take the keyboard down: the system would swap
+     * in another keyboard and the user loses their place. A failure in a typing
+     * handler is recorded (no typed text), the half-finished composition is
+     * dropped, and the keyboard carries on.
+     */
+    @Volatile
+    private var injectedFailureForTest = false
+
+    private inline fun guarded(name: String, block: () -> Unit) {
+        try {
+            if (injectedFailureForTest) {
+                injectedFailureForTest = false
+                throw IllegalStateException("injected failure for test")
+            }
+            block()
+        } catch (failure: Exception) {
+            recoverFromHandledFailure(name, failure)
+        } catch (failure: StackOverflowError) {
+            recoverFromHandledFailure(name, failure)
+        }
+    }
+
+    private fun recoverFromHandledFailure(name: String, failure: Throwable) {
+        CrashGuard.log("handled failure in $name", failure)
+        CrashGuard.recordHandled(this, name, failure)
+        runCatching {
+            clearImeCompositionState(render = true)
+            gateway.cancelComposing()
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
+        CrashGuard.install(this)
+        CrashGuard.ingestProcessExitReasons(this)
+        VoiceMediaMuteController.recoverAfterCrash(this)
         activeInstance = this
         UserPhraseRepository.configure(this)
         VoiceCorrectionRepository.configure(this)
@@ -386,7 +421,8 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             floatingWindow.restore()
         }
         keyboardView?.refreshAuxiliaryContent()
-        voiceLifecycle.onStartInputView()
+        // Safe mode (repeated crashes or freezes): do not preload the voice model.
+        if (!CrashGuard.isSafeMode(this)) voiceLifecycle.onStartInputView()
     }
 
     /** Re-render panels whose data may have been edited in a full-screen Activity. */
@@ -428,7 +464,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         candidatesEnd: Int,
     ) {
         gateway.updateSelection(newSelStart, newSelEnd)
-        refreshTextEditControls()
+        guarded("onUpdateSelection") { refreshTextEditControls() }
         super.onUpdateSelection(
             oldSelStart,
             oldSelEnd,
@@ -578,6 +614,10 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             )
             text.isNotBlank() && QuickPhraseRepository.load(this).any { it.text == text }
         }.getOrDefault(false)
+        command == "fail-next" -> {
+            injectedFailureForTest = true
+            true
+        }
         command == "bounds" -> {
             Log.i(TAG, "BOUNDS\n${keyboardView?.normalizedBoundsReport().orEmpty()}")
             true
@@ -662,7 +702,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         )
     }
 
-    override fun onCharacter(char: String) {
+    override fun onCharacter(char: String) = guarded("onCharacter") {
         prepareForManualInput()
         voiceCorrectionTracker.noteReplacementInput()
         commitPendingComposition()
@@ -670,7 +710,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         gateway.commitText(char)
     }
 
-    override fun onBackspace() {
+    override fun onBackspace() = guarded("onBackspace") {
         prepareForManualInput()
         voiceCorrectionTracker.noteBackspace()
         if (keyboardView?.deleteInlineEditorChar() == true) return
@@ -698,7 +738,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         }
     }
 
-    override fun onClearAll() {
+    override fun onClearAll() = guarded("onClearAll") {
         prepareForManualInput()
         // Invalidate every pending candidate/Rime path before touching the
         // editor. Otherwise a late native result can restore the just-cleared
@@ -762,7 +802,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         if (floatingWindow.enabled) floatingWindow.reapply()
     }
 
-    override fun onSpace() {
+    override fun onSpace() = guarded("onSpace") {
         prepareForManualInput()
         if (keyboardView?.insertIntoInlineEditor(" ") == true) return
         if (state.passwordField) {
@@ -913,7 +953,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         )
     }
 
-    override fun onEnter() {
+    override fun onEnter() = guarded("onEnter") {
         prepareForManualInput()
         if (lastComposition.isNotEmpty()) {
             // Space picks the first word; Enter ("确定") keeps what was typed,
@@ -931,7 +971,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         }
     }
 
-    override fun onCompositionChanged(composition: String, candidates: List<String>) {
+    override fun onCompositionChanged(composition: String, candidates: List<String>) = guarded("onCompositionChanged") {
         prepareForManualInput()
         if (composition.isNotEmpty()) voiceCorrectionTracker.noteReplacementInput()
         handleCompositionChanged(
@@ -946,7 +986,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         digitBuffer: String,
         pinyinPaths: List<String>,
         candidates: List<String>,
-    ) {
+    ) = guarded("onNineKeyCompositionChanged") {
         prepareForManualInput()
         if (composition.isNotEmpty()) voiceCorrectionTracker.noteReplacementInput()
         if (state.keyboardMode != KeyboardMode.PINYIN_9 || digitBuffer.isEmpty()) {
@@ -1006,7 +1046,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         keyboardView?.renderState(state)
     }
 
-    override fun onCandidateSelected(candidate: String) {
+    override fun onCandidateSelected(candidate: String) = guarded("onCandidateSelected") {
         prepareForManualInput()
         if (state.passwordField) return
         selectCandidate(candidate)
@@ -1099,7 +1139,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
      * directly and chain to the next association set so a user can keep
      * tapping: 你好 -> 呀 -> ！
      */
-    override fun onAssociationSelected(text: String) {
+    override fun onAssociationSelected(text: String) = guarded("onAssociationSelected") {
         prepareForManualInput()
         if (state.passwordField || text.isEmpty()) return
         commitPendingComposition()
@@ -1165,14 +1205,14 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         state = state.copy(panel = if (open) Panel.CANDIDATE_EXPANDED else Panel.NONE)
     }
 
-    override fun onSymbolSelected(symbol: String) {
+    override fun onSymbolSelected(symbol: String) = guarded("onSymbolSelected") {
         prepareForManualInput()
         commitPendingComposition()
         keyboardView?.clearAssociationCandidates()
         gateway.commitText(symbol)
     }
 
-    override fun onEmojiSelected(emoji: String) {
+    override fun onEmojiSelected(emoji: String) = guarded("onEmojiSelected") {
         prepareForManualInput()
         commitPendingComposition()
         keyboardView?.clearAssociationCandidates()
@@ -1180,7 +1220,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         gateway.commitText(emoji)
     }
 
-    override fun onTextEdit(action: String) {
+    override fun onTextEdit(action: String) = guarded("onTextEdit") {
         if (action in setOf("select-all", "cut", "paste", "left", "right")) prepareForManualInput()
         when (action) {
             "select-all" -> if (!gateway.selectAll()) {

@@ -229,6 +229,14 @@ tap key-space
 check '036 26-key rest then space -> 你好吗' '你好吗' "$(editor_text)"
 
 start_real
+mode PINYIN_26 || say 'WARN: PINYIN_26 not reached'
+send fail-next
+tap n
+for key in n i h a o; do tap "$key"; done
+tap candidate-first-row
+check '038 a failure inside a key handler is contained, typing carries on -> 你好' '你好' "$(editor_text)"
+
+start_real
 mode DIGITS || say 'WARN: DIGITS not reached'
 for key in 1 2 3; do tap "$key"; done
 check '050 digits 123 -> 123' '123' "$(editor_text)"
