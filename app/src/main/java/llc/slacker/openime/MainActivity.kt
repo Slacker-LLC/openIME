@@ -38,6 +38,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         appliedAppearance = ImeSettingsRepository.loadAppearance(this)
         super.onCreate(savedInstanceState)
+        CrashGuard.install(this)
         setContentView(R.layout.activity_main)
         findViewById<View>(R.id.main_scroll).setOnApplyWindowInsetsListener { view, insets ->
             if (Build.VERSION.SDK_INT >= 30) {
