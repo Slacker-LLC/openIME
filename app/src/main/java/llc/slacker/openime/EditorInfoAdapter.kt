@@ -15,6 +15,12 @@ object EditorInfoAdapter {
         URL,
         PASSWORD,
         MULTILINE,
+
+        /** Date / time fields: digits and separators. */
+        DATETIME,
+
+        /** TYPE_NULL: terminals, games, remote desktops. They take key events, not text editing. */
+        RAW_KEYS,
         UNKNOWN,
     }
 
@@ -23,6 +29,8 @@ object EditorInfoAdapter {
         val cls = t and InputType.TYPE_MASK_CLASS
         val variation = t and InputType.TYPE_MASK_VARIATION
         return when {
+            info != null && t == InputType.TYPE_NULL -> EditorKind.RAW_KEYS
+            cls == InputType.TYPE_CLASS_DATETIME -> EditorKind.DATETIME
             cls == InputType.TYPE_CLASS_TEXT && variation in setOf(
                 InputType.TYPE_TEXT_VARIATION_PASSWORD,
                 InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
@@ -52,10 +60,12 @@ object EditorInfoAdapter {
         EditorKind.NUMBER,
         EditorKind.DECIMAL,
         EditorKind.PHONE,
+        EditorKind.DATETIME,
         -> KeyboardMode.DIGITS
         EditorKind.EMAIL,
         EditorKind.URL,
         EditorKind.PASSWORD,
+        EditorKind.RAW_KEYS,
         -> KeyboardMode.ENGLISH_26
         else -> KeyboardMode.PINYIN_26
     }
@@ -75,6 +85,8 @@ object EditorInfoAdapter {
             EditorKind.NUMBER,
             EditorKind.DECIMAL,
             EditorKind.PHONE,
+            EditorKind.DATETIME,
+            EditorKind.RAW_KEYS,
             EditorKind.UNKNOWN,
             -> return false
             EditorKind.TEXT,

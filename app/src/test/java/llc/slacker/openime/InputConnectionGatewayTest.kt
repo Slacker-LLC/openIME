@@ -62,7 +62,11 @@ class InputConnectionGatewayTest {
         override fun getExtractedText(request: ExtractedTextRequest?, flags: Int): ExtractedText? =
             extractedText
         override fun getHandler(): Handler? = null
-        override fun getSelectedText(flags: Int): CharSequence? = selectedText
+        var selectedTextCalls = 0
+        override fun getSelectedText(flags: Int): CharSequence? {
+            selectedTextCalls++
+            return selectedText
+        }
         override fun getTextAfterCursor(length: Int, flags: Int): CharSequence? = afterText.take(length)
         override fun getTextBeforeCursor(length: Int, flags: Int): CharSequence? = beforeText.takeLast(length)
         override fun performContextMenuAction(id: Int): Boolean {
@@ -667,5 +671,71 @@ class InputConnectionGatewayTest {
 
         assertTrue(gateway.clearAllText())
         assertFalse(gateway.hasClearUndo())
+    }
+
+    // --- terminals, games and remote desktops: TYPE_NULL, key events only ---
+
+    private fun rawKeyGateway(fake: FakeInputConnection) = InputConnectionGateway(
+        context = null,
+        connection = { fake },
+        isRawKeys = { true },
+        // The JVM has no key character map; one synthetic event per character is enough to observe.
+        keyEventsFor = { text -> if (text.all { it.code < 0x80 }) Array(text.length) { KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_A) } else null },
+    )
+
+    @Test
+    fun rawKeyEditorsDeleteWithKeyEventsNotWithTheDummyConnectionsPrivateBuffer() {
+        // BaseInputConnection in dummy mode answers true to deleteSurroundingText and removes nothing.
+        val fake = FakeInputConnection(deleteSurroundingResult = true)
+        rawKeyGateway(fake).deleteBackwards()
+        assertEquals(listOf("key", "key"), fake.events) // DEL down + up, no delete* call
+    }
+
+    @Test
+    fun rawKeyEditorsForwardDeleteWithKeyEventsToo() {
+        val fake = FakeInputConnection()
+        rawKeyGateway(fake).deleteForwards()
+        assertEquals(listOf("key", "key"), fake.events)
+    }
+
+    @Test
+    fun rawKeyEditorsReceiveAsciiAsKeyEventsAndOtherTextAsCommit() {
+        val fake = FakeInputConnection()
+        val gateway = rawKeyGateway(fake)
+        gateway.commitText("ls")
+        assertEquals(listOf("key", "key"), fake.events)
+        fake.events.clear()
+        gateway.commitText("你好")
+        assertEquals(listOf("commit:你好"), fake.events)
+    }
+
+    @Test
+    fun ordinaryEditorsAreNotAffectedByTheRawKeyPath() {
+        val fake = FakeInputConnection()
+        InputConnectionGateway(null, { fake }).commitText("ls")
+        assertEquals(listOf("commit:ls"), fake.events)
+    }
+
+    @Test
+    fun backspaceDoesNotQueryTheAppWhenTheEditorReportedACollapsedCursor() {
+        val fake = FakeInputConnection(beforeText = "abc")
+        val gateway = InputConnectionGateway(null, { fake })
+        gateway.updateSelection(3, 3, reportedByEditor = true)
+        gateway.deleteBackwards()
+        assertEquals(0, fake.selectedTextCalls)
+        // One delete call (which flavour depends on the SDK level); nothing else was sent.
+        assertEquals(1, fake.events.size)
+        assertTrue(fake.events.single().startsWith("delete"))
+    }
+
+    @Test
+    fun backspaceStillAsksWhenOnlyTheStartUpSelectionIsKnown() {
+        // initialSelStart/End can be stale; only the editor's own reports are trusted.
+        val fake = FakeInputConnection(selectedText = "bc")
+        val gateway = InputConnectionGateway(null, { fake })
+        gateway.updateSelection(3, 3, reportedByEditor = false)
+        gateway.deleteBackwards()
+        assertEquals(1, fake.selectedTextCalls)
+        assertEquals(listOf("commit:"), fake.events)
     }
 }

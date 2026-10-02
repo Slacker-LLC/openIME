@@ -36,6 +36,16 @@ class ImeKeyView(
     private var touchFeedbackPending = false
     private var touchGeneration = 0L
     private val baseMainTextSize = mainTextSize
+    private val fitMain = fitMainText
+
+    /**
+     * Key labels follow the system font size only up to [MAX_LABEL_FONT_SCALE].
+     * A key has a fixed width, so at 200% a plain "m" no longer fits and became
+     * "…", and "中/英" lost its last glyph. Everything else (candidates, panels,
+     * settings) still follows the system setting in full.
+     */
+    private fun labelPx(sp: Float): Float =
+        sp * density * minOf(resources.configuration.fontScale, MAX_LABEL_FONT_SCALE)
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
@@ -126,7 +136,7 @@ class ImeKeyView(
                 }
             }.apply {
                 this.text = text
-                textSize = mainTextSize
+                setTextSize(TypedValue.COMPLEX_UNIT_PX, labelPx(mainTextSize))
                 gravity = Gravity.CENTER
                 isAllCaps = false
                 includeFontPadding = false
@@ -136,10 +146,10 @@ class ImeKeyView(
                     // scales. Shrink within a controlled range instead of
                     // replacing the action with an ellipsis such as “中/…”.
                     setAutoSizeTextTypeUniformWithConfiguration(
-                        (mainTextSize * 0.68f).toInt().coerceAtLeast(10),
-                        mainTextSize.toInt().coerceAtLeast(12),
+                        labelPx((mainTextSize * 0.68f).coerceAtLeast(10f)).toInt(),
+                        labelPx(mainTextSize.coerceAtLeast(12f)).toInt(),
                         1,
-                        TypedValue.COMPLEX_UNIT_SP,
+                        TypedValue.COMPLEX_UNIT_PX,
                     )
                     ellipsize = null
                 } else {
@@ -155,7 +165,7 @@ class ImeKeyView(
         secondaryTextView = secondary?.takeIf { it.isNotEmpty() }?.let { sub ->
             TextView(context).apply {
                 this.text = sub
-                textSize = ImeTypographyTokens.CAPTION_SP
+                setTextSize(TypedValue.COMPLEX_UNIT_PX, labelPx(ImeTypographyTokens.CAPTION_SP))
                 gravity = Gravity.CENTER
                 isAllCaps = false
                 includeFontPadding = false
@@ -239,11 +249,34 @@ class ImeKeyView(
 
     /** Update key typography without rebuilding the keyboard hierarchy. */
     fun applyMainTextScale(scale: Float) {
+        val sp = baseMainTextSize * scale.coerceAtLeast(0.4f)
         mainTextView?.apply {
-            setAutoSizeTextTypeWithDefaults(TextView.AUTO_SIZE_TEXT_TYPE_NONE)
-            textSize = baseMainTextSize * scale.coerceAtLeast(0.4f)
+            if (fitMain) {
+                // Function labels ("中/英", "完成") must keep shrinking to fit their key.
+                setAutoSizeTextTypeUniformWithConfiguration(
+                    labelPx((sp * 0.68f).coerceAtLeast(10f)).toInt(),
+                    labelPx(sp.coerceAtLeast(12f)).toInt(),
+                    1,
+                    TypedValue.COMPLEX_UNIT_PX,
+                )
+            } else {
+                setAutoSizeTextTypeWithDefaults(TextView.AUTO_SIZE_TEXT_TYPE_NONE)
+                setTextSize(TypedValue.COMPLEX_UNIT_PX, labelPx(sp))
+            }
         }
-        secondaryTextView?.textSize = ImeTypographyTokens.CAPTION_SP * (toPx(100) / (100f * density))
+        secondaryTextView?.setTextSize(
+            TypedValue.COMPLEX_UNIT_PX,
+            labelPx(ImeTypographyTokens.CAPTION_SP) * (toPx(100) / (100f * density)),
+        )
+    }
+
+    /** True when the main label is fully visible (no ellipsis, nothing clipped). Used by tests. */
+    internal fun mainLabelFits(): Boolean {
+        val view = mainTextView ?: return true
+        if (view.visibility != View.VISIBLE || view.width == 0) return true
+        val layout = view.layout ?: return false
+        val available = view.width - view.paddingLeft - view.paddingRight
+        return layout.getEllipsisCount(0) == 0 && layout.getLineWidth(0) <= available + 0.5f
     }
 
     /**
@@ -273,4 +306,8 @@ class ImeKeyView(
     }
 
     private fun dp(value: Int): Int = toPx(value)
+
+    private companion object {
+        const val MAX_LABEL_FONT_SCALE = 1.3f
+    }
 }

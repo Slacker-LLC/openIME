@@ -105,4 +105,27 @@ class EditorInfoAdapterTest {
         assertTrue(EditorInfoAdapter.isPassword(numberPassword))
         assertFalse(EditorInfoAdapter.allowCandidates(numberPassword))
     }
+
+    @Test
+    fun editorsWithoutATextTypeAreRawKeyEditorsAndStartInEnglish() {
+        val kind = EditorInfoAdapter.kind(info(InputType.TYPE_NULL))
+        assertEquals(EditorInfoAdapter.EditorKind.RAW_KEYS, kind)
+        assertEquals(KeyboardMode.ENGLISH_26, EditorInfoAdapter.defaultKeyboardMode(kind))
+        assertEquals(KeyboardMode.ENGLISH_26, InputMethodSubtypePolicy.defaultKeyboardMode(kind, "zh_CN"))
+        assertFalse(EditorInfoAdapter.isPassword(kind))
+        assertFalse(EditorInfoAdapter.allowCandidates(kind).not())
+    }
+
+    @Test
+    fun noEditorAtAllIsStillUnknownNotRawKeys() {
+        assertEquals(EditorInfoAdapter.EditorKind.UNKNOWN, EditorInfoAdapter.kind(null))
+    }
+
+    @Test
+    fun dateAndTimeFieldsStartWithDigits() {
+        val kind = EditorInfoAdapter.kind(info(InputType.TYPE_CLASS_DATETIME or InputType.TYPE_DATETIME_VARIATION_DATE))
+        assertEquals(EditorInfoAdapter.EditorKind.DATETIME, kind)
+        assertEquals(KeyboardMode.DIGITS, EditorInfoAdapter.defaultKeyboardMode(kind))
+        assertEquals(KeyboardMode.DIGITS, InputMethodSubtypePolicy.defaultKeyboardMode(kind, "zh_CN"))
+    }
 }

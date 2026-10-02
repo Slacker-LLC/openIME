@@ -41,9 +41,8 @@ internal class NineKeyLocalDecoder(
     }
 
     /**
-     * One way to read the open digits as pinyin. [syllables] are in order;
-     * [coversAll] tells whether they spell every digit (a whole reading) or only
-     * the start of them (a first-syllable choice).
+     * One way to read the start of the open digits as pinyin. [coversAll] tells
+     * whether the syllable spells every open digit or only the first of them.
      */
     data class Reading(
         val syllables: List<String>,
@@ -261,14 +260,12 @@ internal class NineKeyLocalDecoder(
     }
 
     /**
-     * The readings offered in the left rail, best first.
-     *
-     * Short input lists whole readings (`ni'hao`, `mi'hao`, `ni'gao`), the way
-     * the design shows them. Once a whole reading no longer fits the rail it
-     * lists first syllables (`zhong`, `xiong`), and fixing one moves the list on
-     * to the next position (the Baidu / rime-t9-shiyin behaviour). Either way a
-     * tap fixes exactly what the item shows. Choices that would leave digits no
-     * syllable can read are never offered.
+     * The readings offered in the left rail, best first: one syllable per item,
+     * for the next character only (`ni`, `mi`, ...). Fixing one moves the list on
+     * to the following character, the way Baidu and rime-t9-shiyin do it, so the
+     * user chooses the pinyin of one character at a time and never has to pick
+     * a whole phrase's spelling. A tap fixes exactly what the item shows, and
+     * choices that would leave digits no syllable can read are never offered.
      */
     @Synchronized
     fun readingOptions(digits: String, preferred: String?, limit: Int = MAX_SYLLABLE_OPTIONS): List<Reading> {
@@ -281,19 +278,8 @@ internal class NineKeyLocalDecoder(
         // when nothing else exists.
         val all = syllablePaths(bounded, READING_BEAM)
         val paths = all.filter { path -> path.syllables.none { it.length == 1 } }.ifEmpty { all }
-        val best = paths.firstOrNull()
-        if (best != null && best.syllables.joinToString("'").length <= WHOLE_READING_MAX_CHARS) {
-            val ranked = paths.sortedWith(
-                compareByDescending<SyllablePath> { it.syllables.joinToString("") == lead }
-                    .thenByDescending { it.score },
-            )
-            return ranked
-                .map { Reading(it.syllables, coversAll = true) }
-                .distinctBy { it.display }
-                .take(limit)
-        }
 
-        // Long input: first syllables, each only if the rest can still be read.
+        // First syllables, each only if the rest can still be read.
         val firsts = LinkedHashMap<String, Int>()
         paths.forEach { path -> firsts.putIfAbsent(path.syllables.first(), path.score) }
         syllableOptions(bounded, preferred, limit * 2).forEach { syllable ->
@@ -611,7 +597,6 @@ internal class NineKeyLocalDecoder(
         const val MAX_DIGITS = 64
         const val MAX_SYLLABLE_OPTIONS = 12
         private const val READING_BEAM = 24
-        private const val WHOLE_READING_MAX_CHARS = 14
         private const val MAX_PHRASE_SYLLABLES = 6
         private const val MAX_SYLLABLE_LENGTH = 6
         private const val MAX_PATHS = 12

@@ -213,12 +213,55 @@ tap key-space
 check '034 nine-key rest then space -> 你好吗' '你好吗' "$(editor_text)"
 
 start_real
+mode PINYIN_9 || say 'WARN: PINYIN_9 not reached'
+for key in 6 4 4 2 6; do tap "$key"; done
+tap '九键拼音ni'
+tap '九键拼音hao'
+tap key-space
+check '037 nine-key one pinyin per character: ni, then hao, then space -> 你好' '你好' "$(editor_text)"
+
+start_real
 mode PINYIN_26 || say 'WARN: PINYIN_26 not reached'
 for key in n i h a o m a; do tap "$key"; done
 tap '候选:你'
 check '035 26-key partial pick keeps the rest composing -> 你haoma' '你haoma' "$(editor_text)"
 tap key-space
 check '036 26-key rest then space -> 你好吗' '你好吗' "$(editor_text)"
+
+start_real
+mode PINYIN_26 || say 'WARN: PINYIN_26 not reached'
+send fail-next
+tap n
+for key in n i h a o; do tap "$key"; done
+tap candidate-first-row
+check '038 a failure inside a key handler is contained, typing carries on -> 你好' '你好' "$(editor_text)"
+
+# Physical keyboard (KEYCODE_N=42 I=37 H=36 A=29 O=43 SPACE=62 1=8 COMMA=55 ENTER=66)
+hwkey() { adb_do shell input keyevent "$@" >/dev/null 2>&1; sleep 0.35; }
+
+start_real
+mode PINYIN_26 || say 'WARN: PINYIN_26 not reached'
+for code in 42 37 36 29 43; do hwkey "$code"; done
+hwkey 62
+check '040 physical keyboard: nihao + space -> 你好' '你好' "$(editor_text)"
+
+start_real
+mode PINYIN_26 || say 'WARN: PINYIN_26 not reached'
+for code in 42 37; do hwkey "$code"; done
+hwkey 8
+check '041 physical keyboard: ni + 1 picks the first candidate -> 你' '你' "$(editor_text)"
+
+start_real
+mode PINYIN_26 || say 'WARN: PINYIN_26 not reached'
+for code in 42 37 36 29 43; do hwkey "$code"; done
+hwkey 55
+check '042 physical keyboard: nihao + comma commits 你好 then a full-width comma' '你好，' "$(editor_text)"
+
+start_real
+mode PINYIN_26 || say 'WARN: PINYIN_26 not reached'
+hwkey 8
+hwkey 55
+check '043 physical keyboard: with nothing composing, 1 and comma stay ASCII' '1,' "$(editor_text)"
 
 start_real
 mode DIGITS || say 'WARN: DIGITS not reached'

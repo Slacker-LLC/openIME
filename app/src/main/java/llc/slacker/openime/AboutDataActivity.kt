@@ -20,6 +20,7 @@ class AboutDataActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CrashGuard.install(this)
 
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -89,6 +90,46 @@ class AboutDataActivity : Activity() {
                 ),
                 wrap().apply { topMargin = dp(ImeSpacingTokens.LG_DP) },
             )
+            val safeMode = CrashGuard.isSafeMode(this@AboutDataActivity)
+            val lastReport = CrashGuard.lastReport(this@AboutDataActivity)
+            val diagnostics = infoCard(
+                title = "诊断",
+                body = when {
+                    safeMode -> "输入法刚才多次异常退出，已临时关闭原生词库和语音预加载；约 10 分钟后自动恢复，也可以现在退出。"
+                    lastReport != null -> "最近一次异常：" + lastReport.lineSequence().first().substringAfter("| ").substringBefore(" | thread")
+                    else -> "没有异常记录。"
+                } + "\n诊断信息只含异常类型和代码位置，不含任何输入内容；只有你点“复制”才会离开这里。",
+            )
+            addView(diagnostics, wrap().apply { topMargin = dp(ImeSpacingTokens.LG_DP) })
+            if (lastReport != null || safeMode) {
+                val row = LinearLayout(this@AboutDataActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    if (lastReport != null) {
+                        addView(
+                            SetupUi.secondaryButton(this@AboutDataActivity, "复制诊断信息") {
+                                val clipboard = getSystemService(android.content.ClipboardManager::class.java)
+                                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("openIME diagnostics", lastReport))
+                                Toast.makeText(this@AboutDataActivity, "已复制", Toast.LENGTH_SHORT).show()
+                            },
+                            LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(ImeSpacingTokens.SM_DP) },
+                        )
+                    }
+                    if (safeMode) {
+                        addView(
+                            SetupUi.primaryButton(this@AboutDataActivity, "退出安全模式") {
+                                CrashGuard.clearHistory(this@AboutDataActivity)
+                                Toast.makeText(this@AboutDataActivity, "下次打开键盘时恢复完整功能", Toast.LENGTH_SHORT).show()
+                                recreate()
+                            },
+                            LinearLayout.LayoutParams(0, dp(44), 1f),
+                        )
+                    }
+                }
+                diagnostics.addView(
+                    row,
+                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(12); marginStart = dp(44) },
+                )
+            }
             addView(TextView(this@AboutDataActivity).apply {
                 text = "openIME · 版本 " + versionName(); textSize = ImeTypographyTokens.SMALL_SP; gravity = android.view.Gravity.CENTER
                 setTextColor(getColor(R.color.setup_body))

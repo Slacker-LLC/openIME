@@ -5,6 +5,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.PersistableBundle
 import android.view.View
 import android.view.inputmethod.BaseInputConnection
@@ -22,6 +23,7 @@ class CompatibilityApiInstrumentedTest {
 
     @Test
     fun pPlusBackspaceUsesCodePointDeletionForUnicodeSafety() {
+        assumeTrue("code-point deletion needs API 28+; older levels use UTF-16 deletion", Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val connection = RecordingInputConnection(View(context))
         val gateway = InputConnectionGateway(context, { connection })
@@ -34,6 +36,7 @@ class CompatibilityApiInstrumentedTest {
 
     @Test
     fun pPlusForwardDeleteUsesCodePointDeletionForUnicodeSafety() {
+        assumeTrue("code-point deletion needs API 28+; older levels use UTF-16 deletion", Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val connection = RecordingInputConnection(View(context))
         val gateway = InputConnectionGateway(context, { connection })
@@ -48,7 +51,11 @@ class CompatibilityApiInstrumentedTest {
     fun sensitiveClipboardIsNeverCapturedIntoPersistentHistory() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         ClipboardHistoryRepository.clearAll(context)
-        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        // Before API 28 a ClipboardManager can only be created on a thread with a Looper.
+        lateinit var clipboard: ClipboardManager
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        }
         val clip = ClipData.newPlainText("secret", "compat-secret")
         clip.description.extras = PersistableBundle().apply {
             putBoolean(ClipboardSensitivityPolicy.SENSITIVE_KEY, true)

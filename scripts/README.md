@@ -15,6 +15,15 @@ bash scripts/setup_release_signing.sh           # 一次性：生成发布密钥
 bash scripts/apply_repo_settings.sh --dry-run   # 查看将要应用的仓库规则（见 docs/REPOSITORY.md）
 ```
 
+## 显示环境矩阵
+
+需要一台装了 debug 版 openIME 并已设为默认输入法的设备或模拟器；脚本会改动并还原旋转、字体、
+分辨率和深色模式：
+
+```bash
+python3 scripts/display_matrix_regression.py --serial <serial> [用例名 ...]
+```
+
 ## 常用命令
 
 ```powershell

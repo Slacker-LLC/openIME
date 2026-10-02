@@ -146,6 +146,41 @@ class RimeEngine(
                 copyAssetsIfNeeded(sharedDir)
                 if (!startupGate.isCurrent(generation)) return@execute
 
+                // A previous start that died inside native code leaves its marker
+                // behind; escalate (clear compiled data, set the user database
+                // aside, finally skip librime) instead of crashing in a loop.
+                val recovery = RimeStartupRecovery(File(context.filesDir, "$dataDirName-startup"))
+                if (recovery.lastStartupDiedNatively()) {
+                    when (CrashGuard.previousExitWasNativeCrash(context)) {
+                        // Killed by the user or the system while starting, not by librime.
+                        false -> recovery.failedWithoutCrash()
+                        // Android 11+ already recorded it in the exit history.
+                        true -> Unit
+                        // Older Android cannot say: assume the worst.
+                        null -> CrashGuard.recordNativeStartupCrash(context)
+                    }
+                }
+                val action = if (CrashGuard.isSafeMode(context)) {
+                    recovery.failedWithoutCrash() // already counted above; do not count it every session
+                    RimeStartupRecovery.Action.SKIP_NATIVE
+                } else {
+                    recovery.begin()
+                }
+                when (action) {
+                    RimeStartupRecovery.Action.NORMAL -> Unit
+                    RimeStartupRecovery.Action.CLEAN_BUILD -> clearCompiledData(sharedDir, userDir)
+                    RimeStartupRecovery.Action.RESET_USER_DATA -> {
+                        clearCompiledData(sharedDir, userDir)
+                        setUserDataAside(userDir)
+                    }
+                    RimeStartupRecovery.Action.SKIP_NATIVE -> {
+                        errorMessage = "librime is off after repeated crashes"
+                        startupGate.fail(generation)
+                        Log.w(TAG, "librime skipped (safe mode); using the Kotlin fallback")
+                        return@execute
+                    }
+                }
+
                 // nativeStartup is internally serialized. Even if destroy races
                 // this call, nativeShutdown will either run after it or this
                 // stale worker will perform the same idempotent cleanup below.
@@ -179,10 +214,15 @@ class RimeEngine(
                     cleanupNative()
                     return@execute
                 }
+                recovery.succeeded()
                 errorMessage = ""
                 isReady = true
                 Log.i(TAG, "librime ready schema=$activeSchemaId")
             } catch (throwable: Throwable) {
+                // A Java exception is not a native crash: lift the marker so it is not counted as one.
+                runCatching {
+                    RimeStartupRecovery(File(context.filesDir, "${assetRoot.replace('/', '_')}-startup")).failedWithoutCrash()
+                }
                 if (nativeStartupReturned) cleanupNative()
                 if (startupGate.fail(generation)) {
                     isReady = false
@@ -570,6 +610,29 @@ class RimeEngine(
         destination.mkdirs()
         children.forEach { child ->
             copyAssetTree("$assetPath/$child", File(destination, child))
+        }
+    }
+
+    private fun clearCompiledData(sharedDir: File, userDir: File) {
+        listOf(File(sharedDir, "build"), File(userDir, "build")).forEach { build ->
+            if (build.isDirectory) {
+                deleteChildren(build)
+                build.delete()
+            }
+        }
+        Log.w(TAG, "cleared compiled librime data after a native startup failure")
+    }
+
+    /** Keep one backup of a user database that may be damaged and start with an empty one. */
+    private fun setUserDataAside(userDir: File) {
+        val backup = File(userDir.parentFile, "${userDir.name}.corrupt")
+        if (backup.exists()) {
+            deleteChildren(backup)
+            backup.delete()
+        }
+        if (userDir.renameTo(backup)) {
+            userDir.mkdirs()
+            Log.w(TAG, "user dictionary set aside as ${backup.name}")
         }
     }
 

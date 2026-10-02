@@ -896,6 +896,19 @@ open class ImeKeyboardView(
             super.onMeasure(widthMeasureSpec, heightMeasureSpec)
             return
         }
+        // The content box (padding, row widths) follows the width the parent
+        // offers. Apply it here, before the children are measured: doing it from
+        // onSizeChanged changes paddings of views laid out later in the same
+        // pass and the framework then keeps their stale measurements.
+        val offeredWidth = MeasureSpec.getSize(widthMeasureSpec)
+        if (MeasureSpec.getMode(widthMeasureSpec) != MeasureSpec.UNSPECIFIED && offeredWidth > 0) {
+            applyingGeometryInMeasure = true
+            try {
+                updateResponsiveGeometry(offeredWidth)
+            } finally {
+                applyingGeometryInMeasure = false
+            }
+        }
         val desiredHeight = dp(imeHeightDp())
         val mode = MeasureSpec.getMode(heightMeasureSpec)
         val size = MeasureSpec.getSize(heightMeasureSpec)
@@ -990,14 +1003,9 @@ open class ImeKeyboardView(
                 if (panel == Panel.NONE) renderModeBody() else renderPanel(panel)
             }
             applyTheme()
-            // This runs from onSizeChanged, i.e. in the middle of a layout pass.
-            // Rows rebuilt there are added after their parent was measured and
-            // would stay at 0x0 (a blank keyboard on first show) until something
-            // else happened to request a layout. Ask for a fresh pass.
-            post {
-                requestLayout()
-                invalidate()
-            }
+            // Rows rebuilt here are added after their parent was measured and
+            // would stay at 0x0 (a blank keyboard on first show) otherwise.
+            if (!applyingGeometryInMeasure) scheduleRelayout()
         }
 
         (mainDock.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
@@ -1035,7 +1043,10 @@ open class ImeKeyboardView(
             expandedPanel.setPadding(contentInsetPx, 0, contentInsetPx, 0)
             candidateOverlay.setPadding(contentInsetPx, 0, contentInsetPx, 0)
             topZone.setContentInset(contentInsetPx)
-            requestLayout()
+            if (!applyingGeometryInMeasure) {
+                requestLayout()
+                scheduleRelayout()
+            }
             return
         }
         val minimumInset = dp(0)
@@ -1059,7 +1070,38 @@ open class ImeKeyboardView(
         expandedPanel.setPadding(contentInsetPx, 0, contentInsetPx, 0)
         candidateOverlay.setPadding(contentInsetPx, 0, contentInsetPx, 0)
         topZone.setContentInset(contentInsetPx)
-        requestLayout()
+        if (!applyingGeometryInMeasure) {
+            requestLayout()
+            scheduleRelayout()
+        }
+    }
+
+    private var relayoutPosted = false
+    private var applyingGeometryInMeasure = false
+
+    /**
+     * updateResponsiveGeometry runs from onSizeChanged, i.e. inside a layout
+     * pass, and changes paddings and row widths of views that are laid out later
+     * in that same pass. Their own requestLayout() calls are lost: each view
+     * clears its force-layout flag when it finishes laying out, so the framework
+     * sees no pending request and never re-measures them (the landscape keyboard
+     * kept rows as wide as the whole window inside a clamped content box).
+     * requestLayout() on the root is not enough either, it marks only the root
+     * and its ancestors. So once the pass is over, flag the containers that
+     * were changed.
+     */
+    private fun scheduleRelayout() {
+        if (relayoutPosted) return
+        relayoutPosted = true
+        post {
+            relayoutPosted = false
+            keyboardBody.requestLayout()
+            if (::topZone.isInitialized) topZone.requestLayout()
+            expandedPanel.requestLayout()
+            candidateOverlay.requestLayout()
+            requestLayout()
+            invalidate()
+        }
     }
 
     private fun rescaleTopZone(view: View, ratio: Float) {
@@ -2943,6 +2985,27 @@ open class ImeKeyboardView(
 
     private fun hidePopup() {
         keyPopupController.hide()
+    }
+
+    // --- physical keyboard: the same entry points a tap on the soft key reaches ---
+
+    /** Pinyin typing from a physical keyboard needs the plain 26-key surface: no panel, no voice. */
+    internal fun hardwareAccepts(): Boolean =
+        mode == KeyboardMode.PINYIN_26 && panel == Panel.NONE && !standalonePanel &&
+            !voicePanelController.active && !voiceGestureSession
+
+    internal fun hardwareIsComposing(): Boolean = composition.text.isNotEmpty()
+    internal fun hardwareCandidateCount(): Int = currentCandidates.size
+    internal fun hardwareLetter(char: Char) = onKeyTapped(char.toString())
+    internal fun hardwareBackspace() = performBackspaceOnce()
+    internal fun hardwareSpace() = commitFirstCandidateOrSpace()
+    internal fun hardwareApostrophe() = onPinyinSegment()
+    internal fun hardwareCancelComposition() = publishComposition("", emptyList())
+
+    internal fun hardwareSelectCandidate(index: Int): Boolean {
+        val candidate = currentCandidates.getOrNull(index) ?: return false
+        listener.onCandidateSelected(candidate)
+        return true
     }
 
     /**

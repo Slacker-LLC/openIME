@@ -2,9 +2,12 @@
 
 ## 主项目
 
-`openIME` 当前尚未选择主项目许可证。仓库公开可见，但在添加明确许可证前，不能
-把“公开”理解为允许任意复制、再分发或商业使用。后续由项目所有者选择许可证后，
-应在仓库根目录增加标准 `LICENSE` 文件，并同步更新本页和 README。
+`openIME` 以 **GPL-3.0-only** 发布，全文见仓库根目录 `LICENSE`。
+
+选择它的原因：APK 内置的 Rime Ice 词典按 GPL-3.0-only 使用（见下），主项目采用同一份许可证，
+分发 APK 时整体的许可证状况没有歧义——不用争论词典数据与程序是「聚合」还是「衍生」。
+其余组件（librime、OpenCC、Snappy、sherpa-onnx、Paraformer 模型、Fluent Emoji）均为 BSD / Apache-2.0 / MIT，
+与 GPL-3.0 兼容。想改用别的许可证需要先去掉或替换 Rime Ice 词典。
 
 ## 已随仓库提供的第三方组件
 
