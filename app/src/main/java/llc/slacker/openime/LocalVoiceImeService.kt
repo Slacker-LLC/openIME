@@ -1284,7 +1284,77 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         if (keyCode == KeyEvent.KEYCODE_BACK && keyboardView?.closePanelToKeyboard() == true) {
             return true
         }
+        if (event != null && handleHardwareKey(event)) {
+            hardwareConsumed += keyCode
+            return true
+        }
         return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
+        // The matching up of a key we consumed must not reach the app on its own.
+        if (hardwareConsumed.remove(keyCode)) return true
+        return super.onKeyUp(keyCode, event)
+    }
+
+    private val hardwareConsumed = HashSet<Int>()
+
+    /**
+     * Pinyin typing from a physical keyboard (tablets, foldables with a keyboard
+     * cover, Chromebooks, desktop mode, emulators). Returns true when the key was
+     * ours; anything else, and every shortcut, goes on to the app unchanged.
+     */
+    private fun handleHardwareKey(event: KeyEvent): Boolean {
+        val view = keyboardView ?: return false
+        if (event.flags and KeyEvent.FLAG_SOFT_KEYBOARD != 0) return false
+        val kind = EditorInfoAdapter.kind(state.editorInfo)
+        val pinyinMode = isInputViewShown && view.hardwareAccepts() && !state.passwordField &&
+            EditorInfoAdapter.allowCandidates(kind) && kind != EditorInfoAdapter.EditorKind.RAW_KEYS
+        if (!pinyinMode) return false
+        val composing = view.hardwareIsComposing()
+        val unicode = event.unicodeChar
+        val needsCharBefore = !composing && unicode in HARDWARE_ASCII_AFTER_DIGIT
+        val action = HardwareKeyPolicy.decide(
+            HardwareKey(
+                keyCode = event.keyCode,
+                unicode = unicode,
+                shift = event.isShiftPressed,
+                ctrl = event.isCtrlPressed,
+                alt = event.isAltPressed,
+                meta = event.isMetaPressed,
+                capsLock = event.isCapsLockOn,
+                repeat = event.repeatCount > 0,
+            ),
+            HardwareContext(
+                pinyinMode = true,
+                composing = composing,
+                candidateCount = view.hardwareCandidateCount(),
+                charBeforeCursor = if (needsCharBefore) gateway.charBeforeCursor() else null,
+            ),
+        )
+        var consumed = true
+        guarded("hardwareKey") {
+            when (action) {
+                HardwareKeyAction.PassThrough -> consumed = false
+                HardwareKeyAction.Consume -> Unit
+                HardwareKeyAction.FinishCompositionThenPassThrough -> {
+                    commitPendingComposition()
+                    consumed = false
+                }
+                is HardwareKeyAction.Letter -> view.hardwareLetter(action.char)
+                HardwareKeyAction.Backspace -> view.hardwareBackspace()
+                HardwareKeyAction.Space -> view.hardwareSpace()
+                HardwareKeyAction.Enter -> onEnter()
+                HardwareKeyAction.Cancel -> view.hardwareCancelComposition()
+                HardwareKeyAction.Apostrophe -> view.hardwareApostrophe()
+                is HardwareKeyAction.SelectCandidate -> consumed = view.hardwareSelectCandidate(action.index)
+                is HardwareKeyAction.Punctuation -> {
+                    if (action.commitFirstCandidate) commitFirstCandidate()
+                    onCharacter(action.text)
+                }
+            }
+        }
+        return consumed
     }
 
     private fun updateComposition(next: String, candidates: List<String>) {
@@ -1681,3 +1751,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         var activeInstance: LocalVoiceImeService? = null
     }
 }
+
+/** Punctuation that stays ASCII right after a digit (3.14, 12:30, 1,000). */
+private val HARDWARE_ASCII_AFTER_DIGIT = setOf(','.code, '.'.code, ':'.code)

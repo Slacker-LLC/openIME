@@ -139,6 +139,12 @@ class InputConnectionGateway(
         }
     }
 
+    /** The character before the cursor, or null when unknown (and always in password fields). */
+    fun charBeforeCursor(): Char? {
+        if (isPassword()) return null
+        return runCatching { connection()?.getTextBeforeCursor(1, 0)?.lastOrNull() }.getOrNull()
+    }
+
     fun finishComposing() {
         connection()?.finishComposingText()
     }

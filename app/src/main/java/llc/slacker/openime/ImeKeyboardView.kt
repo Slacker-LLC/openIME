@@ -2987,6 +2987,27 @@ open class ImeKeyboardView(
         keyPopupController.hide()
     }
 
+    // --- physical keyboard: the same entry points a tap on the soft key reaches ---
+
+    /** Pinyin typing from a physical keyboard needs the plain 26-key surface: no panel, no voice. */
+    internal fun hardwareAccepts(): Boolean =
+        mode == KeyboardMode.PINYIN_26 && panel == Panel.NONE && !standalonePanel &&
+            !voicePanelController.active && !voiceGestureSession
+
+    internal fun hardwareIsComposing(): Boolean = composition.text.isNotEmpty()
+    internal fun hardwareCandidateCount(): Int = currentCandidates.size
+    internal fun hardwareLetter(char: Char) = onKeyTapped(char.toString())
+    internal fun hardwareBackspace() = performBackspaceOnce()
+    internal fun hardwareSpace() = commitFirstCandidateOrSpace()
+    internal fun hardwareApostrophe() = onPinyinSegment()
+    internal fun hardwareCancelComposition() = publishComposition("", emptyList())
+
+    internal fun hardwareSelectCandidate(index: Int): Boolean {
+        val candidate = currentCandidates.getOrNull(index) ?: return false
+        listener.onCandidateSelected(candidate)
+        return true
+    }
+
     /**
      * The key preview is a permanent child that only toggles visibility, so
      * tests cannot detect it by counting children.
