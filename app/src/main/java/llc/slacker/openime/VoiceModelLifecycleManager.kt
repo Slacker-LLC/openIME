@@ -333,12 +333,6 @@ class VoiceModelLifecycleManager(
     }
 
     fun start(languageTag: String, events: VoiceRecognitionEvents) {
-        val editorKind = inputMethodService?.currentInputEditorInfo?.let(EditorInfoAdapter::kind)
-        if (editorKind != null && EditorInfoAdapter.isPassword(editorKind)) {
-            events.onError("密码输入框不支持语音输入")
-            return
-        }
-
         mainHandler.removeCallbacks(unloadRunnable)
         preload(automaticPreload = false)
         val token = sessionGeneration.incrementAndGet()

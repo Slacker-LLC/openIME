@@ -62,7 +62,7 @@ LocalVoiceImeService
 3. 删除优先处理 openIME 自己的 composition，再处理目标编辑器文本。
 4. 候选提交使用已经渲染的 `CandidateSnapshot`/native identity，避免旧异步结果提交到新 composition。
 5. 切换输入框、模式或结束会话时必须使旧 generation/session 失效。
-6. 密码及隐私编辑器不暴露持久剪贴板历史、语音和个性化学习路径。
+6. 密码编辑器不组合、不读取正文、不进入个性化学习和热词/纠错学习；剪贴板历史和语音可用，语音只一次性上屏最终结果。要求关闭个性化学习的编辑器和来源应用标记为敏感的剪贴板内容不进入持久历史。
 
 ## 候选与 Rime
 

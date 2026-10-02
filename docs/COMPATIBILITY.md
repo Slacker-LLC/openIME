@@ -8,7 +8,7 @@
 |---|---|---|
 | 普通 / 多行 / 搜索 / 聊天（EditText、WebView、Compose） | 拼音预编辑 + 候选；回车按 IME action 或原始回车 | `core_regression.sh`、`ImeTestLabActivity` |
 | 自绘 / Compose / Web，没有「全选」也没有 ExtractedText | 清空 / 撤回改用光标前后文本，答案长度等于请求长度时拒绝删除 | `InputConnectionGatewayTest`，`CustomEditorTestActivity` |
-| 密码（含可见密码、网页密码、数字密码） | 不组合、不学习、不进剪贴板历史、禁用语音 | `security_regression.ps1` |
+| 密码（含可见密码、网页密码、数字密码） | 不组合（字母逐个直接上屏）、不学习词库和纠错、不读取输入框正文；可以使用剪贴板历史；语音可用，只把最终结果一次性上屏（不显示中间结果） | `security_regression.ps1`；`VoiceFinalPolicyTest`、`ClipboardSensitivityPolicyTest` |
 | 数字 / 电话 / 日期时间 | 起始键盘为数字 | `EditorInfoAdapterTest` |
 | 邮箱 / URL | 起始键盘为英文 | `EditorInfoAdapterTest` |
 | TYPE_NULL（终端、游戏、远程桌面） | 起始英文；每个字母立即以真实按键事件送出；退格 / 前删用按键事件（它们的 InputConnection 多半是 dummy 模式的 BaseInputConnection，`deleteSurroundingText` 返回 true 却什么也没删） | `InputConnectionGatewayTest` |

@@ -41,7 +41,6 @@ internal class ImePanelRenderer(
     private val createEmojiCell: (String) -> View,
     private val gridCellParams: (Int, Int, Int) -> LinearLayout.LayoutParams,
     private val currentMode: () -> KeyboardMode,
-    private val isPasswordField: () -> Boolean,
     private val onModeSelected: (KeyboardMode) -> Unit,
     private val onShowPanel: (Panel) -> Unit,
     private val onEnableFloatingKeyboard: () -> Unit,
@@ -118,7 +117,7 @@ internal class ImePanelRenderer(
         }
         val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         val cards = listOf(
-            ToolEntry("剪贴板", Panel.CLIPBOARD, R.drawable.ic_clipboard, enabled = !isPasswordField()),
+            ToolEntry("剪贴板", Panel.CLIPBOARD, R.drawable.ic_clipboard),
             ToolEntry("表情", Panel.EMOJI, R.drawable.ic_emoji),
             ToolEntry("符号", Panel.SYMBOLS, R.drawable.ic_symbols),
             ToolEntry("语音输入", Panel.VOICE, R.drawable.ic_mic),

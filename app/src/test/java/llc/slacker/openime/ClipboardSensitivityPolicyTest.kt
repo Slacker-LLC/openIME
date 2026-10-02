@@ -35,8 +35,8 @@ class ClipboardSensitivityPolicyTest {
     }
 
     @Test
-    fun passwordEditorsCannotExposePersistentHistory() {
-        assertFalse(
+    fun passwordEditorsCanUsePersistentHistory() {
+        assertTrue(
             ClipboardPrivacyPolicy.canUsePersistentHistory(
                 EditorInfoAdapter.EditorKind.PASSWORD,
                 imeOptions = 0,

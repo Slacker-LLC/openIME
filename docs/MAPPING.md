@@ -13,7 +13,7 @@
 | 长按 Popup | `KeyPopupController` | 定位、边缘限制、入场动画 |
 | 符号 | `ImeData.symbols` + `CustomSymbolRepository` | 生产可用 |
 | Emoji | `ImeData` + `EmojiRecentRepository` + Fluent assets | 当前正式 UI 仍以表情类为主，待扩展完整分类 |
-| 剪贴板 | `ClipboardHistoryRepository` + `InputConnectionGateway` | 普通编辑器可用；密码编辑器不暴露持久历史/粘贴入口 |
+| 剪贴板 | `ClipboardHistoryRepository` + `InputConnectionGateway` | 普通和密码编辑器均可用；来源应用标记为敏感的内容、要求关闭个性化学习的编辑器不进入持久历史；密码编辑器的复制/剪切/全选/粘贴按钮仍不可用（不读取输入框正文） |
 | 常用语 | `QuickPhraseRepository` / `QuickPhraseEditActivity` | 生产可用 |
 | 文本编辑 | `InputConnectionGateway` | 生产可用，能力随目标 EditorInfo/选区变化 |
 | 语音 | `VoiceModelLifecycleManager` + sherpa-onnx | 本地语音；长按空格跟随 Android touch-and-hold timeout |

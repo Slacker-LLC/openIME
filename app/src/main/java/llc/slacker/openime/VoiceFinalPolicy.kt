@@ -4,6 +4,8 @@ internal data class VoiceFinalPlan(
     val setFinalText: Boolean,
     val finishComposing: Boolean,
     val composingAfter: Boolean,
+    /** Password fields get the final text as one direct commit: no composing text, no correction tracking. */
+    val commitDirect: Boolean = false,
 )
 
 /** Pure decision layer so final-only ASR callbacks remain regression-testable. */
@@ -14,7 +16,14 @@ internal object VoiceFinalPolicy {
         autoCommit: Boolean,
         finalText: String,
     ): VoiceFinalPlan {
-        if (passwordField) return VoiceFinalPlan(false, false, false)
+        if (passwordField) {
+            return VoiceFinalPlan(
+                setFinalText = false,
+                finishComposing = false,
+                composingAfter = false,
+                commitDirect = finalText.isNotBlank(),
+            )
+        }
         val setFinal = finalText.isNotBlank()
         val hasComposition = hadPartialComposition || setFinal
         return VoiceFinalPlan(
