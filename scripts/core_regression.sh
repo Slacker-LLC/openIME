@@ -213,6 +213,14 @@ tap key-space
 check '034 nine-key rest then space -> 你好吗' '你好吗' "$(editor_text)"
 
 start_real
+mode PINYIN_9 || say 'WARN: PINYIN_9 not reached'
+for key in 6 4 4 2 6; do tap "$key"; done
+tap '九键拼音ni'
+tap '九键拼音hao'
+tap key-space
+check '037 nine-key one pinyin per character: ni, then hao, then space -> 你好' '你好' "$(editor_text)"
+
+start_real
 mode PINYIN_26 || say 'WARN: PINYIN_26 not reached'
 for key in n i h a o m a; do tap "$key"; done
 tap '候选:你'
