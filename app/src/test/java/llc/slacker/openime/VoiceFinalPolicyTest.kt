@@ -39,14 +39,32 @@ class VoiceFinalPolicyTest {
     }
 
     @Test
-    fun passwordFieldNeverReceivesVoiceText() {
+    fun passwordFieldGetsTheFinalTextAsOneDirectCommit() {
         assertEquals(
-            VoiceFinalPlan(false, false, false),
+            VoiceFinalPlan(
+                setFinalText = false,
+                finishComposing = false,
+                composingAfter = false,
+                commitDirect = true,
+            ),
             VoiceFinalPolicy.resolve(
                 passwordField = true,
                 hadPartialComposition = false,
                 autoCommit = true,
-                finalText = "不应写入",
+                finalText = "直接上屏",
+            ),
+        )
+    }
+
+    @Test
+    fun passwordFieldWithBlankResultCommitsNothing() {
+        assertEquals(
+            VoiceFinalPlan(false, false, false, commitDirect = false),
+            VoiceFinalPolicy.resolve(
+                passwordField = true,
+                hadPartialComposition = false,
+                autoCommit = true,
+                finalText = "  ",
             ),
         )
     }

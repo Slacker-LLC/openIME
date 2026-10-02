@@ -559,7 +559,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
                 java.util.Base64.getDecoder().decode(command.substringAfter("voice-simulate64:")),
                 Charsets.UTF_8,
             )
-            if (text.isBlank() || state.passwordField) {
+            if (text.isBlank()) {
                 false
             } else {
                 VoicePerformanceTrace.abandon()
@@ -578,7 +578,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
                 java.util.Base64.getDecoder().decode(command.substringAfter("voice-final-only64:")),
                 Charsets.UTF_8,
             )
-            if (text.isBlank() || state.passwordField) {
+            if (text.isBlank()) {
                 false
             } else {
                 VoicePerformanceTrace.abandon()
@@ -821,14 +821,12 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     }
 
     override fun onVoiceToggle() {
-        if (state.passwordField) return
         voiceMediaMute.mute()
         keyboardView?.startVoiceFromSpace()
     }
 
     override fun onVoicePressChanged(pressed: Boolean) {
         if (pressed) {
-            if (state.passwordField) return
             // Mute before model startup is posted so media cannot leak through
             // during the preparation window shown to the user.
             voiceMediaMute.mute()
@@ -875,6 +873,8 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     }
 
     override fun onVoicePartial(text: String) {
+        // Password fields get only the final text, as one direct commit: nothing
+        // is shown in the editor or on the keyboard while the user is speaking.
         if (state.passwordField || text.isBlank()) return
         voiceComposing = true
         gateway.setComposingText(text)
@@ -898,6 +898,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             autoCommit = voiceAutoCommitOnFinal,
             finalText = text,
         )
+        if (plan.commitDirect) gateway.commitText(text)
         if (plan.setFinalText) {
             gateway.setComposingText(text)
             VoicePerformanceTrace.markFirstDisplay()

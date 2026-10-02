@@ -655,54 +655,39 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
-    fun passwordFieldsDoNotExposeClipboardHistory() = withKeyboard { harness, _, keyboard ->
+    fun passwordFieldsKeepClipboardHistoryAvailable() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.renderState(ImeState(passwordField = true))
             val clipboard = keyboard.findViewWithTag<View>("clipboard-toolbar")
-            assertFalse("Password fields must disable clipboard history", clipboard.isEnabled)
-            assertTrue(
-                "Password clipboard action must use the shared disabled alpha",
-                clipboard.alpha == ImeSurfacePolicy.DISABLED_ALPHA,
-            )
-            assertTrue(clipboard.contentDescription.toString().contains("密码输入中不可用"))
-            assertTrue("Sensitive editors must not list clipboard in tools", run {
-                keyboard.showPanel(Panel.TOOLS)
-                keyboard.findViewWithTag<View>("tool:剪贴板") == null
-            })
-            keyboard.renderState(ImeState(passwordField = false))
-            assertTrue("Clipboard must return when the editor is safe", clipboard.isEnabled)
+            assertTrue("Password fields use clipboard history like any other field", clipboard.isEnabled)
+            keyboard.showPanel(Panel.TOOLS)
+            assertTrue("Clipboard stays in tools for password fields", keyboard.findViewWithTag<View>("tool:剪贴板") != null)
+            keyboard.showPanel(Panel.CLIPBOARD)
+            assertEquals(Panel.CLIPBOARD, keyboard.currentPanel())
             true
         }
     }
 
     @Test
-    fun switchingIntoPasswordFieldClosesAnOpenClipboardPanel() = withKeyboard { harness, _, keyboard ->
+    fun switchingIntoPasswordFieldKeepsAnOpenClipboardPanel() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.renderState(ImeState(passwordField = false))
             keyboard.showPanel(Panel.CLIPBOARD)
             assertEquals(Panel.CLIPBOARD, keyboard.currentPanel())
             keyboard.renderState(ImeState(passwordField = true))
-            assertEquals("Sensitive editor must close persistent clipboard history immediately", Panel.NONE, keyboard.currentPanel())
-            assertTrue(keyboard.findViewWithTag<View>("main-dock").isShown)
+            assertEquals(Panel.CLIPBOARD, keyboard.currentPanel())
             true
         }
     }
 
     @Test
-    fun passwordFieldsDisableVoiceGestureButKeepSpaceKey() = withKeyboard { harness, _, keyboard ->
+    fun passwordFieldsKeepTheVoiceGesture() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.renderState(ImeState(passwordField = true))
             val space = keyboard.findViewWithTag<View>("key-space")
-            assertFalse("Password fields must not expose the voice long-press", space.isLongClickable)
-            assertTrue(space.contentDescription.toString().contains("语音不可用"))
-            keyboard.startVoiceFromSpace()
-            assertFalse("Password fields must not start recording", keyboard.isVoiceActive())
-            assertTrue("Password fields must not open the voice panel", run {
-                keyboard.showPanel(Panel.VOICE)
-                keyboard.currentPanel() != Panel.VOICE
-            })
-            keyboard.renderState(ImeState(passwordField = false))
-            assertTrue("Voice gesture must return for ordinary editors", space.isLongClickable)
+            assertTrue("Password fields expose the voice long-press", space.isLongClickable)
+            keyboard.showPanel(Panel.VOICE)
+            assertEquals(Panel.VOICE, keyboard.currentPanel())
             true
         }
     }

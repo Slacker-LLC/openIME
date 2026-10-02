@@ -25,27 +25,27 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-// The root VERSION file (MAJOR.MINOR.PATCH) is the only place a version is
-// written. versionCode is derived from it, so the two cannot drift and every
-// release is strictly greater than the one before. scripts/release_check.py
-// applies the same rules in CI and verifies the built APK.
+// The root VERSION file (MAJOR.MINOR.PATCH, or MAJOR.MINOR.PATCH-beta.N) is the
+// only place a version is written. versionCode is derived from it, so the two
+// cannot drift and every release is strictly greater than the one before; a
+// stable release outranks every beta of the same MAJOR.MINOR.PATCH.
+// scripts/release_check.py applies the same rules in CI and verifies the built APK.
 val appVersionName: String = providers
     .fileContents(rootProject.layout.projectDirectory.file("VERSION"))
     .asText
     .get()
     .trim()
 val appVersionCode: Int = run {
-    val parts = Regex("""(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)""")
+    val match = Regex("""(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-beta\.([1-9]\d*))?""")
         .matchEntire(appVersionName)
-        ?.destructured
-        ?.toList()
-        ?.map(String::toInt)
-        ?: throw GradleException("VERSION must be MAJOR.MINOR.PATCH, found '$appVersionName'")
-    val (major, minor, patch) = parts
-    if (major < 1 || minor > 99 || patch > 99) {
-        throw GradleException("VERSION $appVersionName is out of range (major >= 1, minor and patch <= 99)")
+        ?: throw GradleException("VERSION must be MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-beta.N, found '$appVersionName'")
+    val (major, minor, patch) = match.groupValues.drop(1).take(3).map(String::toInt)
+    val beta = match.groups[4]?.value?.toInt()
+    val stage = beta ?: 99
+    if ((major == 0 && minor == 0 && patch == 0) || major > 2000 || minor > 99 || patch > 99 || (beta != null && beta > 98)) {
+        throw GradleException("VERSION $appVersionName is out of range (not 0.0.0, major <= 2000, minor and patch <= 99, beta <= 98)")
     }
-    major * 10_000 + minor * 100 + patch
+    (major * 10_000 + minor * 100 + patch) * 100 + stage
 }
 
 android {

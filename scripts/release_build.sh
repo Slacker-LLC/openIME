@@ -94,7 +94,17 @@ cp "$APK" "$OUT/$NAME"
 cp THIRD_PARTY_NOTICES.md "$OUT/THIRD_PARTY_NOTICES.release.md"
 (cd "$OUT" && sha256sum "$NAME" > SHA256SUMS.txt)
 
+CHANNEL="$(python3 scripts/release_check.py channel)"
+if [[ "$CHANNEL" == "beta" ]]; then
+  CHANNEL_NOTE="> **Beta 测试版。** 功能完整度和稳定性还在验证中，请不要作为日常唯一输入法；遇到问题请到 Issues 反馈。"
+  PACKAGE_NOTE="固定签名的 arm64-v8a 测试包"
+else
+  CHANNEL_NOTE=""
+  PACKAGE_NOTE="固定签名的 arm64-v8a 正式包"
+fi
+
 {
+  [[ -n "$CHANNEL_NOTE" ]] && printf '%s\n\n' "$CHANNEL_NOTE"
   python3 scripts/release_check.py notes
   cat <<EOF
 
@@ -102,18 +112,19 @@ cp THIRD_PARTY_NOTICES.md "$OUT/THIRD_PARTY_NOTICES.release.md"
 
 ### 下载与校验
 
-- \`$NAME\`：固定签名的 arm64-v8a 正式包。
+- \`$NAME\`：$PACKAGE_NOTE。
 - \`SHA256SUMS.txt\`：校验和。\`THIRD_PARTY_NOTICES.release.md\`：第三方许可清单。
 
 下载后在同一目录执行 \`sha256sum -c SHA256SUMS.txt\`，校验通过再安装。
 
 签名证书 SHA-256：\`$(printf '%s' "$CERT_SHA256" | tr -d ':' | tr 'A-F' 'a-f')\`。每个版本都应一致，可用 \`apksigner verify --print-certs\` 核对。
 
-### 已知问题
+### 已知限制
 
-- 首次安装后，完整 Rime 词典需要完成首次部署才达到稳定的候选表现；部署期间由高频快速词库提供候选。
-- 发布 APK 只包含 arm64-v8a；模拟器请使用 Debug 构建。
-- 从 Debug 签名的开发版升级前需要先卸载（签名不同，无法覆盖安装）；卸载前可在「设置 → 关于与数据」导出用户数据。
+- 手写输入尚未接入识别引擎，入口默认隐藏；九键暂不支持与外接键盘同时使用。
+- 首次安装后需要完成完整词典部署，期间候选质量略低。
+- 发布包只含 arm64-v8a；模拟器请使用 Debug 构建。
+- 系统不允许降级或换签名覆盖安装：安装此前版本号更高的包或 Debug 包时，需要先卸载（卸载前可在「设置 → 关于与数据」导出用户数据）。
 EOF
 } > "$OUT/RELEASE_NOTES.md"
 

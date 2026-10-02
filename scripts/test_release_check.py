@@ -33,17 +33,28 @@ CHANGELOG = """# 更新记录
 
 class VersionTests(unittest.TestCase):
     def test_version_code_formula(self) -> None:
-        self.assertEqual(rc.version_code("1.0.0"), 10000)
-        self.assertEqual(rc.version_code("1.2.3"), 10203)
-        self.assertEqual(rc.version_code("2.10.99"), 21099)
+        self.assertEqual(rc.version_code("0.0.1-beta.1"), 101)
+        self.assertEqual(rc.version_code("0.0.1"), 199)
+        self.assertEqual(rc.version_code("1.0.0"), 1000099)
+        self.assertEqual(rc.version_code("1.2.3-beta.7"), 1020307)
+        self.assertEqual(rc.version_code("2000.99.99"), 2000999999)
+        self.assertLess(rc.version_code("2000.99.99"), 2**31)
 
     def test_every_release_is_greater_than_the_one_before(self) -> None:
-        order = ["1.0.0", "1.0.1", "1.0.99", "1.1.0", "1.99.99", "2.0.0"]
+        order = ["0.0.1-beta.1", "0.0.1-beta.2", "0.0.1-beta.98", "0.0.1", "0.0.2-beta.1", "0.0.2",
+                 "0.1.0-beta.1", "0.1.0", "0.99.99", "1.0.0-beta.1", "1.0.0", "1.0.1", "1.99.99", "2.0.0"]
         codes = [rc.version_code(version) for version in order]
         self.assertEqual(codes, sorted(set(codes)))
+        keys = [rc.parse_version(version) for version in order]
+        self.assertEqual(keys, sorted(set(keys)))
 
-    def test_rejects_anything_but_plain_semver(self) -> None:
-        for bad in ["1.0", "v1.0.0", "1.0.0-rc1", "1.0.0+build", "01.0.0", "0.9.0", "1.100.0", "1.0.100", ""]:
+    def test_channel(self) -> None:
+        self.assertTrue(rc.is_prerelease("0.0.1-beta.1"))
+        self.assertFalse(rc.is_prerelease("1.0.0"))
+
+    def test_rejects_anything_else(self) -> None:
+        for bad in ["1.0", "v1.0.0", "1.0.0-rc1", "1.0.0-beta", "1.0.0-beta.0", "0.0.1-beta.99", "1.0.0-alpha.1",
+                    "1.0.0+build", "01.0.0", "0.0.0", "0.0.0-beta.1", "1.100.0", "1.0.100", "2001.0.0", ""]:
             with self.subTest(bad=bad), self.assertRaises(rc.ReleaseCheckError):
                 rc.parse_version(bad)
 
@@ -97,12 +108,12 @@ class ChangelogTests(unittest.TestCase):
 
 class BadgingTests(unittest.TestCase):
     SAMPLE = (
-        "package: name='llc.slacker.openime' versionCode='10000' versionName='1.0.0' "
+        "package: name='llc.slacker.openime' versionCode='101' versionName='0.0.1-beta.1' "
         "platformBuildVersionName='16' compileSdkVersion='36'\nsdkVersion:'26'\n"
     )
 
     def test_parses_the_package_line(self) -> None:
-        self.assertEqual(rc.parse_badging(self.SAMPLE), ("llc.slacker.openime", 10000, "1.0.0"))
+        self.assertEqual(rc.parse_badging(self.SAMPLE), ("llc.slacker.openime", 101, "0.0.1-beta.1"))
 
     def test_rejects_output_without_a_package_line(self) -> None:
         with self.assertRaises(rc.ReleaseCheckError):
@@ -126,7 +137,7 @@ class CommandTests(unittest.TestCase):
     def test_check_passes_and_prints_the_version_code(self) -> None:
         status, output = self.run_main(self.fixture("1.1.0"), "check")
         self.assertEqual(status, 0, output)
-        self.assertIn("10100", output)
+        self.assertIn("1010099", output)
 
     def test_check_enforces_the_tag(self) -> None:
         root = self.fixture("1.1.0")
@@ -140,6 +151,18 @@ class CommandTests(unittest.TestCase):
         status, output = self.run_main(self.fixture("1.2.0"), "check")
         self.assertEqual(status, 1)
         self.assertIn("newest CHANGELOG", output)
+
+    def test_a_beta_checks_and_reports_its_channel(self) -> None:
+        root = self.fixture("1.1.0")
+        (root / "CHANGELOG.md").write_text(
+            CHANGELOG.replace("## [Unreleased]\n", "## [Unreleased]\n\n## [1.2.0-beta.1] - 2026-11-02\n\n- beta.\n", 1),
+            encoding="utf-8",
+        )
+        (root / "VERSION").write_text("1.2.0-beta.1\n", encoding="utf-8")
+        self.assertEqual(self.run_main(root, "check", "--tag", "v1.2.0-beta.1")[0], 0)
+        self.assertEqual(self.run_main(root, "channel"), (0, "beta\n"))
+        (root / "VERSION").write_text("1.1.0\n", encoding="utf-8")
+        self.assertEqual(self.run_main(root, "channel"), (0, "stable\n"))
 
     def test_notes_default_to_the_current_version(self) -> None:
         status, output = self.run_main(self.fixture("1.1.0"), "notes")

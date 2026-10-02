@@ -30,8 +30,10 @@ internal object ClipboardPrivacyPolicy {
         editorKind: EditorInfoAdapter.EditorKind,
         imeOptions: Int,
     ): Boolean =
-        editorKind != EditorInfoAdapter.EditorKind.PASSWORD &&
-            (imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING) == 0
+        // Password fields use the history like any other field (their owner's choice).
+        // Editors that ask for no personalized learning, and clips the source app
+        // marks sensitive (see ClipboardSensitivityPolicy), stay out of it.
+        (imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING) == 0
 }
 
 internal object ClipboardRetentionPolicy {

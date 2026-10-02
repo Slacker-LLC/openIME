@@ -160,7 +160,7 @@ open class ImeKeyboardView(
     }
     private val spaceVoiceGestureController = SpaceVoiceGestureController(
         toPx = ::dp,
-        canStartVoice = { voiceAllowed },
+        canStartVoice = { true },
         onArmFeedback = ::hapticFeedback,
         onVoiceStart = { listener.onVoicePressChanged(true) },
         onVoiceStop = { listener.onVoicePressChanged(false) },
@@ -187,7 +187,7 @@ open class ImeKeyboardView(
                     },
                 )
             },
-            canStartVoice = { voiceAllowed },
+            canStartVoice = { true },
             markWhiteKey = { key -> key.setTag(MARK_WHITE_KEY, true) },
             onFeedback = ::feedback,
             onAccessibilityLongPress = {
@@ -315,7 +315,6 @@ open class ImeKeyboardView(
     private var lastNineSegmentPrefix = ""
     private var lastNinePinyinPaths = emptyList<String>()
     private var currentCandidates = emptyList<String>()
-    private var voiceAllowed = true
     private var voiceGestureSession = false
     // Floating mode changes only the IME window bounds. The keyboard surface
     // itself remains the same normal keyboard used in portrait mode.
@@ -517,7 +516,6 @@ open class ImeKeyboardView(
             createEmojiCell = emojiCellFactory::create,
             gridCellParams = ::gridCellParams,
             currentMode = { mode },
-            isPasswordField = { passwordField },
             onModeSelected = { selected -> setMode(selected) },
             onShowPanel = ::showPanel,
             onEnableFloatingKeyboard = ::enableFloatingKeyboard,
@@ -1266,7 +1264,6 @@ open class ImeKeyboardView(
 
     fun showPanel(newPanel: Panel) {
         if (newPanel == Panel.NONE || newPanel == Panel.CANDIDATE_EXPANDED) return
-        if (passwordField && newPanel in setOf(Panel.CLIPBOARD, Panel.VOICE)) return
         if (panel == Panel.CLIPBOARD && newPanel != Panel.CLIPBOARD) {
             clipboardPanelController.invalidatePendingLoad()
         }
@@ -1402,18 +1399,12 @@ open class ImeKeyboardView(
     fun renderState(state: ImeState) {
         val passwordStateChanged = passwordField != state.passwordField
         passwordField = state.passwordField
-        voiceAllowed = !passwordField
         if (passwordStateChanged) {
-            if (!voiceAllowed && (voiceGestureSession || voicePanelController.active || voicePanelController.pending)) {
+            // A recording started in the previous editor must not end in this one.
+            if (voiceGestureSession || voicePanelController.active || voicePanelController.pending) {
                 cancelVoiceForManualInput()
             }
-            if (passwordField && panel == Panel.CLIPBOARD) {
-                // A retained IME view can survive a focus change into a
-                // password field. Persistent history must disappear
-                // immediately instead of remaining visible until the user
-                // manually backs out of the panel.
-                closePanelToKeyboard()
-            } else if (panel == Panel.TOOLS) {
+            if (panel == Panel.TOOLS) {
                 renderPanel(Panel.TOOLS)
             } else if (panel == Panel.TEXT_EDITOR) {
                 // The same IME view can survive an editor switch. Rebuild the
@@ -1421,8 +1412,6 @@ open class ImeKeyboardView(
                 // password/privacy boundary immediately.
                 renderPanel(Panel.TEXT_EDITOR)
             }
-            syncSensitiveToolbar()
-            syncSensitiveVoice()
         }
         val sameComposition = composition.text.toString() == state.composition
         setCompositionText(
@@ -1477,37 +1466,6 @@ open class ImeKeyboardView(
         enter.setMainText(label)
         enter.applyMainTextScale(skinFontScale())
         enter.contentDescription = label
-    }
-
-    /** Keep sensitive editors from exposing persistent clipboard history. */
-    private fun syncSensitiveToolbar() {
-        val clipboardButton = toolbarRow.findViewWithTag<View>("clipboard-toolbar") ?: return
-        val available = !passwordField
-        clipboardButton.isEnabled = available
-        clipboardButton.isClickable = available
-        clipboardButton.alpha = if (available) 1f else ImeSurfacePolicy.DISABLED_ALPHA
-        clipboardButton.contentDescription = if (available) {
-            "剪贴板"
-        } else {
-            "剪贴板，密码输入中不可用"
-        }
-        if (Build.VERSION.SDK_INT >= 30) {
-            clipboardButton.stateDescription = if (available) "可用" else "密码输入中不可用"
-        }
-    }
-
-    /** Password editors keep ordinary space input but remove the recording gesture. */
-    private fun syncSensitiveVoice() {
-        val space = findViewWithTag<View>("key-space") ?: return
-        space.isLongClickable = voiceAllowed
-        space.contentDescription = if (voiceAllowed) {
-            "空格，点击空格，长按语音输入"
-        } else {
-            "空格，密码输入中语音不可用"
-        }
-        if (Build.VERSION.SDK_INT >= 30) {
-            space.stateDescription = if (voiceAllowed) "可长按语音" else "语音不可用"
-        }
     }
 
     fun setAssociationCandidates(candidates: List<String>) {
@@ -1910,7 +1868,6 @@ open class ImeKeyboardView(
         applyTheme()
         onViewHierarchyRebuilt()
         renderedMode = mode
-        syncSensitiveVoice()
         syncModeAccessibility()
     }
 
@@ -2092,7 +2049,6 @@ open class ImeKeyboardView(
 
     /** Starts recording after the combined space key crosses the long-press threshold. */
     fun startVoiceFromSpace() {
-        if (!voiceAllowed) return
         voiceGestureSession = true
         voicePanelController.lockLanguageForGesture()
         inlineVoicePresenter.invalidateGeneration()
