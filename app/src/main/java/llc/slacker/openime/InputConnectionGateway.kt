@@ -96,7 +96,11 @@ class InputConnectionGateway(
     fun commitText(text: String) {
         if (text.isEmpty()) return
         invalidateClearUndo()
-        connection()?.commitText(text, 1)
+        val ic = connection() ?: return
+        // One Binder transaction carries about 1 MB: committing a huge paste or
+        // transcript in one call throws TransactionTooLargeException and takes the
+        // keyboard down with it. Chunk it, never splitting a surrogate pair.
+        chunksForCommit(text).forEach { chunk -> ic.commitText(chunk, 1) }
     }
 
     /**
@@ -811,4 +815,20 @@ class InputConnectionGateway(
         const val SURROUNDING_CHUNK = 100_000
         const val MAX_SURROUNDING_ROUNDS = 8
     }
+}
+
+internal const val COMMIT_CHUNK_CHARS = 32_000
+
+/** Pieces of at most [COMMIT_CHUNK_CHARS] UTF-16 units that never end between a surrogate pair. */
+internal fun chunksForCommit(text: String): List<String> {
+    if (text.length <= COMMIT_CHUNK_CHARS) return listOf(text)
+    val chunks = ArrayList<String>(text.length / COMMIT_CHUNK_CHARS + 1)
+    var start = 0
+    while (start < text.length) {
+        var end = minOf(start + COMMIT_CHUNK_CHARS, text.length)
+        if (end < text.length && Character.isHighSurrogate(text[end - 1])) end--
+        chunks += text.substring(start, end)
+        start = end
+    }
+    return chunks
 }
