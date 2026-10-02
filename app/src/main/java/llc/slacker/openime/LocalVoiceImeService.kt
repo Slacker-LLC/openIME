@@ -464,7 +464,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         candidatesStart: Int,
         candidatesEnd: Int,
     ) {
-        gateway.updateSelection(newSelStart, newSelEnd)
+        gateway.updateSelection(newSelStart, newSelEnd, reportedByEditor = true)
         guarded("onUpdateSelection") { refreshTextEditControls() }
         super.onUpdateSelection(
             oldSelStart,

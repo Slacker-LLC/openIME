@@ -169,9 +169,14 @@ class InputConnectionGateway(
     @Volatile
     private var knownSelectionEnd: Int = -1
 
-    fun updateSelection(start: Int, end: Int) {
+    /** True once the editor itself has reported a selection (onUpdateSelection), not just its start-up values. */
+    @Volatile
+    private var selectionReportedByEditor = false
+
+    fun updateSelection(start: Int, end: Int, reportedByEditor: Boolean = false) {
         knownSelectionStart = start
         knownSelectionEnd = end
+        selectionReportedByEditor = reportedByEditor
     }
 
     private fun typeAsKeyEvents(ic: InputConnection, text: String): Boolean {
@@ -227,6 +232,10 @@ class InputConnectionGateway(
             }
             return false
         }
+        // Every call below is a synchronous Binder round trip into the app; a slow
+        // or stuck app makes each one wait, and Backspace used to make three. When
+        // the editor has told us the cursor is collapsed there is no selection to ask about.
+        if (selectionReportedByEditor && knownSelectionStart >= 0 && knownSelectionStart == knownSelectionEnd) return false
         val selected = runCatching { ic.getSelectedText(0)?.toString().orEmpty() }.getOrDefault("")
         if (selected.isNotEmpty()) {
             if (knownSelectionStart >= 0 && knownSelectionEnd >= 0) {
