@@ -192,5 +192,5 @@ bash scripts/verify_linux.sh emulator-5554
 
 ## 许可证
 
-主项目许可证尚未单独声明；公开仓库不等同于授予再分发或商业使用许可。第三方
-组件的许可证保留在各自目录中，详见 [docs/LICENSING.md](docs/LICENSING.md)。
+openIME 以 [GPL-3.0-only](LICENSE) 发布。第三方组件的许可证保留在各自目录中，
+详见 [docs/LICENSING.md](docs/LICENSING.md) 和 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
