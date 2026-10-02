@@ -132,7 +132,7 @@ OPENIME_REHEARSAL=1 OPENIME_SKIP_TESTS=1 scripts/release_build.sh   # 需要上�
 - `android:allowBackup="false"` 保持不变。
 - `THIRD_PARTY_NOTICES.md` 与 `app/src/main/assets/licenses/` 同步。
 - 语音模型、词库或第三方 runtime 版本变化时重新核对对应许可证（见 [LICENSING.md](LICENSING.md)）。
-- 主项目许可证：仓库尚未选择，见 LICENSING.md；公开发布前需要所有者决定。
+- 主项目许可证：`LICENSE`（GPL-3.0-only），说明见 LICENSING.md。
 
 ## 社交预览
 

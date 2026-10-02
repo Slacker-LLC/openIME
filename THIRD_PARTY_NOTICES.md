@@ -1,6 +1,6 @@
 # 第三方资源与分发核对
 
-本文件记录 openIME 实际随源码或 APK 分发的主要第三方代码、数据和模型。主项目许可证仍由项目所有者决定，本文件不为 openIME 本身授予许可证。
+本文件记录 openIME 实际随源码或 APK 分发的主要第三方代码、数据和模型。openIME 本身的许可证见仓库根目录 `LICENSE`（GPL-3.0-only），本文件只记录第三方组件。
 
 | 组件 | 仓库内位置 | 上游/来源 | 许可证 | 分发核对 |
 |---|---|---|---|---|
@@ -19,7 +19,7 @@
 - `app/src/main/assets/licenses/` 下的第三方许可文本必须继续随 APK 打包，包括 Rime Ice、librime、OpenCC、Snappy、sherpa-onnx、Paraformer 模型和 Fluent Emoji。
 - 语音 runtime 与模型升级时，重新核对**具体版本/模型**的许可证，不要只沿用本文件旧结论。
 - 内置词库来源或固定提交变化时，同步更新本文件、`docs/LICENSING.md` 和 APK 内许可证文件。
-- 主项目 `LICENSE` 在项目所有者决定前保持缺失；README 对主项目许可状态的现有表述保持不变。
+- 主项目 `LICENSE`（GPL-3.0-only）与 README、`docs/LICENSING.md` 保持一致；更换主项目许可证前先核对 Rime Ice 词典的 GPL-3.0-only 义务。
 
 ## 备注
 
