@@ -38,7 +38,15 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
 
     private var keyboardView: ImeKeyboardView? = null
     private lateinit var gateway: InputConnectionGateway
-    private lateinit var candidatePipeline: CandidatePipeline
+    /**
+     * Starts as an empty pipeline and is replaced by the real one once the lexicon
+     * and the nine-key decoder are built on a background thread (about 0.3 s on a
+     * fast host, several times that on a mid-range phone). Building them in
+     * onCreate froze the main thread at every cold start; until the swap, Rime
+     * alone supplies candidates.
+     */
+    @Volatile
+    private var candidatePipeline: CandidatePipeline = CandidatePipeline(CandidateEngine(linkedMapOf()))
     private lateinit var candidateQueries: CandidateQueryCoordinator
     private lateinit var rime: RimeEngine
     private lateinit var voiceLifecycle: VoiceModelLifecycleManager
@@ -87,12 +95,16 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         UserPhraseRepository.configure(this)
         VoiceCorrectionRepository.configure(this)
         voiceLifecycle = VoiceModelLifecycleManager(this)
-        candidatePipeline = CandidatePipeline(CandidateEngine(PinyinLexicon.load(this)))
+        Thread({
+            runCatching { CandidatePipeline(CandidateEngine(PinyinLexicon.load(this))) }
+                .onSuccess { candidatePipeline = it }
+                .onFailure { Log.e(TAG, "lexicon/decoder initialisation failed; running on Rime only", it) }
+        }, "openime-lexicon").apply { isDaemon = true; start() }
         rime = RimeEngine(this).also { it.start() }
         candidateQueries = CandidateQueryCoordinator(
             rime = rime,
             mainHandler = mainHandler,
-            fallbackCandidatesFor = candidatePipeline::nineKeyFallbackCandidatesFor,
+            fallbackCandidatesFor = { candidatePipeline.nineKeyFallbackCandidatesFor(it) },
             maxInputLength = MAX_RIME_INPUT_LENGTH,
             maxNineKeyPaths = MAX_RIME_NINE_KEY_PATHS,
             maxCandidates = MAX_CANDIDATES,
