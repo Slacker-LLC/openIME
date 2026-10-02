@@ -14,6 +14,7 @@
 - [TEST_ARCHITECTURE.md](TEST_ARCHITECTURE.md)：自动化层级、debug harness 和 CI 门禁。
 - [TEST_SOP.md](TEST_SOP.md)：L0～L3 正式测试流程。
 - [TEST_SOP_CHECKLIST.md](TEST_SOP_CHECKLIST.md)：多设备与人工交互验收清单。
+- [COMPATIBILITY.md](COMPATIBILITY.md)：输入环境兼容性：编辑器类型、物理键盘、显示环境、崩溃 / 卡死 / 冲突的处理与验证。
 - [LICENSING.md](LICENSING.md)：主项目与第三方组件许可证边界。
 - [RELEASE.md](RELEASE.md)：版本号规则（`VERSION`）、CHANGELOG、固定签名、arm64 正式包、标签发布、演练与回滚。
 - [REPOSITORY.md](REPOSITORY.md)：分支、合并、`main` 与标签保护、安全与依赖更新，以及如何重新应用这些设置。
