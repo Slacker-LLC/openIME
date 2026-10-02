@@ -62,7 +62,11 @@ class InputConnectionGatewayTest {
         override fun getExtractedText(request: ExtractedTextRequest?, flags: Int): ExtractedText? =
             extractedText
         override fun getHandler(): Handler? = null
-        override fun getSelectedText(flags: Int): CharSequence? = selectedText
+        var selectedTextCalls = 0
+        override fun getSelectedText(flags: Int): CharSequence? {
+            selectedTextCalls++
+            return selectedText
+        }
         override fun getTextAfterCursor(length: Int, flags: Int): CharSequence? = afterText.take(length)
         override fun getTextBeforeCursor(length: Int, flags: Int): CharSequence? = beforeText.takeLast(length)
         override fun performContextMenuAction(id: Int): Boolean {
@@ -710,5 +714,28 @@ class InputConnectionGatewayTest {
         val fake = FakeInputConnection()
         InputConnectionGateway(null, { fake }).commitText("ls")
         assertEquals(listOf("commit:ls"), fake.events)
+    }
+
+    @Test
+    fun backspaceDoesNotQueryTheAppWhenTheEditorReportedACollapsedCursor() {
+        val fake = FakeInputConnection(beforeText = "abc")
+        val gateway = InputConnectionGateway(null, { fake })
+        gateway.updateSelection(3, 3, reportedByEditor = true)
+        gateway.deleteBackwards()
+        assertEquals(0, fake.selectedTextCalls)
+        // One delete call (which flavour depends on the SDK level); nothing else was sent.
+        assertEquals(1, fake.events.size)
+        assertTrue(fake.events.single().startsWith("delete"))
+    }
+
+    @Test
+    fun backspaceStillAsksWhenOnlyTheStartUpSelectionIsKnown() {
+        // initialSelStart/End can be stale; only the editor's own reports are trusted.
+        val fake = FakeInputConnection(selectedText = "bc")
+        val gateway = InputConnectionGateway(null, { fake })
+        gateway.updateSelection(3, 3, reportedByEditor = false)
+        gateway.deleteBackwards()
+        assertEquals(1, fake.selectedTextCalls)
+        assertEquals(listOf("commit:"), fake.events)
     }
 }
