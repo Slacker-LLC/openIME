@@ -668,4 +668,47 @@ class InputConnectionGatewayTest {
         assertTrue(gateway.clearAllText())
         assertFalse(gateway.hasClearUndo())
     }
+
+    // --- terminals, games and remote desktops: TYPE_NULL, key events only ---
+
+    private fun rawKeyGateway(fake: FakeInputConnection) = InputConnectionGateway(
+        context = null,
+        connection = { fake },
+        isRawKeys = { true },
+        // The JVM has no key character map; one synthetic event per character is enough to observe.
+        keyEventsFor = { text -> if (text.all { it.code < 0x80 }) Array(text.length) { KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_A) } else null },
+    )
+
+    @Test
+    fun rawKeyEditorsDeleteWithKeyEventsNotWithTheDummyConnectionsPrivateBuffer() {
+        // BaseInputConnection in dummy mode answers true to deleteSurroundingText and removes nothing.
+        val fake = FakeInputConnection(deleteSurroundingResult = true)
+        rawKeyGateway(fake).deleteBackwards()
+        assertEquals(listOf("key", "key"), fake.events) // DEL down + up, no delete* call
+    }
+
+    @Test
+    fun rawKeyEditorsForwardDeleteWithKeyEventsToo() {
+        val fake = FakeInputConnection()
+        rawKeyGateway(fake).deleteForwards()
+        assertEquals(listOf("key", "key"), fake.events)
+    }
+
+    @Test
+    fun rawKeyEditorsReceiveAsciiAsKeyEventsAndOtherTextAsCommit() {
+        val fake = FakeInputConnection()
+        val gateway = rawKeyGateway(fake)
+        gateway.commitText("ls")
+        assertEquals(listOf("key", "key"), fake.events)
+        fake.events.clear()
+        gateway.commitText("你好")
+        assertEquals(listOf("commit:你好"), fake.events)
+    }
+
+    @Test
+    fun ordinaryEditorsAreNotAffectedByTheRawKeyPath() {
+        val fake = FakeInputConnection()
+        InputConnectionGateway(null, { fake }).commitText("ls")
+        assertEquals(listOf("commit:ls"), fake.events)
+    }
 }

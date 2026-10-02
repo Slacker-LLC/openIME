@@ -23,11 +23,13 @@ internal object InputMethodSubtypePolicy {
         EditorInfoAdapter.EditorKind.NUMBER,
         EditorInfoAdapter.EditorKind.DECIMAL,
         EditorInfoAdapter.EditorKind.PHONE,
+        EditorInfoAdapter.EditorKind.DATETIME,
         -> KeyboardMode.DIGITS
 
         EditorInfoAdapter.EditorKind.EMAIL,
         EditorInfoAdapter.EditorKind.URL,
         EditorInfoAdapter.EditorKind.PASSWORD,
+        EditorInfoAdapter.EditorKind.RAW_KEYS,
         -> KeyboardMode.ENGLISH_26
 
         else -> when (language(subtypeLocale)) {

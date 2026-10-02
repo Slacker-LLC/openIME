@@ -148,6 +148,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             context = this,
             connection = { currentInputConnection },
             isPassword = { state.passwordField },
+            isRawKeys = { EditorInfoAdapter.kind(state.editorInfo) == EditorInfoAdapter.EditorKind.RAW_KEYS },
         )
         state = ImeState(
             theme = ImeSettingsRepository.loadTheme(this),
@@ -1005,7 +1006,14 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         candidates: List<String>,
         rimeInputs: List<String>,
     ) {
-        if (state.passwordField) {
+        val directCommit = state.passwordField || (
+            // Terminals and games need each letter as it is typed; composing English
+            // there shows nothing until the word ends. Pinyin still composes.
+            EditorInfoAdapter.kind(state.editorInfo) == EditorInfoAdapter.EditorKind.RAW_KEYS &&
+                state.keyboardMode != KeyboardMode.PINYIN_26 &&
+                state.keyboardMode != KeyboardMode.PINYIN_9
+            )
+        if (directCommit) {
             // Password fields never receive composing text, so the view's
             // buffer is the only holder of pending input and renderState()
             // empties it on every report. The buffer therefore contains

@@ -43,6 +43,14 @@ class InputConnectionGateway(
     private val connection: () -> InputConnection?,
     private val isPassword: () -> Boolean = { false },
     private val nowMs: () -> Long = { System.nanoTime() / 1_000_000L },
+    /**
+     * Editors with no text type (terminals, games, remote desktops: TYPE_NULL).
+     * Their InputConnection is usually Android's BaseInputConnection in dummy
+     * mode, which edits a private buffer: deleteSurroundingText "succeeds" and does
+     * nothing. They only understand key events, so typing and deleting use those.
+     */
+    private val isRawKeys: () -> Boolean = { false },
+    private val keyEventsFor: (String) -> Array<KeyEvent>? = ::keyEventsForText,
 ) {
 
     data class CursorSnapshot(
@@ -97,6 +105,7 @@ class InputConnectionGateway(
         if (text.isEmpty()) return
         invalidateClearUndo()
         val ic = connection() ?: return
+        if (isRawKeys() && typeAsKeyEvents(ic, text)) return
         // One Binder transaction carries about 1 MB: committing a huge paste or
         // transcript in one call throws TransactionTooLargeException and takes the
         // keyboard down with it. Chunk it, never splitting a surrogate pair.
@@ -159,9 +168,20 @@ class InputConnectionGateway(
         knownSelectionEnd = end
     }
 
+    private fun typeAsKeyEvents(ic: InputConnection, text: String): Boolean {
+        if (text.length > RAW_KEY_TEXT_MAX) return false
+        val events = keyEventsFor(text) ?: return false
+        events.forEach { ic.sendKeyEvent(it) }
+        return true
+    }
+
     fun deleteBackwards() {
         invalidateClearUndo()
         val ic = connection() ?: return
+        if (isRawKeys()) {
+            sendKeyDownUp(ic, KeyEvent.KEYCODE_DEL)
+            return
+        }
         if (deleteSelection()) return
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -244,6 +264,10 @@ class InputConnectionGateway(
     fun deleteForwards() {
         invalidateClearUndo()
         val ic = connection() ?: return
+        if (isRawKeys()) {
+            sendKeyDownUp(ic, KeyEvent.KEYCODE_FORWARD_DEL)
+            return
+        }
         if (deleteSelection()) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             val deleted = runCatching { ic.deleteSurroundingTextInCodePoints(0, 1) }.getOrDefault(false)
@@ -832,3 +856,10 @@ internal fun chunksForCommit(text: String): List<String> {
     }
     return chunks
 }
+
+private const val RAW_KEY_TEXT_MAX = 64
+
+/** Real key events for [text] when the virtual keyboard can type all of it (ASCII), else null. */
+internal fun keyEventsForText(text: String): Array<KeyEvent>? =
+    runCatching { android.view.KeyCharacterMap.load(android.view.KeyCharacterMap.VIRTUAL_KEYBOARD)?.getEvents(text.toCharArray()) }
+        .getOrNull()
