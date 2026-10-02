@@ -71,6 +71,8 @@ internal class FloatingKeyboardController(
 
     fun applyTheme(tokens: ImeTheme.Tokens) {
         (handle as? DragHandleView)?.setDotColor(tokens.border)
+        handle.setBackgroundColor(tokens.toolbarBackground)
+        mainDock.elevation = if (enabled) toPx(10).toFloat() else 0f
         if (enabled) {
             mainDock.background = ImeDrawableFactory.rounded(
                 tokens.keyboardBackground,
@@ -104,21 +106,13 @@ internal class FloatingKeyboardController(
 
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
-            val radius = toPx(2)
-            val gapX = toPx(7)
-            val gapY = toPx(7)
-            val startX = width / 2f - gapX
-            val startY = height / 2f - gapY / 2f
-            for (row in 0..1) {
-                for (column in 0..2) {
-                    canvas.drawCircle(
-                        startX + column * gapX,
-                        startY + row * gapY,
-                        radius.toFloat(),
-                        dotPaint,
-                    )
-                }
-            }
+            val halfWidth = toPx(18).toFloat()
+            val halfHeight = toPx(2).toFloat()
+            canvas.drawRoundRect(
+                width / 2f - halfWidth, height / 2f - halfHeight,
+                width / 2f + halfWidth, height / 2f + halfHeight,
+                halfHeight, halfHeight, dotPaint,
+            )
         }
     }
 }

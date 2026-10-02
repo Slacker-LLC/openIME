@@ -21,6 +21,7 @@ enum class Panel {
     TEXT_EDITOR,
     SETTINGS,
     FUZZY_SETTINGS,
+    SKIN_SETTINGS,
     CANDIDATE_EXPANDED,
 }
 
@@ -47,10 +48,10 @@ data class ImeState(
     val selectedPinyin9Filter: String = "",
     val theme: ImeTheme = ImeTheme.IOS,
     val appearance: ImeAppearance = ImeAppearance.SYSTEM,
-    val soundEnabled: Boolean = true,
+    val soundEnabled: Boolean = false,
     val hapticEnabled: Boolean = true,
     // Default off, matching ImeSettingsRepository.loadPopup and the View field.
-    val popupEnabled: Boolean = false,
+    val popupEnabled: Boolean = true,
     val fuzzyPinyinEnabled: Boolean = false,
     val editorInfo: EditorInfo? = null,
     val passwordField: Boolean = false,
@@ -58,9 +59,9 @@ data class ImeState(
     // First real emoji category tab (see ImeData.emojiByCategory order).
     val emojiCategory: String = "笑脸",
     val voiceState: VoiceUiState = VoiceUiState(),
-    val skinOpacity: Int = 95,
+    val skinOpacity: Int = 100,
     val skinRadius: Int = 8,
-    val skinFontSize: Int = 17,
+    val skinFontSize: Int = 21,
     val skinPrimaryColor: String = AccentPalette.DEFAULT,
 )
 

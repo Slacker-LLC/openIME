@@ -26,6 +26,14 @@ jobs:
         with:
           lfs: true
 
+      # Fails in seconds, before the toolchain is set up: VERSION is valid and
+      # CHANGELOG.md has the matching dated section (docs/RELEASE.md).
+      - name: Check version and changelog
+        shell: bash
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_*.py'
+          python3 scripts/release_check.py check
+
       - name: Set up JDK 17
         uses: actions/setup-java@v6
         with:
@@ -79,6 +87,12 @@ jobs:
             echo "::endgroup::"
           fi
           exit $status
+
+      - name: Verify APK version identity
+        shell: bash
+        run: |
+          python3 scripts/release_check.py apk app/build/outputs/apk/debug/app-debug.apk \
+            --aapt2 "$ANDROID_HOME/build-tools/35.0.0/aapt2"
 
       - name: Upload test APKs
         uses: actions/upload-artifact@v7
@@ -134,9 +148,16 @@ jobs:
           test -n "$test_apk"
           adb install -r "$app_apk"
           adb install -r "$test_apk"
+          report="ci-reports/instrumentation-api-${api_level}.txt"
           adb shell am instrument -w -r \
             llc.slacker.openime.test/androidx.test.runner.AndroidJUnitRunner \
-            | tee "ci-reports/instrumentation-api-${api_level}.txt"
+            | tee "$report"
+          # 'am instrument' exits 0 even when tests fail; a clean run ends with "OK (N tests)".
+          if ! grep -aq '^OK (' "$report"; then
+            echo "::error::Instrumentation tests failed on API ${api_level}"
+            grep -a -B1 -A12 'INSTRUMENTATION_STATUS_CODE: -[12]' "$report" | head -120 || true
+            exit 1
+          fi
           EOF
           chmod +x ci-run-instrumentation.sh
 

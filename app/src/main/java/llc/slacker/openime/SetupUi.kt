@@ -19,11 +19,35 @@ import android.widget.TextView
 /** Shared visual primitives for the non-IME setup and editor screens. */
 object SetupUi {
 
+    fun appearanceContext(context: Context): Context {
+        val appearance = ImeSettingsRepository.loadAppearance(context)
+        val configuration = android.content.res.Configuration(context.resources.configuration)
+        val night = when (appearance) {
+            ImeAppearance.DARK -> android.content.res.Configuration.UI_MODE_NIGHT_YES
+            ImeAppearance.LIGHT -> android.content.res.Configuration.UI_MODE_NIGHT_NO
+            ImeAppearance.SYSTEM -> configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
+        }
+        configuration.uiMode = (configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK.inv()) or night
+        val metrics = context.resources.displayMetrics
+        val density = metrics.density * ImeReferenceSizing.scale(context)
+        configuration.densityDpi = kotlin.math.round(density * 160f).toInt()
+        configuration.screenWidthDp = kotlin.math.round(metrics.widthPixels / density).toInt()
+        configuration.screenHeightDp = kotlin.math.round(metrics.heightPixels / density).toInt()
+        return context.createConfigurationContext(configuration)
+    }
+
+
     fun dp(context: Context, value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
 
     fun accent(context: Context): Int =
-        AccentPalette.parse(ImeSettingsRepository.loadSkinColor(context))
+        tokensForAccent(context).primary
+
+    private fun tokensForAccent(context: Context): ImeTheme.Tokens = ImeTheme.IOS.tokens(
+        ImeSettingsRepository.loadAppearance(context),
+        context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES,
+        AccentPalette.parse(ImeSettingsRepository.loadSkinColor(context)),
+    )
 
     private fun tokens(context: Context): ImeTheme.Tokens {
         val nightMask =
@@ -127,12 +151,15 @@ object SetupUi {
             text = label
             textSize = ImeTypographyTokens.BODY_SP
             isAllCaps = false
+            elevation = 0f
+            stateListAnimator = null
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
             minHeight = dp(context, 48)
             minWidth = 0
             setPadding(dp(context, 8), 0, dp(context, 8), 0)
             val accent = accent(context)
-            background = outlineButtonBackground(context)
-            setTextColor(accent)
+            background = secondaryBackground(context)
+            setTextColor(context.getColor(R.color.setup_title))
             setOnClickListener {
                 performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
                 onClick()
@@ -179,6 +206,9 @@ object SetupUi {
             text = label
             textSize = ImeTypographyTokens.BODY_SP
             isAllCaps = false
+            elevation = 0f
+            stateListAnimator = null
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
             minHeight = dp(context, ImeGeometryTokens.PRIMARY_ROW_HEIGHT_DP)
             background = buttonBackground(
                 context,
@@ -208,7 +238,7 @@ object SetupUi {
         val surface = context.getColor(R.color.setup_surface)
         val line = context.getColor(R.color.setup_input_line)
         val accent = accent(context)
-        val radius = dp(context, ImeGeometryTokens.CARD_RADIUS_DP).toFloat()
+        val radius = dp(context, ImeGeometryTokens.CONTROL_RADIUS_DP).toFloat()
         return ImeDrawableFactory.focusedRounded(
             fillColor = surface,
             radiusPx = radius,
@@ -268,11 +298,12 @@ object SetupUi {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             minimumHeight = dp(context, ImeGeometryTokens.TOP_BAR_HEIGHT_DP)
+            setPadding(dp(context, 4), 0, dp(context, 4), 0)
 
             addView(
                 ImageButton(context).apply {
                     setImageResource(R.drawable.ic_arrow_back)
-                    imageTintList = ColorStateList.valueOf(accent(context))
+                    imageTintList = ColorStateList.valueOf(context.getColor(R.color.setup_title))
                     scaleType = android.widget.ImageView.ScaleType.CENTER
                     setPadding(
                         dp(context, ImeSpacingTokens.MD_DP),
@@ -312,7 +343,7 @@ object SetupUi {
                     text = title
                     textSize = ImeTypographyTokens.TITLE_SP
                     setTextColor(context.getColor(R.color.setup_title))
-                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
                     gravity = Gravity.CENTER_VERTICAL
                     includeFontPadding = false
                     if (Build.VERSION.SDK_INT >= 28) setAccessibilityHeading(true)
@@ -325,25 +356,39 @@ object SetupUi {
             )
         }
 
+    fun showDialog(dialog: AlertDialog, context: Context, anchor: android.view.View) {
+        if (context is android.inputmethodservice.InputMethodService) {
+            dialog.window?.apply {
+                setType(android.view.WindowManager.LayoutParams.TYPE_APPLICATION_ATTACHED_DIALOG)
+                attributes = attributes.apply { token = anchor.windowToken }
+                addFlags(android.view.WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
+            }
+        }
+        dialog.show()
+    }
+
     fun styleDialog(dialog: AlertDialog, context: Context, destructivePositive: Boolean = false) {
-        val accent = accent(context)
+        val palette = tokensForAccent(context)
+        val accent = ImeSurfacePolicy.selectedText(palette)
         val alertTitleId = context.resources.getIdentifier("alertTitle", "id", "android")
         if (alertTitleId != 0) {
             dialog.findViewById<TextView>(alertTitleId)?.setTextColor(
-                context.getColor(R.color.setup_title),
+                palette.keyText,
             )
         }
         dialog.findViewById<TextView>(android.R.id.message)?.setTextColor(
-            context.getColor(R.color.setup_body),
+            palette.keySecondaryText,
         )
         dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(
             if (destructivePositive) tokens(context).danger else accent,
         )
-        dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(accent)
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(
+            if (dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.text == "取消") palette.keySecondaryText else accent,
+        )
         dialog.getButton(AlertDialog.BUTTON_NEUTRAL)?.setTextColor(accent)
         dialog.window?.setBackgroundDrawable(
             ImeDrawableFactory.rounded(
-                context.getColor(R.color.setup_surface),
+                palette.toolCardBackground,
                 dp(context, ImeGeometryTokens.DIALOG_RADIUS_DP).toFloat(),
             ),
         )

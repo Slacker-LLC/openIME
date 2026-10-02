@@ -12,6 +12,8 @@ import java.util.concurrent.TimeUnit
 internal data class RimeCandidateEntry(
     val text: String,
     val nativeIndex: Int,
+    /** Input characters this candidate spells (-1 unknown); < input length means partial. */
+    val consumed: Int = -1,
 )
 
 internal fun rimeProbeHasCandidate(snapshot: Array<String>?): Boolean =
@@ -210,7 +212,12 @@ class RimeEngine(
                 if (!syncSchemaFromSettingsLocked()) {
                     emptyList()
                 } else {
-                    snapshotCandidateEntries(RimeNative.nativeSetInput(normalized))
+                    val snapshot = RimeNative.nativeSetInput(normalized)
+                    val entries = snapshotCandidateEntries(snapshot)
+                    val ends = RimeNative.nativeCandidateEnds(snapshot.orEmpty().size - 2)
+                    if (ends == null) entries else entries.map { entry ->
+                        entry.copy(consumed = ends.getOrElse(entry.nativeIndex) { -1 })
+                    }
                 }
             }.getOrDefault(emptyList())
         }

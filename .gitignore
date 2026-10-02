@@ -32,9 +32,21 @@ artifacts/
 !app/src/main/assets/emoji/
 !app/src/main/assets/emoji/fluent/
 !app/src/main/assets/emoji/fluent/*.png
+!app/src/main/assets/emoji/reference/
+!app/src/main/assets/emoji/reference/*.png
 
 # Optional local test evidence (the canonical evidence in docs is curated)
 .local/
 
+# Design-reference captures and review renders produced by scripts/*.py
+output/
+
 # Scratch files
 test_patch_probe.txt
+__pycache__/
+*.pyc
+
+# Release signing material must never be committed
+*.jks
+*.keystore
+*.p12

@@ -24,12 +24,20 @@ class IconLintTest {
                 fun requireContains(value: String, message: String) {
                     if (!xml.contains(value)) violations += "${file.name}: $message"
                 }
-                requireContains("""android:width="24dp"""", "width must be 24dp")
-                requireContains("""android:height="24dp"""", "height must be 24dp")
+                // One coordinate canvas; the intrinsic size is one of the design's icon sizes.
                 requireContains("""android:viewportWidth="24"""", "viewportWidth must be 24")
                 requireContains("""android:viewportHeight="24"""", "viewportHeight must be 24")
+                val size = Regex("""android:width="(\d+)dp"""").find(xml)?.groupValues?.get(1)?.toInt()
+                if (size !in setOf(18, 20, 24) || !xml.contains("""android:height="${size}dp"""")) {
+                    violations += "${file.name}: must be a square 18, 20 or 24dp icon"
+                }
+                // Outline icons share one stroke style; filled icons carry no stroke attributes at all.
                 if (xml.contains("android:strokeWidth=")) {
-                    violations += "${file.name}: strokeWidth is forbidden"
+                    if (!xml.contains("""android:strokeWidth="1.8"""")) {
+                        violations += "${file.name}: outline icons use strokeWidth 1.8"
+                    }
+                    requireContains("""android:strokeLineCap="round"""", "outline icons use round caps")
+                    requireContains("""android:strokeLineJoin="round"""", "outline icons use round joins")
                 }
                 val colors = Regex("""android:(?:fillColor|strokeColor)="(#[0-9A-Fa-f]{8})"""")
                     .findAll(xml)

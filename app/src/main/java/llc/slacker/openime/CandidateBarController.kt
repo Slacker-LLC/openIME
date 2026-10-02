@@ -105,6 +105,7 @@ internal class CandidateBarController(
         compositionPreview: String,
         showCompositionWhenEmpty: Boolean,
     ) {
+        syncExpandControl(candidates.isNotEmpty())
         val visibleCandidates = candidates.take(STRIP_LIMIT)
         if (renderedCandidates == visibleCandidates && renderedComposition == compositionPreview) return
 
@@ -149,8 +150,8 @@ internal class CandidateBarController(
                     createItem(index, candidate),
                     LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.WRAP_CONTENT,
-                        toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
-                    ).apply { marginEnd = toPx(6) },
+                        toPx(42),
+                    ).apply { marginEnd = toPx(4) },
                 )
             } else {
                 bindItem(existing, index, candidate)
@@ -218,7 +219,7 @@ internal class CandidateBarController(
         }
 
         val previousScroll = if (renderedExpandedComposition == compositionPreview) {
-            (overlay.getChildAt(1) as? ScrollView)?.scrollY ?: 0
+            (overlay.getChildAt(0) as? ScrollView)?.scrollY ?: 0
         } else {
             0
         }
@@ -238,14 +239,6 @@ internal class CandidateBarController(
         overlay.alpha = 0f
         overlay.translationY = toPx(8).toFloat()
         overlay.removeAllViews()
-        overlay.addView(
-            createHeader(),
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
-            ),
-        )
-
         val scroll = ScrollView(context)
         val column = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -265,12 +258,14 @@ internal class CandidateBarController(
                 }
                 chunk.forEach { candidate ->
                     rowView.addView(
-                        createExpandedCandidate(candidate),
+                        createExpandedCandidate(candidate).apply {
+                            tag = if (candidate == candidates.first()) "candidate-grid-first" else "candidate-grid"
+                        },
                         LinearLayout.LayoutParams(
                             0,
                             keyRowHeightPx(),
                             candidateColumnSpan(candidate).toFloat(),
-                        ).apply { marginEnd = toPx(5) },
+                        ),
                     )
                 }
                 val remaining = 4 - chunk.sumOf(::candidateColumnSpan)
@@ -329,7 +324,7 @@ internal class CandidateBarController(
         LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            minimumHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
+            minimumHeight = toPx(42)
             isFocusable = true
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             isClickable = true
@@ -360,9 +355,9 @@ internal class CandidateBarController(
 
         val palette = tokens()
         val normalBackground =
-            if (index == 0) ImeSurfacePolicy.selectedSurface(palette) else Color.TRANSPARENT
+            if (index == 0) palette.keyBackground else Color.TRANSPARENT
         word.setTextColor(
-            if (index == 0) ImeSurfacePolicy.selectedText(palette) else palette.candidateText,
+            palette.candidateText,
         )
         item.background = statefulBackground(
             normalBackground,
@@ -403,7 +398,7 @@ internal class CandidateBarController(
         dialog.setOnShowListener {
             SetupUi.styleDialog(dialog, context, destructivePositive = true)
         }
-        dialog.show()
+        SetupUi.showDialog(dialog, context, row)
     }
 
     private companion object {

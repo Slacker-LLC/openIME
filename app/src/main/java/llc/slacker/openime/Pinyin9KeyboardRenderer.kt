@@ -54,16 +54,7 @@ internal class Pinyin9KeyboardRenderer(
             createSymbolRail(),
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(nineGridHeightDp()),
-            ),
-        )
-        left.addView(
-            createKey("符号", true, null, ImeTypographyTokens.BODY_SP, onShowSymbols).apply {
-                markSideKey(this)
-            },
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(keyRowHeightDp()),
+                toPx(nineBodyHeightDp()),
             ),
         )
         container.addView(left, adaptiveColumnParams(1f))
@@ -83,27 +74,27 @@ internal class Pinyin9KeyboardRenderer(
             createKey("123", true, null, ImeTypographyTokens.BODY_SP, onDigits).apply {
                 markSideKey(this)
             },
-            flexKeyParams(0.925f),
+            flexKeyParams(),
         )
         centerBottom.addView(
             createSpaceVoiceKey("空格", onSpace),
-            flexKeyParams(3.4f),
+            flexKeyParams(),
         )
         centerBottom.addView(
             createKey("中/英", true, null, ImeTypographyTokens.BODY_SP, onModeSwitch).apply {
                 tag = "key:mode"
                 markSideKey(this)
             },
-            flexKeyParams(0.925f),
+            flexKeyParams(),
         )
         center.addView(
             centerBottom,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 toPx(keyRowHeightDp()),
-            ).apply { topMargin = toPx(ImeGeometryTokens.KEY_ROW_GAP_DP) },
+            ),
         )
-        container.addView(center, adaptiveColumnParams(3.7f))
+        container.addView(center, adaptiveColumnParams(25f / 7f))
 
         val side = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -111,20 +102,21 @@ internal class Pinyin9KeyboardRenderer(
         }
         side.addView(
             createBackspaceKey().apply { markSideKey(this) },
-            sideKeyParams(keyRowHeightDp()),
+            sideKeyParams(nineBodyHeightDp() / 3),
         )
         side.addView(
             createKey("重输", true, null, ImeTypographyTokens.BODY_SP, onRetranslate).apply {
+                tag = "key-retype"
                 markSideKey(this)
             },
-            sideKeyParams(keyRowHeightDp()),
+            sideKeyParams(nineBodyHeightDp() / 3),
         )
         side.addView(
             createKey(enterLabel, true, null, ImeTypographyTokens.BODY_SP, onEnter).apply {
                 tag = "key-enter"
                 markSideKey(this)
             },
-            sideKeyParams(doubleKeyHeightDp()),
+            sideKeyParams(nineBodyHeightDp() / 3),
         )
         container.addView(side, adaptiveColumnParams(1f))
 
@@ -146,8 +138,8 @@ internal class Pinyin9KeyboardRenderer(
                 val key = createKey(
                     if (segmentation) "分词" else subLabel,
                     false,
-                    if (segmentation) "@#/" else null,
-                    if (segmentation) ImeTypographyTokens.BODY_SP else ImeTypographyTokens.KEY_LETTER_SP,
+                    digit,
+                    if (segmentation) ImeTypographyTokens.BODY_SP else ImeTypographyTokens.CANDIDATE_SP,
                 ) {
                     if (segmentation) onPinyinSegment() else onNineKey(digit)
                 }.apply {

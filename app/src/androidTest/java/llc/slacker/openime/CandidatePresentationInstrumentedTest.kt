@@ -48,10 +48,11 @@ class CandidatePresentationInstrumentedTest {
                 keyboard.findViewWithTag<View>("candidate-expand").performClick()
                 val overlay = keyboard.findViewWithTag<ViewGroup>("candidate-overlay")
                 assertEquals(View.GONE, keyboard.findViewWithTag<View>("keyboard-body").visibility)
-                val scroll = overlay.getChildAt(1) as ScrollView
+                // The expanded overlay is just the scrolling grid (no header row).
+                val scroll = overlay.getChildAt(0) as ScrollView
                 keyboard.renderState(state)
                 assertSame(first, keyboard.findViewWithTag<View>("candidate-first-row"))
-                assertSame(scroll, overlay.getChildAt(1))
+                assertSame(scroll, overlay.getChildAt(0))
                 keyboard.renderState(ImeState())
                 assertEquals(View.GONE, overlay.visibility)
                 true

@@ -99,6 +99,22 @@ class InputConnectionGateway(
         connection()?.commitText(text, 1)
     }
 
+    /**
+     * Run [block] as one atomic editor edit. The editor then reports a single
+     * final selection/composing state; without it a commit followed by a new
+     * composing span produces an intermediate callback (cursor moved, no
+     * composing region) that the service reads as the user leaving the span.
+     */
+    fun <T> batchEdit(block: () -> T): T {
+        val ic = connection()
+        ic?.beginBatchEdit()
+        try {
+            return block()
+        } finally {
+            ic?.endBatchEdit()
+        }
+    }
+
     fun setComposingText(text: String) {
         if (isPassword()) return
         if (text.isNotEmpty()) invalidateClearUndo()
@@ -302,14 +318,19 @@ class InputConnectionGateway(
                     }
                 }
                 restoreSelectionAfterFailedClear(ic, originalSelection)
-                return false
+                // The editor answered select-all but exposed nothing usable.
+                return clearThroughSurroundingText(ic)
             }
 
-            val window = extractedWindow(ic) ?: return false
-            if (!window.isCompleteDocument) return false
+            // No select-all and no complete ExtractedText: custom, Compose and
+            // web editors typically expose only before/after-cursor text.
+            val window = extractedWindow(ic)
+            if (window == null || !window.isCompleteDocument) {
+                return clearThroughSurroundingText(ic)
+            }
             if (window.text.isEmpty()) return true
             if (!runCatching { ic.setSelection(0, window.text.length) }.getOrDefault(false)) {
-                return false
+                return clearThroughSurroundingText(ic)
             }
             val cleared = runCatching { ic.commitText("", 1) }.getOrDefault(false)
             if (!cleared) {
@@ -322,6 +343,65 @@ class InputConnectionGateway(
         } finally {
             ic.endBatchEdit()
         }
+    }
+
+    /**
+     * Clear the document using nothing but before/after-cursor text.
+     *
+     * Editors that implement neither select-all nor a complete ExtractedText
+     * (custom canvas, Compose and web fields) still answer these two queries.
+     * Everything is captured first, so the clear can be undone, and the
+     * deletion repeats until the editor itself reports that nothing is left.
+     * That makes an editor which silently caps its answers safe: it is cleared
+     * in several rounds instead of being left half full.
+     *
+     * An answer as long as the request may be a window of a bigger document,
+     * so nothing is deleted then (callers get false), exactly as for a partial
+     * ExtractedText.
+     */
+    private fun clearThroughSurroundingText(ic: InputConnection): Boolean {
+        val selected = runCatching { ic.getSelectedText(0)?.toString().orEmpty() }.getOrDefault("")
+        val firstBefore = runCatching { ic.getTextBeforeCursor(SURROUNDING_CHUNK, 0)?.toString() }.getOrNull()
+        val firstAfter = runCatching { ic.getTextAfterCursor(SURROUNDING_CHUNK, 0)?.toString() }.getOrNull()
+        if (firstBefore == null || firstAfter == null) return false
+        if (firstBefore.length >= SURROUNDING_CHUNK || firstAfter.length >= SURROUNDING_CHUNK) return false
+        if (selected.isEmpty() && firstBefore.isEmpty() && firstAfter.isEmpty()) return true
+
+        if (selected.isNotEmpty() && !runCatching { ic.commitText("", 1) }.getOrDefault(false)) {
+            return false
+        }
+        val beforeParts = ArrayList<String>() // nearest to the cursor first
+        val afterParts = ArrayList<String>()
+        var before: String = firstBefore
+        var after: String = firstAfter
+        var rounds = 0
+        while (before.isNotEmpty() || after.isNotEmpty()) {
+            val deleted = rounds < MAX_SURROUNDING_ROUNDS &&
+                runCatching { ic.deleteSurroundingText(before.length, after.length) }.getOrDefault(false)
+            if (!deleted) {
+                // Put back what was already taken so a failed clear loses nothing.
+                val restored = beforeParts.asReversed().joinToString("") + selected + afterParts.joinToString("")
+                if (restored.isNotEmpty()) runCatching { ic.commitText(restored, 1) }
+                return false
+            }
+            rounds++
+            beforeParts.add(before)
+            afterParts.add(after)
+            before = runCatching { ic.getTextBeforeCursor(SURROUNDING_CHUNK, 0)?.toString().orEmpty() }
+                .getOrDefault("")
+            after = runCatching { ic.getTextAfterCursor(SURROUNDING_CHUNK, 0)?.toString().orEmpty() }
+                .getOrDefault("")
+        }
+        ic.finishComposingText()
+
+        val head = beforeParts.asReversed().joinToString("")
+        val full = head + selected + afterParts.joinToString("")
+        rememberClearUndo(
+            text = full,
+            selection = SelectionSnapshot.Absolute(head.length, head.length + selected.length),
+            ic = ic,
+        )
+        return true
     }
 
     /**
@@ -728,5 +808,7 @@ class InputConnectionGateway(
     private companion object {
         const val FALLBACK_WINDOW_CHARS = 8_192
         const val CLEAR_UNDO_TIMEOUT_MS = 5_000L
+        const val SURROUNDING_CHUNK = 100_000
+        const val MAX_SURROUNDING_ROUNDS = 8
     }
 }

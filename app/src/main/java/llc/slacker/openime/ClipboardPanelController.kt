@@ -13,6 +13,7 @@ import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.ImageView
 
 /**
  * Owns clipboard/quick-phrase panel presentation and transient load state.
@@ -56,41 +57,35 @@ internal class ClipboardPanelController(
     }
 
     fun render(reusePanel: Boolean = false) {
-        if (!reusePanel || expandedPanel.childCount == 0) {
-            expandedPanel.removeAllViews()
-            expandedPanel.addView(
-                createHeader("剪贴板"),
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
-                ),
-            )
-        } else {
-            while (expandedPanel.childCount > 1) {
-                expandedPanel.removeViewAt(expandedPanel.childCount - 1)
+        expandedPanel.removeAllViews()
+        val header = createHeader("")
+        while (header.childCount > 1) header.removeViewAt(header.childCount - 1)
+        header.addView(LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL; tag = "segmented-track"
+            setPadding(toPx(2), toPx(2), toPx(2), toPx(2))
+            listOf("剪贴板", "常用语").forEachIndexed { index, label ->
+                addView(TextView(context).apply {
+                    text = label; textSize = ImeTypographyTokens.BODY_SP; gravity = Gravity.CENTER; includeFontPadding = false
+                    tag = if (tab == index) "segment-selected" else "segment-option"
+                    contentDescription = label; isClickable = true; isFocusable = true
+                    setOnClickListener { onFeedback(); tab = index; render(true) }
+                }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
             }
-        }
-
+        }, LinearLayout.LayoutParams(0, toPx(34), 1f).apply { marginStart = toPx(36); marginEnd = toPx(20) })
+        header.addView(TextView(context).apply {
+            text = if (tab == 0) "↻" else "+ 新增"
+            tag = if (tab == 0) "clipboard-refresh" else "quick-phrase-add"
+            textSize = if (tab == 0) 24f else 12f; gravity = Gravity.CENTER
+            contentDescription = if (tab == 0) "重新读取剪贴板" else "新增常用语"
+            isClickable = true; isFocusable = true
+            setOnClickListener { onFeedback(); if (tab == 0) render(true) else onOpenQuickPhraseEditor(null) }
+        }, LinearLayout.LayoutParams(toPx(if (tab == 0) 48 else 70), toPx(34)))
+        expandedPanel.addView(header, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(48)))
         val body = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(toPx(10), toPx(10), toPx(10), toPx(10))
+            setPadding(toPx(12), toPx(10), toPx(12), toPx(6))
             tag = "clipboard-panel"
         }
-        val tabs = createChipScroll(
-            listOf("剪贴板", "常用语"),
-            if (tab == 0) "剪贴板" else "常用语",
-        ) { label ->
-            tab = if (label == "剪贴板") 0 else 1
-            render(reusePanel = true)
-        }
-        body.addView(
-            tabs,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
-            ).apply { bottomMargin = toPx(8) },
-        )
-
         val column = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
         }
@@ -219,26 +214,12 @@ internal class ClipboardPanelController(
             },
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
-                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
+                toPx(36),
             ).apply { topMargin = toPx(8) },
         )
     }
 
     private fun renderQuickPhrases(column: LinearLayout) {
-        column.addView(
-            createPanelButton("新增常用语", ImeTypographyTokens.BODY_SP, true).apply {
-                tag = "quick-phrase-add"
-                setOnClickListener {
-                    onFeedback()
-                    onOpenQuickPhraseEditor(null)
-                }
-            },
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
-            ).apply { bottomMargin = toPx(8) },
-        )
-
         val phrases = QuickPhraseRepository.load(context)
         if (phrases.isEmpty()) {
             column.addView(
@@ -251,14 +232,14 @@ internal class ClipboardPanelController(
             )
         }
 
+        column.addView(createSectionTitle("${phrases.size} 条常用语 · 点选即输入"), wrapParams())
         phrases.groupBy { it.category }.forEach { (category, grouped) ->
-            column.addView(createSectionTitle(category), wrapParams())
             grouped.forEach { phrase ->
                 column.addView(
                     quickPhraseRow(phrase),
                     LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
-                        toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
+                        toPx(60),
                     ).apply { bottomMargin = toPx(7) },
                 )
             }
@@ -267,136 +248,43 @@ internal class ClipboardPanelController(
 
     private fun quickPhraseRow(phrase: QuickPhrase): LinearLayout =
         LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            tag = "phrase-card"
-            addView(
-                createKey(phrase.text, ImeTypographyTokens.BODY_SP) {
-                    onCharacter(phrase.text)
-                }.apply {
-                    setPadding(toPx(12), 0, toPx(12), 0)
-                    tag = "phrase:${phrase.id}"
-                    contentDescription =
-                        if (phrase.inputCode.isBlank()) {
-                            "常用语：${phrase.text}"
-                        } else {
-                            "常用语：${phrase.text}，输入码${phrase.inputCode}"
-                        }
-                },
-                LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f).apply {
-                    marginEnd = toPx(5)
-                },
-            )
-            addView(
-                createPanelButton("编辑", ImeTypographyTokens.CAPTION_SP, true).apply {
-                    tag = "phrase-edit:${phrase.id}"
-                    setOnClickListener {
-                        onFeedback()
-                        onOpenQuickPhraseEditor(phrase)
-                    }
-                },
-                LinearLayout.LayoutParams(toPx(ImeGeometryTokens.TOUCH_TARGET_DP), toPx(ImeGeometryTokens.TOUCH_TARGET_DP)).apply {
-                    marginEnd = toPx(5)
-                },
-            )
-            addView(
-                createPanelButton("删除", ImeTypographyTokens.CAPTION_SP, true).apply {
-                    tag = "phrase-delete:${phrase.id}"
-                    setOnClickListener {
-                        onFeedback()
-                        val dialog = AlertDialog.Builder(context)
-                            .setTitle("删除常用语？")
-                            .setMessage(phrase.text)
-                            .setNegativeButton("取消", null)
-                            .setPositiveButton("删除") { _, _ ->
-                                QuickPhraseRepository.remove(context, phrase.id)
-                                render(reusePanel = true)
-                            }
-                            .create()
-                        dialog.setOnShowListener {
-                            SetupUi.styleDialog(
-                                dialog,
-                                context,
-                                destructivePositive = true,
-                            )
-                        }
-                        dialog.show()
-                    }
-                },
-                LinearLayout.LayoutParams(toPx(ImeGeometryTokens.TOUCH_TARGET_DP), toPx(ImeGeometryTokens.TOUCH_TARGET_DP)),
-            )
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            tag = "phrase-card"; setPadding(toPx(14), 0, toPx(4), 0)
+            addView(TextView(context).apply {
+                text = phrase.text; textSize = ImeTypographyTokens.TITLE_SP; maxLines = 2; ellipsize = TextUtils.TruncateAt.END
+                tag = "phrase:${phrase.id}"; contentDescription = "常用语：${phrase.text}"
+                isClickable = true; isFocusable = true
+                setOnClickListener { onFeedback(); onCharacter(phrase.text) }
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
+            addView(iconButton(R.drawable.ic_edit, "编辑常用语", "phrase-edit:${phrase.id}") { onOpenQuickPhraseEditor(phrase) },
+                LinearLayout.LayoutParams(toPx(40), toPx(48)))
+            addView(iconButton(R.drawable.ic_delete, "删除常用语", "phrase-delete:${phrase.id}") {
+                val dialog = AlertDialog.Builder(context).setTitle("删除常用语？").setMessage("“${phrase.text}” 将被移除。")
+                    .setNegativeButton("取消", null).setPositiveButton("删除") { _, _ -> QuickPhraseRepository.remove(context, phrase.id); render(true) }.create()
+                dialog.setOnShowListener { SetupUi.styleDialog(dialog, context, destructivePositive = true) }
+                SetupUi.showDialog(dialog, context, expandedPanel)
+            }, LinearLayout.LayoutParams(toPx(40), toPx(48)))
         }
 
     private fun historyCard(entry: ClipboardEntry): LinearLayout =
         LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(toPx(12), toPx(10), toPx(12), toPx(8))
-            minimumHeight = toPx(70)
-            tag = "clip-card"
-            contentDescription = "剪贴板：${entry.text}，点击使用"
-            if (Build.VERSION.SDK_INT >= 30) {
-                stateDescription = if (entry.pinned) "已置顶" else "未置顶"
-            }
-            isClickable = true
-            isFocusable = true
-            setOnClickListener {
-                onFeedback()
-                onCharacter(entry.text)
-            }
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(toPx(14), toPx(4), toPx(4), toPx(4)); minimumHeight = toPx(56)
+            tag = "clip-card"; contentDescription = "剪贴板：${entry.text}，点击使用"
+            isClickable = true; isFocusable = true
+            setOnClickListener { onFeedback(); onCharacter(entry.text) }
+            addView(TextView(context).apply { text = entry.text; textSize = ImeTypographyTokens.TITLE_SP; maxLines = 1; ellipsize = TextUtils.TruncateAt.END },
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            addView(iconButton(R.drawable.ic_pin, if (entry.pinned) "取消置顶" else "置顶", "clip-pin:${entry.text}") {
+                ClipboardHistoryRepository.togglePin(context, entry.text); render(true)
+            }.apply { isSelected = entry.pinned }, LinearLayout.LayoutParams(toPx(40), toPx(48)))
+        }
 
-            addView(
-                TextView(context).apply {
-                    text = entry.text
-                    textSize = ImeTypographyTokens.PANEL_BODY_SP
-                    maxLines = 2
-                    ellipsize = TextUtils.TruncateAt.END
-                },
-                wrapParams(),
-            )
-
-            val meta = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-            }
-            meta.addView(
-                TextView(context).apply {
-                    text = if (entry.pinned) {
-                        "已置顶"
-                    } else {
-                        DateUtils.getRelativeTimeSpanString(
-                            entry.timestamp,
-                            System.currentTimeMillis(),
-                            DateUtils.MINUTE_IN_MILLIS,
-                        )
-                    }
-                    textSize = ImeTypographyTokens.CAPTION_SP
-                },
-                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
-            )
-            meta.addView(
-                createPanelButton(
-                    if (entry.pinned) "取消置顶" else "置顶",
-                    ImeTypographyTokens.CAPTION_SP,
-                    true,
-                ).apply {
-                    tag = "clip-pin:${entry.text}"
-                    setOnClickListener {
-                        onFeedback()
-                        ClipboardHistoryRepository.togglePin(context, entry.text)
-                        render(reusePanel = true)
-                    }
-                },
-                wrapParams(),
-            )
-            meta.addView(
-                createPanelButton("使用", ImeTypographyTokens.CAPTION_SP, true).apply {
-                    tag = "clip-use:${entry.text}"
-                    setOnClickListener {
-                        onFeedback()
-                        onCharacter(entry.text)
-                    }
-                },
-                wrapParams(),
-            )
-            addView(meta, wrapParams())
+    private fun iconButton(icon: Int, label: String, tagValue: String, onClick: () -> Unit): ImageView =
+        ImageView(context).apply {
+            setImageResource(icon); scaleType = ImageView.ScaleType.CENTER_INSIDE
+            tag = tagValue; contentDescription = label; isClickable = true; isFocusable = true
+            setOnClickListener { onFeedback(); onClick() }
         }
 
     private fun addRetentionControls(body: LinearLayout) {
@@ -422,12 +310,14 @@ internal class ClipboardPanelController(
             },
             LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f),
         )
+        // The buttons are painted 36dp inside this 48dp row (see the theme),
+        // so the visible gap above them is unchanged.
         body.addView(
             row,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
-            ).apply { topMargin = toPx(6) },
+            ),
         )
         applyTheme()
     }
@@ -465,7 +355,7 @@ internal class ClipboardPanelController(
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
-            ).apply { topMargin = toPx(6) },
+            ),
         )
         applyTheme()
         row.findViewWithTag<View>("clipboard-clear-confirm")?.requestFocus()
@@ -479,7 +369,7 @@ internal class ClipboardPanelController(
         text = label
         textSize = ImeTypographyTokens.PANEL_NOTE_SP
         gravity = Gravity.CENTER
-        minHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
+        minHeight = 0
         minimumHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
         isClickable = true
         isFocusable = true

@@ -137,7 +137,7 @@ function AssertRapidSequence([int]$clickCount) {
     if ($state -notmatch "compositionLength=$clickCount") {
         throw "FAIL $clickCount rapid clicks lost/repeated input state=[$state]"
     }
-    Tap '确定' 300
+    Tap 'key-space' 300
     AssertEqual "$clickCount rapid clicks commit" $committed (GetText ("p9-commit-$clickCount"))
     if ((StateLog) -notmatch 'compositionLength=0') {
         throw "FAIL $clickCount rapid clicks did not clear composition"

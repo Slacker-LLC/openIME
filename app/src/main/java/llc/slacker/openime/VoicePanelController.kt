@@ -162,7 +162,7 @@ internal class VoicePanelController(
             setTranscript(recognizedText.ifBlank { "正在聆听… 松开空格结束" })
             setModelStatus("正在聆听 · 松开空格结束")
             onInlineState(
-                recognizedText.ifBlank { "正在聆听…" },
+                recognizedText.ifBlank { "正在聆听" },
                 false,
                 false,
                 null,
@@ -219,7 +219,7 @@ internal class VoicePanelController(
                             "松开空格结束语音并自动上屏，上滑取消",
                         )
                         onInlineState(
-                            text.ifBlank { "正在聆听…" },
+                            text.ifBlank { "正在聆听" },
                             false,
                             false,
                             null,
@@ -284,7 +284,7 @@ internal class VoicePanelController(
                     )
                     onInlineState(
                         if (modelPrepared) {
-                            "正在聆听…"
+                            "正在聆听"
                         } else {
                             "正在录音 · 模型准备中…"
                         },
@@ -371,7 +371,7 @@ internal class VoicePanelController(
                         "松开空格结束语音并自动上屏，上滑取消",
                     )
                     setModelStatus("正在识别 · 松开空格结束")
-                    onInlineState("正在聆听…", false, false, null)
+                    onInlineState("正在聆听", false, false, null)
                 }
             }
         }

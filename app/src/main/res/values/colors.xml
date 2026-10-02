@@ -1,21 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="setup_page_bg">#D5D8DE</color>
-    <color name="setup_surface">#EEF0F3</color>
+    <color name="setup_page_bg">#EFF0F4</color>
+    <color name="setup_surface">#FFFFFF</color>
     <color name="setup_title">#1C1C1E</color>
     <color name="setup_body">#6D6D72</color>
     <color name="setup_primary">#1D9BF0</color>
     <color name="setup_primary_pressed">#0E85D5</color>
     <color name="setup_on_primary">#07131D</color>
-    <color name="setup_muted">#EEF0F3</color>
-    <color name="setup_muted_pressed">#DDE1E7</color>
+    <color name="setup_muted">#C5C9D2</color>
+    <color name="setup_muted_pressed">#B7BCC5</color>
     <color name="setup_muted_text">#6D6D72</color>
     <color name="setup_ready">#1F8A4C</color>
-    <color name="setup_mark_done_bg">#EEF0F3</color>
+    <color name="setup_mark_done_bg">#1F8A4C</color>
     <color name="setup_mark_done">#1F8A4C</color>
-    <color name="setup_mark_todo_bg">#EEF0F3</color>
+    <color name="setup_mark_todo_bg">#EFF0F4</color>
     <color name="setup_input_line">#B7BCC5</color>
-    <color name="setup_icon_ring">#EEF0F3</color>
+    <color name="setup_icon_ring">#EFF0F4</color>
     <color name="brand_accent">#1D9BF0</color>
     <color name="ic_launcher_background">#1D9BF0</color>
+    <color name="setup_disabled">#E8E9ED</color>
+    <color name="setup_disabled_text">#9B9B9F</color>
 </resources>

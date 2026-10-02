@@ -3,6 +3,10 @@ package llc.slacker.openime
 import android.content.Context
 import android.content.Intent
 import android.graphics.Typeface
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Color
+import android.widget.FrameLayout
 import android.os.Build
 import android.view.Gravity
 import android.view.View
@@ -66,22 +70,9 @@ internal class ImePanelRenderer(
         addHeader("切换键盘")
         val body = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(toPx(12), toPx(10), toPx(12), toPx(10))
+            setPadding(toPx(8), toPx(12), toPx(8), toPx(10))
             tag = "keyboard-select-panel"
         }
-        body.addView(
-            TextView(context).apply {
-                text = "选择输入布局"
-                textSize = ImeTypographyTokens.PANEL_BODY_SP
-                setPadding(toPx(4), 0, 0, toPx(8))
-                tag = "panel-section-title"
-            },
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(28),
-            ),
-        )
-
         val modes = listOf(
             KeyboardMode.PINYIN_26 to "拼音 26 键",
             KeyboardMode.PINYIN_9 to "拼音 9 键",
@@ -92,28 +83,21 @@ internal class ImePanelRenderer(
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             chunk.forEach { (modeValue, label) ->
                 row.addView(
-                    createKey(label, true, ImeTypographyTokens.BODY_SP) { onModeSelected(modeValue) }.apply {
-                        val selected = currentMode() == modeValue
-                        tag = if (selected) "tab-active" else "keyboard-choice"
-                        contentDescription = "$label，${if (selected) "已选中" else "未选中"}"
-                        if (Build.VERSION.SDK_INT >= 30) {
-                            stateDescription = if (selected) "已选中" else "未选中"
-                        }
-                    },
-                    LinearLayout.LayoutParams(0, toPx(50), 1f).apply {
-                        marginEnd = toPx(7)
+                    keyboardChoice(modeValue, label),
+                    LinearLayout.LayoutParams(0, toPx(96), 1f).apply {
+                        marginEnd = toPx(4); marginStart = toPx(4)
                     },
                 )
             }
             if (chunk.size == 1) {
-                row.addView(View(context), LinearLayout.LayoutParams(0, toPx(50), 1f))
+                row.addView(View(context), LinearLayout.LayoutParams(0, toPx(96), 1f))
             }
             body.addView(
                 row,
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
-                    toPx(50),
-                ).apply { bottomMargin = toPx(7) },
+                    toPx(96),
+                ).apply { bottomMargin = toPx(8) },
             )
         }
         expandedPanel.addView(
@@ -129,20 +113,18 @@ internal class ImePanelRenderer(
         addHeader("工具")
         val body = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(toPx(10), toPx(10), toPx(10), toPx(10))
+            setPadding(toPx(12), toPx(12), toPx(4), 0)
             tag = "tools-panel"
         }
         val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        val handwritingAvailable =
-            HandwritingFeaturePolicy.entryEnabled(UnavailableHandwritingProvider)
         val cards = listOf(
-            ToolEntry("表情", Panel.EMOJI, R.drawable.ic_emoji),
             ToolEntry("剪贴板", Panel.CLIPBOARD, R.drawable.ic_clipboard, enabled = !isPasswordField()),
-            ToolEntry("手写输入", Panel.HANDWRITING, R.drawable.ic_handwriting, enabled = handwritingAvailable),
+            ToolEntry("表情", Panel.EMOJI, R.drawable.ic_emoji),
             ToolEntry("符号", Panel.SYMBOLS, R.drawable.ic_symbols),
-            ToolEntry("切换键盘", Panel.KEYBOARD_SELECT, R.drawable.ic_grid),
-            ToolEntry("文本编辑", Panel.TEXT_EDITOR, R.drawable.ic_keyboard),
-            ToolEntry("浮动键盘", iconRes = R.drawable.ic_game, action = onEnableFloatingKeyboard),
+            ToolEntry("语音输入", Panel.VOICE, R.drawable.ic_mic),
+            ToolEntry("切换键盘", Panel.KEYBOARD_SELECT, R.drawable.ic_keyboard),
+            ToolEntry("文本编辑", Panel.TEXT_EDITOR, R.drawable.ic_text_cursor),
+            ToolEntry("浮动键盘", iconRes = R.drawable.ic_floating, action = onEnableFloatingKeyboard),
             ToolEntry("设置", Panel.SETTINGS, R.drawable.ic_settings),
         ).filter { it.enabled }
 
@@ -242,7 +224,7 @@ internal class ImePanelRenderer(
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
-            ).apply { bottomMargin = toPx(7) },
+            ).apply { bottomMargin = toPx(8) },
         )
 
         var undoButton: ImeKeyView? = null
@@ -290,7 +272,7 @@ internal class ImePanelRenderer(
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 toPx(140),
-            ).apply { bottomMargin = toPx(7) },
+            ).apply { bottomMargin = toPx(8) },
         )
 
         val actions = LinearLayout(context).apply {
@@ -334,7 +316,7 @@ internal class ImePanelRenderer(
         addHeader("表情")
         val body = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(toPx(12), toPx(12), toPx(12), toPx(12))
+            setPadding(0, toPx(8), 0, 0)
             tag = "emoji-panel"
         }
         expandedPanel.addView(
@@ -351,6 +333,7 @@ internal class ImePanelRenderer(
         labels: List<String>,
         selected: String,
         onSelected: (String) -> Unit,
+        heightDp: Int = ImeGeometryTokens.TOUCH_TARGET_DP,
     ): HorizontalScrollView = HorizontalScrollView(context).apply {
         isHorizontalScrollBarEnabled = false
         isFillViewport = false
@@ -362,19 +345,25 @@ internal class ImePanelRenderer(
         }
         var selectedView: View? = null
         labels.forEach { label ->
-            val chip = filterChip(label, label == selected) { onSelected(label) }
+            val chip = filterChip(label, label == selected) { onSelected(label) }.apply {
+                minimumHeight = toPx(heightDp)
+                if (heightDp == 32) {
+                    minWidth = toPx(if (label == selected) 56 else 52)
+                    if (label == selected) typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                }
+            }
             if (label == selected) selectedView = chip
             row.addView(
                 chip,
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
-                    toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
+                    toPx(heightDp),
                 ).apply { marginEnd = toPx(6) },
             )
         }
         addView(
             row,
-            ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, toPx(ImeGeometryTokens.TOUCH_TARGET_DP)),
+            ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, toPx(heightDp)),
         )
         setOnScrollChangeListener { _, scrollX, _, _, _ ->
             chipScrollPositions[scrollKey] = scrollX
@@ -427,22 +416,23 @@ internal class ImePanelRenderer(
         val categories = listOf(
             "常用", "中文", "英文", "数学", "序号", "特殊", "网络颜文字", "单位", "编程", "自定义",
         )
-        val tabs = panelChipScroll(categories, symbolCategory) { category ->
-            if (category != symbolCategory) {
-                symbolCategory = category
-                renderSymbolContent(body, notifyRebuilt = true)
-            }
+        body.orientation = LinearLayout.HORIZONTAL
+        body.setPadding(toPx(8), toPx(5), toPx(4), 0)
+        val categoryColumn = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        categories.forEach { category ->
+            categoryColumn.addView(filterChip(category, category == symbolCategory) {
+                if (category != symbolCategory) {
+                    symbolCategory = category
+                    renderSymbolContent(body, notifyRebuilt = true)
+                }
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(44)))
         }
-        body.addView(
-            tabs,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
-            ).apply { bottomMargin = toPx(8) },
-        )
-
+        body.addView(panelVerticalScroll(categoryColumn, "symbol-categories"),
+            LinearLayout.LayoutParams(toPx(74), LinearLayout.LayoutParams.MATCH_PARENT).apply { marginEnd = toPx(5) })
+        val content = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        body.addView(content, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
         if (symbolCategory == "自定义") {
-            body.addView(
+            content.addView(
                 createPanelButton("管理自定义符号", ImeTypographyTokens.BODY_SP, true).apply {
                     contentDescription = "管理自定义符号"
                     setOnClickListener {
@@ -476,33 +466,33 @@ internal class ImePanelRenderer(
                 ),
             )
         }
-        items.chunked(6).forEach { chunk ->
+        items.chunked(5).forEach { chunk ->
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             chunk.forEach { symbol ->
                 row.addView(
                     createKey(
                         symbol,
                         false,
-                        ImeTypographyTokens.BODY_SP,
+                        ImeTypographyTokens.KEY_LETTER_SP,
                     ) { onSymbolSelected(symbol) },
-                    gridCellParams(48, 6, 6),
+                    gridCellParams(54, 5, 0),
                 )
             }
-            repeat(6 - chunk.size) {
-                row.addView(View(context), gridCellParams(48, 6, 6))
+            repeat(5 - chunk.size) {
+                row.addView(View(context), gridCellParams(54, 5, 0))
             }
             grid.addView(
                 row,
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
-                    toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
-                ).apply { bottomMargin = toPx(6) },
+                    toPx(54),
+                ),
             )
         }
 
         val scroll = panelVerticalScroll(grid, "symbols-scroll")
         rememberPanelVerticalScroll(scroll, "symbols:$symbolCategory")
-        body.addView(
+        content.addView(
             scroll,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -519,26 +509,37 @@ internal class ImePanelRenderer(
         notifyRebuilt: Boolean,
     ) {
         body.removeAllViews()
-        val categories = listOf("最近") + ImeData.emojiByCategory.keys.toList()
-        val tabs = panelChipScroll(categories, emojiCategory) { category ->
+        val categories = listOf("全部") + ImeData.emojiByCategory.keys.toList()
+        fun displayCategory(category: String): String = when (category) {
+            "人物/手势" -> "手势"
+            "动物/自然" -> "动物"
+            "食物/饮品" -> "食物"
+            else -> category
+        }
+        val tabs = panelChipScroll(categories.map(::displayCategory), displayCategory(emojiCategory), { label ->
+            val category = categories.first { displayCategory(it) == label }
             if (category != emojiCategory) {
                 emojiCategory = category
                 renderEmojiContent(body, notifyRebuilt = true)
             }
-        }
+        }, heightDp = 32)
         body.addView(
             tabs,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
-            ).apply { bottomMargin = toPx(10) },
+                toPx(32),
+            ).apply { leftMargin = toPx(12); rightMargin = toPx(12); bottomMargin = toPx(4) },
         )
 
-        val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        val items = if (emojiCategory == "最近") {
-            EmojiRecentRepository.load(context)
+        val grid = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(toPx(4), 0, toPx(4), 0)
+        }
+        val items = if (emojiCategory == "全部") {
+            (EmojiRecentRepository.load(context) + ImeData.emojiByCategory.values.flatten()).distinct()
         } else {
-            ImeData.emojiByCategory[emojiCategory].orEmpty()
+            val catalog = ImeData.emojiByCategory[emojiCategory].orEmpty()
+            if (emojiCategory == "笑脸") (ImeData.referenceSmileys + catalog).distinct() else catalog
         }
         if (items.isEmpty() && emojiCategory == "最近") {
             grid.addView(
@@ -559,15 +560,16 @@ internal class ImePanelRenderer(
             chunk.forEach { emoji ->
                 row.addView(
                     createEmojiCell(emoji),
-                    gridCellParams(48, 8, 4),
+                    gridCellParams(42, 8, 0),
                 )
             }
+            repeat(8 - chunk.size) { row.addView(View(context), gridCellParams(42, 8, 0)) }
             grid.addView(
                 row,
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
-                    toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
-                ).apply { bottomMargin = toPx(4) },
+                    toPx(42),
+                ),
             )
         }
 
@@ -601,7 +603,7 @@ internal class ImePanelRenderer(
         onTap: () -> Unit,
     ): TextView = TextView(context).apply {
         text = label
-        textSize = ImeTypographyTokens.CAPTION_SP
+        textSize = ImeTypographyTokens.BODY_SP
         gravity = Gravity.CENTER
         includeFontPadding = false
         minWidth = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
@@ -647,14 +649,15 @@ internal class ImePanelRenderer(
                 scaleType = ImageView.ScaleType.CENTER_INSIDE
                 contentDescription = null
             },
-            LinearLayout.LayoutParams(toPx(20), toPx(20)).apply {
-                bottomMargin = toPx(6)
+            LinearLayout.LayoutParams(toPx(24), toPx(24)).apply {
+                bottomMargin = toPx(10)
             },
         )
         card.addView(
             TextView(context).apply {
                 text = label
-                textSize = ImeTypographyTokens.CAPTION_SP
+                typeface = android.graphics.Typeface.DEFAULT
+                textSize = ImeTypographyTokens.BODY_SP
                 gravity = Gravity.CENTER
                 includeFontPadding = false
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
@@ -667,8 +670,53 @@ internal class ImePanelRenderer(
         return card
     }
 
+    private fun keyboardChoice(mode: KeyboardMode, label: String): View {
+        val selected = currentMode() == mode
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(toPx(14), toPx(12), toPx(14), toPx(8))
+            tag = if (selected) "keyboard-choice-selected" else "keyboard-choice"
+            contentDescription = "$label，${if (selected) "已选中" else "未选中"}"
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { onFeedback(); onModeSelected(mode) }
+            addView(object : View(context) {
+                private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+                override fun onDraw(canvas: Canvas) {
+                    val dark = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES
+                    val tokens = ImeTheme.IOS.tokens(ImeSettingsRepository.loadAppearance(context), dark, AccentPalette.parse(ImeSettingsRepository.loadSkinColor(context)))
+                    val h = height / 4f
+                    paint.color = tokens.functionKeyBackground
+                    for (i in 0..3) {
+                        val y = i * h
+                        val w = if (mode == KeyboardMode.PINYIN_9 || mode == KeyboardMode.DIGITS) width * 0.19f else width * (0.12f + 0.03f * i)
+                        canvas.drawRoundRect(0f, y, w, y + h * 0.72f, toPx(2).toFloat(), toPx(2).toFloat(), paint)
+                        if (mode != KeyboardMode.DIGITS || i == 0 || i == 3) {
+                            paint.color = if (selected && i >= 2) tokens.primary else tokens.functionKeyBackground
+                            canvas.drawRoundRect(width * 0.81f, y, width.toFloat(), y + h * 0.72f, toPx(2).toFloat(), toPx(2).toFloat(), paint)
+                            paint.color = tokens.functionKeyBackground
+                        }
+                    }
+                }
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(TextView(context).apply { text = label; textSize = ImeTypographyTokens.BODY_SP; typeface = Typeface.DEFAULT_BOLD }, LinearLayout.LayoutParams(0, toPx(28), 1f))
+                // A vector mark, not a text glyph: it is tinted and sized like every other icon.
+                addView(ImageView(context).apply {
+                    setImageResource(if (selected) R.drawable.ic_check else R.drawable.ic_radio_off)
+                    tag = if (selected) "keyboard-radio-selected" else "keyboard-radio-off"
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    setPadding(toPx(2), toPx(2), toPx(2), toPx(2))
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                }, LinearLayout.LayoutParams(toPx(24), toPx(24)))
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(28)))
+        }
+    }
+
     private fun symbolItems(category: String): List<String> = when (category) {
-        "中文" -> ImeData.symbols["中文标点"].orEmpty()
+        "中文" -> listOf("，", "。", "、", "；", "：", "？", "！", "…", "—", "～", "·", "「", "」", "『", "』", "（", "）", "《", "》", "【", "】", "“", "”", "‘", "’")
         "英文" -> ImeData.symbols["英文标点"].orEmpty()
         "数学" -> listOf(
             ImeData.symbols["数学运算"].orEmpty(),

@@ -7,11 +7,11 @@ object FluentEmojiAssetRepository {
     private const val ROOT = "emoji/fluent"
 
     @Volatile
-    private var availableFiles: Set<String>? = null
+    private var availableFiles: Map<String, String>? = null
 
     fun pathFor(context: Context, emoji: String): String? {
         val fileName = fileNameFor(emoji)
-        return if (fileName in files(context)) "$ROOT/$fileName" else null
+        return files(context)[fileName]
     }
 
     internal fun fileNameFor(emoji: String): String =
@@ -24,12 +24,15 @@ object FluentEmojiAssetRepository {
      * merely to probe whether a PNG existed. List the directory once per
      * process instead; actual bitmap decoding remains on the background pool.
      */
-    private fun files(context: Context): Set<String> {
+    private fun files(context: Context): Map<String, String> {
         availableFiles?.let { return it }
         return synchronized(this) {
             availableFiles ?: runCatching {
-                context.applicationContext.assets.list(ROOT)?.toSet().orEmpty()
-            }.getOrDefault(emptySet()).also { availableFiles = it }
+                val assets = context.applicationContext.assets
+                val bundled = assets.list(ROOT).orEmpty().associateWith { "$ROOT/$it" }
+                val reference = "emoji/reference"
+                bundled + assets.list(reference).orEmpty().associateWith { "$reference/$it" }
+            }.getOrDefault(emptyMap()).also { availableFiles = it }
         }
     }
 }

@@ -40,13 +40,50 @@ internal class NineKeyLocalDecoder(
         var bestDescendant: Entry? = null
     }
 
+    /**
+     * One way to read the open digits as pinyin. [syllables] are in order;
+     * [coversAll] tells whether they spell every digit (a whole reading) or only
+     * the start of them (a first-syllable choice).
+     */
+    data class Reading(
+        val syllables: List<String>,
+        val coversAll: Boolean,
+        /** False for a bare initial (w, x, y, z): a letter to show, not a syllable to fix. */
+        val complete: Boolean = true,
+    ) {
+        val display: String get() = syllables.joinToString("'")
+    }
+
+    private data class SyllablePath(val syllables: List<String>, val score: Int)
+
     private val root = TrieNode()
+
+    /** Concatenated pinyin of known words -> how good they are (rewards readings that form words). */
+    private val phraseScores = HashMap<String, Int>()
+
+    /** Every digit prefix of every syllable: "an unfinished last syllable" test. */
+    private val syllablePrefixes = HashSet<String>()
+    private val completeSyllables = HashSet<String>()
+
+    /** Han character -> syllables that can read it, most likely first. */
+    private val readingsByChar = HashMap<String, List<String>>()
     private var previousDigits = ""
     private var previousPreview = ""
 
     init {
-        buildEntries().forEach(::insert)
+        val entries = buildEntries()
+        entries.forEach(::insert)
         sortTrie(root)
+        buildReadings(entries)
+        entries.forEach { entry ->
+            if (entry.phrase && entry.pinyin.all { it in 'a'..'z' }) {
+                phraseScores.merge(entry.pinyin, entryScore(entry), ::maxOf)
+            }
+            if (isSyllableEntry(entry)) {
+                completeSyllables += entry.pinyin
+                for (length in 1..entry.digits.length) syllablePrefixes += entry.digits.substring(0, length)
+            }
+        }
     }
 
     @Synchronized
@@ -167,6 +204,242 @@ internal class NineKeyLocalDecoder(
             pinyinSuffixes = paths,
             candidates = roundRobin(batches, MAX_CANDIDATES),
         )
+    }
+
+    private fun buildReadings(entries: List<Entry>) {
+        val byChar = HashMap<String, MutableList<Entry>>()
+        entries.forEach { entry ->
+            if (entry.phrase || entry.pinyin.length > MAX_SYLLABLE_LENGTH ||
+                !entry.pinyin.all { it in 'a'..'z' }
+            ) {
+                return@forEach
+            }
+            entry.candidates.forEach { value ->
+                if (value.codePointCount(0, value.length) == 1) {
+                    byChar.getOrPut(value) { ArrayList(2) } += entry
+                }
+            }
+        }
+        byChar.forEach { (char, list) ->
+            readingsByChar[char] = list
+                .sortedWith(compareByDescending<Entry>(::entryScore).thenBy { it.pinyin })
+                .map { it.pinyin }
+                .distinct()
+        }
+    }
+
+    /**
+     * Pinyin of [text] when it exactly spells the whole digit string, one
+     * syllable per character, or null. Used to make the visible pinyin agree
+     * with the word Rime ranks first.
+     */
+    @Synchronized
+    fun readingFor(digits: String, text: String): List<String>? {
+        val bounded = digits.filter { it in '2'..'9' }
+        if (bounded.isEmpty() || text.isEmpty()) return null
+        val chars = ArrayList<String>()
+        var index = 0
+        while (index < text.length) {
+            val cp = text.codePointAt(index)
+            chars += String(Character.toChars(cp))
+            index += Character.charCount(cp)
+        }
+        if (chars.size > bounded.length) return null
+
+        val picked = arrayOfNulls<String>(chars.size)
+        fun walk(charIndex: Int, digitIndex: Int): Boolean {
+            if (charIndex == chars.size) return digitIndex == bounded.length
+            for (reading in readingsByChar[chars[charIndex]].orEmpty()) {
+                val code = digitsForPinyin(reading) ?: continue
+                if (!bounded.startsWith(code, digitIndex)) continue
+                picked[charIndex] = reading
+                if (walk(charIndex + 1, digitIndex + code.length)) return true
+            }
+            return false
+        }
+        return if (walk(0, 0)) picked.filterNotNull() else null
+    }
+
+    /**
+     * The readings offered in the left rail, best first.
+     *
+     * Short input lists whole readings (`ni'hao`, `mi'hao`, `ni'gao`), the way
+     * the design shows them. Once a whole reading no longer fits the rail it
+     * lists first syllables (`zhong`, `xiong`), and fixing one moves the list on
+     * to the next position (the Baidu / rime-t9-shiyin behaviour). Either way a
+     * tap fixes exactly what the item shows. Choices that would leave digits no
+     * syllable can read are never offered.
+     */
+    @Synchronized
+    fun readingOptions(digits: String, preferred: String?, limit: Int = MAX_SYLLABLE_OPTIONS): List<Reading> {
+        val bounded = digits.filter { it in '2'..'9' }.take(MAX_DIGITS)
+        if (bounded.isEmpty()) return emptyList()
+        val lead = preferred?.lowercase()?.filter { it in 'a'..'z' }.orEmpty()
+
+        // A lone a / o / e between syllables is almost always an artefact of the
+        // digit grid (ni'ha'o), not what anyone typed; keep such readings only
+        // when nothing else exists.
+        val all = syllablePaths(bounded, READING_BEAM)
+        val paths = all.filter { path -> path.syllables.none { it.length == 1 } }.ifEmpty { all }
+        val best = paths.firstOrNull()
+        if (best != null && best.syllables.joinToString("'").length <= WHOLE_READING_MAX_CHARS) {
+            val ranked = paths.sortedWith(
+                compareByDescending<SyllablePath> { it.syllables.joinToString("") == lead }
+                    .thenByDescending { it.score },
+            )
+            return ranked
+                .map { Reading(it.syllables, coversAll = true) }
+                .distinctBy { it.display }
+                .take(limit)
+        }
+
+        // Long input: first syllables, each only if the rest can still be read.
+        val firsts = LinkedHashMap<String, Int>()
+        paths.forEach { path -> firsts.putIfAbsent(path.syllables.first(), path.score) }
+        syllableOptions(bounded, preferred, limit * 2).forEach { syllable ->
+            val code = digitsForPinyin(syllable) ?: return@forEach
+            if (code.length == bounded.length || canRead(bounded.substring(code.length))) {
+                firsts.putIfAbsent(syllable, Int.MIN_VALUE)
+            }
+        }
+        val ordered = firsts.entries
+            .sortedWith(
+                compareByDescending<Map.Entry<String, Int>> { lead.startsWith(it.key) && it.key == leadFirst(lead, firsts.keys) }
+                    .thenByDescending { it.value },
+            )
+            .map { it.key }
+        return ordered.take(limit).map { syllable ->
+            Reading(
+                listOf(syllable),
+                coversAll = digitsForPinyin(syllable)?.length == bounded.length,
+                complete = syllable in completeSyllables,
+            )
+        }
+    }
+
+    /** The longest listed syllable that the preview starts with. */
+    private fun leadFirst(lead: String, candidates: Set<String>): String? =
+        candidates.filter { lead.startsWith(it) }.maxByOrNull { it.length }
+
+    /** Whether [digits] can be read as real syllables, the last one possibly unfinished. */
+    private fun canRead(digits: String): Boolean {
+        if (digits.isEmpty()) return true
+        val reachable = BooleanArray(digits.length + 1).also { it[0] = true }
+        for (start in digits.indices) {
+            if (!reachable[start]) continue
+            if (digits.substring(start) in syllablePrefixes) return true
+            var node = root
+            for (end in start until minOf(digits.length, start + MAX_SYLLABLE_LENGTH)) {
+                node = node.children[digits[end]] ?: break
+                if (node.exact.any(::isSyllableEntry)) reachable[end + 1] = true
+            }
+        }
+        return reachable[digits.length]
+    }
+
+    /** A real syllable: letters only, short, and with a vowel (no `ng`, `m`, `hm` interjections). */
+    private fun isSyllableEntry(entry: Entry): Boolean =
+        !entry.phrase &&
+            entry.pinyin.length <= MAX_SYLLABLE_LENGTH &&
+            entry.pinyin.all { it in 'a'..'z' } &&
+            entry.pinyin.any { it in "aeiouv" }
+
+    /**
+     * Every way to read [digits] as whole syllables, best first. A beam keeps
+     * long input cheap; a reading that forms a known word (`nihao`) outranks
+     * unrelated syllables, so `ni'hao` leads `mi'hao` and `ni'gao`.
+     */
+    private fun syllablePaths(digits: String, beam: Int): List<SyllablePath> {
+        val n = digits.length
+        val states = Array(n + 1) { ArrayList<SyllablePath>() }
+        states[0] += SyllablePath(emptyList(), 0)
+        for (start in 0 until n) {
+            val from = states[start]
+            if (from.isEmpty()) continue
+            var node = root
+            for (end in start until minOf(n, start + MAX_SYLLABLE_LENGTH)) {
+                node = node.children[digits[end]] ?: break
+                val syllables = node.exact.filter(::isSyllableEntry)
+                if (syllables.isEmpty()) continue
+                val target = states[end + 1]
+                for (entry in syllables) {
+                    val own = entryScore(entry) - PART_PENALTY
+                    for (before in from) {
+                        val next = before.syllables + entry.pinyin
+                        target += SyllablePath(next, before.score + own + phraseBonus(next))
+                    }
+                }
+                if (target.size > beam * 2) {
+                    val kept = target
+                        .sortedByDescending { it.score }
+                        .distinctBy { it.syllables }
+                        .take(beam)
+                    target.clear()
+                    target.addAll(kept)
+                }
+            }
+        }
+        return states[n]
+            .sortedByDescending { it.score }
+            .distinctBy { it.syllables }
+            .take(beam)
+    }
+
+    /** Bonus for the words the newest syllable completes (longest suffixes of the path). */
+    private fun phraseBonus(path: List<String>): Int {
+        var bonus = 0
+        for (length in 2..minOf(MAX_PHRASE_SYLLABLES, path.size)) {
+            val key = path.takeLast(length).joinToString("")
+            bonus += phraseScores[key] ?: continue
+        }
+        return bonus
+    }
+
+    /**
+     * Real Pinyin syllables that can start the open digit tail, for the left
+     * selection rail. Longer spellings come first (they consume more of the
+     * typed digits), the syllable the preview currently starts with leads, and
+     * ties follow corpus frequency. A lone digit also offers its key letters so
+     * a key such as 9 is never a dead end.
+     */
+    @Synchronized
+    fun syllableOptions(digits: String, preferred: String?, limit: Int = MAX_SYLLABLE_OPTIONS): List<String> {
+        val bounded = digits.filter { it in '2'..'9' }.take(MAX_DIGITS)
+        if (bounded.isEmpty()) return emptyList()
+        val lead = preferred?.lowercase()?.trim()?.takeIf { it.isNotEmpty() }
+        data class Option(val pinyin: String, val depth: Int, val score: Int)
+        val found = ArrayList<Option>()
+        var node = root
+        for (depth in 1..minOf(bounded.length, MAX_SYLLABLE_LENGTH)) {
+            node = node.children[bounded[depth - 1]] ?: break
+            node.exact.forEach { entry ->
+                if (!entry.phrase && entry.pinyin.length == depth && entry.pinyin.all { it in 'a'..'z' }) {
+                    found += Option(entry.pinyin, depth, entryScore(entry))
+                }
+            }
+        }
+        // The syllable the preview starts with leads, so the highlighted
+        // choice always agrees with the pinyin the user is looking at.
+        val leadPinyin = lead?.let { text ->
+            found.filter { text.startsWith(it.pinyin) }.maxByOrNull { it.depth }?.pinyin
+        }
+        val ordered = found
+            .sortedWith(
+                compareByDescending<Option> { it.pinyin == leadPinyin }
+                    .thenByDescending { it.depth }
+                    .thenByDescending { it.score }
+                    .thenBy { it.pinyin },
+            )
+            .map { it.pinyin }
+            .distinct()
+            .toMutableList()
+        if (bounded.length == 1) {
+            ImeData.keypad9Map[bounded]
+                .orEmpty()
+                .filter { it.length == 1 && it[0] in 'a'..'z' }
+                .forEach { if (it !in ordered) ordered += it }
+        }
+        return ordered.take(limit)
     }
 
     private fun buildEntries(): List<Entry> {
@@ -336,6 +609,11 @@ internal class NineKeyLocalDecoder(
 
     companion object {
         const val MAX_DIGITS = 64
+        const val MAX_SYLLABLE_OPTIONS = 12
+        private const val READING_BEAM = 24
+        private const val WHOLE_READING_MAX_CHARS = 14
+        private const val MAX_PHRASE_SYLLABLES = 6
+        private const val MAX_SYLLABLE_LENGTH = 6
         private const val MAX_PATHS = 12
         private const val MAX_BEAM = 12
         private const val MAX_BRANCHES = 10
@@ -364,14 +642,27 @@ internal class NineKeyLocalDecoder(
             return digits.toString().ifEmpty { null }
         }
 
-        /** Build the one authoritative Rime code for an explicitly segmented composition. */
-        fun nativeCode(segmentPrefix: String, suffixDigits: String): String? {
+        /**
+         * Build the one authoritative Rime code for an explicitly segmented
+         * composition. Letters in [segmentPrefix] are syllables the user has
+         * already fixed (by tapping a Pinyin choice or the segment key); they
+         * stay letters so Rime cannot re-interpret them as another spelling
+         * with the same digits (zhong/xiong). The luna_pinyin schema accepts
+         * letters and 2-9 digits in one input. [suffixDigits] is still
+         * ambiguous and therefore stays digits. Without [lockLetters] every
+         * prefix letter becomes its digit again (the legacy behaviour, used
+         * where the prefix is only a display guess).
+         */
+        fun nativeCode(segmentPrefix: String, suffixDigits: String, lockLetters: Boolean = false): String? {
             val out = StringBuilder(segmentPrefix.length + suffixDigits.length)
             segmentPrefix.lowercase().forEach { ch ->
                 when {
                     ch in 'a'..'z' || ch == 'ü' -> {
-                        val digit = digitsForPinyin(ch.toString()) ?: return null
-                        out.append(digit)
+                        if (lockLetters) {
+                            out.append(if (ch == 'ü') 'v' else ch)
+                        } else {
+                            out.append(digitsForPinyin(ch.toString()) ?: return null)
+                        }
                     }
                     ch == '|' || ch == '\'' || ch.isWhitespace() -> {
                         if (out.isNotEmpty() && out.last() != '\'') out.append('\'')
@@ -379,7 +670,9 @@ internal class NineKeyLocalDecoder(
                     else -> return null
                 }
             }
-            suffixDigits.filter { it in '2'..'9' }.forEach(out::append)
+            val digits = suffixDigits.filter { it in '2'..'9' }
+            if (digits.isNotEmpty() && out.isNotEmpty() && out.last() != '\'') out.append('\'')
+            out.append(digits)
             return out.toString().trim('\'').ifBlank { null }
         }
     }

@@ -538,4 +538,134 @@ class InputConnectionGatewayTest {
         gateway.deleteBackwards()
         assertTrue(fake.events.any { it.startsWith("delete") })
     }
+
+    /**
+     * An editor in the style of a Compose/custom/web field: it keeps real text
+     * and a cursor and answers before/after/selected-text queries, but offers
+     * no select-all action and no ExtractedText.
+     */
+    private class SurroundingOnlyEditor(
+        initial: String,
+        var selStart: Int,
+        var selEnd: Int,
+        private val answerCap: Int = Int.MAX_VALUE,
+        private val refuseDelete: Boolean = false,
+    ) : InputConnection {
+        val text = StringBuilder(initial)
+        private val lo get() = minOf(selStart, selEnd)
+        private val hi get() = maxOf(selStart, selEnd)
+
+        override fun getTextBeforeCursor(length: Int, flags: Int): CharSequence =
+            text.substring(0, lo).takeLast(minOf(length, answerCap))
+        override fun getTextAfterCursor(length: Int, flags: Int): CharSequence =
+            text.substring(hi).take(minOf(length, answerCap))
+        override fun getSelectedText(flags: Int): CharSequence? =
+            if (lo == hi) null else text.substring(lo, hi)
+        override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
+            val value = text?.toString().orEmpty()
+            this.text.replace(lo, hi, value)
+            val cursor = lo + value.length
+            selStart = cursor
+            selEnd = cursor
+            return true
+        }
+        override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean {
+            if (refuseDelete) return false
+            val start = lo
+            val end = hi
+            text.delete(end, (end + afterLength).coerceAtMost(text.length))
+            val from = (start - beforeLength).coerceAtLeast(0)
+            text.delete(from, start)
+            selStart = from
+            selEnd = from + (end - start)
+            return true
+        }
+        override fun setSelection(start: Int, end: Int): Boolean {
+            selStart = start
+            selEnd = end
+            return true
+        }
+        override fun performContextMenuAction(id: Int): Boolean = false
+        override fun getExtractedText(request: ExtractedTextRequest?, flags: Int): ExtractedText? = null
+
+        override fun beginBatchEdit(): Boolean = true
+        override fun endBatchEdit(): Boolean = true
+        override fun clearMetaKeyStates(states: Int): Boolean = false
+        override fun closeConnection() = Unit
+        override fun commitCompletion(text: CompletionInfo?): Boolean = false
+        override fun commitContent(inputContentInfo: InputContentInfo, flags: Int, opts: Bundle?): Boolean = false
+        override fun commitCorrection(correctionInfo: CorrectionInfo?): Boolean = false
+        override fun deleteSurroundingTextInCodePoints(beforeLength: Int, afterLength: Int): Boolean = false
+        override fun finishComposingText(): Boolean = true
+        override fun getCursorCapsMode(reqType: Int): Int = 0
+        override fun getHandler(): Handler? = null
+        override fun performEditorAction(editorAction: Int): Boolean = false
+        override fun performPrivateCommand(action: String?, data: Bundle?): Boolean = false
+        override fun reportFullscreenMode(monochrome: Boolean): Boolean = false
+        override fun requestCursorUpdates(cursorUpdateMode: Int): Boolean = false
+        override fun sendKeyEvent(event: KeyEvent?): Boolean = false
+        override fun setComposingRegion(start: Int, end: Int): Boolean = false
+        override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean = false
+    }
+
+    @Test
+    fun clearAllWorksInEditorsThatOnlyAnswerSurroundingTextQueries() {
+        val editor = SurroundingOnlyEditor("你好，世界", selStart = 2, selEnd = 2)
+        val gateway = InputConnectionGateway(null, { editor })
+
+        assertTrue(gateway.clearAllText())
+        assertEquals("", editor.text.toString())
+        assertTrue(gateway.hasClearUndo())
+
+        assertTrue(gateway.restoreLastClear())
+        assertEquals("你好，世界", editor.text.toString())
+        assertEquals(2, editor.selStart)
+        assertEquals(2, editor.selEnd)
+    }
+
+    @Test
+    fun surroundingTextClearKeepsAnExistingSelectionForUndo() {
+        val editor = SurroundingOnlyEditor("abcdef", selStart = 2, selEnd = 4)
+        val gateway = InputConnectionGateway(null, { editor })
+
+        assertTrue(gateway.clearAllText())
+        assertEquals("", editor.text.toString())
+
+        assertTrue(gateway.restoreLastClear())
+        assertEquals("abcdef", editor.text.toString())
+        assertEquals(2, editor.selStart)
+        assertEquals(4, editor.selEnd)
+    }
+
+    @Test
+    fun surroundingTextClearFinishesEditorsThatCapTheirAnswers() {
+        val editor = SurroundingOnlyEditor("0123456789", selStart = 5, selEnd = 5, answerCap = 3)
+        val gateway = InputConnectionGateway(null, { editor })
+
+        assertTrue(gateway.clearAllText())
+        assertEquals("", editor.text.toString())
+
+        assertTrue(gateway.restoreLastClear())
+        assertEquals("0123456789", editor.text.toString())
+        assertEquals(5, editor.selStart)
+    }
+
+    @Test
+    fun surroundingTextClearLosesNothingWhenTheEditorRefusesToDelete() {
+        val editor = SurroundingOnlyEditor("abcdef", selStart = 2, selEnd = 4, refuseDelete = true)
+        val gateway = InputConnectionGateway(null, { editor })
+
+        assertFalse(gateway.clearAllText())
+        assertEquals("abcdef", editor.text.toString())
+        assertFalse(gateway.hasClearUndo())
+    }
+
+    @Test
+    fun clearAllOnAnAlreadyEmptySurroundingTextEditorSucceedsWithoutUndo() {
+        val editor = SurroundingOnlyEditor("", selStart = 0, selEnd = 0)
+        val gateway = InputConnectionGateway(null, { editor })
+
+        assertTrue(gateway.clearAllText())
+        assertFalse(gateway.hasClearUndo())
+    }
 }

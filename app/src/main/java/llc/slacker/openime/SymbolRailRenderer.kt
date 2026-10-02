@@ -1,6 +1,8 @@
 package llc.slacker.openime
 
 import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Rect
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -14,7 +16,7 @@ import android.widget.TextView
  * the nine-key/numeric callers.
  */
 internal object SymbolRailRenderer {
-    private const val CELL_HEIGHT_DP = 48
+    private const val CELL_HEIGHT_DP = 54
 
     fun build(
         context: Context,
@@ -22,6 +24,8 @@ internal object SymbolRailRenderer {
         contentTag: String,
         contentDescription: String,
         symbols: List<String>,
+        cellHeightDp: Int = CELL_HEIGHT_DP,
+        toPx: (Int) -> Int = { dp(context, it) },
         tagPrefix: String,
         onCommit: (String) -> Unit,
         onFeedback: () -> Unit,
@@ -47,6 +51,8 @@ internal object SymbolRailRenderer {
         populate(
             scroll = scroll,
             symbols = symbols,
+            cellHeightDp = cellHeightDp,
+            toPx = toPx,
             tagPrefix = tagPrefix,
             onCommit = onCommit,
             onFeedback = onFeedback,
@@ -57,8 +63,10 @@ internal object SymbolRailRenderer {
     fun populate(
         scroll: ScrollView,
         symbols: List<String>,
+        cellHeightDp: Int = CELL_HEIGHT_DP,
         tagPrefix: String,
         preservedHeader: TextView? = null,
+        toPx: (Int) -> Int = { dp(scroll.context, it) },
         onCommit: (String) -> Unit,
         onFeedback: () -> Unit,
     ) {
@@ -74,7 +82,7 @@ internal object SymbolRailRenderer {
             inheritedTextColor?.let(preservedHeader::setTextColor)
             content.addView(
                 preservedHeader,
-                cellParams(content.context, withGap = true),
+                cellParams(content.context, withGap = true, heightDp = cellHeightDp, toPx = toPx),
             )
         }
         symbols.forEachIndexed { index, symbol ->
@@ -87,16 +95,18 @@ internal object SymbolRailRenderer {
                     onCommit = onCommit,
                     onFeedback = onFeedback,
                 ),
-                cellParams(content.context, withGap = index < symbols.lastIndex),
+                cellParams(content.context, withGap = index < symbols.lastIndex, heightDp = cellHeightDp, toPx = toPx),
             )
         }
     }
 
-    fun cellParams(context: Context, withGap: Boolean) = LinearLayout.LayoutParams(
+    fun cellParams(context: Context, withGap: Boolean, heightDp: Int = CELL_HEIGHT_DP, toPx: (Int) -> Int = { dp(context, it) }) = LinearLayout.LayoutParams(
         LinearLayout.LayoutParams.MATCH_PARENT,
-        dp(context, CELL_HEIGHT_DP),
+        toPx(heightDp),
     ).apply {
-        if (withGap) bottomMargin = dp(context, 1)
+        val gap = toPx(ImeGeometryTokens.KEY_GAP_DP) / 2
+        setMargins(gap, gap, gap, gap)
+        height -= gap * 2
     }
 
     fun cellHeightPx(context: Context): Int = dp(context, CELL_HEIGHT_DP)
@@ -108,16 +118,16 @@ internal object SymbolRailRenderer {
         tagPrefix: String,
         onCommit: (String) -> Unit,
         onFeedback: () -> Unit,
-    ): TextView = TextView(context).apply {
+    ): TextView = InkCenteredTextView(context).apply {
         text = symbol
-        textSize = ImeTypographyTokens.BODY_SP
+        textSize = when (symbol) { "！", "!", "？", "?" -> 24f; "，", "、", "%", "+", "−", "-" -> 22f; else -> 20f }
         gravity = Gravity.CENTER
         tag = "$tagPrefix$symbol"
         contentDescription = symbol
         isClickable = true
         isFocusable = true
         maxLines = 2
-        minimumHeight = cellHeightPx(context)
+        includeFontPadding = false
         inheritedTextColor?.let(::setTextColor)
         setOnClickListener {
             onFeedback()
@@ -127,4 +137,35 @@ internal object SymbolRailRenderer {
 
     private fun dp(context: Context, value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
+
+    /**
+     * Full-width punctuation is drawn in the corner of its em box (the comma
+     * and full stop at bottom-left, the exclamation and question marks at the
+     * left), so plain gravity centering looks off-center. Shift the canvas so
+     * the glyph's real ink bounds, not its em box, sit at the cell center.
+     */
+    private class InkCenteredTextView(context: Context) : TextView(context) {
+        private val ink = Rect()
+
+        override fun onDraw(canvas: Canvas) {
+            val value = text?.toString().orEmpty()
+            if (value.isEmpty() || value.codePointCount(0, value.length) != 1) {
+                super.onDraw(canvas)
+                return
+            }
+            val paint = paint
+            paint.getTextBounds(value, 0, value.length, ink)
+            if (ink.isEmpty) {
+                super.onDraw(canvas)
+                return
+            }
+            val metrics = paint.fontMetrics
+            val dx = paint.measureText(value) / 2f - ink.exactCenterX()
+            val dy = (metrics.ascent + metrics.descent) / 2f - ink.exactCenterY()
+            canvas.save()
+            canvas.translate(dx, dy)
+            super.onDraw(canvas)
+            canvas.restore()
+        }
+    }
 }

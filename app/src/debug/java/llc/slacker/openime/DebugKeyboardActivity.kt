@@ -82,12 +82,20 @@ class DebugKeyboardActivity : Activity(), ImeKeyboardView.Listener, CandidateRes
         segmentPrefix: String,
         preferredSuffix: String?,
         fuzzy: Boolean,
+        lockPreferred: Boolean,
     ): CandidatePipeline.NineKeyResolution = candidatePipeline.resolveNineKey(
         digits = digits,
         segmentPrefix = segmentPrefix,
         preferredSuffix = preferredSuffix,
         fuzzy = fuzzy,
+        lockPreferred = lockPreferred,
     )
+
+    override fun nineKeyReadingsFor(digits: String, preferred: String?): List<NineKeyReading> =
+        candidatePipeline.nineKeyReadingsFor(digits, preferred)
+
+    override fun nineKeyReadingFor(digits: String, candidate: String): List<String>? =
+        candidatePipeline.nineKeyReadingFor(digits, candidate)
 
     override fun nineKeyPathsFor(code: String?): List<String> =
         candidatePipeline.nineKeyPathsFor(code)

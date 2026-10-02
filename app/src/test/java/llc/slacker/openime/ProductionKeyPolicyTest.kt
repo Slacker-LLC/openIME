@@ -6,16 +6,19 @@ import org.junit.Test
 /** Regression coverage for current-main production key geometry. */
 class ProductionKeyPolicyTest {
     @Test
-    fun balancesTwentySixKeyBottomRowAroundSpace() {
+    fun twentySixKeyBottomRowFollowsTheReferenceCanvas() {
         val weights = ProductionKeyPolicy.twentySixKeyBottomRowWeights()
-        val left = weights.leftOuter + weights.leftInner
-        val right = weights.rightInner + weights.rightOuter
-        assertEquals(left, right, 0.0001f)
-        assertEquals(1.60f, weights.leftOuter, 0.0001f)
-        assertEquals(0.95f, weights.leftInner, 0.0001f)
-        assertEquals(3.40f, weights.space, 0.0001f)
-        assertEquals(1.05f, weights.rightInner, 0.0001f)
-        assertEquals(1.50f, weights.rightOuter, 0.0001f)
+        // 123 | 中/英 | 空格 | (no right inner key) | 确定, in the design's 390 units.
+        assertEquals(68f, weights.leftOuter, 0.0001f)
+        assertEquals(56f, weights.leftInner, 0.0001f)
+        assertEquals(178f, weights.space, 0.0001f)
+        assertEquals(0f, weights.rightInner, 0.0001f)
+        assertEquals(88f, weights.rightOuter, 0.0001f)
+        assertEquals(
+            390f,
+            weights.leftOuter + weights.leftInner + weights.space + weights.rightInner + weights.rightOuter,
+            0.0001f,
+        )
     }
 
     @Test

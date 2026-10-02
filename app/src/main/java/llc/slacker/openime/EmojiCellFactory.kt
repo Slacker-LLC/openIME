@@ -18,6 +18,7 @@ import java.util.concurrent.Executors
  */
 internal class EmojiCellFactory(
     private val context: Context,
+    private val toPx: (Int) -> Int = { (it * context.resources.displayMetrics.density).toInt() },
     private val onFeedback: () -> Unit,
     private val onEmojiSelected: (String) -> Unit,
 ) {
@@ -53,10 +54,7 @@ internal class EmojiCellFactory(
             }
             cell.addView(
                 image,
-                FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                ),
+                FrameLayout.LayoutParams(toPx(28), toPx(28)).apply { gravity = Gravity.CENTER },
             )
             requestBitmap(context, assetPath) { bitmap ->
                 if (image.tag == assetPath) {
@@ -73,6 +71,8 @@ internal class EmojiCellFactory(
         }
         return cell
     }
+
+    private fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).toInt()
 
     private companion object {
         private const val CACHE_BYTES = 4 * 1024 * 1024

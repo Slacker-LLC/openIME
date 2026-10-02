@@ -87,5 +87,5 @@ internal class NineKeyUiState {
     }
 
     private fun isNineKeyCode(value: String): Boolean =
-        value.isNotEmpty() && value.all { it in '2'..'9' || it == '\'' }
+        value.isNotEmpty() && value.all { it in '2'..'9' || it in 'a'..'z' || it == '\'' }
 }

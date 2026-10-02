@@ -10,6 +10,11 @@ import android.widget.FrameLayout
 import android.window.OnBackInvokedCallback
 
 class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
+    companion object { const val EXTRA_EDIT_ACCENT = "edit_accent" }
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(SetupUi.appearanceContext(newBase))
+    }
+
     private lateinit var keyboardView: ImeKeyboardView
     private lateinit var host: FrameLayout
     private var backCallback: OnBackInvokedCallback? = null
@@ -63,6 +68,9 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
         )
         setContentView(host)
         refreshWindowChrome()
+        if (savedInstanceState == null && intent.getBooleanExtra(EXTRA_EDIT_ACCENT, false)) {
+            host.post { keyboardView.editAccentColor() }
+        }
         if (Build.VERSION.SDK_INT >= 33) {
             backCallback = OnBackInvokedCallback { handleBack() }
             onBackInvokedDispatcher.registerOnBackInvokedCallback(
@@ -168,8 +176,8 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
     }
     override fun onAppearanceChanged(appearance: ImeAppearance) {
         ImeSettingsRepository.saveAppearance(this, appearance)
-        refreshWindowChrome()
         refreshLiveIme()
+        recreate()
     }
     override fun onShiftStateChanged(state: ShiftState) = Unit
     override fun onCandidateExpanded(open: Boolean) = Unit

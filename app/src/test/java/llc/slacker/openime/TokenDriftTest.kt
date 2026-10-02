@@ -2,6 +2,7 @@ package llc.slacker.openime
 
 import java.io.File
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -40,9 +41,11 @@ class TokenDriftTest {
         val light = source("app/src/main/res/values/colors.xml")
         val dark = source("app/src/main/res/values-night/colors.xml")
 
+        // The setup pages sit on the toolbar surface (#EFF0F4) with white cards
+        // (toolCardBackground), exactly like the reference design's full pages.
         mapOf(
-            "setup_page_bg" to "#D5D8DE",
-            "setup_surface" to "#EEF0F3",
+            "setup_page_bg" to "#EFF0F4",
+            "setup_surface" to "#FFFFFF",
             "setup_title" to "#1C1C1E",
             "setup_body" to "#6D6D72",
             "setup_primary" to "#1D9BF0",
@@ -52,7 +55,7 @@ class TokenDriftTest {
         }
         mapOf(
             "setup_page_bg" to "#1C1C1E",
-            "setup_surface" to "#242426",
+            "setup_surface" to "#303032",
             "setup_title" to "#F2F2F7",
             "setup_body" to "#AEAEB2",
             "setup_primary" to "#6EC3F7",
@@ -97,10 +100,15 @@ class TokenDriftTest {
             }
             .forEach { icon ->
                 val xml = icon.readText()
-                assertTrue("${icon.name} width must be 24dp", xml.contains("android:width=\"24dp\""))
-                assertTrue("${icon.name} height must be 24dp", xml.contains("android:height=\"24dp\""))
+                // One coordinate canvas for every icon, so paths are drawn on the same grid.
                 assertTrue("${icon.name} viewport width must be 24", xml.contains("android:viewportWidth=\"24\""))
                 assertTrue("${icon.name} viewport height must be 24", xml.contains("android:viewportHeight=\"24\""))
+                val width = Regex("""android:width="(\d+)dp"""").find(xml)?.groupValues?.get(1)?.toInt()
+                val height = Regex("""android:height="(\d+)dp"""").find(xml)?.groupValues?.get(1)?.toInt()
+                assertTrue("${icon.name} must declare a dp width and height", width != null && height != null)
+                assertEquals("${icon.name} must be square", width, height)
+                // Intrinsic sizes the reference design uses for icons.
+                assertTrue("${icon.name} size ${width}dp is not a design icon size", width in setOf(18, 20, 24))
             }
     }
 

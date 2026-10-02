@@ -29,6 +29,7 @@ class ImeKeyView(
     iconRes: Int = 0,
     mainTextSize: Float = ImeTypographyTokens.KEY_LETTER_SP,
     fitMainText: Boolean = false,
+    private val toPx: (Int) -> Int = { (it * context.resources.displayMetrics.density).toInt() },
 ) : FrameLayout(context) {
 
     private val density = resources.displayMetrics.density
@@ -89,6 +90,7 @@ class ImeKeyView(
     private val mainTextView: TextView?
     private val secondaryTextView: TextView?
     private val iconView: ImageView?
+    private var returnIcon: ImageView? = null
 
     init {
         isClickable = true
@@ -166,17 +168,17 @@ class ImeKeyView(
             addView(
                 view,
                 FrameLayout.LayoutParams(
-                    dp(if (text.isEmpty()) 20 else 16),
-                    dp(if (text.isEmpty()) 20 else 16),
+                    dp(if (text.isEmpty()) { if (iconRes == R.drawable.ic_backspace) 24 else 20 } else 10),
+                    dp(if (text.isEmpty()) { if (iconRes == R.drawable.ic_backspace) 24 else 20 } else 10),
                 ).apply {
                     gravity = if (text.isEmpty()) {
                         Gravity.CENTER
                     } else {
-                        Gravity.BOTTOM or Gravity.END
+                        Gravity.TOP or Gravity.END
                     }
                     if (text.isNotEmpty()) {
                         rightMargin = dp(6)
-                        bottomMargin = dp(4)
+                        topMargin = dp(4)
                     }
                 },
             )
@@ -207,12 +209,14 @@ class ImeKeyView(
                 },
             )
         }
+        if (text == "↵") setMainText(text)
     }
 
     fun setColors(mainColor: Int = Color.BLACK, secondaryColor: Int = Color.GRAY, iconColor: Int = mainColor) {
         mainTextView?.setTextColor(mainColor)
         secondaryTextView?.setTextColor(secondaryColor)
         iconView?.imageTintList = ColorStateList.valueOf(iconColor)
+        returnIcon?.imageTintList = ColorStateList.valueOf(mainColor)
     }
 
     val currentMainText: String
@@ -220,12 +224,26 @@ class ImeKeyView(
 
     fun setMainText(value: String) {
         mainTextView?.text = value
+        if (value == "↵" && returnIcon == null) {
+            returnIcon = ImageView(context).apply {
+                setImageResource(R.drawable.ic_return)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                imageTintList = ColorStateList.valueOf(mainTextView?.currentTextColor ?: Color.BLACK)
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }.also { addView(it, FrameLayout.LayoutParams(dp(24), dp(24), Gravity.CENTER)) }
+        }
+        returnIcon?.visibility = if (value == "↵") View.VISIBLE else View.GONE
+        mainTextView?.visibility = if (value == "↵") View.INVISIBLE else View.VISIBLE
         contentDescription = value
     }
 
     /** Update key typography without rebuilding the keyboard hierarchy. */
     fun applyMainTextScale(scale: Float) {
-        mainTextView?.textSize = baseMainTextSize * scale.coerceAtLeast(0.5f)
+        mainTextView?.apply {
+            setAutoSizeTextTypeWithDefaults(TextView.AUTO_SIZE_TEXT_TYPE_NONE)
+            textSize = baseMainTextSize * scale.coerceAtLeast(0.4f)
+        }
+        secondaryTextView?.textSize = ImeTypographyTokens.CAPTION_SP * (toPx(100) / (100f * density))
     }
 
     /**
@@ -254,5 +272,5 @@ class ImeKeyView(
         iconView.setImageResource(value)
     }
 
-    private fun dp(value: Int): Int = (value * density).toInt()
+    private fun dp(value: Int): Int = toPx(value)
 }

@@ -25,6 +25,29 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// The root VERSION file (MAJOR.MINOR.PATCH) is the only place a version is
+// written. versionCode is derived from it, so the two cannot drift and every
+// release is strictly greater than the one before. scripts/release_check.py
+// applies the same rules in CI and verifies the built APK.
+val appVersionName: String = providers
+    .fileContents(rootProject.layout.projectDirectory.file("VERSION"))
+    .asText
+    .get()
+    .trim()
+val appVersionCode: Int = run {
+    val parts = Regex("""(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)""")
+        .matchEntire(appVersionName)
+        ?.destructured
+        ?.toList()
+        ?.map(String::toInt)
+        ?: throw GradleException("VERSION must be MAJOR.MINOR.PATCH, found '$appVersionName'")
+    val (major, minor, patch) = parts
+    if (major < 1 || minor > 99 || patch > 99) {
+        throw GradleException("VERSION $appVersionName is out of range (major >= 1, minor and patch <= 99)")
+    }
+    major * 10_000 + minor * 100 + patch
+}
+
 android {
     namespace = "llc.slacker.openime"
     compileSdk = 36
@@ -35,9 +58,8 @@ android {
         minSdk = 26
         targetSdk = 36
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = 4
-        versionName = "1.0.3"
-
+        versionCode = appVersionCode
+        versionName = appVersionName
     }
 
     signingConfigs {

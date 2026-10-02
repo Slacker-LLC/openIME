@@ -189,8 +189,36 @@ check '025 English 26 path -> openime' 'openime' "$(editor_text)"
 start_real
 mode PINYIN_9 || say 'WARN: PINYIN_9 not reached'
 for key in 6 4 4 2 6; do tap "$key"; done
+tap key-space
+check '030 nine-key 64426 + space -> 你好' '你好' "$(editor_text)"
+
+start_real
+mode PINYIN_9 || say 'WARN: PINYIN_9 not reached'
+for key in 6 4 4 2 6; do tap "$key"; done
 tap '确定'
-check '030 nine-key 64426 -> 你好' '你好' "$(editor_text)"
+check '031 nine-key 64426 + enter keeps pinyin -> nihao' 'nihao' "$(editor_text)"
+
+start_real
+mode PINYIN_26 || say 'WARN: PINYIN_26 not reached'
+for key in n i h a o; do tap "$key"; done
+tap key-enter
+check '032 26-key nihao + enter keeps pinyin -> nihao' 'nihao' "$(editor_text)"
+
+start_real
+mode PINYIN_9 || say 'WARN: PINYIN_9 not reached'
+for key in 6 4 4 2 6 6 2; do tap "$key"; done
+tap '候选:你'
+check "033 nine-key partial pick keeps the rest composing -> 你hao'ma" "你hao'ma" "$(editor_text)"
+tap key-space
+check '034 nine-key rest then space -> 你好吗' '你好吗' "$(editor_text)"
+
+start_real
+mode PINYIN_26 || say 'WARN: PINYIN_26 not reached'
+for key in n i h a o m a; do tap "$key"; done
+tap '候选:你'
+check '035 26-key partial pick keeps the rest composing -> 你haoma' '你haoma' "$(editor_text)"
+tap key-space
+check '036 26-key rest then space -> 你好吗' '你好吗' "$(editor_text)"
 
 start_real
 mode DIGITS || say 'WARN: DIGITS not reached'

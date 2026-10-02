@@ -17,23 +17,7 @@ internal object ProductionKeyPolicy {
 
     /** Visual reference geometry for the shared Chinese/English 26-key bottom row. */
     fun twentySixKeyBottomRowWeights(): BottomRowWeights {
-        val leftOuter = 1.30f
-        val leftInner = 0.95f
-        val rightInner = 1.05f
-        val rightOuter = 1.80f
-        val balanced = balancedOuterWeights(
-            leftTotal = leftOuter + leftInner,
-            rightTotal = rightInner + rightOuter,
-            leftOuter = leftOuter,
-            rightOuter = rightOuter,
-        )
-        return BottomRowWeights(
-            leftOuter = balanced.leftOuter,
-            leftInner = leftInner,
-            space = 3.40f,
-            rightInner = rightInner,
-            rightOuter = balanced.rightOuter,
-        )
+        return BottomRowWeights(68f, 56f, 178f, 0f, 88f)
     }
 
     /**

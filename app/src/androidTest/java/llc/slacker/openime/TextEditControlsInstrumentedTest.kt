@@ -48,14 +48,14 @@ class TextEditControlsInstrumentedTest {
         harness.awaitMain { true }
 
         harness.awaitMain {
-            listOf("撤销", "▲", "▼").forEach { label ->
+            listOf("撤销", "↑", "↓").forEach { label ->
                 val control = findInteractiveControl(keyboard, label)
                 assertNotNull("missing supported text-edit control $label", control)
                 assertTrue("$label should remain clickable", control!!.isClickable)
                 assertTrue("$label should remain enabled", control.isEnabled)
             }
 
-            listOf("全选", "复制", "剪切", "粘贴", "◀", "▶").forEach { label ->
+            listOf("全选", "复制", "剪切", "粘贴", "←", "→").forEach { label ->
                 val control = findInteractiveControl(keyboard, label)
                 assertNotNull("missing supported text-edit control $label", control)
                 assertTrue("$label should remain clickable", control!!.isClickable)
@@ -118,7 +118,7 @@ class TextEditControlsInstrumentedTest {
                     )
                 }
             }
-            assertTrue("cursor movement must remain available", findInteractiveControl(keyboard, "◀")!!.isEnabled)
+            assertTrue("cursor movement must remain available", findInteractiveControl(keyboard, "←")!!.isEnabled)
         }
     }
 

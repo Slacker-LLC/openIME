@@ -165,7 +165,7 @@ Mode 'PINYIN_9'
 # the visible pre-edit stays as Pinyin and the user can tap a candidate
 # without inserting a numeric string into the target editor.
 foreach ($key in @('6', '4', '4', '2', '6')) { Tap $key }
-Tap '确定'
+Tap 'key-space'
 AssertText '030 9-key continuous buffer -> 你好' '你好' (GetText 'crp9')
 
 StartReal

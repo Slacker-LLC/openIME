@@ -13,6 +13,10 @@ import android.widget.Toast
 import java.io.File
 
 class AboutDataActivity : Activity() {
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(SetupUi.appearanceContext(newBase))
+    }
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -20,9 +24,9 @@ class AboutDataActivity : Activity() {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(
-                dp(ImeSpacingTokens.XL_DP),
                 dp(ImeSpacingTokens.LG_DP),
-                dp(ImeSpacingTokens.XL_DP),
+                0,
+                dp(ImeSpacingTokens.LG_DP),
                 dp(ImeSpacingTokens.XXL_DP),
             )
             addView(
@@ -34,23 +38,20 @@ class AboutDataActivity : Activity() {
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     dp(ImeGeometryTokens.TOP_BAR_HEIGHT_DP),
-                ),
+                ).apply { marginStart = -dp(16); marginEnd = -dp(16) },
             )
             addView(
                 infoCard(
-                    title = "openIME " + versionName(),
+                    title = "隐私",
                     body = "本应用不含联网权限，数据只存在本机。",
                 ),
-                wrap().apply { topMargin = dp(ImeSpacingTokens.MD_DP) },
+                wrap().apply { topMargin = dp(ImeSpacingTokens.LG_DP) },
             )
-            addView(
-                infoCard(
-                    title = "用户数据",
-                    body = "JSON 导出包含常用语、自定义符号、备用用户词条和设置项；剪贴板历史不导出。Rime 自动学习词库在已加载时一并导出，并在导入时按词库合并。",
-                ),
-                wrap().apply { topMargin = dp(ImeSpacingTokens.MD_DP) },
+            val dataCard = infoCard(
+                title = "用户数据",
+                body = "JSON 导出包含常用语、自定义符号、备用用户词条和设置项；剪贴板历史不导出。Rime 自动学习词库在已加载时一并导出，并在导入时按词库合并。",
             )
-
+            addView(dataCard, wrap().apply { topMargin = dp(12) })
             val actions = LinearLayout(this@AboutDataActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 addView(
@@ -59,7 +60,7 @@ class AboutDataActivity : Activity() {
                     },
                     LinearLayout.LayoutParams(
                         0,
-                        dp(ImeGeometryTokens.PRIMARY_ROW_HEIGHT_DP),
+                        dp(44),
                         1f,
                     ).apply { marginEnd = dp(ImeSpacingTokens.SM_DP) },
                 )
@@ -69,17 +70,17 @@ class AboutDataActivity : Activity() {
                     },
                     LinearLayout.LayoutParams(
                         0,
-                        dp(ImeGeometryTokens.PRIMARY_ROW_HEIGHT_DP),
+                        dp(44),
                         1f,
                     ),
                 )
             }
-            addView(
+            dataCard.addView(
                 actions,
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
-                    dp(ImeGeometryTokens.PRIMARY_ROW_HEIGHT_DP),
-                ).apply { topMargin = dp(ImeSpacingTokens.LG_DP) },
+                    dp(44),
+                ).apply { topMargin = dp(12); marginStart = dp(44) },
             )
             addView(
                 infoCard(
@@ -88,6 +89,10 @@ class AboutDataActivity : Activity() {
                 ),
                 wrap().apply { topMargin = dp(ImeSpacingTokens.LG_DP) },
             )
+            addView(TextView(this@AboutDataActivity).apply {
+                text = "openIME · 版本 " + versionName(); textSize = ImeTypographyTokens.SMALL_SP; gravity = android.view.Gravity.CENTER
+                setTextColor(getColor(R.color.setup_body))
+            }, wrap().apply { topMargin = dp(18) })
         }
 
         setContentView(
@@ -329,24 +334,25 @@ class AboutDataActivity : Activity() {
                 dp(ImeGeometryTokens.CARD_RADIUS_DP).toFloat(),
                 getColor(R.color.setup_input_line),
             )
-            addView(
-                TextView(this@AboutDataActivity).apply {
-                    text = title
-                    textSize = ImeTypographyTokens.TITLE_SP
-                    setTextColor(getColor(R.color.setup_title))
-                    setTypeface(typeface, android.graphics.Typeface.BOLD)
-                },
-                wrap(),
-            )
-            addView(
-                TextView(this@AboutDataActivity).apply {
-                    text = body
-                    textSize = ImeTypographyTokens.BODY_SP
-                    setTextColor(getColor(R.color.setup_body))
-                    setPadding(0, dp(ImeSpacingTokens.SM_DP), 0, 0)
-                },
-                wrap(),
-            )
+            addView(LinearLayout(this@AboutDataActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(android.widget.ImageView(this@AboutDataActivity).apply {
+                    setImageResource(if (title == "用户数据") R.drawable.ic_download else if (title == "隐私") R.drawable.ic_shield else R.drawable.ic_info)
+                    imageTintList = android.content.res.ColorStateList.valueOf(SetupUi.accent(this@AboutDataActivity))
+                    scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+                    setPadding(dp(8), dp(8), dp(8), dp(8))
+                    background = SetupUi.rounded(ImeDrawableFactory.blend(SetupUi.accent(this@AboutDataActivity), getColor(R.color.setup_surface), 0.14f), dp(8).toFloat())
+                }, LinearLayout.LayoutParams(dp(32), dp(32)).apply { marginEnd = dp(12) })
+                addView(LinearLayout(this@AboutDataActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    addView(TextView(this@AboutDataActivity).apply {
+                        text = title; textSize = ImeTypographyTokens.BODY_SP; setTextColor(getColor(R.color.setup_title)); typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+                    }, wrap())
+                    addView(TextView(this@AboutDataActivity).apply {
+                        text = body; textSize = ImeTypographyTokens.BODY_SP; setTextColor(getColor(R.color.setup_body)); setLineSpacing(0f, 1.3f)
+                    }, wrap().apply { topMargin = dp(4) })
+                }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            }, wrap())
         }
 
     @Suppress("DEPRECATION")

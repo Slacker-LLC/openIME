@@ -73,7 +73,9 @@ class AuditInteractionInstrumentedTest {
                     null
                 }
                 "onFuzzyChanged" -> { fuzzyChanges.add(args!![0] as Boolean); null }
-                else -> null
+                // A proxy answers null for everything else; a primitive boolean
+                // query (hasClearUndo, onUndoClear) must answer false instead.
+                else -> if (method.returnType == java.lang.Boolean.TYPE) false else null
             }
         } as ImeKeyboardView.Listener
     }
@@ -395,11 +397,11 @@ class AuditInteractionInstrumentedTest {
         harness.awaitMain {
             keyboard.showPanel(Panel.EMOJI)
             assertNotNull("Default smiley category must render a smiley", keyboard.findTestTarget("😀"))
-            assertTrue(keyboard.findTestTarget("人物/手势")!!.performClick())
+            assertTrue(keyboard.findTestTarget("手势")!!.performClick())
             assertNull("Switching category must replace, not append to, the old emoji grid", keyboard.findTestTarget("😀"))
             assertNotNull("People category must render skin-tone variants", keyboard.findTestTarget("👍🏿"))
 
-            assertTrue(keyboard.findTestTarget("动物/自然")!!.performClick())
+            assertTrue(keyboard.findTestTarget("动物")!!.performClick())
             assertNotNull("Animal category must render its own content", keyboard.findTestTarget("🐶"))
             assertNull("Previous people grid must be removed", keyboard.findTestTarget("👍🏿"))
             true
@@ -432,7 +434,8 @@ class AuditInteractionInstrumentedTest {
     @Test
     fun settingsSlidersExposeCurrentValuesToTouchAndAccessibility() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
-            keyboard.showPanel(Panel.SETTINGS)
+            // Corner radius, opacity and key font size live on the skin sub-page.
+            keyboard.showPanel(Panel.SKIN_SETTINGS)
             val settings = keyboard.findViewWithTag<ViewGroup>("settings-panel")
             listOf("圆角", "不透明度", "按键字号").forEach { label ->
                 val slider = settings.findViewWithTag<View>("settings-slider:$label")
@@ -444,19 +447,24 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
-    fun settingsExposeEveryKeyboardThemeAndKeepSelectionAccessible() = withKeyboard { harness, _, keyboard ->
+    fun settingsExposeEveryAppearanceAndKeepSelectionAccessible() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.showPanel(Panel.SETTINGS)
-            ImeTheme.entries.forEach { theme ->
-                val chip = keyboard.findTestTarget(theme.label)
-                assertTrue("${theme.label} must be selectable from settings", chip != null)
-                assertTrue("${theme.label} must expose a 48dp target", chip!!.minimumHeight >= keyboard.resources.displayMetrics.density * 48f)
+            // The product ships one skin, so appearance (system / light / dark) is the picker.
+            ImeAppearance.entries.forEach { appearance ->
+                val option = keyboard.findTestTarget(appearance.label)
+                assertTrue("${appearance.label} must be selectable from settings", option != null)
+                assertTrue("${appearance.label} must be keyboard-focusable", option!!.isFocusable)
+                assertTrue(
+                    "${appearance.label} must expose a 48dp target",
+                    option.minimumHeight >= keyboard.resources.displayMetrics.density * 48f,
+                )
             }
-            val ios = keyboard.findTestTarget(ImeTheme.IOS.label)
-            assertTrue(ios!!.performClick())
+            val light = keyboard.findTestTarget(ImeAppearance.LIGHT.label)
+            assertTrue(light!!.performClick())
             assertTrue(
-                "Selected theme must expose its accessible state",
-                keyboard.findTestTarget(ImeTheme.IOS.label)!!.contentDescription.toString().contains("已选中"),
+                "Selected appearance must expose its accessible state",
+                keyboard.findTestTarget(ImeAppearance.LIGHT.label)!!.contentDescription.toString().contains("已选中"),
             )
             true
         }
@@ -524,13 +532,25 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
-    fun customAccentControlExposesSelectionAndUsesTheAccentBackground() = withKeyboard { harness, _, keyboard ->
+    fun customAccentControlExposesSelectionAndNoPresetClaimsIt() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.setSkin(96, 10, 18, "#123456")
-            keyboard.showPanel(Panel.SETTINGS)
+            keyboard.showPanel(Panel.SKIN_SETTINGS)
             val custom = keyboard.findViewWithTag<View>("accent-custom")
             assertTrue(custom.contentDescription.toString().contains("已选中"))
-            assertEquals(Color.parseColor("#123456"), ((custom.background as StateListDrawable).current as GradientDrawable).color?.defaultColor)
+            assertTrue("The custom row must stay a 48dp target", custom.minimumHeight >= keyboard.resources.displayMetrics.density * 48f)
+            AccentPalette.presets.forEach { (hex, label) ->
+                assertNull(
+                    "$label must not look selected while a custom accent is active",
+                    keyboard.findViewWithTag<View>("accent-selected-mark:$hex"),
+                )
+            }
+            // And the other way round: a preset takes the selection from the custom row.
+            keyboard.setSkin(96, 10, 18, "#1D9BF0")
+            keyboard.showPanel(Panel.SKIN_SETTINGS)
+            assertTrue(
+                keyboard.findViewWithTag<View>("accent-custom").contentDescription.toString().contains("未选中"),
+            )
             true
         }
     }
@@ -550,14 +570,19 @@ class AuditInteractionInstrumentedTest {
                 fontSize = 19,
                 primaryColor = "#123456",
             )
-            keyboard.showPanel(Panel.SETTINGS)
-            assertEquals(
-                Color.parseColor("#123456"),
-                ((keyboard.findViewWithTag<View>("accent-custom").background as StateListDrawable).current as GradientDrawable).color?.defaultColor,
+            keyboard.showPanel(Panel.SKIN_SETTINGS)
+            assertTrue(
+                "The persisted custom accent must be what the skin page reports as selected",
+                keyboard.findViewWithTag<View>("accent-custom").contentDescription.toString().contains("已选中"),
             )
             keyboard.showPanel(Panel.FUZZY_SETTINGS)
-            assertTrue(
-                keyboard.findViewWithTag<View>("toggle").contentDescription.toString().contains("已开启"),
+            val toggle = keyboard.findViewWithTag<View>("toggle")
+            assertTrue(toggle.contentDescription.toString().contains("已开启"))
+            // An enabled switch is painted with the accent, so this proves the
+            // persisted colour reached the theme, not just the settings text.
+            assertEquals(
+                Color.parseColor("#123456"),
+                (toggle.background as GradientDrawable).color?.defaultColor,
             )
             true
         }
@@ -567,7 +592,7 @@ class AuditInteractionInstrumentedTest {
     fun presetAccentSelectionHasAVisibleNonColorMark() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.setSkin(96, 10, 18, "#1D9BF0")
-            keyboard.showPanel(Panel.SETTINGS)
+            keyboard.showPanel(Panel.SKIN_SETTINGS)
             assertTrue(
                 "Selected accent must expose a visible check mark in addition to color",
                 keyboard.findViewWithTag<View>("accent-selected-mark:#1D9BF0") != null,
@@ -579,7 +604,7 @@ class AuditInteractionInstrumentedTest {
     @Test
     fun presetAccentSwatchesExposeAVisibleKeyboardFocusState() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
-            keyboard.showPanel(Panel.SETTINGS)
+            keyboard.showPanel(Panel.SKIN_SETTINGS)
             val swatch = keyboard.findViewWithTag<View>("accent-swatch")
             assertTrue("Accent swatches must be keyboard-focusable", swatch.isFocusable)
             assertTrue("Accent swatches must expose a focusable background", swatch.background is StateListDrawable)
@@ -606,11 +631,13 @@ class AuditInteractionInstrumentedTest {
     @Test
     fun candidateShortcutsExposePressedAndKeyboardFocusFeedback() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
-            val emoji = keyboard.findViewWithTag<View>("candidate-emoji")
+            // The reference design keeps one shortcut in the candidate bar: overflow.
+            assertNull(
+                "The candidate bar must not carry a second shortcut",
+                keyboard.findViewWithTag<View>("candidate-emoji"),
+            )
             val expand = keyboard.findViewWithTag<View>("candidate-expand")
-            assertTrue("Candidate emoji shortcut must expose a stateful background", emoji.background is StateListDrawable)
             assertTrue("Candidate overflow shortcut must expose a stateful background", expand.background is StateListDrawable)
-            assertTrue("Candidate emoji shortcut must be focusable", emoji.isFocusable)
             assertTrue("Candidate overflow shortcut must be focusable", expand.isFocusable)
             true
         }
@@ -831,18 +858,23 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
-    fun voiceLanguageButtonUpdatesItsAccessibleState() = withKeyboard { harness, _, keyboard ->
+    fun voiceLanguageControlUpdatesItsAccessibleState() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.showPanel(Panel.VOICE)
-            val language = keyboard.findViewWithTag<View>("voice-language")
-            assertTrue(language.contentDescription.toString().contains("普通话"))
-            assertTrue(language.performClick())
-            assertTrue(language.contentDescription.toString().contains("英文"))
+            val mandarin = keyboard.findTestTarget("语音语言：普通话")!!
+            val english = keyboard.findTestTarget("语音语言：英文")!!
+            assertTrue("Mandarin starts selected", mandarin.isSelected)
+            assertFalse(english.isSelected)
+            assertTrue(english.performClick())
+            assertTrue("English must become selected", english.isSelected)
+            assertFalse(mandarin.isSelected)
             keyboard.startVoiceFromSpace()
-            assertFalse("Voice language must lock for the active session", language.isEnabled)
-            assertTrue(language.contentDescription.toString().contains("识别进行中不可切换"))
+            assertFalse("Voice language must lock for the active session", english.isEnabled)
+            assertFalse(mandarin.isEnabled)
+            assertTrue(english.contentDescription.toString().contains("识别进行中不可切换"))
             keyboard.cancelVoiceForManualInput()
-            assertTrue("Voice language must unlock after cancellation", language.isEnabled)
+            assertTrue("Voice language must unlock after cancellation", english.isEnabled)
+            assertTrue(mandarin.isEnabled)
             true
         }
     }
@@ -850,10 +882,13 @@ class AuditInteractionInstrumentedTest {
     @Test
     fun voiceErrorReleasesGestureLockAndAllowsRetry() = withKeyboard { harness, recorder, keyboard ->
         lateinit var failedEvents: VoiceRecognitionEvents
+        // A locked control is deliberately not clickable, so it can only be
+        // looked up before the lock engages.
+        lateinit var language: View
         harness.awaitMain {
             keyboard.showPanel(Panel.VOICE)
+            language = keyboard.findTestTarget("语音语言：普通话")!!
             keyboard.startVoiceFromSpace()
-            val language = keyboard.findViewWithTag<View>("voice-language")
             assertFalse("Voice language must lock while recognition is starting", language.isEnabled)
             true
         }
@@ -868,7 +903,6 @@ class AuditInteractionInstrumentedTest {
             true
         }
         harness.awaitMain {
-            val language = keyboard.findViewWithTag<View>("voice-language")
             if (!language.isEnabled) return@awaitMain null
             assertFalse("Terminal error must clear active voice state", keyboard.isVoiceActive())
             assertTrue("Terminal error must release the gesture-owned language lock", language.isEnabled)
@@ -930,15 +964,18 @@ class AuditInteractionInstrumentedTest {
     @Test
     fun modeSwitchDismissesLongPressChoicePopup() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
-            keyboard.setMode(KeyboardMode.PINYIN_26, notifyListener = false)
-            val segment = keyboard.findViewWithTag<View>("key-segment")
+            // 1 is the nine-key segmentation key; its long press offers @ # /.
+            keyboard.setMode(KeyboardMode.PINYIN_9, notifyListener = false)
+            val segment = keyboard.findViewWithTag<View>("key-9:1")
             val baseline = keyboard.childCount
             assertTrue(segment.performLongClick())
+            assertTrue("Long-press choice popup must be showing", keyboard.isKeyPopupShown())
             assertEquals("Long-press choice popup must attach to the root", baseline + 1, keyboard.childCount)
 
             keyboard.setMode(KeyboardMode.ENGLISH_26, notifyListener = false)
 
-            assertEquals("Mode switch must retire popup whose anchor was rebuilt", baseline, keyboard.childCount)
+            assertFalse("Mode switch must retire popup whose anchor was rebuilt", keyboard.isKeyPopupShown())
+            assertEquals("The retired popup must leave the root", baseline, keyboard.childCount)
             true
         }
     }
@@ -954,11 +991,12 @@ class AuditInteractionInstrumentedTest {
             if (key.width == 0) return@awaitMain null
             baseline = keyboard.childCount
             touch(key, MotionEvent.ACTION_DOWN)
-            assertEquals("Ordinary key preview must attach to the root", baseline + 1, keyboard.childCount)
+            assertTrue("Ordinary key preview must be showing", keyboard.isKeyPopupShown())
 
             keyboard.showPanel(Panel.EMOJI)
 
-            assertEquals("Opening a panel must retire the transient key preview", baseline, keyboard.childCount)
+            assertFalse("Opening a panel must retire the transient key preview", keyboard.isKeyPopupShown())
+            assertEquals("The preview is reused, not re-added to the root", baseline, keyboard.childCount)
             assertEquals(Panel.EMOJI, keyboard.currentPanel())
             touch(key, MotionEvent.ACTION_CANCEL)
             true
@@ -975,19 +1013,18 @@ class AuditInteractionInstrumentedTest {
         harness.awaitMain {
             val key = keyboard.findViewWithTag<View>("key:q") ?: return@awaitMain null
             if (key.width == 0) return@awaitMain null
-            val baseline = keyboard.childCount
             touch(key, MotionEvent.ACTION_DOWN)
             try {
-                assertEquals("Enabled preview must actually appear", baseline + 1, keyboard.childCount)
+                assertTrue("Enabled preview must actually appear", keyboard.isKeyPopupShown())
             } finally {
                 touch(key, MotionEvent.ACTION_CANCEL)
             }
-            assertEquals(baseline, keyboard.childCount)
+            assertFalse(keyboard.isKeyPopupShown())
             keyboard.setSettings(sound = false, haptic = false, popup = false)
             assertSame(key, keyboard.findViewWithTag<View>("key:q"))
             touch(key, MotionEvent.ACTION_DOWN)
             try {
-                assertEquals("Existing key must respect the updated popup preference", baseline, keyboard.childCount)
+                assertFalse("Existing key must respect the updated popup preference", keyboard.isKeyPopupShown())
             } finally {
                 touch(key, MotionEvent.ACTION_CANCEL)
             }
@@ -1005,15 +1042,12 @@ class AuditInteractionInstrumentedTest {
         harness.awaitMain {
             val key = keyboard.findViewWithTag<View>("key:5") ?: return@awaitMain null
             if (key.width == 0) return@awaitMain null
-            val baseline = keyboard.childCount
             touch(key, MotionEvent.ACTION_DOWN)
             try {
-                assertEquals(baseline + 1, keyboard.childCount)
+                assertTrue(keyboard.isKeyPopupShown())
+                // The preview is brought to the front when it opens.
                 val popup = keyboard.getChildAt(keyboard.childCount - 1)
-                val expectedHeight = (
-                    ImeGeometryTokens.KEY_POPUP_HEIGHT_DP *
-                        keyboard.resources.displayMetrics.density
-                    ).toInt()
+                val expectedHeight = keyboard.scaledPx(ImeGeometryTokens.KEY_POPUP_HEIGHT_DP)
                 assertEquals("Key popup height must use the shared product token", expectedHeight, popup.layoutParams.height)
                 assertTrue(
                     "Wide keys must not produce a preview narrower than the source key",
@@ -1061,7 +1095,10 @@ class AuditInteractionInstrumentedTest {
 
     @Test
     fun spaceJitterDoesNotEnterCursorModeAndHorizontalSwipeDoes() = withKeyboard { harness, recorder, keyboard ->
-        val density = keyboard.resources.displayMetrics.density
+        // Gesture thresholds scale with the keyboard (reference scale), so the
+        // drag is expressed in the same px: 18dp starts cursor mode, each 12dp
+        // after that is one step. The 2dp margins keep px rounding out of it.
+        val px = { dp: Int -> keyboard.scaledPx(dp).toFloat() }
         harness.awaitMain {
             val origin = keyPoint(keyboard, "key-space")
             var downTime = SystemClock.uptimeMillis()
@@ -1071,46 +1108,26 @@ class AuditInteractionInstrumentedTest {
                 keyboard,
                 downTime,
                 MotionEvent.ACTION_MOVE,
-                listOf(origin.copy(x = origin.x + 3f * density)),
+                listOf(origin.copy(x = origin.x + px(3))),
             )
             SystemClock.sleep(40L)
-            pointers(keyboard, downTime, MotionEvent.ACTION_UP, listOf(origin.copy(x = origin.x + 3f * density)))
+            pointers(keyboard, downTime, MotionEvent.ACTION_UP, listOf(origin.copy(x = origin.x + px(3))))
             assertTrue("A small jitter must not move the cursor", recorder.textEdits.isEmpty())
             val spacesAfterJitter = recorder.spaces
 
             val swipeOrigin = keyPoint(keyboard, "key-space")
             downTime = SystemClock.uptimeMillis()
             pointers(keyboard, downTime, MotionEvent.ACTION_DOWN, listOf(swipeOrigin))
-            pointers(
-                keyboard,
-                downTime,
-                MotionEvent.ACTION_MOVE,
-                listOf(swipeOrigin.copy(x = swipeOrigin.x + 19f * density)),
-            )
-            pointers(
-                keyboard,
-                downTime,
-                MotionEvent.ACTION_MOVE,
-                listOf(swipeOrigin.copy(x = swipeOrigin.x + 31f * density)),
-            )
-            pointers(
-                keyboard,
-                downTime,
-                MotionEvent.ACTION_MOVE,
-                listOf(swipeOrigin.copy(x = swipeOrigin.x + 43f * density)),
-            )
-            pointers(
-                keyboard,
-                downTime,
-                MotionEvent.ACTION_MOVE,
-                listOf(swipeOrigin.copy(x = swipeOrigin.x + 30f * density)),
-            )
-            pointers(
-                keyboard,
-                downTime,
-                MotionEvent.ACTION_UP,
-                listOf(swipeOrigin.copy(x = swipeOrigin.x + 30f * density)),
-            )
+            var x = swipeOrigin.x
+            fun dragBy(delta: Float, action: Int = MotionEvent.ACTION_MOVE) {
+                x += delta
+                pointers(keyboard, downTime, action, listOf(swipeOrigin.copy(x = x)))
+            }
+            dragBy(px(18) + px(2)) // crosses the cursor-mode threshold; no step yet
+            dragBy(px(12) + px(2)) // first step right
+            dragBy(px(12) + px(2)) // second step right
+            dragBy(-(px(12) + px(6))) // reversing steps left
+            dragBy(0f, MotionEvent.ACTION_UP)
 
             assertEquals(
                 "A deliberate drag must move across characters and reverse direction",

@@ -11,6 +11,8 @@ import android.graphics.Color
  * prevents each panel from inventing another near-identical radius or size.
  */
 internal object ImeGeometryTokens {
+    /** Portrait key row height on the reference design's 390-unit canvas. */
+    const val KEY_ROW_HEIGHT_DP = 54
     const val KEY_RADIUS_DP = 8
     const val CONTROL_RADIUS_DP = 12
     const val CARD_RADIUS_DP = 16
@@ -25,7 +27,7 @@ internal object ImeGeometryTokens {
     const val FIELD_HEIGHT_DP = 56
     const val PRIMARY_ROW_HEIGHT_DP = 56
     const val SETTING_ROW_HEIGHT_DP = 56
-    const val TOOL_CARD_HEIGHT_DP = 64
+    const val TOOL_CARD_HEIGHT_DP = 92
     const val VOICE_CONTROL_HEIGHT_DP = TOUCH_TARGET_DP
     const val SWITCH_WIDTH_DP = 48
     const val SWITCH_HEIGHT_DP = 28
@@ -44,7 +46,7 @@ internal object ImeGeometryTokens {
     // The toolbar itself is compact; the top zone still reserves the larger
     // composed height so typing never moves the keyboard window.
     const val TOOLBAR_HEIGHT_DP = TOUCH_TARGET_DP
-    const val TOP_BAR_HEIGHT_DP = 56
+    const val TOP_BAR_HEIGHT_DP = 48
     const val ICON_SIZE_DP = 24
     const val STEP_MARK_SIZE_DP = 28
     const val HERO_MARK_SIZE_DP = 72
@@ -70,13 +72,21 @@ internal object ImeMotionTokens {
     const val STANDARD_TRANSITION_MS = 160L
 }
 
-/** Six text roles shared by the keyboard and every app surface. */
+/**
+ * Text roles shared by the keyboard and every app surface. The six keyboard
+ * roles come first; the last three are the sizes the reference design uses
+ * outside them (helper text on setup/data pages, a glyph handle, and the large
+ * digit / symbol keys), named here so no screen invents its own number.
+ */
 internal object ImeTypographyTokens {
     const val CAPTION_SP = 11f
+    const val SMALL_SP = 12f
     const val BODY_SP = 14f
     const val TITLE_SP = 16f
     const val CANDIDATE_SP = 18f
+    const val GLYPH_SP = 20f
     const val KEY_LETTER_SP = 21f
+    const val SYMBOL_SP = 24f
     const val DISPLAY_SP = 28f
 
     // Compatibility names for existing callers; every alias resolves to the
@@ -149,23 +159,24 @@ enum class ImeTheme(val key: String, val label: String) {
         }
         val base = if (useDark) {
             Tokens(
-                c("#6EC3F7"), c("#1C1C1E"), c("#242426"), c("#262628"), c("#F2F2F7"),
+                c("#6EC3F7"), c("#1C1C1E"), c("#242426"), c("#242426"), c("#F2F2F7"),
                 c("#3A3A3C"), c("#F2F2F7"), c("#AEAEB2"), c("#2C2C2E"), c("#F2F2F7"), c("#4A4A4D"),
-                c("#242426"), c("#48484A"), c("#2C2C2E"), c("#202022"), c("#242426"),
-                c("#3A3A3C"), c("#F2F2F7"), c("#2C2C2E"), c("#F2F2F7"), c("#303033"), c("#242426"),
+                c("#242426"), c("#48484A"), c("#2C2C2E"), c("#1C1C1E"), c("#242426"),
+                c("#3A3A3C"), c("#F2F2F7"), c("#2C2C2E"), c("#F2F2F7"), c("#303032"), c("#242426"),
                 success = c("#5BD08A"),
             )
         } else {
             Tokens(
-                c("#1D9BF0"), c("#D5D8DE"), c("#EEF0F3"), c("#F7F8FA"), c("#1F2023"),
-                c("#FFFFFF"), c("#1C1C1E"), c("#6E6E73"), c("#C5C9D1"), c("#2C2D31"), c("#DDE1E7"),
-                c("#F2F3F5"), c("#B7BCC5"), c("#C5C9D1"), c("#F1F2F4"), c("#F8F9FA"),
-                c("#FFFFFF"), c("#1C1C1E"), c("#C5C9D1"), c("#2C2D31"), c("#FFFFFF"), c("#E4E7EB"),
+                c("#1D9BF0"), c("#D5D8DF"), c("#EFF0F4"), c("#EFF0F4"), c("#1F2023"),
+                c("#FFFFFF"), c("#1C1C1E"), c("#6D6D72"), c("#C5C9D2"), c("#2C2D31"), c("#DDE1E7"),
+                c("#F2F3F5"), c("#B7BCC5"), c("#C5C9D2"), c("#F1F2F4"), c("#F8F9FA"),
+                c("#FFFFFF"), c("#1C1C1E"), c("#C5C9D2"), c("#2C2D31"), c("#FFFFFF"), c("#E4E7EC"),
                 success = c("#1F8A4C"),
                 textSecondaryRole = c("#6D6D72"),
             )
         }
         val accent = accentOverride ?: return base
+        if (accent == AccentPalette.parse(AccentPalette.DEFAULT)) return base
         return base.copy(primary = accent)
     }
 }
@@ -177,6 +188,9 @@ enum class ImeTheme(val key: String, val label: String) {
  */
 internal object ImeSurfacePolicy {
     const val DISABLED_ALPHA = 0.42f
+    private const val TEXT_CONTRAST = 4.5
+    private const val SHADE_STEP = 0.03f
+    private const val MAX_SHADE_STEPS = 24
 
     fun isDark(tokens: ImeTheme.Tokens): Boolean =
         ImeContrastPolicy.relativeLuminance(tokens.keyboardBackground) < 0.16
@@ -184,18 +198,33 @@ internal object ImeSurfacePolicy {
     fun selectedSurface(tokens: ImeTheme.Tokens): Int =
         ImeDrawableFactory.blend(
             tokens.primary,
-            tokens.candidateBackground,
-            if (isDark(tokens)) 0.24f else 0.12f,
+            tokens.keyboardBackground,
+            if (isDark(tokens)) 0.24f else 0.14f,
         )
 
+    /**
+     * The accent as text on the keyboard surface. Derived from the active
+     * accent (never a fixed blue) so a custom accent stays one colour family
+     * across pre-edit text, selected items and icons.
+     */
     fun selectedText(tokens: ImeTheme.Tokens): Int =
-        if (
-            ImeContrastPolicy.contrastRatio(tokens.primary, selectedSurface(tokens)) >= 4.5
-        ) {
-            tokens.primary
-        } else {
-            tokens.keyText
+        accentTextOn(tokens.primary, tokens.keyboardBackground)
+
+    /**
+     * [accent] itself when it already reads on [background] (4.5:1); otherwise
+     * the nearest shade of the same hue that does. Light surfaces get a
+     * darker shade, dark surfaces a lighter one.
+     */
+    fun accentTextOn(accent: Int, background: Int): Int {
+        if (ImeContrastPolicy.contrastRatio(accent, background) >= TEXT_CONTRAST) return accent
+        val darker = ImeContrastPolicy.relativeLuminance(background) >= 0.2
+        var shade = accent
+        repeat(MAX_SHADE_STEPS) {
+            shade = adjustHslLightness(shade, if (darker) -SHADE_STEP else SHADE_STEP)
+            if (ImeContrastPolicy.contrastRatio(shade, background) >= TEXT_CONTRAST) return shade
         }
+        return shade
+    }
 
     fun pressedSurface(base: Int, tokens: ImeTheme.Tokens): Int =
         ImeDrawableFactory.blend(
@@ -261,6 +290,10 @@ internal object ImeSurfacePolicy {
             tokens.toolCardBackground,
             if (isDark(tokens)) 0.18f else 0.10f,
         )
+
+    /** Outlined destructive controls (clear / delete): a red tuned to read on panel heads. */
+    fun destructiveLabel(tokens: ImeTheme.Tokens): Int =
+        if (isDark(tokens)) Color.parseColor("#FF6771") else Color.parseColor("#D60016")
 
     fun destructiveText(tokens: ImeTheme.Tokens): Int {
         val surface = destructiveSurface(tokens)

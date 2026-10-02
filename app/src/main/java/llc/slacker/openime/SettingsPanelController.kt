@@ -63,6 +63,7 @@ internal class SettingsPanelController(
     private val onKeyboardHeightChanged: (Int) -> Unit,
     private val onFloatingStyleChanged: (Int, Int) -> Unit,
     private val onShowFuzzySettings: () -> Unit,
+    private val onShowSkinSettings: () -> Unit,
     private val onOpenAboutData: () -> Unit,
     private val onFeedback: () -> Unit,
     private val applyTheme: () -> Unit,
@@ -70,6 +71,7 @@ internal class SettingsPanelController(
 ) {
     private var storedScrollY = 0
     private var settingsScroll: ScrollView? = null
+    private var showingSkinOnly = false
 
     fun scrollPosition(): Int =
         (settingsScroll?.scrollY ?: storedScrollY).coerceAtLeast(0)
@@ -81,7 +83,8 @@ internal class SettingsPanelController(
         }
     }
 
-    fun renderSettings(reusePanel: Boolean = false) {
+    fun renderSettings(reusePanel: Boolean = false, skinOnly: Boolean = false) {
+        showingSkinOnly = skinOnly
         val previousFocusKey =
             if (reusePanel) semanticFocusKey(expandedPanel.findFocus()) else null
         val previousScrollY =
@@ -89,7 +92,7 @@ internal class SettingsPanelController(
 
         if (!reusePanel || expandedPanel.childCount == 0) {
             expandedPanel.addView(
-                createHeader("偏好设置"),
+                createHeader(if (skinOnly) "强调色与按键皮肤" else "偏好设置"),
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     toPx(ImeGeometryTokens.TOP_BAR_HEIGHT_DP),
@@ -118,129 +121,46 @@ internal class SettingsPanelController(
             tag = "settings-panel"
         }
 
-        content.addView(createSectionTitle("键盘主题"), wrapParams())
-        content.addView(
-            createChipScroll(
-                ImeTheme.entries.map { it.label },
-                currentTheme().label,
-            ) { label ->
-                ImeTheme.entries.firstOrNull { it.label == label }?.let { selected ->
-                    onThemeSelected(selected)
+        if (skinOnly) {
+            content.addView(createSectionTitle("强调色"), wrapParams())
+            content.addView(accentColorRow(), groupParams())
+            content.addView(createSectionTitle("按键皮肤"), wrapParams())
+            content.addView(skinSliders(), groupParams())
+        } else {
+            content.addView(createSectionTitle("外观与布局"), wrapParams())
+            content.addView(settingGroup(
+                segmentedSetting("外观", ImeAppearance.entries.map { it.label }, currentAppearance().label) { label ->
+                    ImeAppearance.entries.first { it.label == label }.let(onAppearanceSelected)
                     renderSettings(reusePanel = true)
-                }
-            },
-            chipParams(),
-        )
-
-        content.addView(createSectionTitle("外观"), wrapParams())
-        content.addView(
-            createChipScroll(
-                ImeAppearance.entries.map { it.label },
-                currentAppearance().label,
-            ) { label ->
-                ImeAppearance.entries.firstOrNull { it.label == label }?.let { selected ->
-                    onAppearanceSelected(selected)
+                },
+                segmentedSetting("单手模式", ImeHandedness.entries.map { it.label }, currentHandedness().label) { label ->
+                    ImeHandedness.entries.first { it.label == label }.let(onHandednessChanged)
                     renderSettings(reusePanel = true)
-                }
-            },
-            chipParams(),
-        )
-
-        content.addView(createSectionTitle("键盘布局"), wrapParams())
-        content.addView(
-            createChipScroll(
-                ImeHandedness.entries.map { it.label },
-                currentHandedness().label,
-            ) { label ->
-                ImeHandedness.entries.firstOrNull { it.label == label }?.let { selected ->
-                    onHandednessChanged(selected)
-                    renderSettings(reusePanel = true)
-                }
-            },
-            chipParams(),
-        )
-        content.addView(
-            settingGroup(
-                settingsSlider(
-                    "键盘高度",
-                    92,
-                    120,
-                    currentKeyboardHeightPercent(),
-                    onKeyboardHeightChanged,
-                ),
-            ),
-            groupParams(),
-        )
-
-        content.addView(createSectionTitle("浮动键盘"), wrapParams())
-        content.addView(
-            settingGroup(
-                settingsSlider(
-                    "浮动宽度",
-                    72,
-                    96,
-                    currentFloatingWidthPercent(),
-                ) { width ->
-                    onFloatingStyleChanged(width, currentFloatingOpacityPercent())
                 },
-                settingsSlider(
-                    "浮动透明度",
-                    82,
-                    100,
-                    currentFloatingOpacityPercent(),
-                ) { opacity ->
-                    onFloatingStyleChanged(currentFloatingWidthPercent(), opacity)
-                },
-            ),
-            groupParams(),
-        )
+                settingsSlider("键盘高度", 80, 120, currentKeyboardHeightPercent(), onKeyboardHeightChanged),
+            ), groupParams())
+            if (context !is ImeSettingsActivity) {
+                content.addView(createSectionTitle("更多外观"), wrapParams())
+                content.addView(settingGroup(settingNavigationRow("强调色与按键皮肤", "颜色、圆角、不透明度与字号", onShowSkinSettings)), groupParams())
+            }
 
-        content.addView(createSectionTitle("强调色"), wrapParams())
-        content.addView(
-            accentColorRow(),
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { bottomMargin = toPx(12) },
-        )
-
-        content.addView(createSectionTitle("按键皮肤"), wrapParams())
-        content.addView(
-            settingGroup(
-                settingsSlider("圆角", 0, 24, currentSkinRadius()) { value ->
-                    onSkinChanged(
-                        currentSkinOpacity(),
-                        value,
-                        currentSkinFontSize(),
-                        currentSkinColor(),
-                    )
-                },
-                settingsSlider("不透明度", 70, 100, currentSkinOpacity()) { value ->
-                    onSkinChanged(
-                        value,
-                        currentSkinRadius(),
-                        currentSkinFontSize(),
-                        currentSkinColor(),
-                    )
-                },
-                settingsSlider("按键字号", 14, 22, currentSkinFontSize()) { value ->
-                    onSkinChanged(
-                        currentSkinOpacity(),
-                        currentSkinRadius(),
-                        value,
-                        currentSkinColor(),
-                    )
-                },
-            ),
-            groupParams(),
-        )
-
+            if (context is ImeSettingsActivity) {
+                content.addView(createSectionTitle("强调色"), wrapParams())
+                content.addView(accentColorRow(), groupParams())
+                content.addView(createSectionTitle("按键皮肤"), wrapParams())
+                content.addView(skinSliders(), groupParams())
+            }
+            content.addView(createSectionTitle("浮动键盘"), wrapParams())
+            content.addView(settingGroup(
+                settingsSlider("浮动宽度", 72, 100, currentFloatingWidthPercent()) { onFloatingStyleChanged(it, currentFloatingOpacityPercent()) },
+                settingsSlider("浮动透明度", 82, 100, currentFloatingOpacityPercent()) { onFloatingStyleChanged(currentFloatingWidthPercent(), it) },
+            ), groupParams())
         content.addView(createSectionTitle("按键与输入"), wrapParams())
         content.addView(
             settingGroup(
                 settingToggleRow("按键音效", "机械轴敲击反馈"),
                 settingToggleRow("触感震动", "轻微触感反馈"),
-                settingToggleRow("按键气泡", "可选字母预览，默认仅按键变色"),
+                settingToggleRow("按键气泡", "按下时显示字母预览"),
             ),
             groupParams(),
         )
@@ -269,6 +189,7 @@ internal class SettingsPanelController(
             groupParams(),
         )
 
+        }
         scroll.addView(
             content,
             ViewGroup.LayoutParams(
@@ -297,6 +218,38 @@ internal class SettingsPanelController(
         }
     }
 
+    private fun skinSliders() = settingGroup(
+        settingsSlider("圆角", 0, 24, currentSkinRadius()) { onSkinChanged(currentSkinOpacity(), it, currentSkinFontSize(), currentSkinColor()) },
+        settingsSlider("不透明度", 70, 100, currentSkinOpacity()) { onSkinChanged(it, currentSkinRadius(), currentSkinFontSize(), currentSkinColor()) },
+        settingsSlider("按键字号", 14, 22, currentSkinFontSize()) { onSkinChanged(currentSkinOpacity(), currentSkinRadius(), it, currentSkinColor()) },
+    )
+
+    private fun segmentedSetting(label: String, labels: List<String>, selected: String, onSelected: (String) -> Unit): View =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(toPx(16), 0, toPx(16), 0)
+            addView(labelText(label, ImeTypographyTokens.BODY_SP).apply { typeface = android.graphics.Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER_VERTICAL },
+                LinearLayout.LayoutParams(0, toPx(56), 1f))
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                // The painted track is 34dp (inset in the theme) but every option is a
+                // full 48dp touch target.
+                tag = "segmented-track-tall"
+                setPadding(toPx(2), toPx(2), toPx(2), toPx(2))
+                labels.forEach { value ->
+                    addView(TextView(context).apply {
+                        text = value; textSize = ImeTypographyTokens.BODY_SP; gravity = Gravity.CENTER; includeFontPadding = false
+                        minimumHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
+                        tag = if (value == selected) "segment-selected-tall" else "segment-option-tall"
+                        contentDescription = "$value，${if (value == selected) "已选中" else "未选中"}"
+                        isClickable = true; isFocusable = true
+                        setOnClickListener { onFeedback(); onSelected(value) }
+                    }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
+                }
+            }, LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 2f))
+        }
+
     fun renderFuzzySettings() {
         expandedPanel.addView(
             createHeader("模糊音纠错"),
@@ -317,7 +270,7 @@ internal class SettingsPanelController(
         }
         content.addView(
             TextView(context).apply {
-                text = "用于处理常见的近音输入。开启后，候选会同时尝试相近声母，不会改变用户已经输入的拼音。"
+                text = "近音输入时，候选会同时尝试相近声母；不会改变你已输入的拼音。"
                 textSize = ImeTypographyTokens.PANEL_BODY_SP
                 setLineSpacing(0f, 1.15f)
                 tag = "panel-note"
@@ -341,7 +294,8 @@ internal class SettingsPanelController(
             TextView(context).apply {
                 text = "z / zh · c / ch · s / sh · l / n · en / eng · in / ing"
                 textSize = ImeTypographyTokens.PANEL_BODY_SP
-                setPadding(0, toPx(6), 0, toPx(6))
+                setPadding(toPx(16), toPx(16), toPx(16), toPx(16))
+                tag = "fuzzy-rules"
             },
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -385,8 +339,8 @@ internal class SettingsPanelController(
                             LinearLayout.LayoutParams.MATCH_PARENT,
                             toPx(1),
                         ).apply {
-                            marginStart = toPx(44)
-                            marginEnd = toPx(12)
+                            marginStart = 0
+                            marginEnd = 0
                         },
                     )
                 }
@@ -659,7 +613,7 @@ internal class SettingsPanelController(
                                     }
                                 }
                             },
-                            FrameLayout.LayoutParams(toPx(28), toPx(28)).apply {
+                            FrameLayout.LayoutParams(toPx(32), toPx(32)).apply {
                                 gravity = Gravity.CENTER
                             },
                         )
@@ -677,7 +631,7 @@ internal class SettingsPanelController(
                                     importantForAccessibility =
                                         View.IMPORTANT_FOR_ACCESSIBILITY_NO
                                 },
-                                FrameLayout.LayoutParams(toPx(28), toPx(28)).apply {
+                                FrameLayout.LayoutParams(toPx(32), toPx(32)).apply {
                                     gravity = Gravity.CENTER
                                 },
                             )
@@ -687,14 +641,14 @@ internal class SettingsPanelController(
                             applyAccentColor(hex)
                         }
                     },
-                    LinearLayout.LayoutParams(toPx(ImeGeometryTokens.TOUCH_TARGET_DP), toPx(ImeGeometryTokens.TOUCH_TARGET_DP)),
+                    LinearLayout.LayoutParams(0, toPx(44), 1f),
                 )
             }
             swatchGrid.addView(
                 swatchRow,
                 LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    toPx(44),
                 ),
             )
         }
@@ -702,7 +656,7 @@ internal class SettingsPanelController(
             swatchGrid,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(144),
+                toPx(132),
             ),
         )
 
@@ -712,11 +666,11 @@ internal class SettingsPanelController(
         row.addView(
             TextView(context).apply {
                 text =
-                    if (customSelected) "自定义 · $current" else "自定义颜色"
+                    "自定义颜色\n输入 6 位十六进制，如 5B6B7A"
                 textSize = ImeTypographyTokens.PANEL_NOTE_SP
-                gravity = Gravity.CENTER
+                gravity = Gravity.CENTER_VERTICAL or Gravity.START
                 includeFontPadding = false
-                maxLines = 1
+                maxLines = 2
                 ellipsize = TextUtils.TruncateAt.END
                 setPadding(toPx(10), 0, toPx(10), 0)
                 tag = "accent-custom"
@@ -735,21 +689,9 @@ internal class SettingsPanelController(
                     showCustomAccentDialog()
                 }
             },
-            LinearLayout.LayoutParams(toPx(132), toPx(ImeGeometryTokens.TOUCH_TARGET_DP)).apply {
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(48)).apply {
                 topMargin = toPx(6)
             },
-        )
-        row.addView(
-            TextView(context).apply {
-                text =
-                    AccentPalette.presets.firstOrNull {
-                        AccentPalette.normalize(it.first) == current
-                    }?.second ?: current
-                textSize = ImeTypographyTokens.PANEL_NOTE_SP
-                setPadding(0, toPx(8), 0, 0)
-                tag = "panel-note"
-            },
-            wrapParams(),
         )
         return row
     }
@@ -762,10 +704,16 @@ internal class SettingsPanelController(
             currentSkinFontSize(),
             normalized,
         )
-        renderSettings(reusePanel = true)
+        renderSettings(reusePanel = true, skinOnly = showingSkinOnly)
     }
 
-    private fun showCustomAccentDialog() {
+    fun showCustomAccentDialog() {
+        if (context is android.inputmethodservice.InputMethodService) {
+            context.startActivity(android.content.Intent(context, ImeSettingsActivity::class.java)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                .putExtra(ImeSettingsActivity.EXTRA_EDIT_ACCENT, true))
+            return
+        }
         val field = EditText(context).apply {
             setText(AccentPalette.normalize(currentSkinColor()).removePrefix("#"))
             hint = "RRGGBB"
@@ -778,20 +726,33 @@ internal class SettingsPanelController(
             setSelectAllOnFocus(true)
             filters = arrayOf(InputFilter.LengthFilter(6))
         }
+        val palette = ImeTheme.IOS.tokens(currentAppearance(), resourcesDark(), AccentPalette.parse(currentSkinColor()))
+        val inputRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(toPx(12), 0, toPx(12), 0)
+            background = ImeDrawableFactory.rounded(palette.toolbarBackground, toPx(8), palette.primary, toPx(1))
+            addView(View(context).apply {
+                background = ImeDrawableFactory.rounded(palette.primary, toPx(99))
+            }, LinearLayout.LayoutParams(toPx(16), toPx(16)).apply { marginEnd = toPx(8) })
+            addView(TextView(context).apply { text = "#"; textSize = ImeTypographyTokens.BODY_SP; setTextColor(palette.keyText) }, wrapParams())
+            field.textSize = ImeTypographyTokens.BODY_SP; field.background = null; field.setPadding(0, 0, 0, 0)
+            field.setTextColor(palette.keyText)
+            addView(field, LinearLayout.LayoutParams(0, toPx(44), 1f))
+        }
         val dialog = AlertDialog.Builder(context)
             .setTitle("自定义强调色")
             .setMessage("输入 6 位十六进制颜色，例如 5B6B7A")
-            .setView(field)
+            .setView(FrameLayout(context).apply {
+                setPadding(toPx(24), toPx(8), toPx(24), toPx(8))
+                addView(inputRow, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, toPx(44)))
+            })
             .setPositiveButton("应用", null)
             .setNegativeButton("取消", null)
             .create()
 
         dialog.setOnShowListener {
             SetupUi.styleDialog(dialog, context)
-            val accent = AccentPalette.parse(currentSkinColor())
-            dialog.getButton(DialogInterface.BUTTON_POSITIVE).setTextColor(accent)
-            dialog.getButton(DialogInterface.BUTTON_NEGATIVE).setTextColor(accent)
-            field.backgroundTintList = ColorStateList.valueOf(accent)
+            dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
             SetupUi.styleCursor(context, field)
             field.setOnEditorActionListener { _, actionId, _ ->
                 if (actionId == EditorInfo.IME_ACTION_DONE) {
@@ -814,8 +775,10 @@ internal class SettingsPanelController(
                 dialog.dismiss()
             }
         }
-        dialog.show()
+        SetupUi.showDialog(dialog, context, expandedPanel)
     }
+
+    private fun resourcesDark(): Boolean = context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES
 
     private fun settingsSlider(
         labelText: String,
@@ -827,7 +790,7 @@ internal class SettingsPanelController(
         val row = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(toPx(10), toPx(4), toPx(10), toPx(4))
+            setPadding(toPx(16), toPx(4), toPx(16), toPx(4))
             tag = "setting-row"
             minimumHeight = toPx(ImeGeometryTokens.SETTING_ROW_HEIGHT_DP)
         }
@@ -835,11 +798,11 @@ internal class SettingsPanelController(
             TextView(context).apply {
                 text = labelText
                 textSize = ImeTypographyTokens.PANEL_BODY_SP
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
             },
             LinearLayout.LayoutParams(
-                0,
+                toPx(72),
                 LinearLayout.LayoutParams.WRAP_CONTENT,
-                1f,
             ),
         )
         val valueView = TextView(context).apply {
@@ -890,12 +853,12 @@ internal class SettingsPanelController(
             LinearLayout.LayoutParams(
                 0,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
-                2f,
+                1f,
             ),
         )
         row.addView(
             valueView,
-            LinearLayout.LayoutParams(toPx(ImeGeometryTokens.TOUCH_TARGET_DP), toPx(ImeGeometryTokens.TOUCH_TARGET_DP)),
+            LinearLayout.LayoutParams(toPx(44), toPx(ImeGeometryTokens.TOUCH_TARGET_DP)),
         )
         val initialDescription =
             "$labelText，${seekBar.progress}$suffix"

@@ -66,11 +66,11 @@ class CandidatePipelineTest {
         )
 
         assertEquals("ni hao", resolution.preview)
-        assertEquals(listOf("64'426"), resolution.pinyinPaths)
+        assertEquals(listOf("ni'426"), resolution.pinyinPaths)
         assertTrue("ni hao" in resolution.displayPinyinPaths)
         assertFalse("Suffix-only choices would drop ni when selected", resolution.candidates.contains("好"))
         assertTrue(resolution.candidates.contains("你好"))
-        assertEquals(resolution.candidates, pipeline.nineKeyFallbackCandidatesFor("64'426"))
+        assertEquals(resolution.candidates, pipeline.nineKeyFallbackCandidatesFor("ni'426"))
     }
 
     @Test
@@ -115,6 +115,7 @@ class CandidatePipelineTest {
     @Test
     fun nativeCodeKeepsExplicitSegmentationAndRejectsGarbage() {
         assertEquals("64'426", NineKeyLocalDecoder.nativeCode("ni ", "426"))
+        assertEquals("ni'426", NineKeyLocalDecoder.nativeCode("ni ", "426", lockLetters = true))
         assertEquals("94'26'426", NineKeyLocalDecoder.nativeCode("xi an ", "426"))
         assertNotNull(NineKeyLocalDecoder.nativeCode("", "64426"))
         assertNull(NineKeyLocalDecoder.nativeCode("你 ", "426"))
@@ -133,5 +134,89 @@ class CandidatePipelineTest {
 
         val deleted = "64426".removeRange(3, 4)
         assertEquals("6446", deleted)
+    }
+
+    @Test
+    fun lockedSyllableReachesNativeAsLettersSoZhongAndXiongStayDistinct() {
+        val locked = pipeline.resolveNineKey(
+            digits = "94664",
+            segmentPrefix = "",
+            preferredSuffix = "xiong",
+            fuzzy = false,
+            lockPreferred = true,
+        )
+        assertEquals(listOf("xiong"), locked.pinyinPaths)
+
+        val open = pipeline.resolveNineKey(
+            digits = "94664",
+            segmentPrefix = "",
+            preferredSuffix = "xiong",
+            fuzzy = false,
+        )
+        assertEquals(listOf("94664"), open.pinyinPaths)
+    }
+
+    @Test
+    fun shortInputOffersWholeReadingsAndTheWordReadingLeads() {
+        val readings = pipeline.nineKeyReadingsFor("64426", null)
+        assertEquals("ni'hao", readings.first().display)
+        assertTrue(readings.all { it.coversAll })
+        assertTrue("mi'hao" in readings.map { it.display })
+        assertTrue("ni'gao" in readings.map { it.display })
+        // A lone vowel between syllables is a digit-grid artefact, not a reading.
+        assertTrue(readings.none { reading -> reading.syllables.any { it.length == 1 } })
+        assertEquals(readings.map { it.display }.distinct(), readings.map { it.display })
+    }
+
+    @Test
+    fun readingPreviewLeadsWhenItIsOneOfTheReadings() {
+        val readings = pipeline.nineKeyReadingsFor("64426", "migao")
+        assertEquals("mi'gao", readings.first().display)
+    }
+
+    @Test
+    fun longInputOffersFirstSyllablesOnlyAndNeverADeadEnd() {
+        val readings = pipeline.nineKeyReadingsFor("9694264244326", null)
+        assertTrue(readings.isNotEmpty())
+        assertTrue(readings.all { it.syllables.size == 1 })
+        assertEquals("wo", readings.first().syllables.single())
+    }
+
+    @Test
+    fun aLoneDigitOffersLettersThatAreOrientationOnly() {
+        val readings = pipeline.nineKeyReadingsFor("9", null)
+        assertEquals(listOf("w", "x", "y", "z"), readings.map { it.display })
+        assertTrue(readings.none { it.complete })
+        assertTrue(pipeline.nineKeyReadingsFor("", null).isEmpty())
+    }
+
+    @Test
+    fun previewReadingFollowsTheWordNotTheDecoderGuess() {
+        // The unit environment only has the compact lexicon; the full sentence
+        // (我想吃饭 -> wo xiang chi fan) is covered end to end on a device.
+        assertEquals(listOf("zhong", "guo"), pipeline.nineKeyReadingFor("94664486", "中国"))
+        assertEquals(listOf("ni", "hao"), pipeline.nineKeyReadingFor("64426", "你好"))
+        // Digits must be consumed exactly: a shorter word or another spelling is no reading.
+        assertNull(pipeline.nineKeyReadingFor("64426", "你"))
+        assertNull(pipeline.nineKeyReadingFor("64426", "我想"))
+        assertNull(pipeline.nineKeyReadingFor("64426", "nihao"))
+    }
+
+    @Test
+    fun wordsTheDigitsSpellExactlyComeBeforePredictions() {
+        // 64 spells ni/mi: 你 fits; 你好 needs three more digits (a prediction).
+        assertEquals(
+            listOf("你", "你好"),
+            pipeline.preferExactNineKeyMatches("64", listOf("你好", "你")),
+        )
+        // The same holds for a code whose first syllable the user fixed.
+        assertEquals(
+            listOf("你好", "你"),
+            pipeline.preferExactNineKeyMatches("ni'426", listOf("你", "你好")),
+        )
+        // Nothing exact (or nothing else): Rime's order is left alone.
+        assertEquals(listOf("你好"), pipeline.preferExactNineKeyMatches("64", listOf("你好")))
+        assertEquals(listOf("你好", "你敢好"), pipeline.preferExactNineKeyMatches("9", listOf("你好", "你敢好")))
+        assertEquals(listOf("a", "b"), pipeline.preferExactNineKeyMatches(null, listOf("a", "b")))
     }
 }

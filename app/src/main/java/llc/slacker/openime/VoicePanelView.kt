@@ -7,6 +7,10 @@ import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.FrameLayout
+import android.widget.ImageView
+import android.graphics.Color
+import android.content.res.ColorStateList
 
 /**
  * Concrete visual surface for the voice panel.
@@ -28,6 +32,7 @@ internal class VoicePanelView(
     private val waveform = LinearLayout(context)
     private val waves = mutableListOf<View>()
     private val languageButton: TextView
+    private val englishButton: TextView
     private val micButton: TextView
     private val gestureHint: TextView
 
@@ -37,134 +42,83 @@ internal class VoicePanelView(
     init {
         tag = "voice-panel"
         orientation = VERTICAL
-        setPadding(toPx(12), toPx(10), toPx(12), toPx(10))
-
-        val modelReady = initialModelState in setOf(
-            VoiceModelLifecycleState.HOT,
-            VoiceModelLifecycleState.RECORDING,
-            VoiceModelLifecycleState.COOLDOWN,
-        )
+        setPadding(toPx(12), toPx(14), toPx(12), toPx(10))
+        gravity = Gravity.CENTER_HORIZONTAL
+        val dark = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES
+        val palette = ImeTheme.IOS.tokens(ImeSettingsRepository.loadAppearance(context), dark, AccentPalette.parse(ImeSettingsRepository.loadSkinColor(context)))
+        val modelReady = initialModelState in setOf(VoiceModelLifecycleState.HOT, VoiceModelLifecycleState.RECORDING, VoiceModelLifecycleState.COOLDOWN)
         modelStatus.apply {
-            text = if (modelReady) {
-                "离线模型已就绪 · 音频不出设备"
-            } else {
-                "离线模型后台准备中 · 未启用联网识别"
-            }
-            textSize = ImeTypographyTokens.CAPTION_SP
-            includeFontPadding = false
-            gravity = Gravity.CENTER_VERTICAL
-            tag = "voice-model-status"
-            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+            text = if (modelReady) "离线模型已就绪 · 音频不出设备" else "离线模型准备中 · 音频不出设备"
+            textSize = ImeTypographyTokens.SMALL_SP; gravity = Gravity.CENTER; tag = "voice-model-status"
+            includeFontPadding = false; accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         }
-        addView(
-            modelStatus,
-            LayoutParams(LayoutParams.MATCH_PARENT, toPx(22)),
-        )
-
         transcript.apply {
-            text = "只需长按空格；松开自动上屏，上滑取消"
-            textSize = ImeTypographyTokens.BODY_SP
-            gravity = Gravity.CENTER_VERTICAL
-            maxLines = 2
-            ellipsize = TextUtils.TruncateAt.END
-            setPadding(toPx(12), 0, toPx(12), 0)
-            tag = "voice-transcript"
+            tag = "voice-transcript"; visibility = View.GONE
             accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         }
-        addView(
-            transcript,
-            LayoutParams(LayoutParams.MATCH_PARENT, toPx(52)),
-        )
-
-        waveform.apply {
-            tag = "voice-waveform"
-            orientation = HORIZONTAL
-            gravity = Gravity.CENTER
+        addView(transcript, LayoutParams(0, 0))
+        val hero = FrameLayout(context).apply {
+            background = ImeDrawableFactory.rounded(ImeDrawableFactory.blend(palette.primary, palette.keyboardBackground, 0.16f), toPx(99))
         }
-        repeat(10) {
-            val bar = View(context).apply {
-                tag = "voice-wave-bar"
-            }
-            waves += bar
-            waveform.addView(
-                bar,
-                LayoutParams(toPx(4), toPx(12)).apply {
-                    marginEnd = toPx(5)
-                },
-            )
-        }
-        addView(
-            waveform,
-            LayoutParams(LayoutParams.MATCH_PARENT, toPx(52)),
-        )
-
-        val controls = LinearLayout(context).apply {
-            orientation = HORIZONTAL
-        }
-        languageButton = createButton(
-            LANGUAGES[languageIndex].first,
-            ImeTypographyTokens.BODY_SP,
-            true,
-        ).apply {
-            tag = "voice-language"
-            setOnClickListener {
-                onFeedback()
-                languageIndex = (languageIndex + 1) % LANGUAGES.size
-                onLanguageChanged(languageIndex)
-                updateLanguagePresentation(locked = false)
-            }
-        }
-        updateLanguagePresentation(locked = false)
-        controls.addView(
-            languageButton,
-            LayoutParams(
-                0,
-                toPx(ImeGeometryTokens.VOICE_CONTROL_HEIGHT_DP),
-                1f,
-            ),
-        )
-
         micButton = createButton("", ImeTypographyTokens.BODY_SP, false).apply {
             tag = "voice-mic"
             setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_mic, 0, 0, 0)
-            compoundDrawablePadding = 0
+            gravity = Gravity.CENTER
+            setPadding(toPx(18), 0, 0, 0)
+            background = ImeDrawableFactory.rounded(palette.primary, toPx(99))
+            compoundDrawableTintList = ColorStateList.valueOf(palette.onAccent)
             isEnabled = false
-            contentDescription = "语音状态，当前未开始，仅支持长按空格启动"
+            contentDescription = "语音状态，长按空格开始"
         }
-        controls.addView(
-            micButton,
-            LayoutParams(
-                toPx(ImeGeometryTokens.VOICE_CONTROL_HEIGHT_DP),
-                toPx(ImeGeometryTokens.VOICE_CONTROL_HEIGHT_DP),
-            ),
-        )
-
-        gestureHint = createButton("长按空格开始", ImeTypographyTokens.BODY_SP, true).apply {
-            tag = "voice-gesture-hint"
-            isEnabled = false
-            contentDescription = "长按空格开始语音，松开自动上屏，上滑取消"
+        hero.addView(micButton, FrameLayout.LayoutParams(toPx(60), toPx(60)).apply { gravity = Gravity.CENTER })
+        addView(hero, LayoutParams(toPx(88), toPx(88)).apply { bottomMargin = toPx(14) })
+        languageButton = createButton(LANGUAGES[0].first, ImeTypographyTokens.BODY_SP, true).apply {
+            tag = "voice-language"
+            setOnClickListener { onFeedback(); languageIndex = 0; onLanguageChanged(languageIndex); updateLanguagePresentation(false) }
         }
-        controls.addView(
-            gestureHint,
-            LayoutParams(
-                0,
-                toPx(ImeGeometryTokens.VOICE_CONTROL_HEIGHT_DP),
-                1f,
-            ),
-        )
-        addView(
-            controls,
-            LayoutParams(
-                LayoutParams.MATCH_PARENT,
-                toPx(ImeGeometryTokens.VOICE_CONTROL_HEIGHT_DP),
-            ),
-        )
+        val languageTrack = LinearLayout(context).apply {
+            orientation = HORIZONTAL; tag = "segmented-track"; setPadding(toPx(2), toPx(2), toPx(2), toPx(2))
+        }
+        languageTrack.addView(languageButton, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
+        englishButton = TextView(context).apply {
+            text = LANGUAGES[1].first; textSize = ImeTypographyTokens.BODY_SP; gravity = Gravity.CENTER
+            isClickable = true; isFocusable = true
+            setOnClickListener {
+                if (!languageButton.isEnabled) return@setOnClickListener
+                onFeedback(); languageIndex = 1; onLanguageChanged(languageIndex)
+                updateLanguagePresentation(false)
+            }
+        }
+        languageTrack.addView(englishButton, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
+        addView(languageTrack, LayoutParams(toPx(200), toPx(34)).apply { bottomMargin = toPx(14) })
+        gestureHint = createButton("长按说话 · 松开上屏 · 上滑取消", ImeTypographyTokens.BODY_SP, false).apply {
+            tag = "voice-gesture-hint"; isClickable = false; isFocusable = false
+            background = null
+            typeface = android.graphics.Typeface.DEFAULT
+        }
+        val hintRow = LinearLayout(context).apply {
+            orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(toPx(12), 0, toPx(12), 0)
+            background = ImeDrawableFactory.rounded(palette.toolCardBackground, toPx(12))
+            addView(TextView(context).apply {
+                text = "空格"; textSize = ImeTypographyTokens.BODY_SP; gravity = Gravity.CENTER
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                background = ImeDrawableFactory.rounded(palette.toolCardBackground, toPx(8), palette.border, toPx(1))
+            }, LayoutParams(toPx(44), toPx(28)).apply { marginEnd = toPx(10) })
+            addView(gestureHint, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
+        }
+        addView(hintRow, LayoutParams(LayoutParams.MATCH_PARENT, toPx(44)).apply { marginStart = toPx(34); marginEnd = toPx(34); bottomMargin = toPx(12) })
+        addView(modelStatus, LayoutParams(LayoutParams.MATCH_PARENT, toPx(22)))
+        updateLanguagePresentation(false)
     }
 
     fun selectedLanguageCode(): String =
         LANGUAGES[languageIndex].second
 
     fun refreshLanguageControl(locked: Boolean) {
+        englishButton.isEnabled = !locked
+        englishButton.isClickable = !locked
+        englishButton.alpha = if (locked) ImeSurfacePolicy.DISABLED_ALPHA else 1f
         languageButton.isEnabled = !locked
         languageButton.isClickable = !locked
         languageButton.alpha = if (locked) ImeSurfacePolicy.DISABLED_ALPHA else 1f
@@ -194,11 +148,21 @@ internal class VoicePanelView(
 
     private fun updateLanguagePresentation(locked: Boolean) {
         val selected = LANGUAGES[languageIndex].first
-        languageButton.text = selected
+        val dark = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES
+        val palette = ImeTheme.IOS.tokens(ImeSettingsRepository.loadAppearance(context), dark, AccentPalette.parse(ImeSettingsRepository.loadSkinColor(context)))
+        listOf(languageButton, englishButton).forEachIndexed { index, button ->
+            val active = index == languageIndex
+            button.tag = if (active) "segment-selected" else "segment-option"
+            button.setTextColor(if (active) palette.keyText else palette.keySecondaryText)
+            button.typeface = if (active) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
+            button.background = if (active) ImeDrawableFactory.rounded(palette.toolCardBackground, toPx(10), palette.border, toPx(1)) else null
+            button.isSelected = active
+        }
+        englishButton.contentDescription = if (locked) "语音语言：英文，识别进行中不可切换" else "语音语言：英文"
         languageButton.contentDescription = if (locked) {
-            "语音语言：$selected，识别进行中不可切换"
+            "语音语言：普通话，识别进行中不可切换"
         } else {
-            "语音语言：$selected，点击切换"
+            "语音语言：普通话"
         }
         if (Build.VERSION.SDK_INT >= 30) {
             languageButton.stateDescription = if (locked) {
