@@ -157,21 +157,29 @@ class CandidatePipelineTest {
     }
 
     @Test
-    fun shortInputOffersWholeReadingsAndTheWordReadingLeads() {
+    fun everyRailItemIsOneCharactersPinyinAndTheWordReadingLeads() {
         val readings = pipeline.nineKeyReadingsFor("64426", null)
-        assertEquals("ni'hao", readings.first().display)
-        assertTrue(readings.all { it.coversAll })
-        assertTrue("mi'hao" in readings.map { it.display })
-        assertTrue("ni'gao" in readings.map { it.display })
+        assertTrue(readings.all { it.syllables.size == 1 })
+        assertEquals("ni", readings.first().display)
+        assertTrue("mi" in readings.map { it.display })
+        // ni spells two of the five digits: choosing it moves on to the next character.
+        assertTrue(readings.none { it.coversAll })
         // A lone vowel between syllables is a digit-grid artefact, not a reading.
         assertTrue(readings.none { reading -> reading.syllables.any { it.length == 1 } })
         assertEquals(readings.map { it.display }.distinct(), readings.map { it.display })
     }
 
     @Test
-    fun readingPreviewLeadsWhenItIsOneOfTheReadings() {
-        val readings = pipeline.nineKeyReadingsFor("64426", "migao")
-        assertEquals("mi'gao", readings.first().display)
+    fun theSyllableOfTheShownPreviewLeads() {
+        assertEquals("mi", pipeline.nineKeyReadingsFor("64426", "migao").first().display)
+        assertEquals("ni", pipeline.nineKeyReadingsFor("64426", "nihao").first().display)
+    }
+
+    @Test
+    fun aSyllableThatSpellsAllTheDigitsCoversThem() {
+        val readings = pipeline.nineKeyReadingsFor("64", null)
+        assertTrue(readings.map { it.display }.containsAll(listOf("ni", "mi")))
+        assertTrue(readings.filter { it.display in setOf("ni", "mi") }.all { it.coversAll })
     }
 
     @Test
