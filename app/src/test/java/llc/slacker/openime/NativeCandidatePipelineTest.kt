@@ -1,5 +1,9 @@
 package llc.slacker.openime
 
+import llc.slacker.openime.candidate.NativeCandidatePipeline
+import llc.slacker.openime.candidate.NineKeyFallbackRegistry
+import llc.slacker.openime.rime.NativeCandidateReference
+import llc.slacker.openime.rime.RimeCandidateEntry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue

@@ -2,6 +2,7 @@ package llc.slacker.openime
 
 import android.text.InputType
 import android.view.inputmethod.EditorInfo
+import llc.slacker.openime.data.PersonalizationPolicy
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test

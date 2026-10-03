@@ -1,5 +1,6 @@
 package llc.slacker.openime
 
+import llc.slacker.openime.core.ImeData
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

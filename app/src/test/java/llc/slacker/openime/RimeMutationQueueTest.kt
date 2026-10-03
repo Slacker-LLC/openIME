@@ -1,11 +1,12 @@
 package llc.slacker.openime
 
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
+import llc.slacker.openime.rime.RimeMutationQueue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 class RimeMutationQueueTest {
 

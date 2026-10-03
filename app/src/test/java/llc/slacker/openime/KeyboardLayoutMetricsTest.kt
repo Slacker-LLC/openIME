@@ -1,5 +1,7 @@
 package llc.slacker.openime
 
+import llc.slacker.openime.keyboard.KeyboardLayoutMetrics
+import llc.slacker.openime.theme.ImeGeometryTokens
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

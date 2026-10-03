@@ -5,12 +5,15 @@ import android.os.Build
 import android.view.inputmethod.InputConnection
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import java.lang.reflect.Proxy
+import llc.slacker.openime.data.EmojiRecentRepository
+import llc.slacker.openime.editor.InputConnectionGateway
+import llc.slacker.openime.voice.VoiceMediaMuteController
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.lang.reflect.Proxy
 
 @RunWith(AndroidJUnit4::class)
 class ManualVoiceOwnershipInstrumentedTest {

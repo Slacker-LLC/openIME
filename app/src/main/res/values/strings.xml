@@ -32,5 +32,6 @@
     <string name="activity_label_settings">偏好设置</string>
     <string name="activity_label_quick_phrases">常用语</string>
     <string name="activity_label_symbols">自定义符号</string>
+    <string name="activity_label_hotwords">语音词表</string>
     <string name="activity_label_about_data">关于与数据</string>
 </resources>

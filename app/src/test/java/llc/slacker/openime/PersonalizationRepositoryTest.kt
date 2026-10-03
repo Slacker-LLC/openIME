@@ -1,5 +1,9 @@
 package llc.slacker.openime
 
+import llc.slacker.openime.data.PersonalizationRepository
+import llc.slacker.openime.data.UserPhraseRepository
+import llc.slacker.openime.voice.VoiceCorrectionRepository
+import llc.slacker.openime.voice.VoiceHotwordProvider
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

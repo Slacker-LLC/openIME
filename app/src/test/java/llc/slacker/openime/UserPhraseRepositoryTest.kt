@@ -1,8 +1,9 @@
 package llc.slacker.openime
 
+import llc.slacker.openime.data.UserPhraseRepository
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.After
 import org.junit.Test
 
 class UserPhraseRepositoryTest {

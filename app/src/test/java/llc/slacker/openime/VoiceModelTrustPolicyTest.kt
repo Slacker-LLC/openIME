@@ -1,14 +1,24 @@
 package llc.slacker.openime
 
-import java.io.File
-import java.nio.file.Files
+import llc.slacker.openime.voice.SHERPA_DECODER
+import llc.slacker.openime.voice.SHERPA_ENCODER
+import llc.slacker.openime.voice.SHERPA_TOKENS
+import llc.slacker.openime.voice.TrustedVoiceModelCatalog
+import llc.slacker.openime.voice.VoiceModelManifest
+import llc.slacker.openime.voice.downloadedPackageCacheSignature
+import llc.slacker.openime.voice.isSafeVoiceModelId
+import llc.slacker.openime.voice.isSafeVoiceModelRelativePath
+import llc.slacker.openime.voice.resolveContainedVoiceModelFile
+import llc.slacker.openime.voice.trustFingerprint
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
+import java.io.File
+import java.nio.file.Files
 
 class VoiceModelTrustPolicyTest {
 

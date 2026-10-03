@@ -1,8 +1,8 @@
 package llc.slacker.openime
 
-import java.io.File
 import org.junit.Assert.fail
 import org.junit.Test
+import java.io.File
 
 class NoRawTextSizeTest {
     @Test

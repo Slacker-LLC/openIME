@@ -1,5 +1,7 @@
 package llc.slacker.openime
 
+import llc.slacker.openime.keyboard.candidateColumnSpan
+import llc.slacker.openime.keyboard.expandedCandidateRows
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

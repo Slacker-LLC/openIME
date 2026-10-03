@@ -1,5 +1,6 @@
 package llc.slacker.openime
 
+import llc.slacker.openime.editor.collapseSelectionForAdjacentArrow
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

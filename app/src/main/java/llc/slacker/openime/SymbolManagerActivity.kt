@@ -2,6 +2,7 @@ package llc.slacker.openime
 
 import android.app.Activity
 import android.content.ClipData
+import android.content.res.ColorStateList
 import android.os.Build
 import android.os.Bundle
 import android.text.Editable
@@ -13,13 +14,17 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.PopupMenu
 import android.widget.ScrollView
 import android.widget.TextView
-import android.widget.ImageView
-import android.widget.PopupMenu
-import android.content.res.ColorStateList
 import android.window.OnBackInvokedCallback
+import llc.slacker.openime.data.CustomSymbol
+import llc.slacker.openime.data.CustomSymbolRepository
+import llc.slacker.openime.setup.SetupUi
+import llc.slacker.openime.theme.ImeGeometryTokens
+import llc.slacker.openime.theme.ImeTypographyTokens
 
 /** Touch-friendly manager for user symbols and their order. */
 class SymbolManagerActivity : Activity() {

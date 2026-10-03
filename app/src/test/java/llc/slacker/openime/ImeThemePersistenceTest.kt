@@ -1,5 +1,7 @@
 package llc.slacker.openime
 
+import llc.slacker.openime.data.ImeSettingsRepository
+import llc.slacker.openime.theme.ImeTheme
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

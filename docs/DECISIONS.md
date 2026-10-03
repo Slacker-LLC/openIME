@@ -9,3 +9,5 @@
 - 2026-09-29｜九键首帧与 Rime 刷新｜候选按压或滚动期间暂缓应用异步 Rime 结果；同时记录从请求到结果可应用的端到端延迟｜防止手指下的候选列表重排；是否在 Rime 就绪时跳过首帧回退，等实测 P95 是否低于 40ms 后再定。
 - 2026-09-29｜Rime 用户词库导出｜vendored librime 1.17.0 已编入 levers 模块，`UserDictManager::Export/Import` 可在关闭用户库会话后导出/合并 UTF-8 快照｜用户数据 JSON 在 Rime 会话已加载时包含自动学习词库；不可用时必须明确提示，不静默遗漏。
 - 2026-09-29｜流式语音模型｜默认模型切换为 `sherpa-onnx-streaming-paraformer-bilingual-zh-en` 的 INT8 encoder/decoder；运行时使用 `OnlineParaformerModelConfig` + `greedy_search`，结束时补 300ms 静音；不再向 Paraformer stream 传 transducer-only 动态 hotwords｜优先降低模型体积和保持中英流式识别，同时遵循 sherpa-onnx v1.13.6 官方 Paraformer 配置。
+- 2026-10-03｜语音词表｜内置词表随版本发布（`assets/hotwords/`），用户可导入文本词表；二者都不联网，不新增 `INTERNET` 权限，不做在线定期更新｜Paraformer 不能把热词传进解码器，所以词表走识别后的“同音替换”：读音（取自 `8105.dict.yaml`，含多音字）相同而字不同的片段改成词表写法。游戏词表默认关闭，避免日常聊天被误改。
+- 2026-10-03｜整体分包｜99 个平铺文件按功能分进 theme/core/editor/data/setup/widget/floating/handwriting/rime/candidate/hotword/voice/panel/keyboard，根包只留 Service、Activity 和 JNI 类；依赖方向由 `ArchitectureLayeringTest` 固定｜包名只影响组织和可见性，不改 Manifest、native 符号和测试脚本引用的名字；Gradle 多模块暂不做，因为 `keyboard` 与 `panel`、`voice` 仍通过大接口耦合，需要先拆 `ImeKeyboardView.Listener`。

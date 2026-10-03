@@ -1,5 +1,10 @@
 package llc.slacker.openime
 
+import llc.slacker.openime.handwriting.HandwritingFeaturePolicy
+import llc.slacker.openime.handwriting.HandwritingProvider
+import llc.slacker.openime.handwriting.HandwritingResult
+import llc.slacker.openime.handwriting.Stroke
+import llc.slacker.openime.handwriting.UnavailableHandwritingProvider
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test

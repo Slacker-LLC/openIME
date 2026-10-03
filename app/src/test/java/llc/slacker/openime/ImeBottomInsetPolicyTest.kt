@@ -1,6 +1,7 @@
 package llc.slacker.openime
 
 import android.view.View
+import llc.slacker.openime.keyboard.ImeBottomInsetPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

@@ -1,5 +1,6 @@
 package llc.slacker.openime
 
+import llc.slacker.openime.voice.VoiceHotwordProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

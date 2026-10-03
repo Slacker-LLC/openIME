@@ -14,6 +14,10 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.window.OnBackInvokedCallback
+import llc.slacker.openime.data.QuickPhraseRepository
+import llc.slacker.openime.setup.SetupUi
+import llc.slacker.openime.theme.ImeSurfacePolicy
+import llc.slacker.openime.theme.ImeTypographyTokens
 
 /** Full-screen editor so the active IME can be used to edit the phrase itself. */
 class QuickPhraseEditActivity : Activity() {

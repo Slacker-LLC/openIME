@@ -1,5 +1,8 @@
 package llc.slacker.openime
 
+import llc.slacker.openime.core.KeyboardMode
+import llc.slacker.openime.editor.EditorInfoAdapter
+import llc.slacker.openime.editor.InputMethodSubtypePolicy
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

@@ -1,5 +1,8 @@
 package llc.slacker.openime
 
+import llc.slacker.openime.theme.AccentPalette
+import llc.slacker.openime.theme.ImeContrastPolicy
+import llc.slacker.openime.theme.ImeFocusRingPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

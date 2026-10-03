@@ -2,9 +2,11 @@ package llc.slacker.openime
 
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ScrollView
 import android.widget.EditText
+import android.widget.ScrollView
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import llc.slacker.openime.core.ImeState
+import llc.slacker.openime.keyboard.ImeKeyboardView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue

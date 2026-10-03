@@ -1,10 +1,10 @@
 package llc.slacker.openime
 
+import org.junit.Assert.assertTrue
+import org.junit.Test
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
-import org.junit.Assert.assertTrue
-import org.junit.Test
 
 class ContrastTest {
     @Test

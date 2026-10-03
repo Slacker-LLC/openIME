@@ -44,6 +44,11 @@
             android:windowSoftInputMode="adjustResize" />
 
         <activity
+            android:name=".hotword.HotwordPacksActivity"
+            android:exported="false"
+            android:label="@string/activity_label_hotwords" />
+
+        <activity
             android:name=".AboutDataActivity"
             android:exported="false"
             android:label="@string/activity_label_about_data" />

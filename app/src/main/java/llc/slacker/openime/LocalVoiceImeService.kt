@@ -12,6 +12,56 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.view.inputmethod.InputMethodSubtype
+import llc.slacker.openime.candidate.CandidateEngine
+import llc.slacker.openime.candidate.CandidatePipeline
+import llc.slacker.openime.candidate.CandidateQueryCoordinator
+import llc.slacker.openime.candidate.CandidateResolver
+import llc.slacker.openime.candidate.CandidateSnapshot
+import llc.slacker.openime.candidate.CandidateSnapshotEntry
+import llc.slacker.openime.candidate.NineKeyReading
+import llc.slacker.openime.candidate.PinyinLexicon
+import llc.slacker.openime.candidate.personalizedLearningAllowed
+import llc.slacker.openime.core.CrashGuard
+import llc.slacker.openime.core.ImeState
+import llc.slacker.openime.core.KeyboardMode
+import llc.slacker.openime.core.Panel
+import llc.slacker.openime.core.ShiftState
+import llc.slacker.openime.core.VoiceUiState
+import llc.slacker.openime.core.dropLastCodePointSafe
+import llc.slacker.openime.data.ClipboardHistoryRepository
+import llc.slacker.openime.data.EmojiRecentRepository
+import llc.slacker.openime.data.ImeSettingsRepository
+import llc.slacker.openime.data.PersonalizationRepository
+import llc.slacker.openime.data.QuickPhraseRepository
+import llc.slacker.openime.data.RimeUserDictionaryArchive
+import llc.slacker.openime.data.UserPhraseRepository
+import llc.slacker.openime.editor.EditorInfoAdapter
+import llc.slacker.openime.editor.InputConnectionGateway
+import llc.slacker.openime.editor.InputMethodSubtypePolicy
+import llc.slacker.openime.editor.editorActionForEnter
+import llc.slacker.openime.editor.shouldClearCompositionForSelectionUpdate
+import llc.slacker.openime.floating.FloatingWindowController
+import llc.slacker.openime.hotword.HotwordRuntime
+import llc.slacker.openime.keyboard.EnglishShiftPolicy
+import llc.slacker.openime.keyboard.HardwareContext
+import llc.slacker.openime.keyboard.HardwareKey
+import llc.slacker.openime.keyboard.HardwareKeyAction
+import llc.slacker.openime.keyboard.HardwareKeyPolicy
+import llc.slacker.openime.keyboard.ImeKeyboardView
+import llc.slacker.openime.rime.NativeCandidateReference
+import llc.slacker.openime.rime.RimeEngine
+import llc.slacker.openime.rime.RimeInputNormalizer
+import llc.slacker.openime.theme.ImeAppearance
+import llc.slacker.openime.theme.ImeTheme
+import llc.slacker.openime.voice.VoiceCorrectionRepository
+import llc.slacker.openime.voice.VoiceCorrectionTracker
+import llc.slacker.openime.voice.VoiceEditorContext
+import llc.slacker.openime.voice.VoiceFinalPolicy
+import llc.slacker.openime.voice.VoiceMediaMuteController
+import llc.slacker.openime.voice.VoiceModelLifecycleManager
+import llc.slacker.openime.voice.VoiceModelLifecycleState
+import llc.slacker.openime.voice.VoicePerformanceTrace
+import llc.slacker.openime.voice.VoiceRecognitionEvents
 import java.io.File
 
 /**
@@ -127,8 +177,12 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         CrashGuard.ingestProcessExitReasons(this)
         VoiceMediaMuteController.recoverAfterCrash(this)
         activeInstance = this
+        VoiceEditorContext.allowNaturalPunctuation = {
+            EditorInfoAdapter.allowNaturalLanguageVoicePunctuation(currentInputEditorInfo)
+        }
         UserPhraseRepository.configure(this)
         VoiceCorrectionRepository.configure(this)
+        HotwordRuntime.configure(this)
         voiceLifecycle = VoiceModelLifecycleManager(this)
         Thread({
             runCatching { CandidatePipeline(CandidateEngine(PinyinLexicon.load(this))) }
@@ -474,9 +528,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             candidatesStart,
             candidatesEnd,
         )
-        if (state.keyboardMode == KeyboardMode.ENGLISH_26 && lastComposition.isEmpty()) {
-            mainHandler.post { refreshEnglishShiftFromEditor() }
-        }
         if (!shouldClearCompositionForSelectionUpdate(
                 hasComposition = lastComposition.isNotEmpty(),
                 oldSelStart = oldSelStart,
@@ -510,6 +561,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         if (::rime.isInitialized) rime.shutdown()
         if (::voiceLifecycle.isInitialized) voiceLifecycle.destroy()
         activeInstance = null
+        VoiceEditorContext.allowNaturalPunctuation = { true }
         super.onDestroy()
     }
 
@@ -683,7 +735,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         lastComposition = ""
         keyboardView?.renderState(state)
         if (mode == KeyboardMode.ENGLISH_26) {
-            mainHandler.post { refreshEnglishShiftFromEditor() }
+            mainHandler.post { resetEnglishShiftForEditor() }
         }
     }
 
@@ -1418,8 +1470,16 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
                 else -> "none"
             },
         )
-        return (learned + fallback).distinct().take(MAX_CANDIDATES)
+        return boostHotwords(composition, (learned + fallback).distinct().take(MAX_CANDIDATES))
     }
+
+    /** Hotword packs also rank while typing 26-key pinyin; other modes are left alone. */
+    private fun boostHotwords(composition: String, candidates: List<String>): List<String> =
+        if (state.keyboardMode == KeyboardMode.PINYIN_26 && !state.passwordField) {
+            HotwordRuntime.boost(composition, candidates).take(MAX_CANDIDATES)
+        } else {
+            candidates
+        }
 
     /** Query librime away from the IME input thread; stale answers are ignored. */
     private fun requestNativeCandidates(
@@ -1458,7 +1518,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
                 } else {
                     emptyList()
                 }
-                val finalCandidates = if (native.isNotEmpty()) {
+                val rankedCandidates = if (native.isNotEmpty()) {
                     val nativeText = native.map { it.text }.let { texts ->
                         if (mode == KeyboardMode.PINYIN_9) {
                             candidatePipeline.preferExactNineKeyMatches(queryInputs.firstOrNull(), texts)
@@ -1492,6 +1552,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
                 } else {
                     (learned + fallback).distinct().take(MAX_CANDIDATES)
                 }
+                val finalCandidates = boostHotwords(composition, rankedCandidates)
                 val nativeReferences = if (native.isNotEmpty()) {
                     native.associate { it.text to it.reference }
                 } else {
@@ -1670,26 +1731,14 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     }
 
     private fun desiredEnglishShiftState(info: EditorInfo?): ShiftState {
-        if (info == null || EditorInfoAdapter.isPassword(EditorInfoAdapter.kind(info))) {
-            return ShiftState.LOWERCASE
-        }
-        val inputType = info.inputType
-        if (inputType and InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS != 0) {
-            return ShiftState.CAPS_LOCK
-        }
-        var requestedModes = 0
-        if (inputType and InputType.TYPE_TEXT_FLAG_CAP_WORDS != 0) {
-            requestedModes = requestedModes or TextUtils.CAP_MODE_WORDS
-        }
-        if (inputType and InputType.TYPE_TEXT_FLAG_CAP_SENTENCES != 0) {
-            requestedModes = requestedModes or TextUtils.CAP_MODE_SENTENCES
-        }
-        if (requestedModes == 0) return ShiftState.LOWERCASE
-        val capsMode = currentInputConnection?.getCursorCapsMode(requestedModes) ?: 0
-        return if (capsMode != 0) ShiftState.SHIFT_ONCE else ShiftState.LOWERCASE
+        if (info == null) return ShiftState.LOWERCASE
+        return EnglishShiftPolicy.initial(
+            inputType = info.inputType,
+            password = EditorInfoAdapter.isPassword(EditorInfoAdapter.kind(info)),
+        )
     }
 
-    private fun refreshEnglishShiftFromEditor() {
+    private fun resetEnglishShiftForEditor() {
         if (state.keyboardMode != KeyboardMode.ENGLISH_26 || state.passwordField || lastComposition.isNotEmpty()) return
         val next = desiredEnglishShiftState(state.editorInfo)
         if (next == state.shiftState) return

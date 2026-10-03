@@ -2,6 +2,7 @@ package llc.slacker.openime
 
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import llc.slacker.openime.data.EmojiRecentRepository
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Test

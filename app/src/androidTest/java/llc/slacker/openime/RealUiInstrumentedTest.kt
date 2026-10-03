@@ -3,6 +3,7 @@ package llc.slacker.openime
 import android.view.View
 import android.view.ViewGroup
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import llc.slacker.openime.keyboard.ImeKeyboardView
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test

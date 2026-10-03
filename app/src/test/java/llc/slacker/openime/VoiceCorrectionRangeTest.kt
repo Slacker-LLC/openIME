@@ -1,5 +1,9 @@
 package llc.slacker.openime
 
+import llc.slacker.openime.editor.InputConnectionGateway
+import llc.slacker.openime.voice.VoiceCorrectionRange
+import llc.slacker.openime.voice.correctedVoiceText
+import llc.slacker.openime.voice.voiceCorrectionRange
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
