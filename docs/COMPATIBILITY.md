@@ -15,6 +15,14 @@
 | 无个性化学习标志（隐身模式） | 不学习、不记录剪贴板 | `PersonalizedLearningPolicy` |
 | 一次提交几十万字（大段粘贴、长语音） | 分块提交，每块不超过 32000 个字符且不拆代理对，避免超过 Binder 单次事务上限 | `CrashResilienceTest` |
 
+## 自动填充（Android 11+）
+
+`method.xml` 声明 `supportsInlineSuggestions`，键盘请求最多 5 个 48dp 高的条目并把系统渲染的条目放进工具栏位置。键盘只托管条目：
+填入的内容由系统直接写入输入框，键盘既拿不到也不读取，所以密码框里同样可以显示条目。条目响应可能先于键盘视图到达（新输入框刚获得焦点），
+服务会暂存最近一次响应，视图建好后再显示，而不是拒绝（拒绝会让系统退回下拉菜单）。离开输入框时清除。
+Android 11 以下和不支持内嵌建议的提供者仍使用系统的下拉菜单。
+验证：`InlineChipTrackerTest`；`scripts/beta3_e2e.py autofill`（debug 构建自带测试提供者 `TestAutofillService` 和 `AutofillTestActivity`）。
+
 ## 物理键盘（平板、折叠屏键盘套、Chromebook、桌面模式、模拟器）
 
 中文 26 键模式下：字母组成拼音，空格选首选，1–9 选候选，回车保留已输入拼音，Esc 取消，`'` 分词，退格删拼音；
@@ -26,7 +34,8 @@
 
 横屏（不进入全屏提取模式，键盘是底部面板）、字体 130% / 200%（按键标签最多放大到 1.3 倍，功能键标签自动缩小）、
 深色、小屏、窄屏、平板竖 / 横、折叠屏内屏。验证：`scripts/display_matrix_regression.py`（断言底部面板且每个键都在窗口内）、
-`DisplayEnvironmentInstrumentedTest`。
+`DisplayEnvironmentInstrumentedTest`、`scripts/beta3_e2e.py`（横屏下空格滑动光标、数字行、表情联想、语音处理、自动填充）。
+数字行打开时键盘总高度不变，五行均分原来四行的空间（竖屏约 43dp，横屏约 34dp，不低于 32dp）。
 
 ## Android 版本
 
