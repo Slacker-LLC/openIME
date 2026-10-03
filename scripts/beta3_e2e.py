@@ -10,7 +10,8 @@ Covered, each in portrait and (where it matters) landscape:
 
   * space-bar cursor drag: the cursor moves, the bottom row is locked while the
     finger is down and free afterwards, a plain tap is still a space
-  * number row: ten digit keys, they type, the keyboard keeps its height
+  * digits and symbols on the letter keys: printed in the corner, typed by swipe
+    up or long press, no extra row, the layout does not change
   * emoji association after committing a word
   * voice: filler removal and punctuation-as-space through the real
     post-processing chain
@@ -148,10 +149,14 @@ def find(nodes: list[Node], desc_prefix: str) -> Node | None:
     return None
 
 
+# uiautomator reports an empty field's hint as its text.
+LAB_HINTS = {"单行普通文本", "用户名"}
+
+
 def field_text(dev: Device) -> str:
     for node in dev.dump():
         if node.cls.endswith("EditText"):
-            return node.text
+            return "" if node.text in LAB_HINTS else node.text
     return ""
 
 
@@ -271,45 +276,80 @@ def case_space_cursor(dev: Device, landscape: bool) -> list[str]:
     return problems
 
 
-def case_number_row(dev: Device, landscape: bool) -> list[str]:
+CHINESE_HINTS = dict(
+    zip("qwertyuiop", "1234567890"),
+    a="~", s="！", d="@", f="#", g="￥", h="%", j="&", k="*", l="？",
+    z="（", x="）", c="-", v="_", b="：", n="；", m="/",
+)
+ENGLISH_HINTS = {**CHINESE_HINTS, "s": "!", "g": "$", "l": "?", "z": "(", "x": ")", "b": ":", "n": ";"}
+
+
+def key_node(nodes: list[Node], letter: str) -> Node | None:
+    return next((n for n in nodes if n.desc in (letter, letter.upper()) and n.w > 0), None)
+
+
+def hint_inside(nodes: list[Node], key: Node, hint: str) -> bool:
+    return any(n.text == hint and n.x0 >= key.x0 and n.x1 <= key.x1 and n.y0 >= key.y0 and n.y1 <= key.y1 for n in nodes)
+
+
+def case_letter_hints(dev: Device, landscape: bool) -> list[str]:
     problems: list[str] = []
-    for enabled in (False, True):
-        write_prefs(dev, {"number_row": enabled, "sound": False, "haptic": False})
+    space_tops: dict[bool, int] = {}
+    for enabled in (True, False):
+        write_prefs(dev, {"letter_hints": enabled, "sound": False, "haptic": False})
         if not show_keyboard(dev):
             return ["the keyboard did not show"]
-        for mode in ("PINYIN_26", "ENGLISH_26"):
+        for mode, hints in (("PINYIN_26", CHINESE_HINTS), ("ENGLISH_26", ENGLISH_HINTS)):
             dev.command(f"mode:{mode}")
             time.sleep(1.2)
             nodes = dev.dump()
-            digits = [n for n in nodes if re.fullmatch(r"数字 \d", n.desc)]
-            label = f"{mode}-numrow-{'on' if enabled else 'off'}{'-landscape' if landscape else ''}"
+            label = f"{mode}-hints-{'on' if enabled else 'off'}{'-landscape' if landscape else ''}"
             dev.shot(label)
-            if enabled and len(digits) != 10:
-                problems.append(f"{mode}: number row has {len(digits)} keys, expected 10")
-            if not enabled and digits:
-                problems.append(f"{mode}: number row shown while the setting is off")
-            width, height = dev.size()
-            if landscape:
-                width, height = height, width
             space = find(nodes, "空格")
             if not space:
                 problems.append(f"{mode}: space key missing")
-            elif space.y1 > height:
+                continue
+            if mode == "PINYIN_26":
+                space_tops[enabled] = space.y0
+            width, height = dev.size()
+            if landscape:
+                width, height = height, width
+            if space.y1 > height:
                 problems.append(f"{mode}: bottom row runs off the screen ({space.y1} > {height})")
-            if enabled and digits:
-                five = next((n for n in digits if n.desc == "数字 5"), None)
-                if five and five.h < 30 * dev.density():
-                    problems.append(f"{mode}: number key only {five.h}px tall")
-        if enabled:
-            dev.command("mode:PINYIN_26")
-            time.sleep(1)
-            nodes = dev.dump()
-            five = find(nodes, "数字 5")
-            if five:
-                dev.tap(five.cx, five.cy)
-                time.sleep(0.8)
-                if "5" not in field_text(dev):
-                    problems.append(f"tapping the 5 key typed {field_text(dev)!r}")
+            shown = 0
+            for letter, hint in hints.items():
+                key = key_node(nodes, letter)
+                if not key:
+                    problems.append(f"{mode}: key {letter} missing")
+                    continue
+                if hint_inside(nodes, key, hint):
+                    shown += 1
+            if enabled and shown != 26:
+                problems.append(f"{mode}: only {shown} of 26 keys show their hint")
+            if not enabled and shown:
+                problems.append(f"{mode}: {shown} hints shown while the setting is off")
+            if not enabled:
+                continue
+            # Real gestures: swipe up and long press type the hint, a tap types the letter.
+            for letter in ("q", "s", "g", "z"):
+                key = key_node(nodes, letter)
+                if not key:
+                    continue
+                hint = hints[letter]
+                before = field_text(dev)
+                dev.shell("input", "swipe", str(key.cx), str(key.cy), str(key.cx), str(key.cy - int(key.h * 1.3)), "140")
+                time.sleep(0.9)
+                typed = field_text(dev)
+                if typed != before + hint:
+                    problems.append(f"{mode}: swipe up on {letter} typed {typed[len(before):]!r}, expected {hint!r}")
+                dev.shell("input", "swipe", str(key.cx), str(key.cy), str(key.cx), str(key.cy), "900")
+                time.sleep(1)
+                held = field_text(dev)
+                if held != typed + hint:
+                    problems.append(f"{mode}: long press on {letter} typed {held[len(typed):]!r}, expected {hint!r}")
+            dev.shot(f"{mode}-hints-typed{'-landscape' if landscape else ''}")
+    if len(space_tops) == 2 and abs(space_tops[True] - space_tops[False]) > 2:
+        problems.append(f"the hints changed the keyboard layout (space at {space_tops[True]} vs {space_tops[False]})")
     return problems
 
 
@@ -415,7 +455,7 @@ def case_autofill(dev: Device, landscape: bool) -> list[str]:
 
 CASES = {
     "space_cursor": case_space_cursor,
-    "number_row": case_number_row,
+    "letter_hints": case_letter_hints,
     "emoji": case_emoji,
     "voice": case_voice,
     "autofill": case_autofill,

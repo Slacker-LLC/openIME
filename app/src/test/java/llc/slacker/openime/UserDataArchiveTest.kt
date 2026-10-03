@@ -35,7 +35,7 @@ class UserDataArchiveTest {
         keyboardHeightPercent = 104,
         floatingWidthPercent = 84,
         floatingOpacityPercent = 96,
-        numberRow = true,
+        letterHints = false,
         emojiAssociation = false,
         voiceStripFillers = false,
         voicePunctuationAsSpace = true,
@@ -75,7 +75,7 @@ class UserDataArchiveTest {
         val json = org.json.JSONObject(UserDataArchiveCodec.encode(archive))
         val legacy = json.getJSONObject("settings")
         listOf(
-            "number_row",
+            "letter_hints",
             "emoji_association",
             "voice_strip_fillers",
             "voice_punctuation_as_space",
@@ -83,7 +83,7 @@ class UserDataArchiveTest {
 
         val decoded = UserDataArchiveCodec.decode(json.toString()).settings
 
-        assertFalse(decoded.numberRow)
+        assertTrue(decoded.letterHints)
         assertTrue(decoded.emojiAssociation)
         assertTrue(decoded.voiceStripFillers)
         assertFalse(decoded.voicePunctuationAsSpace)

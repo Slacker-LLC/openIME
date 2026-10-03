@@ -20,7 +20,6 @@ internal class Pinyin26KeyboardRenderer(
     private val keyboardBody: LinearLayout,
     private val toPx: (Int) -> Int,
     private val keyRowHeightDp: () -> Int,
-    private val numberRowKeyRowHeightDp: () -> Int,
     private val createKey: (
         text: String,
         function: Boolean,
@@ -35,23 +34,19 @@ internal class Pinyin26KeyboardRenderer(
     private val onPinyinSegment: () -> Unit,
     private val onShowChoicePopup: (View, List<String>) -> Unit,
     private val onCommitCharacter: (String) -> Unit,
+    private val hintsEnabled: () -> Boolean,
+    private val swipeUpEnabled: () -> Boolean,
     private val onShift: () -> Unit,
     private val onDigits: () -> Unit,
     private val onModeSwitch: () -> Unit,
     private val onSpace: () -> Unit,
     private val onEnter: () -> Unit,
 ) {
-    /** Height of every row in the surface being built; shorter when a number row is added. */
-    private var rowHeightDp = 0
-
     fun render(
         english: Boolean,
         shiftState: ShiftState,
         enterLabel: String,
-        numberRow: Boolean = false,
     ) {
-        rowHeightDp = if (numberRow) numberRowKeyRowHeightDp() else keyRowHeightDp()
-        if (numberRow) keyboardBody.addView(numberRowHost(), rowParams())
         ROWS.forEachIndexed { rowIndex, rowText ->
             val row = rowHost().apply {
                 if (rowIndex == 1) tag = "key-row-secondary"
@@ -65,7 +60,7 @@ internal class Pinyin26KeyboardRenderer(
 
             rowText.forEach { character ->
                 row.addView(
-                    letterKey(character, english, shiftState, numberRow),
+                    letterKey(character, english, shiftState),
                     flexKeyParams(),
                 )
             }
@@ -153,7 +148,6 @@ internal class Pinyin26KeyboardRenderer(
         character: Char,
         english: Boolean,
         shiftState: ShiftState,
-        numberRow: Boolean,
     ): ImeKeyView {
         val base = character.toString()
         val main = if (english && shiftState != ShiftState.LOWERCASE) {
@@ -163,8 +157,8 @@ internal class Pinyin26KeyboardRenderer(
         } else {
             base
         }
-        // The digits are long-press hints only while no row of their own shows them.
-        val secondary = if (english || numberRow) null else DIGIT_HINTS[character]
+        // The corner hint is a digit or symbol; swipe up or long press types it.
+        val secondary = if (hintsEnabled()) LetterHintPolicy.hint(character, english) else null
         return createKey(main, false, secondary, ImeTypographyTokens.KEY_LETTER_COMPACT_SP, 0) {
             onLetter(base)
         }.apply {
@@ -176,26 +170,9 @@ internal class Pinyin26KeyboardRenderer(
                     onCommitCharacter(secondary)
                     true
                 }
+                onSwipeUp = { onCommitCharacter(secondary) }
+                swipeUpEnabled = this@Pinyin26KeyboardRenderer.swipeUpEnabled
             }
-        }
-    }
-
-    private fun numberRowHost(): LinearLayout = rowHost().apply {
-        tag = "key-row-numbers"
-        DIGITS.forEach { digit ->
-            addView(
-                createKey(
-                    digit,
-                    false,
-                    null,
-                    ImeTypographyTokens.KEY_LETTER_COMPACT_SP,
-                    0,
-                ) { onCommitCharacter(digit) }.apply {
-                    tag = "key-number:$digit"
-                    contentDescription = "数字 $digit"
-                },
-                flexKeyParams(),
-            )
         }
     }
 
@@ -208,30 +185,17 @@ internal class Pinyin26KeyboardRenderer(
     private fun rowParams() =
         LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            toPx(rowHeightDp),
+            toPx(keyRowHeightDp()),
         )
 
     private fun flexKeyParams(weight: Float = 1f) =
         LinearLayout.LayoutParams(
             0,
-            toPx(rowHeightDp),
+            toPx(keyRowHeightDp()),
             weight,
         )
 
     private companion object {
         val ROWS = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
-        val DIGITS = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0")
-        val DIGIT_HINTS = mapOf(
-            'q' to "1",
-            'w' to "2",
-            'e' to "3",
-            'r' to "4",
-            't' to "5",
-            'y' to "6",
-            'u' to "7",
-            'i' to "8",
-            'o' to "9",
-            'p' to "0",
-        )
     }
 }

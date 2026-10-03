@@ -16,6 +16,7 @@ import llc.slacker.openime.voice.VoiceModelLifecycleState
 import llc.slacker.openime.widget.ImeKeyView
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -24,10 +25,11 @@ import org.junit.runner.RunWith
 
 /**
  * The space-bar cursor drag (with the bottom row locked while it runs), the
- * optional number row, and the settings toggles added in 0.0.3-beta.1.
+ * digits and symbols printed on the letter keys (typed by swipe up or long
+ * press), and the settings toggles added in 0.0.3-beta.1.
  */
 @RunWith(AndroidJUnit4::class)
-class SpaceCursorAndNumberRowInstrumentedTest {
+class SpaceCursorAndLetterHintsInstrumentedTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
     private class Recorder {
@@ -50,7 +52,8 @@ class SpaceCursorAndNumberRowInstrumentedTest {
 
     @After
     fun restoreSettings() {
-        ImeSettingsRepository.saveNumberRow(context, false)
+        ImeSettingsRepository.saveLetterHints(context, true)
+        ImeSettingsRepository.saveSwipeUpDigits(context, true)
         ImeSettingsRepository.saveEmojiAssociation(context, true)
         ImeSettingsRepository.saveVoiceStripFillers(context, true)
         ImeSettingsRepository.saveVoicePunctuationAsSpace(context, false)
@@ -272,89 +275,151 @@ class SpaceCursorAndNumberRowInstrumentedTest {
         }
     }
 
-    // ----- number row -------------------------------------------------------------
+    // ----- digits and symbols on the letter keys ------------------------------------
 
-    private fun numberKeys(keyboard: ImeKeyboardView): List<View> =
-        "1234567890".map { keyboard.findViewWithTag<View>("key-number:$it") }.filterNotNull()
+    private fun texts(view: View): List<String> {
+        val found = mutableListOf<String>()
+        fun walk(v: View) {
+            if (v is android.widget.TextView && v.text.isNotEmpty()) found += v.text.toString()
+            if (v is ViewGroup) for (i in 0 until v.childCount) walk(v.getChildAt(i))
+        }
+        walk(view)
+        return found
+    }
+
+    private fun swipeUp(harness: DirectActivityHarness<DebugKeyboardActivity>, view: View) {
+        val downTime = SystemClock.uptimeMillis()
+        val x = view.width / 2f
+        val y = view.height / 2f
+        val distance = view.height * 1.2f
+        val ok = harness.awaitMain {
+            send(view, MotionEvent.ACTION_DOWN, downTime, x, y)
+            send(view, MotionEvent.ACTION_MOVE, downTime, x, y - distance / 2)
+            send(view, MotionEvent.ACTION_MOVE, downTime, x, y - distance)
+            send(view, MotionEvent.ACTION_UP, downTime, x, y - distance)
+            true
+        }
+        check(ok)
+        SystemClock.sleep(150)
+        check(harness.awaitMain { true })
+    }
+
+    private val chineseHints = mapOf(
+        'q' to "1", 'w' to "2", 'e' to "3", 'r' to "4", 't' to "5", 'y' to "6", 'u' to "7", 'i' to "8",
+        'o' to "9", 'p' to "0", 'a' to "~", 's' to "！", 'd' to "@", 'f' to "#", 'g' to "￥", 'h' to "%",
+        'j' to "&", 'k' to "*", 'l' to "？", 'z' to "（", 'x' to "）", 'c' to "-", 'v' to "_",
+        'b' to "：", 'n' to "；", 'm' to "/",
+    )
+    private val englishHints = chineseHints + mapOf(
+        's' to "!", 'g' to "$", 'l' to "?", 'z' to "(", 'x' to ")", 'b' to ":", 'n' to ";",
+    )
 
     @Test
-    fun numberRowIsOffByDefaultAndTheLettersKeepTheirDigitHints() = withKeyboard { harness, _, keyboard ->
+    fun noExtraRowIsAddedAndTheKeyboardKeepsItsFourRows() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain { keyboard.setMode(KeyboardMode.PINYIN_26); true }
-        settled(harness, keyboard, "key:q")
+        settled(harness, keyboard, "key-space")
         harness.awaitMain {
-            assertTrue(numberKeys(keyboard).isEmpty())
             assertNull(keyboard.findViewWithTag<View>("key-row-numbers"))
+            val body = (keyboard.findViewWithTag<View>("key-space").parent as View).parent as ViewGroup
+            assertEquals("four key rows", 4, body.childCount)
             true
         }
     }
 
     @Test
-    fun numberRowShowsTenDigitsAndTypesThem() = withKeyboard { harness, recorder, keyboard ->
-        ImeSettingsRepository.saveNumberRow(context, true)
-        // A view built before the setting changed is rebuilt by a mode change.
-        harness.awaitMain { keyboard.setMode(KeyboardMode.ENGLISH_26); keyboard.setMode(KeyboardMode.PINYIN_26); true }
-        val five = settled(harness, keyboard, "key-number:5")
-        harness.awaitMain { assertEquals(10, numberKeys(keyboard).size); true }
-        tap(harness, five)
-        tap(harness, settled(harness, keyboard, "key-number:0"))
-        assertEquals(listOf("5", "0"), recorder.characters.toList())
+    fun everyLetterKeyShowsItsHintInBothLanguages() = withKeyboard { harness, _, keyboard ->
+        mapOf(KeyboardMode.PINYIN_26 to chineseHints, KeyboardMode.ENGLISH_26 to englishHints)
+            .forEach { (mode, expected) ->
+                harness.awaitMain { keyboard.setMode(KeyboardMode.DIGITS); keyboard.setMode(mode); true }
+                settled(harness, keyboard, "key:q")
+                val checked = harness.awaitMain {
+                    expected.forEach { (letter, hint) ->
+                        val key = keyboard.findViewWithTag<View>("key:$letter")
+                        assertNotNull("$mode $letter", key)
+                        assertTrue("$mode $letter shows $hint in ${texts(key)}", hint in texts(key))
+                    }
+                    true
+                }
+                check(checked)
+            }
     }
 
     @Test
-    fun numberRowAppearsOnEnglishToo() = withKeyboard { harness, _, keyboard ->
-        ImeSettingsRepository.saveNumberRow(context, true)
+    fun swipeUpTypesTheHintOnceAndStartsNoComposition() = withKeyboard { harness, recorder, keyboard ->
+        listOf(KeyboardMode.PINYIN_26 to chineseHints, KeyboardMode.ENGLISH_26 to englishHints)
+            .forEach { (mode, hints) ->
+                harness.awaitMain { keyboard.setMode(KeyboardMode.DIGITS); keyboard.setMode(mode); true }
+                recorder.characters.clear()
+                val letters = listOf('q', 'p', 'a', 's', 'g', 'l', 'z', 'm')
+                letters.forEach { swipeUp(harness, settled(harness, keyboard, "key:$it"), ) }
+                assertEquals(mode.name, letters.map { hints.getValue(it) }, recorder.characters.toList())
+                val composing = harness.awaitMain {
+                    keyboard.findViewWithTag<EditText>("pinyin-composition-editor")?.text?.toString().orEmpty()
+                }
+                assertEquals("a swipe must not also start a composition", "", composing)
+            }
+    }
+
+    @Test
+    fun longPressTypesTheSameHint() = withKeyboard { harness, recorder, keyboard ->
+        harness.awaitMain { keyboard.setMode(KeyboardMode.PINYIN_26); true }
+        listOf('w', 'd', 'k', 'v').forEach { letter ->
+            val key = settled(harness, keyboard, "key:$letter")
+            assertTrue(harness.awaitMain { key.performLongClick() })
+        }
+        assertEquals(listOf("2", "@", "*", "_"), recorder.characters.toList())
+    }
+
+    @Test
+    fun aPlainTapStillTypesTheLetter() = withKeyboard { harness, recorder, keyboard ->
         harness.awaitMain { keyboard.setMode(KeyboardMode.ENGLISH_26); true }
-        settled(harness, keyboard, "key-number:1")
-        harness.awaitMain { assertEquals(10, numberKeys(keyboard).size); true }
+        tap(harness, settled(harness, keyboard, "key:q"))
+        assertTrue("a tap types the letter, not the hint: ${recorder.characters}", "1" !in recorder.characters)
     }
 
     @Test
-    fun numberRowDoesNotChangeTheKeyboardHeightAndEveryRowFits() = withKeyboard { harness, _, keyboard ->
+    fun theSwipeSwitchTurnsOffSwipeButNotTheHints() = withKeyboard { harness, recorder, keyboard ->
+        ImeSettingsRepository.saveSwipeUpDigits(context, false)
         harness.awaitMain { keyboard.setMode(KeyboardMode.PINYIN_26); true }
-        settled(harness, keyboard, "key-space")
-        val withoutRow = harness.awaitMain { keyboard.height }
-        val bodyHeightWithout = harness.awaitMain {
-            keyboard.findViewWithTag<View>("key-space").let { (it.parent as View).bottom }
-        }
-
-        ImeSettingsRepository.saveNumberRow(context, true)
-        harness.awaitMain { keyboard.setMode(KeyboardMode.ENGLISH_26); keyboard.setMode(KeyboardMode.PINYIN_26); true }
-        val five = settled(harness, keyboard, "key-number:5")
-        val space = settled(harness, keyboard, "key-space")
-        harness.awaitMain {
-            assertEquals("IME height must stay put", withoutRow, keyboard.height)
-            val numberRow = five.parent as View
-            val bottomRow = space.parent as View
-            val body = bottomRow.parent as View
-            assertTrue(numberRow.top >= 0)
-            assertTrue("rows must stay inside the body", bottomRow.bottom <= body.height)
-            assertTrue("bottom row stays on the same line (${bottomRow.bottom} vs $bodyHeightWithout)",
-                kotlin.math.abs(bottomRow.bottom - bodyHeightWithout) <= keyboard.resources.displayMetrics.density * 12)
-            val keys = listOf(five, space)
-            keys.forEach { assertTrue("a key is at least 32dp tall", it.height >= 32 * keyboard.resources.displayMetrics.density) }
-            true
-        }
+        val q = settled(harness, keyboard, "key:q")
+        swipeUp(harness, q)
+        assertTrue("swipe is off: ${recorder.characters}", recorder.characters.isEmpty())
+        harness.awaitMain { assertTrue("1" in texts(q)); true }
+        assertTrue(harness.awaitMain { q.performLongClick() })
+        assertEquals("long press still works", listOf("1"), recorder.characters.toList())
     }
 
     @Test
-    fun turningTheNumberRowOnFromSettingsRebuildsTheKeyboard() = withKeyboard { harness, _, keyboard ->
-        harness.awaitMain { keyboard.setMode(KeyboardMode.PINYIN_26); true }
-        settled(harness, keyboard, "key-space")
+    fun turningTheHintsOffRemovesThemAndTheirGestures() = withKeyboard { harness, recorder, keyboard ->
+        ImeSettingsRepository.saveLetterHints(context, false)
+        harness.awaitMain { keyboard.setMode(KeyboardMode.DIGITS); keyboard.setMode(KeyboardMode.PINYIN_26); true }
+        val q = settled(harness, keyboard, "key:q")
         harness.awaitMain {
-            keyboard.showPanel(Panel.SETTINGS)
-            val toggle = keyboard.findViewsWithContentDescription("数字行")
-            assertNotNull("settings must offer the number row toggle", toggle)
+            assertEquals(listOf("Q"), texts(q))
+            assertEquals(listOf("S"), texts(keyboard.findViewWithTag<View>("key:s")))
             true
         }
-        harness.awaitMain {
-            val toggle = keyboard.findToggle("数字行")
-            assertEquals("数字行，已关闭", toggle.contentDescription.toString())
+        swipeUp(harness, q)
+        harness.awaitMain { q.performLongClick(); true }
+        assertTrue("no hint, no digit: ${recorder.characters}", recorder.characters.isEmpty())
+    }
+
+    @Test
+    fun turningTheHintsOffFromSettingsRebuildsTheKeyboard() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain { keyboard.setMode(KeyboardMode.PINYIN_26); true }
+        settled(harness, keyboard, "key-space")
+        harness.awaitMain { keyboard.showPanel(Panel.SETTINGS); true }
+        val flipped = harness.awaitMain {
+            val toggle = keyboard.findToggle("数字和符号提示")
+            assertEquals("数字和符号提示，已开启", toggle.contentDescription.toString())
             assertTrue(toggle.performClick())
             true
         }
-        assertTrue(ImeSettingsRepository.loadNumberRow(context))
+        check(flipped)
+        assertFalse(ImeSettingsRepository.loadLetterHints(context))
         harness.awaitMain { keyboard.closePanelToKeyboard(); true }
-        settled(harness, keyboard, "key-number:3")
+        val q = settled(harness, keyboard, "key:q")
+        harness.awaitMain { assertEquals(listOf("Q"), texts(q)); true }
     }
 
     // ----- new settings toggles ----------------------------------------------------
@@ -363,7 +428,7 @@ class SpaceCursorAndNumberRowInstrumentedTest {
     fun theNewTogglesAreListedAndPersist() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain { keyboard.showPanel(Panel.SETTINGS); true }
         val expected = mapOf(
-            "数字行" to ("关闭" to { ImeSettingsRepository.loadNumberRow(context) }),
+            "数字和符号提示" to ("开启" to { ImeSettingsRepository.loadLetterHints(context) }),
             "表情联想" to ("开启" to { ImeSettingsRepository.loadEmojiAssociation(context) }),
             "语音去语气词" to ("开启" to { ImeSettingsRepository.loadVoiceStripFillers(context) }),
             "标点用空格代替" to ("关闭" to { ImeSettingsRepository.loadVoicePunctuationAsSpace(context) }),
@@ -393,16 +458,5 @@ class SpaceCursorAndNumberRowInstrumentedTest {
         }
         walk(this)
         return found ?: error("no toggle for $label")
-    }
-
-    private fun View.findViewsWithContentDescription(prefix: String): View? {
-        var found: View? = null
-        fun walk(view: View) {
-            if (found != null) return
-            if (view.contentDescription?.startsWith(prefix) == true) found = view
-            if (view is ViewGroup) for (i in 0 until view.childCount) walk(view.getChildAt(i))
-        }
-        walk(this)
-        return found
     }
 }

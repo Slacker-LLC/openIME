@@ -83,7 +83,7 @@ internal data class KeyboardLayoutMetrics(
 
     val imeHeightDp: Int = run {
         val derived = topZoneHeightDp +
-            keyRowHeightDp * 4 + BODY_PADDING_DP
+            keyRowHeightDp * 4 + 16
         val baseMinimum = if (landscape) 256 else 0
         val scaledMinimum =
             (baseMinimum * heightPercent.coerceIn(80, 120) / 100f).toInt()
@@ -92,20 +92,6 @@ internal data class KeyboardLayoutMetrics(
 
     val keyboardBodyHeightDp: Int = imeHeightDp - topZoneHeightDp
 
-    /**
-     * Row height of the 26-key surface when a number row is added. The IME keeps
-     * its height (switching keyboards must not make the window jump), so five
-     * rows share the space four rows used.
-     */
-    val numberRowKeyRowHeightDp: Int =
-        ((keyboardBodyHeightDp - BODY_PADDING_DP) / 5).coerceAtLeast(MIN_NUMBER_ROW_KEY_HEIGHT_DP)
-
     val panelBodyHeightDp: Int =
         (imeHeightDp - ImeGeometryTokens.TOUCH_TARGET_DP).coerceAtLeast(0)
-
-
-    private companion object {
-        /** Vertical padding the key rows share inside the keyboard body. */
-        const val BODY_PADDING_DP = 16
-        const val MIN_NUMBER_ROW_KEY_HEIGHT_DP = 32
-    }}
+}

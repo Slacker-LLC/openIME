@@ -747,7 +747,6 @@ open class ImeKeyboardView(
             keyboardBody = keyboardBody,
             toPx = ::dp,
             keyRowHeightDp = ::keyRowHeightDp,
-            numberRowKeyRowHeightDp = { layoutMetrics.numberRowKeyRowHeightDp },
             createKey = { text, function, secondary, textSize, iconRes, onTap ->
                 key(
                     text = text,
@@ -766,6 +765,8 @@ open class ImeKeyboardView(
             onPinyinSegment = ::onPinyinSegment,
             onShowChoicePopup = ::showChoicePopup,
             onCommitCharacter = ::commitKeyboardCharacter,
+            hintsEnabled = { ImeSettingsRepository.loadLetterHints(context) },
+            swipeUpEnabled = { ImeSettingsRepository.loadSwipeUpDigits(context) },
             onShift = ::cycleShift,
             onDigits = { setMode(KeyboardMode.DIGITS) },
             onModeSwitch = ::cycleMode,
@@ -1989,7 +1990,6 @@ open class ImeKeyboardView(
             english = false,
             shiftState = shiftState,
             enterLabel = enterKeyLabel(false),
-            numberRow = ImeSettingsRepository.loadNumberRow(context),
         )
     }
 
@@ -1998,7 +1998,6 @@ open class ImeKeyboardView(
             english = true,
             shiftState = shiftState,
             enterLabel = enterKeyLabel(true),
-            numberRow = ImeSettingsRepository.loadNumberRow(context),
         )
     }
 
@@ -2271,7 +2270,7 @@ open class ImeKeyboardView(
         "模糊音纠错", "启用模糊音" -> fuzzyEnabled
         "按键气泡" -> popupEnabled
         "上滑输入数字" -> ImeSettingsRepository.loadSwipeUpDigits(context)
-        "数字行" -> ImeSettingsRepository.loadNumberRow(context)
+        "数字和符号提示" -> ImeSettingsRepository.loadLetterHints(context)
         "表情联想" -> ImeSettingsRepository.loadEmojiAssociation(context)
         "语音去语气词" -> ImeSettingsRepository.loadVoiceStripFillers(context)
         "标点用空格代替" -> ImeSettingsRepository.loadVoicePunctuationAsSpace(context)
@@ -2298,8 +2297,8 @@ open class ImeKeyboardView(
             }
             // Read at gesture time, so it needs no listener round trip.
             "上滑输入数字" -> ImeSettingsRepository.saveSwipeUpDigits(context, enabled)
-            "数字行" -> {
-                ImeSettingsRepository.saveNumberRow(context, enabled)
+            "数字和符号提示" -> {
+                ImeSettingsRepository.saveLetterHints(context, enabled)
                 // Rebuilt when the keyboard is next shown (right away if it is).
                 renderedMode = null
                 if (panel == Panel.NONE) renderModeBody()

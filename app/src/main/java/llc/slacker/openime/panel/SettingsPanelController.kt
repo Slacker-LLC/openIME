@@ -175,8 +175,8 @@ internal class SettingsPanelController(
                 settingToggleRow("按键音效", "机械轴敲击反馈"),
                 settingToggleRow("触感震动", "轻微触感反馈"),
                 settingToggleRow("按键气泡", "按下时显示字母预览"),
-                settingToggleRow("上滑输入数字", "九键按键上滑直接输入数字"),
-                settingToggleRow("数字行", "26 键键盘顶部多一行 1–0"),
+                settingToggleRow("数字和符号提示", "字母键右上角显示数字和符号"),
+                settingToggleRow("上滑输入数字", "按键上滑输入右上角的数字或符号"),
             ),
             groupParams(),
         )

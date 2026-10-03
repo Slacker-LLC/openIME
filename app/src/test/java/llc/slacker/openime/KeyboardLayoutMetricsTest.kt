@@ -64,38 +64,4 @@ class KeyboardLayoutMetricsTest {
             metrics.doubleKeyHeightDp,
         )
     }
-
-    @Test
-    fun aFifthNumberRowFitsInsideTheBodyFourRowsUsed() {
-        listOf(false, true).forEach { landscape ->
-            listOf(80, 100, 120).forEach { percent ->
-                listOf(1f, 2f).forEach { fontScale ->
-                    val metrics = KeyboardLayoutMetrics(
-                        landscape = landscape,
-                        fontScale = fontScale,
-                        heightPercent = percent,
-                    )
-                    val rows = metrics.numberRowKeyRowHeightDp
-                    assertTrue(
-                        "landscape=$landscape $percent% x$fontScale: 5 rows of ${rows}dp " +
-                            "overflow the ${metrics.keyboardBodyHeightDp}dp body",
-                        rows * 5 <= metrics.keyboardBodyHeightDp,
-                    )
-                    assertTrue(rows >= 32)
-                    assertTrue(rows <= metrics.keyRowHeightDp)
-                }
-            }
-        }
-    }
-
-    @Test
-    fun theNumberRowDoesNotChangeTheImeHeight() {
-        val metrics = KeyboardLayoutMetrics(landscape = false, fontScale = 1f)
-        assertEquals(
-            ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP + ImeGeometryTokens.KEY_ROW_HEIGHT_DP * 4 + 16,
-            metrics.imeHeightDp,
-        )
-        // 216dp of rows split five ways.
-        assertEquals(43, metrics.numberRowKeyRowHeightDp)
-    }
 }

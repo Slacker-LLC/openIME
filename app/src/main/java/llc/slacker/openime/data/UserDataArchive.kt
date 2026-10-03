@@ -44,7 +44,7 @@ internal data class ArchiveSettings(
     val keyboardHeightPercent: Int,
     val floatingWidthPercent: Int,
     val floatingOpacityPercent: Int,
-    val numberRow: Boolean = false,
+    val letterHints: Boolean = true,
     val emojiAssociation: Boolean = true,
     val voiceStripFillers: Boolean = true,
     val voicePunctuationAsSpace: Boolean = false,
@@ -192,7 +192,7 @@ internal object UserDataArchiveCodec {
             .put("keyboard_height_percent", value.keyboardHeightPercent)
             .put("floating_width_percent", value.floatingWidthPercent)
             .put("floating_opacity_percent", value.floatingOpacityPercent)
-            .put("number_row", value.numberRow)
+            .put("letter_hints", value.letterHints)
             .put("emoji_association", value.emojiAssociation)
             .put("voice_strip_fillers", value.voiceStripFillers)
             .put("voice_punctuation_as_space", value.voicePunctuationAsSpace)
@@ -221,7 +221,7 @@ internal object UserDataArchiveCodec {
                 value.optInt("floating_width_percent", 88).coerceIn(72, 96),
             floatingOpacityPercent =
                 value.optInt("floating_opacity_percent", 100).coerceIn(82, 100),
-            numberRow = value.optBoolean("number_row", false),
+            letterHints = value.optBoolean("letter_hints", true),
             emojiAssociation = value.optBoolean("emoji_association", true),
             voiceStripFillers = value.optBoolean("voice_strip_fillers", true),
             voicePunctuationAsSpace =
@@ -353,7 +353,7 @@ internal object UserDataRepository {
                     ImeSettingsRepository.loadFloatingWidthPercent(context),
                 floatingOpacityPercent =
                     ImeSettingsRepository.loadFloatingOpacityPercent(context),
-                numberRow = ImeSettingsRepository.loadNumberRow(context),
+                letterHints = ImeSettingsRepository.loadLetterHints(context),
                 emojiAssociation = ImeSettingsRepository.loadEmojiAssociation(context),
                 voiceStripFillers = ImeSettingsRepository.loadVoiceStripFillers(context),
                 voicePunctuationAsSpace =
@@ -456,7 +456,7 @@ internal object UserDataRepository {
             context,
             value.floatingOpacityPercent,
         )
-        ImeSettingsRepository.saveNumberRow(context, value.numberRow)
+        ImeSettingsRepository.saveLetterHints(context, value.letterHints)
         ImeSettingsRepository.saveEmojiAssociation(context, value.emojiAssociation)
         ImeSettingsRepository.saveVoiceStripFillers(context, value.voiceStripFillers)
         ImeSettingsRepository.saveVoicePunctuationAsSpace(
