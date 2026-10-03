@@ -1535,18 +1535,21 @@ open class ImeKeyboardView(
         enter.contentDescription = label
     }
 
-    private val inlineAutofill: InlineAutofillController? by lazy {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            lateinit var controller: InlineAutofillController
-            controller = InlineAutofillController(context, context.mainExecutor) { chips ->
-                if (::topZone.isInitialized) {
-                    topZone.setAutofillChips(chips, controller.chipSize.width, controller.chipSize.height)
-                }
+    private var inlineAutofillController: InlineAutofillController? = null
+
+    /** The autofill host, created on first use (Android 11+ only). */
+    @android.annotation.TargetApi(Build.VERSION_CODES.R)
+    private fun inlineAutofill(): InlineAutofillController? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        inlineAutofillController?.let { return it }
+        lateinit var controller: InlineAutofillController
+        controller = InlineAutofillController(context, context.mainExecutor) { chips ->
+            if (::topZone.isInitialized) {
+                topZone.setAutofillChips(chips, controller.chipSize.width, controller.chipSize.height)
             }
-            controller
-        } else {
-            null
         }
+        inlineAutofillController = controller
+        return controller
     }
 
     /**
@@ -1555,11 +1558,11 @@ open class ImeKeyboardView(
      */
     @android.annotation.TargetApi(Build.VERSION_CODES.R)
     fun showInlineSuggestions(suggestions: List<android.view.inputmethod.InlineSuggestion>): Boolean =
-        inlineAutofill?.show(suggestions) ?: false
+        inlineAutofill()?.show(suggestions) ?: false
 
     fun clearInlineSuggestions() {
-        // Never instantiate the controller just to clear it.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) inlineAutofill?.clear()
+        // Nothing to clear until a response has been hosted.
+        inlineAutofillController?.clear()
     }
 
     fun setAssociationCandidates(candidates: List<String>) {
