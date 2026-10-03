@@ -1,13 +1,14 @@
 package llc.slacker.openime
 
 import android.content.Intent
-import android.view.inputmethod.EditorInfo
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import llc.slacker.openime.theme.ImeSurfacePolicy
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue

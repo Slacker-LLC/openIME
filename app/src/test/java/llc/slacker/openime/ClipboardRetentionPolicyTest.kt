@@ -1,5 +1,7 @@
 package llc.slacker.openime
 
+import llc.slacker.openime.data.ClipboardEntry
+import llc.slacker.openime.data.ClipboardRetentionPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

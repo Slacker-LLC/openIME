@@ -1,5 +1,6 @@
 package llc.slacker.openime
 
+import llc.slacker.openime.data.FluentEmojiAssetRepository
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

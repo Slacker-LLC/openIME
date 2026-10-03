@@ -1,5 +1,7 @@
 package llc.slacker.openime
 
+import llc.slacker.openime.candidate.CandidateEngine
+import llc.slacker.openime.candidate.pinyinFuzzyVariants
 import org.junit.Assert.assertTrue
 import org.junit.Test
 

@@ -20,7 +20,7 @@
 
 ## 实现
 
-`app/src/main/java/llc/slacker/openime/KeyboardGeometry.kt`
+`app/src/main/java/llc/slacker/openime/keyboard/KeyboardGeometry.kt`
 
 - `NormalizedBounds(left, top, right, bottom)`：归一化矩形。
 - `NormalizedBounds.fromView(view, root)`：从真实 `View` 测量值生成归一化坐标。

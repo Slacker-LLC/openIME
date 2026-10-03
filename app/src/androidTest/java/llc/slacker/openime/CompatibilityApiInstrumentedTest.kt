@@ -11,6 +11,12 @@ import android.view.View
 import android.view.inputmethod.BaseInputConnection
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import llc.slacker.openime.candidate.CandidateEngine
+import llc.slacker.openime.data.ClipboardHistoryRepository
+import llc.slacker.openime.data.ClipboardSensitivityPolicy
+import llc.slacker.openime.editor.InputConnectionGateway
+import llc.slacker.openime.voice.LocalAudioVoiceBackend
+import llc.slacker.openime.voice.VoiceRecognitionEvents
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue

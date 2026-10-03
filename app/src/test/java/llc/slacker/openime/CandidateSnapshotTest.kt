@@ -1,5 +1,8 @@
 package llc.slacker.openime
 
+import llc.slacker.openime.candidate.CandidateSnapshot
+import llc.slacker.openime.core.KeyboardMode
+import llc.slacker.openime.rime.NativeCandidateReference
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull

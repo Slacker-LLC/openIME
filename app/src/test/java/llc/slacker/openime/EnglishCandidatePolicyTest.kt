@@ -1,5 +1,8 @@
 package llc.slacker.openime
 
+import llc.slacker.openime.candidate.CandidateEngine
+import llc.slacker.openime.candidate.CandidatePipeline
+import llc.slacker.openime.core.KeyboardMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

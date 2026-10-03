@@ -6,6 +6,9 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import llc.slacker.openime.keyboard.ImeKeyboardView
+import llc.slacker.openime.voice.VoiceModelLifecycleState
+import llc.slacker.openime.voice.VoiceRecognitionEvents
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith

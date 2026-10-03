@@ -9,13 +9,22 @@ import android.view.ViewGroup
 import android.view.inputmethod.BaseInputConnection
 import android.widget.TextView
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import llc.slacker.openime.core.KeyboardMode
+import llc.slacker.openime.core.Panel
+import llc.slacker.openime.core.ShiftState
+import llc.slacker.openime.data.ClipboardEntry
+import llc.slacker.openime.data.ClipboardHistoryRepository
+import llc.slacker.openime.editor.InputConnectionGateway
+import llc.slacker.openime.keyboard.ImeKeyboardView
+import llc.slacker.openime.theme.ImeAppearance
+import llc.slacker.openime.theme.ImeTheme
 import org.junit.After
-import org.junit.Before
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 

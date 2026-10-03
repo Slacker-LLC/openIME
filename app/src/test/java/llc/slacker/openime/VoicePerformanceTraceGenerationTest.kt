@@ -1,11 +1,12 @@
 package llc.slacker.openime
 
-import java.util.Collections
-import java.util.concurrent.atomic.AtomicLong
+import llc.slacker.openime.voice.VoicePerformanceTrace
 import org.junit.After
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.Collections
+import java.util.concurrent.atomic.AtomicLong
 
 class VoicePerformanceTraceGenerationTest {
 

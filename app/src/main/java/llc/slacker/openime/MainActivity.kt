@@ -3,24 +3,33 @@ package llc.slacker.openime
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
-import android.content.res.ColorStateList
 import android.content.pm.PackageManager
-import android.os.Bundle
+import android.content.res.ColorStateList
+import android.graphics.drawable.StateListDrawable
+import android.net.Uri
 import android.os.Build
+import android.os.Bundle
+import android.provider.Settings
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
-import android.provider.Settings
-import android.net.Uri
 import android.view.inputmethod.InputMethodManager
-import android.widget.TextView
-import android.widget.ImageView
 import android.widget.EditText
+import android.widget.ImageView
+import android.widget.TextView
 import android.widget.Toast
-import android.graphics.drawable.StateListDrawable
+import llc.slacker.openime.core.CrashGuard
+import llc.slacker.openime.data.ImeSettingsRepository
+import llc.slacker.openime.setup.SetupUi
+import llc.slacker.openime.theme.ImeAppearance
+import llc.slacker.openime.theme.ImeContrastPolicy
+import llc.slacker.openime.theme.ImeDrawableFactory
+import llc.slacker.openime.theme.ImeGeometryTokens
+import llc.slacker.openime.theme.ImeSurfacePolicy
+import llc.slacker.openime.theme.ImeTypographyTokens
 
 /** Match the selected IME by the exact package component, never by substring. */
 internal fun matchesSelectedInputMethod(defaultInputMethodId: String, packageName: String): Boolean {

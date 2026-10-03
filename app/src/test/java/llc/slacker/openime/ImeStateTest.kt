@@ -1,5 +1,7 @@
 package llc.slacker.openime
 
+import llc.slacker.openime.core.ImeState
+import llc.slacker.openime.core.ShiftState
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

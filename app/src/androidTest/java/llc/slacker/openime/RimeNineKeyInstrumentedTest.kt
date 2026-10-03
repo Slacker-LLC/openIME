@@ -4,6 +4,9 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import llc.slacker.openime.candidate.NineKeyPresets
+import llc.slacker.openime.data.ImeSettingsRepository
+import llc.slacker.openime.rime.RimeEngine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue

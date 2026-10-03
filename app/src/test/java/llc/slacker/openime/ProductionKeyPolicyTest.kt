@@ -1,5 +1,6 @@
 package llc.slacker.openime
 
+import llc.slacker.openime.keyboard.ProductionKeyPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -8,17 +9,33 @@ class ProductionKeyPolicyTest {
     @Test
     fun twentySixKeyBottomRowFollowsTheReferenceCanvas() {
         val weights = ProductionKeyPolicy.twentySixKeyBottomRowWeights()
-        // 123 | 中/英 | 空格 | (no right inner key) | 确定, in the design's 390 units.
-        assertEquals(68f, weights.leftOuter, 0.0001f)
-        assertEquals(56f, weights.leftInner, 0.0001f)
-        assertEquals(178f, weights.space, 0.0001f)
-        assertEquals(0f, weights.rightInner, 0.0001f)
-        assertEquals(88f, weights.rightOuter, 0.0001f)
+        // 123 | 中/英 | 空格 | ，。 | 确定, in the design's 390 units.
+        assertEquals(70f, weights.leftOuter, 0.0001f)
+        assertEquals(48f, weights.leftInner, 0.0001f)
+        assertEquals(154f, weights.space, 0.0001f)
+        assertEquals(48f, weights.rightInner, 0.0001f)
+        assertEquals(70f, weights.rightOuter, 0.0001f)
         assertEquals(
             390f,
             weights.leftOuter + weights.leftInner + weights.space + weights.rightInner + weights.rightOuter,
             0.0001f,
         )
+    }
+
+    @Test
+    fun twentySixKeyBottomRowIsSymmetricAroundTheSpaceKey() {
+        val weights = ProductionKeyPolicy.twentySixKeyBottomRowWeights()
+        assertEquals(weights.leftOuter, weights.rightOuter, 0.0001f)
+        assertEquals(weights.leftInner, weights.rightInner, 0.0001f)
+    }
+
+    @Test
+    fun nineKeyBottomRowGivesTheSpaceBarMoreRoomThanTheSideKeys() {
+        val weights = ProductionKeyPolicy.nineKeyBottomRowWeights()
+        assertEquals(0.7f, weights.side, 0.0001f)
+        assertEquals(1.6f, weights.space, 0.0001f)
+        // Same total as the former 1:1:1 row, so the grid above is unaffected.
+        assertEquals(3f, weights.side * 2 + weights.space, 0.0001f)
     }
 
     @Test

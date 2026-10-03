@@ -1,21 +1,22 @@
 package llc.slacker.openime
 
-import java.io.File
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 class TokenDriftTest {
     @Test
     fun canonicalTokenScaleDoesNotDrift() {
-        val source = source("app/src/main/java/llc/slacker/openime/ImeDesignTokens.kt")
+        val source = source("app/src/main/java/llc/slacker/openime/theme/ImeDesignTokens.kt")
         listOf(
             "const val CAPTION_SP = 11f",
             "const val BODY_SP = 14f",
             "const val TITLE_SP = 16f",
             "const val CANDIDATE_SP = 18f",
             "const val KEY_LETTER_SP = 21f",
+            "const val KEY_LETTER_COMPACT_SP = 19f",
             "const val DISPLAY_SP = 28f",
             "const val XXS_DP = 2",
             "const val XS_DP = 4",

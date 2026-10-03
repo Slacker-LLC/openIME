@@ -2,6 +2,9 @@ package llc.slacker.openime
 
 import android.text.InputType
 import android.view.inputmethod.EditorInfo
+import llc.slacker.openime.core.KeyboardMode
+import llc.slacker.openime.editor.EditorInfoAdapter
+import llc.slacker.openime.editor.InputMethodSubtypePolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

@@ -1,6 +1,10 @@
 package llc.slacker.openime
 
 import android.view.KeyEvent
+import llc.slacker.openime.keyboard.HardwareContext
+import llc.slacker.openime.keyboard.HardwareKey
+import llc.slacker.openime.keyboard.HardwareKeyAction
+import llc.slacker.openime.keyboard.HardwareKeyPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

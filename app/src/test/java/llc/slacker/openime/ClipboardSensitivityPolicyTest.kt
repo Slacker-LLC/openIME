@@ -1,6 +1,9 @@
 package llc.slacker.openime
 
 import android.view.inputmethod.EditorInfo
+import llc.slacker.openime.data.ClipboardPrivacyPolicy
+import llc.slacker.openime.data.ClipboardSensitivityPolicy
+import llc.slacker.openime.editor.EditorInfoAdapter
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test

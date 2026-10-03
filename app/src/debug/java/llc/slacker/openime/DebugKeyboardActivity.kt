@@ -9,6 +9,18 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import llc.slacker.openime.candidate.CandidateEngine
+import llc.slacker.openime.candidate.CandidatePipeline
+import llc.slacker.openime.candidate.CandidateResolver
+import llc.slacker.openime.candidate.NineKeyReading
+import llc.slacker.openime.candidate.PinyinLexicon
+import llc.slacker.openime.core.KeyboardMode
+import llc.slacker.openime.core.Panel
+import llc.slacker.openime.core.ShiftState
+import llc.slacker.openime.data.UserPhraseRepository
+import llc.slacker.openime.keyboard.ImeKeyboardView
+import llc.slacker.openime.theme.ImeAppearance
+import llc.slacker.openime.theme.ImeTheme
 
 /** Debug-only keyboard renderer used by instrumented and visual tests. */
 class DebugKeyboardActivity : Activity(), ImeKeyboardView.Listener, CandidateResolver {

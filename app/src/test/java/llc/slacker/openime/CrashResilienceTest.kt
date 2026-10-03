@@ -1,11 +1,15 @@
 package llc.slacker.openime
 
-import java.io.File
-import java.nio.file.Files
+import llc.slacker.openime.core.CrashGuard
+import llc.slacker.openime.core.RimeStartupRecovery
+import llc.slacker.openime.editor.COMMIT_CHUNK_CHARS
+import llc.slacker.openime.editor.chunksForCommit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
+import java.nio.file.Files
 
 class CrashResilienceTest {
 

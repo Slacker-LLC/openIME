@@ -1,5 +1,8 @@
 package llc.slacker.openime
 
+import llc.slacker.openime.rime.RimeStartupGate
+import llc.slacker.openime.rime.rimeDataRevision
+import llc.slacker.openime.rime.rimeProbeHasCandidate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull

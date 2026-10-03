@@ -1,5 +1,8 @@
 package llc.slacker.openime
 
+import llc.slacker.openime.core.dropLastCodePointSafe
+import llc.slacker.openime.core.nextCodePointUtf16Length
+import llc.slacker.openime.core.previousCodePointUtf16Length
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

@@ -5,12 +5,15 @@ import android.content.res.Configuration
 import android.view.View
 import android.view.ViewGroup
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import java.lang.reflect.Proxy
+import llc.slacker.openime.core.KeyboardMode
+import llc.slacker.openime.keyboard.ImeKeyboardView
+import llc.slacker.openime.widget.ImeKeyView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.lang.reflect.Proxy
 
 /**
  * The keyboard has to stay usable in every display environment, not just the

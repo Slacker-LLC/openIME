@@ -1,10 +1,13 @@
 package llc.slacker.openime
 
-import java.nio.file.Files
+import llc.slacker.openime.voice.isSafeVoiceModelId
+import llc.slacker.openime.voice.isSafeVoiceModelRelativePath
+import llc.slacker.openime.voice.resolveContainedVoiceModelFile
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.nio.file.Files
 
 class VoiceModelPathPolicyTest {
     @Test

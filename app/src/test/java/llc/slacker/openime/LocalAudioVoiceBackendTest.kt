@@ -1,5 +1,9 @@
 package llc.slacker.openime
 
+import llc.slacker.openime.voice.LocalVoiceAudioSpec
+import llc.slacker.openime.voice.PcmRingBuffer
+import llc.slacker.openime.voice.VoiceStreamLease
+import llc.slacker.openime.voice.pcm16ToFloat
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

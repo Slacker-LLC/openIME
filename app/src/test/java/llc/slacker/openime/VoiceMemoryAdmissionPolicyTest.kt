@@ -1,6 +1,10 @@
 package llc.slacker.openime
 
 import android.view.inputmethod.EditorInfo
+import llc.slacker.openime.editor.EditorInfoAdapter
+import llc.slacker.openime.voice.VoiceAutoPreloadPolicy
+import llc.slacker.openime.voice.VoiceMemoryAdmissionPolicy
+import llc.slacker.openime.voice.VoiceMemorySnapshot
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test

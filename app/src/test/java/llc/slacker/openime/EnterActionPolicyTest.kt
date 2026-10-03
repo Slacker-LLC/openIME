@@ -1,6 +1,8 @@
 package llc.slacker.openime
 
 import android.view.inputmethod.EditorInfo
+import llc.slacker.openime.editor.editorActionForEnter
+import llc.slacker.openime.editor.enterKeyPresentationFor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

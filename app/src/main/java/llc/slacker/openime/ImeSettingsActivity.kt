@@ -8,6 +8,17 @@ import android.view.View
 import android.view.WindowInsets
 import android.widget.FrameLayout
 import android.window.OnBackInvokedCallback
+import llc.slacker.openime.core.KeyboardMode
+import llc.slacker.openime.core.Panel
+import llc.slacker.openime.core.ShiftState
+import llc.slacker.openime.data.ImeHandedness
+import llc.slacker.openime.data.ImeSettingsRepository
+import llc.slacker.openime.keyboard.ImeKeyboardView
+import llc.slacker.openime.setup.SetupUi
+import llc.slacker.openime.theme.AccentPalette
+import llc.slacker.openime.theme.ImeAppearance
+import llc.slacker.openime.theme.ImeContrastPolicy
+import llc.slacker.openime.theme.ImeTheme
 
 class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
     companion object { const val EXTRA_EDIT_ACCENT = "edit_accent" }

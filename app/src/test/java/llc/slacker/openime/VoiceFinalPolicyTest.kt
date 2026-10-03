@@ -1,5 +1,7 @@
 package llc.slacker.openime
 
+import llc.slacker.openime.voice.VoiceFinalPlan
+import llc.slacker.openime.voice.VoiceFinalPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

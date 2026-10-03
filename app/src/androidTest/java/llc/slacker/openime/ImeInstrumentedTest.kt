@@ -1,6 +1,7 @@
 package llc.slacker.openime
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import llc.slacker.openime.candidate.CandidateEngine
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
