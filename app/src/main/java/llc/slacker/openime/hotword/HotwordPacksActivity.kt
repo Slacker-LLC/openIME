@@ -68,10 +68,20 @@ class HotwordPacksActivity : Activity() {
                 setBackgroundColor(getColor(R.color.setup_page_bg))
                 isFillViewport = true
                 setOnApplyWindowInsetsListener { view, insets ->
-                    val bars = insets.getInsets(
-                        WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout(),
-                    )
-                    view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+                    if (android.os.Build.VERSION.SDK_INT >= 30) {
+                        val bars = insets.getInsets(
+                            WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout(),
+                        )
+                        view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        view.setPadding(
+                            insets.systemWindowInsetLeft,
+                            insets.systemWindowInsetTop,
+                            insets.systemWindowInsetRight,
+                            insets.systemWindowInsetBottom,
+                        )
+                    }
                     insets
                 }
                 addView(content)

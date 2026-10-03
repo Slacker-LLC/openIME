@@ -39,7 +39,7 @@ internal object HotwordParser {
         val words = LinkedHashSet<String>()
         var truncated = false
 
-        for (raw in text.removePrefix("﻿").lineSequence()) {
+        for (raw in text.removePrefix("\uFEFF").lineSequence()) {
             val line = raw.trim()
             if (line.isEmpty()) continue
             if (line.startsWith("#")) {

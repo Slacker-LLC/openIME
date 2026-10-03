@@ -9,7 +9,7 @@ class HotwordParserTest {
     @Test
     fun readsHeadersWordsAndSkipsCommentsAndBlankLines() {
         val parsed = HotwordParser.parse(
-            "﻿# title: 手游\n# description: 开黑用语\n# default: off\n\n打野\n# 注释\n 补刀 \n打野\n",
+            "\uFEFF# title: 手游\n# description: 开黑用语\n# default: off\n\n打野\n# 注释\n 补刀 \n打野\n",
             fallbackTitle = "文件名",
         )
         assertEquals("手游", parsed.title)

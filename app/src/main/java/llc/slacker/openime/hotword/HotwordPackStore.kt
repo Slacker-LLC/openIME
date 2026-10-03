@@ -38,7 +38,7 @@ internal class HotwordPackStore(context: Context) {
     fun importFrom(uri: Uri): ImportResult {
         val text = try {
             appContext.contentResolver.openInputStream(uri)?.use { input ->
-                val bytes = input.readNBytes(HotwordParser.MAX_BYTES + 1)
+                val bytes = readAtMost(input, HotwordParser.MAX_BYTES + 1)
                 if (bytes.size > HotwordParser.MAX_BYTES) {
                     return ImportResult.Failed("文件超过 ${HotwordParser.MAX_BYTES / 1024} KB，请拆分后再导入。")
                 }
@@ -110,6 +110,18 @@ internal class HotwordPackStore(context: Context) {
         words = parsed.words,
         rejectedLines = parsed.rejectedLines,
     )
+
+    /** InputStream.readNBytes needs API 33; the app supports API 26. */
+    private fun readAtMost(input: java.io.InputStream, limit: Int): ByteArray {
+        val out = java.io.ByteArrayOutputStream(minOf(limit, 64 * 1024))
+        val buffer = ByteArray(8 * 1024)
+        while (out.size() < limit) {
+            val read = input.read(buffer, 0, minOf(buffer.size, limit - out.size()))
+            if (read < 0) break
+            out.write(buffer, 0, read)
+        }
+        return out.toByteArray()
+    }
 
     private fun displayName(uri: Uri): String {
         val fromProvider = runCatching {
