@@ -6,6 +6,7 @@ import android.content.Context
 object PinyinLexicon {
     private const val CHAR_ASSET = "pinyin_chars.tsv"
     private const val PHRASE_ASSET = "pinyin_phrases.tsv"
+    private const val CHAR_WEIGHT_ASSET = "rime-data/openime_dicts/8105.dict.yaml"
 
     private data class WeightedValue(
         val text: String,
@@ -53,6 +54,14 @@ object PinyinLexicon {
                     }
                 }
 
+                // Frequencies for single characters, from the same Rime Ice corpus as the
+                // phrases. Without them every character ties at 0 and a syllable's first
+                // candidate is whatever comes first in the table (伱 before 你 for "ni"),
+                // which is what typing shows until librime has finished deploying.
+                context.assets.open(CHAR_WEIGHT_ASSET).bufferedReader(Charsets.UTF_8).useLines { lines ->
+                    charWeights(lines).forEach { (pinyin, character, weight) -> add(pinyin, character, weight) }
+                }
+
                 // pinyin_phrases.tsv is generated with a real corpus weight in
                 // column 3. The old loader parsed three columns but discarded the
                 // weight, making the local nine-key decoder effectively frequency-blind.
@@ -85,6 +94,27 @@ object PinyinLexicon {
                 emptyMap()
             }.also { cached = it }
         }
+    }
+
+    /** `(pinyin, character, weight)` rows of a Rime single-character table (after its `...` marker). */
+    internal fun charWeights(lines: Sequence<String>): List<Triple<String, String, Int>> {
+        val rows = ArrayList<Triple<String, String, Int>>()
+        var inBody = false
+        for (line in lines) {
+            if (!inBody) {
+                inBody = line.trim() == "..."
+                continue
+            }
+            val fields = line.split('\t')
+            if (fields.size < 3) continue
+            val character = fields[0]
+            if (character.codePointCount(0, character.length) != 1) continue
+            val pinyin = fields[1].trim()
+            val weight = fields[2].trim().toLongOrNull() ?: continue
+            if (pinyin.isEmpty() || ' ' in pinyin) continue
+            rows += Triple(pinyin, character, weight.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt())
+        }
+        return rows
     }
 
     /** Already-loaded generated lexicon; empty only in isolated JVM tests before [load]. */

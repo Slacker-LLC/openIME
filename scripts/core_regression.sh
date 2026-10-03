@@ -125,6 +125,22 @@ mode() {
   return 1
 }
 
+# The first start after an install or data clear copies and compiles the Rime
+# dictionaries, which takes a while; until then candidates come from the Kotlin
+# fallback and steps that need native candidates (partial picks) cannot pass.
+wait_rime_ready() {
+  local attempt
+  for attempt in $(seq 1 180); do
+    send state
+    sleep 1
+    if adb_do logcat -d -s OpenImeE2E:I | grep -q 'rimeReady=true'; then
+      return 0
+    fi
+  done
+  say 'WARN: librime did not become ready in time; candidate steps use the Kotlin fallback' >&2
+  return 1
+}
+
 start_real() {
   adb_do logcat -c >/dev/null 2>&1
   adb_do shell am force-stop "$PKG" >/dev/null 2>&1
@@ -132,6 +148,7 @@ start_real() {
   sleep 3
   focus_editor || say 'WARN: test_input was not found for focus'
   sleep 1
+  wait_rime_ready
 }
 
 check() {
