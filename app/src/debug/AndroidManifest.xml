@@ -23,6 +23,22 @@
             android:name=".LifecycleTestActivity"
             android:exported="true"
             android:permission="android.permission.DUMP" />
+        <activity
+            android:name=".AutofillTestActivity"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
+        <service
+            android:name=".TestAutofillService"
+            android:exported="true"
+            android:label="openIME test autofill"
+            android:permission="android.permission.BIND_AUTOFILL_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.autofill.AutofillService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.autofill"
+                android:resource="@xml/test_autofill_service" />
+        </service>
         <receiver
             android:name=".E2ETestReceiver"
             android:exported="true"

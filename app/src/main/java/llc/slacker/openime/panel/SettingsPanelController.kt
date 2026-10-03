@@ -58,6 +58,8 @@ internal class SettingsPanelController(
     private val currentHaptic: () -> Boolean,
     private val currentPopup: () -> Boolean,
     private val currentSwipeUpDigits: () -> Boolean,
+    /** State of the toggles added after the first four, looked up by their label. */
+    private val currentExtraToggle: (String) -> Boolean,
     private val currentFuzzy: () -> Boolean,
     private val currentSkinOpacity: () -> Int,
     private val currentSkinRadius: () -> Int,
@@ -174,6 +176,7 @@ internal class SettingsPanelController(
                 settingToggleRow("触感震动", "轻微触感反馈"),
                 settingToggleRow("按键气泡", "按下时显示字母预览"),
                 settingToggleRow("上滑输入数字", "九键按键上滑直接输入数字"),
+                settingToggleRow("数字行", "26 键键盘顶部多一行 1–0"),
             ),
             groupParams(),
         )
@@ -186,6 +189,16 @@ internal class SettingsPanelController(
                     "进入后配置 z/zh、c/ch、s/sh 等规则",
                     onShowFuzzySettings,
                 ),
+                settingToggleRow("表情联想", "选词后在联想栏先给出相关表情"),
+            ),
+            groupParams(),
+        )
+
+        content.addView(createSectionTitle("语音输入"), wrapParams())
+        content.addView(
+            settingGroup(
+                settingToggleRow("语音去语气词", "去掉“嗯”“呃”等口头停顿"),
+                settingToggleRow("标点用空格代替", "语音里的逗号、句号等写成空格"),
             ),
             groupParams(),
         )
@@ -579,7 +592,7 @@ internal class SettingsPanelController(
         "模糊音纠错", "启用模糊音" -> currentFuzzy()
         "按键气泡" -> currentPopup()
         "上滑输入数字" -> currentSwipeUpDigits()
-        else -> true
+        else -> currentExtraToggle(seed)
     }
 
     private fun accentColorRow(): LinearLayout {

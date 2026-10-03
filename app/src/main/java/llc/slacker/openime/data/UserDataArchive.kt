@@ -44,6 +44,10 @@ internal data class ArchiveSettings(
     val keyboardHeightPercent: Int,
     val floatingWidthPercent: Int,
     val floatingOpacityPercent: Int,
+    val numberRow: Boolean = false,
+    val emojiAssociation: Boolean = true,
+    val voiceStripFillers: Boolean = true,
+    val voicePunctuationAsSpace: Boolean = false,
 )
 
 internal data class RimeUserDictionaryArchive(
@@ -188,6 +192,10 @@ internal object UserDataArchiveCodec {
             .put("keyboard_height_percent", value.keyboardHeightPercent)
             .put("floating_width_percent", value.floatingWidthPercent)
             .put("floating_opacity_percent", value.floatingOpacityPercent)
+            .put("number_row", value.numberRow)
+            .put("emoji_association", value.emojiAssociation)
+            .put("voice_strip_fillers", value.voiceStripFillers)
+            .put("voice_punctuation_as_space", value.voicePunctuationAsSpace)
 
     private fun settingsFromJson(value: JSONObject): ArchiveSettings =
         ArchiveSettings(
@@ -213,6 +221,11 @@ internal object UserDataArchiveCodec {
                 value.optInt("floating_width_percent", 88).coerceIn(72, 96),
             floatingOpacityPercent =
                 value.optInt("floating_opacity_percent", 100).coerceIn(82, 100),
+            numberRow = value.optBoolean("number_row", false),
+            emojiAssociation = value.optBoolean("emoji_association", true),
+            voiceStripFillers = value.optBoolean("voice_strip_fillers", true),
+            voicePunctuationAsSpace =
+                value.optBoolean("voice_punctuation_as_space", false),
         )
 
     private inline fun <T> JSONArray?.toObjects(block: (JSONObject) -> T): List<T> {
@@ -340,6 +353,11 @@ internal object UserDataRepository {
                     ImeSettingsRepository.loadFloatingWidthPercent(context),
                 floatingOpacityPercent =
                     ImeSettingsRepository.loadFloatingOpacityPercent(context),
+                numberRow = ImeSettingsRepository.loadNumberRow(context),
+                emojiAssociation = ImeSettingsRepository.loadEmojiAssociation(context),
+                voiceStripFillers = ImeSettingsRepository.loadVoiceStripFillers(context),
+                voicePunctuationAsSpace =
+                    ImeSettingsRepository.loadVoicePunctuationAsSpace(context),
             ),
             rimeUserDictionaries = rimeUserDictionaries,
         )
@@ -437,6 +455,13 @@ internal object UserDataRepository {
         ImeSettingsRepository.saveFloatingOpacityPercent(
             context,
             value.floatingOpacityPercent,
+        )
+        ImeSettingsRepository.saveNumberRow(context, value.numberRow)
+        ImeSettingsRepository.saveEmojiAssociation(context, value.emojiAssociation)
+        ImeSettingsRepository.saveVoiceStripFillers(context, value.voiceStripFillers)
+        ImeSettingsRepository.saveVoicePunctuationAsSpace(
+            context,
+            value.voicePunctuationAsSpace,
         )
     }
 }

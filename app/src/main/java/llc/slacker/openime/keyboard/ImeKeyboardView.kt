@@ -194,10 +194,37 @@ open class ImeKeyboardView(
         onCancelPreviewChanged = { cancelling ->
             voicePanelController.setCancelPreview(cancelling)
         },
-        onCursorStep = { direction ->
-            listener.onTextEdit(if (direction < 0) "left" else "right")
-        },
+        onCursorStep = ::moveCursorFromSpace,
+        onCursorModeChanged = ::lockBottomRowForCursorDrag,
     )
+
+    /**
+     * One horizontal step of a space-bar drag. While pinyin is being composed
+     * the drag moves the pre-edit cursor (the same one a tap on the pre-edit
+     * moves); otherwise it moves the cursor in the target text.
+     */
+    private fun moveCursorFromSpace(direction: Int) {
+        val preedit = composition.text
+        if (preedit != null && preedit.isNotEmpty()) {
+            val next = (composition.selectionStart + direction).coerceIn(0, preedit.length)
+            composition.setSelection(next)
+        } else {
+            listener.onTextEdit(if (direction < 0) "left" else "right")
+        }
+    }
+
+    /**
+     * The drag keeps the pointer on the space key, but a second finger or a
+     * drifting thumb must not press the neighbouring keys of the bottom row.
+     */
+    private fun lockBottomRowForCursorDrag(spaceKey: View, locked: Boolean) {
+        val row = spaceKey.parent as? ViewGroup ?: return
+        for (index in 0 until row.childCount) {
+            val sibling = row.getChildAt(index)
+            if (sibling !== spaceKey && sibling is ImeKeyView) sibling.touchLocked = locked
+        }
+    }
+
     private val spaceVoiceKeyFactory: SpaceVoiceKeyFactory by lazy {
         SpaceVoiceKeyFactory(
             gestureController = spaceVoiceGestureController,
@@ -622,6 +649,7 @@ open class ImeKeyboardView(
             currentHaptic = { hapticEnabled },
             currentPopup = { popupEnabled },
             currentSwipeUpDigits = { ImeSettingsRepository.loadSwipeUpDigits(context) },
+            currentExtraToggle = ::onState,
             currentFuzzy = { fuzzyEnabled },
             currentSkinOpacity = { skinOpacity },
             currentSkinRadius = { skinRadius },
@@ -719,6 +747,7 @@ open class ImeKeyboardView(
             keyboardBody = keyboardBody,
             toPx = ::dp,
             keyRowHeightDp = ::keyRowHeightDp,
+            numberRowKeyRowHeightDp = { layoutMetrics.numberRowKeyRowHeightDp },
             createKey = { text, function, secondary, textSize, iconRes, onTap ->
                 key(
                     text = text,
@@ -1505,6 +1534,33 @@ open class ImeKeyboardView(
         enter.contentDescription = label
     }
 
+    private val inlineAutofill: InlineAutofillController? by lazy {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            lateinit var controller: InlineAutofillController
+            controller = InlineAutofillController(context, context.mainExecutor) { chips ->
+                if (::topZone.isInitialized) {
+                    topZone.setAutofillChips(chips, controller.chipSize.width, controller.chipSize.height)
+                }
+            }
+            controller
+        } else {
+            null
+        }
+    }
+
+    /**
+     * Hosts the autofill chips of one response (Android 11+). Returns false when
+     * nothing can be shown, in which case the system falls back to its dropdown.
+     */
+    @android.annotation.TargetApi(Build.VERSION_CODES.R)
+    fun showInlineSuggestions(suggestions: List<android.view.inputmethod.InlineSuggestion>): Boolean =
+        inlineAutofill?.show(suggestions) ?: false
+
+    fun clearInlineSuggestions() {
+        // Never instantiate the controller just to clear it.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) inlineAutofill?.clear()
+    }
+
     fun setAssociationCandidates(candidates: List<String>) {
         associationRow.removeAllViews()
         candidates.distinct().take(8).forEach { candidate ->
@@ -1720,6 +1776,8 @@ open class ImeKeyboardView(
     }
 
     open fun shutdown() {
+        // The field these chips belong to is going away.
+        clearInlineSuggestions()
         if (panel == Panel.CLIPBOARD) clipboardPanelController.invalidatePendingLoad()
         stopVoiceIfActive()
         // View.removeCallbacks(null) is a no-op; cancel the root-owned
@@ -1931,6 +1989,7 @@ open class ImeKeyboardView(
             english = false,
             shiftState = shiftState,
             enterLabel = enterKeyLabel(false),
+            numberRow = ImeSettingsRepository.loadNumberRow(context),
         )
     }
 
@@ -1939,6 +1998,7 @@ open class ImeKeyboardView(
             english = true,
             shiftState = shiftState,
             enterLabel = enterKeyLabel(true),
+            numberRow = ImeSettingsRepository.loadNumberRow(context),
         )
     }
 
@@ -2211,6 +2271,10 @@ open class ImeKeyboardView(
         "模糊音纠错", "启用模糊音" -> fuzzyEnabled
         "按键气泡" -> popupEnabled
         "上滑输入数字" -> ImeSettingsRepository.loadSwipeUpDigits(context)
+        "数字行" -> ImeSettingsRepository.loadNumberRow(context)
+        "表情联想" -> ImeSettingsRepository.loadEmojiAssociation(context)
+        "语音去语气词" -> ImeSettingsRepository.loadVoiceStripFillers(context)
+        "标点用空格代替" -> ImeSettingsRepository.loadVoicePunctuationAsSpace(context)
         else -> true
     }
 
@@ -2234,6 +2298,15 @@ open class ImeKeyboardView(
             }
             // Read at gesture time, so it needs no listener round trip.
             "上滑输入数字" -> ImeSettingsRepository.saveSwipeUpDigits(context, enabled)
+            "数字行" -> {
+                ImeSettingsRepository.saveNumberRow(context, enabled)
+                // Rebuilt when the keyboard is next shown (right away if it is).
+                renderedMode = null
+                if (panel == Panel.NONE) renderModeBody()
+            }
+            "表情联想" -> ImeSettingsRepository.saveEmojiAssociation(context, enabled)
+            "语音去语气词" -> ImeSettingsRepository.saveVoiceStripFillers(context, enabled)
+            "标点用空格代替" -> ImeSettingsRepository.saveVoicePunctuationAsSpace(context, enabled)
         }
     }
 

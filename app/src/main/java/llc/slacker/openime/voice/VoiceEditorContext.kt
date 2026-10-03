@@ -9,4 +9,12 @@ internal object VoiceEditorContext {
     /** Whether voice text may get sentence punctuation added in the current editor. */
     @Volatile
     var allowNaturalPunctuation: () -> Boolean = { true }
+
+    /** Whether hesitation sounds (嗯, 呃, um) are dropped from the recognised text. */
+    @Volatile
+    var stripFillers: () -> Boolean = { true }
+
+    /** Whether clause punctuation is written as a plain space instead. */
+    @Volatile
+    var punctuationAsSpace: () -> Boolean = { false }
 }

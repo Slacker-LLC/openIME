@@ -78,6 +78,25 @@ class ImeKeyView(
     }
 
 
+    /**
+     * While true the key ignores every touch and is drawn dimmed. The host sets
+     * it on the rest of the bottom row during a space-bar cursor drag, so a
+     * second finger or a drifting thumb cannot press them by accident.
+     */
+    var touchLocked: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            alpha = if (value) LOCKED_ALPHA else 1f
+            if (value) {
+                isPressed = false
+                touchFeedbackPending = false
+                animate().cancel()
+                scaleX = 1f
+                scaleY = 1f
+            }
+        }
+
     private val density = resources.displayMetrics.density
     private var touchFeedbackPending = false
     private var touchGeneration = 0L
@@ -94,6 +113,7 @@ class ImeKeyView(
         sp * density * minOf(resources.configuration.fontScale, MAX_LABEL_FONT_SCALE)
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (touchLocked) return true
         if (interceptSwipeUp(event)) return true
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
@@ -357,5 +377,6 @@ class ImeKeyView(
     private companion object {
         const val MAX_LABEL_FONT_SCALE = 1.3f
         const val SWIPE_UP_THRESHOLD_DP = 22
+        const val LOCKED_ALPHA = 0.38f
     }
 }

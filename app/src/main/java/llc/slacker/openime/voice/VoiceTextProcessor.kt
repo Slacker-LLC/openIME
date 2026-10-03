@@ -2,6 +2,8 @@ package llc.slacker.openime.voice
 
 internal data class VoiceTextProcessingPolicy(
     val autoTerminalPunctuation: Boolean,
+    val stripFillers: Boolean = false,
+    val punctuationAsSpace: Boolean = false,
 )
 
 /**
@@ -42,6 +44,8 @@ object VoiceTextProcessor {
     fun process(raw: String, languageTag: String): String {
         val policy = VoiceTextProcessingPolicy(
             autoTerminalPunctuation = VoiceEditorContext.allowNaturalPunctuation(),
+            stripFillers = VoiceEditorContext.stripFillers(),
+            punctuationAsSpace = VoiceEditorContext.punctuationAsSpace(),
         )
         return process(raw, languageTag, policy)
     }
@@ -56,6 +60,14 @@ object VoiceTextProcessor {
             .replace(Regex("\\s+"), " ")
             .trim()
         if (text.isEmpty()) return ""
+
+        val original = text
+        if (policy.stripFillers) {
+            text = stripFillers(text)
+            // An utterance that is nothing but a hesitation ("嗯") is a real
+            // answer, not noise; keep it as spoken.
+            if (text.isBlank()) text = original
+        }
 
         if (languageTag.startsWith("zh", ignoreCase = true)) {
             text = replaceChineseSpokenPunctuation(text)
@@ -86,6 +98,38 @@ object VoiceTextProcessor {
             text = text.replace(Regex("\\s+([,.!?;:)])"), "$1")
             text = collapsePunctuation(text)
         }
+        if (policy.punctuationAsSpace) text = punctuationToSpaces(text)
+        return text
+    }
+
+    /**
+     * Hesitation sounds carry no content. 嗯 and 呃 are removed wherever they
+     * occur (the one real word containing 呃, 呃逆, is kept); 额 is also a
+     * component of 额度 / 金额, so it only goes when the recogniser set it off
+     * as a word of its own. English um / uh / er / hmm go only as whole words.
+     */
+    private fun stripFillers(value: String): String {
+        var text = value
+        text = text.replace(Regex("[嗯呃]+(?!逆)"), "")
+        text = text.replace(Regex("(?<![\\p{L}\\p{N}])额+(?![\\p{L}\\p{N}])"), "")
+        text = text.replace(
+            Regex("(?i)(?<![\\p{L}\\p{N}'])(?:u[hm]+|erm+|er|hm+)(?![\\p{L}\\p{N}'])[,.]?"),
+            "",
+        )
+        // Removing a word between two punctuation marks leaves "，，" or a
+        // stray leading mark; tidy those and any doubled spaces.
+        text = text.replace(Regex("\\s+"), " ").trim()
+        text = text.replace(Regex("^[，,、]+"), "")
+        return collapsePunctuation(text).trim()
+    }
+
+    /** Clause punctuation becomes one space; a trailing mark just disappears. */
+    private fun punctuationToSpaces(value: String): String {
+        var text = value
+            .replace(Regex("[，。！？；：、]+|…+|—{2,}"), " ")
+            // Latin marks only when they end a word, so 3.5 and a.b stay intact.
+            .replace(Regex("(?<=\\S)[,.!?;:]+(?=\\s|$)"), " ")
+        text = text.replace(Regex("\\s+"), " ").trim()
         return text
     }
 

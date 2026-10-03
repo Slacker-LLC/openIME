@@ -23,6 +23,10 @@ object ImeSettingsRepository {
     private const val KEY_POPUP = "popup"
     private const val KEY_FUZZY = "fuzzy"
     private const val KEY_SWIPE_UP_DIGITS = "swipe_up_digits"
+    private const val KEY_NUMBER_ROW = "number_row"
+    private const val KEY_EMOJI_ASSOCIATION = "emoji_association"
+    private const val KEY_VOICE_STRIP_FILLERS = "voice_strip_fillers"
+    private const val KEY_VOICE_PUNCTUATION_AS_SPACE = "voice_punctuation_as_space"
     private const val KEY_SKIN_OPACITY = "skin_opacity"
     private const val KEY_SKIN_RADIUS = "skin_radius"
     private const val KEY_SKIN_FONT = "skin_font"
@@ -155,6 +159,46 @@ object ImeSettingsRepository {
     fun saveSwipeUpDigits(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_SWIPE_UP_DIGITS, enabled).apply()
+    }
+
+    /** A row of 1-0 above the letters of the 26-key keyboards. Off by default. */
+    fun loadNumberRow(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_NUMBER_ROW, false)
+
+    fun saveNumberRow(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_NUMBER_ROW, enabled).apply()
+    }
+
+    /** Emoji suggestions in the association row after a word is committed. */
+    fun loadEmojiAssociation(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_EMOJI_ASSOCIATION, true)
+
+    fun saveEmojiAssociation(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_EMOJI_ASSOCIATION, enabled).apply()
+    }
+
+    /** Drop hesitation sounds such as 嗯 / 呃 from voice input. */
+    fun loadVoiceStripFillers(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_VOICE_STRIP_FILLERS, true)
+
+    fun saveVoiceStripFillers(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_VOICE_STRIP_FILLERS, enabled).apply()
+    }
+
+    /** Write a space instead of a punctuation mark between voice clauses. */
+    fun loadVoicePunctuationAsSpace(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_VOICE_PUNCTUATION_AS_SPACE, false)
+
+    fun saveVoicePunctuationAsSpace(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_VOICE_PUNCTUATION_AS_SPACE, enabled).apply()
     }
 
     fun loadPopup(context: Context): Boolean =

@@ -83,9 +83,23 @@ internal class ImeTopZone(
     private lateinit var associationScroll: HorizontalScrollView
     private var toolbarMode = ToolbarMode.NORMAL
     private var associationsShown = false
+    private var autofillShown = false
 
-    /** What the toolbar row shows; icons, associations and the undo banner are exclusive. */
-    private enum class ToolbarMode { NORMAL, ASSOCIATION, UNDO }
+    /** Chips from the system autofill service, hosted in a strip of their own. */
+    private lateinit var autofillScroll: HorizontalScrollView
+    private val autofillRow = LinearLayout(context)
+
+    /**
+     * What the toolbar row shows; icons, autofill chips, associations and the
+     * undo banner are exclusive.
+     */
+    private enum class ToolbarMode { NORMAL, AUTOFILL, ASSOCIATION, UNDO }
+
+    private fun idleToolbarMode(): ToolbarMode = when {
+        associationsShown -> ToolbarMode.ASSOCIATION
+        autofillShown -> ToolbarMode.AUTOFILL
+        else -> ToolbarMode.NORMAL
+    }
     private val hideUndoClearRunnable = Runnable {
         if (toolbarRow.findViewWithTag<View>("undo-toolbar")?.isActivated == true) {
             toolbarRow.findViewWithTag<View>("undo-toolbar")?.isActivated = false
@@ -133,7 +147,8 @@ internal class ImeTopZone(
             isFocusable = true
             setOnClickListener {
                 onFeedback()
-                onAssociationDismiss()
+                // The same back control closes whichever strip is open.
+                if (toolbarMode == ToolbarMode.AUTOFILL) dismissAutofillChips() else onAssociationDismiss()
             }
         }
         toolbarRow.addView(
@@ -161,6 +176,29 @@ internal class ImeTopZone(
         }
         toolbarRow.addView(
             associationScroll,
+            LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f),
+        )
+
+        autofillRow.apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            tag = "autofill-row"
+        }
+        autofillScroll = HorizontalScrollView(context).apply {
+            tag = "autofill-scroll"
+            visibility = View.GONE
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            addView(
+                autofillRow,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
+                ),
+            )
+        }
+        toolbarRow.addView(
+            autofillScroll,
             LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f),
         )
 
@@ -410,9 +448,41 @@ internal class ImeTopZone(
 
     fun showAssociations(show: Boolean) {
         associationsShown = show
-        if (toolbarMode != ToolbarMode.UNDO) {
-            toolbarMode = if (show) ToolbarMode.ASSOCIATION else ToolbarMode.NORMAL
+        if (toolbarMode != ToolbarMode.UNDO) toolbarMode = idleToolbarMode()
+        refreshToolbar()
+    }
+
+    /**
+     * Shows the autofill [chips] (already inflated by the system) in the toolbar
+     * row, or the normal toolbar again when the list is empty. Associations and
+     * the undo banner keep priority for as long as they are showing.
+     */
+    fun setAutofillChips(chips: List<View>, chipWidthPx: Int = 0, chipHeightPx: Int = 0) {
+        autofillRow.removeAllViews()
+        chips.forEach { chip ->
+            (chip.parent as? ViewGroup)?.removeView(chip)
+            autofillRow.addView(
+                chip,
+                LinearLayout.LayoutParams(
+                    if (chipWidthPx > 0) chipWidthPx else LinearLayout.LayoutParams.WRAP_CONTENT,
+                    if (chipHeightPx > 0) chipHeightPx else LinearLayout.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    gravity = Gravity.CENTER_VERTICAL
+                    marginEnd = toPx(8)
+                },
+            )
         }
+        autofillShown = chips.isNotEmpty()
+        autofillScroll.scrollTo(0, 0)
+        if (toolbarMode != ToolbarMode.UNDO) toolbarMode = idleToolbarMode()
+        refreshToolbar()
+    }
+
+    /** Back control of the autofill strip: hide the chips until the next response. */
+    private fun dismissAutofillChips() {
+        autofillRow.removeAllViews()
+        autofillShown = false
+        if (toolbarMode != ToolbarMode.UNDO) toolbarMode = idleToolbarMode()
         refreshToolbar()
     }
 
@@ -429,7 +499,7 @@ internal class ImeTopZone(
         val wasVisible = toolbarRow.findViewWithTag<View>("undo-toolbar")?.isActivated == true
         toolbarRow.findViewWithTag<View>("undo-toolbar")?.isActivated = false
         if (toolbarMode == ToolbarMode.UNDO) {
-            toolbarMode = if (associationsShown) ToolbarMode.ASSOCIATION else ToolbarMode.NORMAL
+            toolbarMode = idleToolbarMode()
             refreshToolbar()
         }
         if (discardSnapshot && wasVisible) onUndoClearExpired()
@@ -516,16 +586,18 @@ internal class ImeTopZone(
     private fun refreshToolbar() {
         val normal = toolbarMode == ToolbarMode.NORMAL
         val association = toolbarMode == ToolbarMode.ASSOCIATION
+        val autofill = toolbarMode == ToolbarMode.AUTOFILL
         val shown = if (compact) compactToolbarIcons else toolbarIcons
         (toolbarIcons + compactToolbarIcons).distinct().forEach {
             it.visibility = if (normal && it in shown) View.VISIBLE else View.GONE
         }
-        associationBack.visibility = if (association) View.VISIBLE else View.GONE
+        associationBack.visibility = if (association || autofill) View.VISIBLE else View.GONE
         associationScroll.visibility = if (association) View.VISIBLE else View.GONE
+        autofillScroll.visibility = if (autofill) View.VISIBLE else View.GONE
         undoBanner.visibility = if (toolbarMode == ToolbarMode.UNDO) View.VISIBLE else View.GONE
         keyboardHide.visibility = if (toolbarMode == ToolbarMode.UNDO) View.GONE else View.VISIBLE
         (keyboardHide.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
-            if (association) {
+            if (association || autofill) {
                 params.width = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
                 params.weight = 0f
             } else {

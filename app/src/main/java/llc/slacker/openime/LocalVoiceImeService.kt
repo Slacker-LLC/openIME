@@ -2,6 +2,8 @@ package llc.slacker.openime
 
 import android.content.Intent
 import android.inputmethodservice.InputMethodService
+import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.text.InputType
@@ -10,6 +12,8 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InlineSuggestionsRequest
+import android.view.inputmethod.InlineSuggestionsResponse
 import android.view.inputmethod.InputMethodManager
 import android.view.inputmethod.InputMethodSubtype
 import llc.slacker.openime.candidate.CandidateEngine
@@ -18,6 +22,7 @@ import llc.slacker.openime.candidate.CandidateQueryCoordinator
 import llc.slacker.openime.candidate.CandidateResolver
 import llc.slacker.openime.candidate.CandidateSnapshot
 import llc.slacker.openime.candidate.CandidateSnapshotEntry
+import llc.slacker.openime.candidate.EmojiAssociationIndex
 import llc.slacker.openime.candidate.NineKeyReading
 import llc.slacker.openime.candidate.PinyinLexicon
 import llc.slacker.openime.candidate.personalizedLearningAllowed
@@ -48,6 +53,7 @@ import llc.slacker.openime.keyboard.HardwareKey
 import llc.slacker.openime.keyboard.HardwareKeyAction
 import llc.slacker.openime.keyboard.HardwareKeyPolicy
 import llc.slacker.openime.keyboard.ImeKeyboardView
+import llc.slacker.openime.keyboard.InlineAutofill
 import llc.slacker.openime.rime.NativeCandidateReference
 import llc.slacker.openime.rime.RimeEngine
 import llc.slacker.openime.rime.RimeInputNormalizer
@@ -62,6 +68,7 @@ import llc.slacker.openime.voice.VoiceModelLifecycleManager
 import llc.slacker.openime.voice.VoiceModelLifecycleState
 import llc.slacker.openime.voice.VoicePerformanceTrace
 import llc.slacker.openime.voice.VoiceRecognitionEvents
+import llc.slacker.openime.voice.VoiceTextProcessor
 import java.io.File
 
 /**
@@ -180,6 +187,9 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         VoiceEditorContext.allowNaturalPunctuation = {
             EditorInfoAdapter.allowNaturalLanguageVoicePunctuation(currentInputEditorInfo)
         }
+        VoiceEditorContext.stripFillers = { ImeSettingsRepository.loadVoiceStripFillers(this) }
+        VoiceEditorContext.punctuationAsSpace =
+            { ImeSettingsRepository.loadVoicePunctuationAsSpace(this) }
         UserPhraseRepository.configure(this)
         VoiceCorrectionRepository.configure(this)
         HotwordRuntime.configure(this)
@@ -256,6 +266,9 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
 
     private fun createKeyboardView(): ImeKeyboardView {
         return ImeKeyboardView(this, this).also { view ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && inlineSuggestions.isNotEmpty()) {
+                view.post { view.showInlineSuggestions(inlineSuggestions) }
+            }
             view.setMode(state.keyboardMode, notifyListener = false)
             view.setTheme(state.theme)
             view.setAppearance(state.appearance)
@@ -267,6 +280,26 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             )
             view.renderState(state)
         }
+    }
+
+    /** Autofill chips in the toolbar row (Android 11+); see [InlineAutofill]. */
+    @android.annotation.TargetApi(Build.VERSION_CODES.R)
+    override fun onCreateInlineSuggestionsRequest(uiExtras: Bundle): InlineSuggestionsRequest? =
+        InlineAutofill.request(this)
+
+    /**
+     * The latest response, kept until the field goes away. The response can
+     * arrive while the keyboard view is still being (re)created for the new
+     * field; it is then shown as soon as the view exists instead of being
+     * refused, which would send the system back to its dropdown.
+     */
+    private var inlineSuggestions: List<android.view.inputmethod.InlineSuggestion> = emptyList()
+
+    @android.annotation.TargetApi(Build.VERSION_CODES.R)
+    override fun onInlineSuggestionsResponse(response: InlineSuggestionsResponse): Boolean {
+        inlineSuggestions = response.inlineSuggestions
+        val view = keyboardView ?: return inlineSuggestions.isNotEmpty()
+        return view.showInlineSuggestions(inlineSuggestions)
     }
 
     override fun onCreateInputView(): View {
@@ -486,6 +519,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     }
 
     override fun onFinishInput() {
+        inlineSuggestions = emptyList()
         invalidateCandidateQueries()
         voiceCorrectionTracker.finalizeIfNeeded()
         voiceMediaMute.restore()
@@ -562,6 +596,8 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         if (::voiceLifecycle.isInitialized) voiceLifecycle.destroy()
         activeInstance = null
         VoiceEditorContext.allowNaturalPunctuation = { true }
+        VoiceEditorContext.stripFillers = { true }
+        VoiceEditorContext.punctuationAsSpace = { false }
         super.onDestroy()
     }
 
@@ -636,6 +672,24 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
                 VoicePerformanceTrace.abandon()
                 onVoiceSessionStarted(autoCommitOnFinal = true)
                 onVoiceFinal(VoiceCorrectionRepository.apply(text))
+                true
+            }
+        }.getOrDefault(false)
+        // The recogniser's final text goes through the same post-processing as
+        // a real session (spoken punctuation, fillers, punctuation as spaces,
+        // word lists) before it reaches the editor.
+        command.startsWith("voice-processed64:") -> runCatching {
+            val raw = String(
+                java.util.Base64.getDecoder().decode(command.substringAfter("voice-processed64:")),
+                Charsets.UTF_8,
+            )
+            val processed = VoiceTextProcessor.process(raw, "zh-CN")
+            if (processed.isBlank()) {
+                false
+            } else {
+                VoicePerformanceTrace.abandon()
+                onVoiceSessionStarted(autoCommitOnFinal = true)
+                onVoiceFinal(HotwordRuntime.apply(VoiceCorrectionRepository.apply(processed)))
                 true
             }
         }.getOrDefault(false)
@@ -1207,7 +1261,18 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         gateway.commitText(text)
         gateway.finishComposing()
         keyboardView?.clearAssociationCandidates()
-        keyboardView?.setAssociationCandidates(candidatePipeline.associationsFor(text))
+        keyboardView?.setAssociationCandidates(associationsAfterCommit(text))
+    }
+
+    private val emojiAssociations: EmojiAssociationIndex by lazy {
+        EmojiAssociationIndex.load(this)
+    }
+
+    /** Next-word suggestions, with the emoji that go with the committed text first. */
+    private fun associationsAfterCommit(committed: String): List<String> {
+        val words = candidatePipeline.associationsFor(committed)
+        if (state.passwordField || !ImeSettingsRepository.loadEmojiAssociation(this)) return words
+        return emojiAssociations.emojiFor(committed) + words
     }
 
     override fun onCompositionBackspace() {
@@ -1717,7 +1782,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         lastComposition = ""
         state = state.copy(composition = "", candidates = emptyList())
         keyboardView?.renderState(state)
-        keyboardView?.setAssociationCandidates(candidatePipeline.associationsFor(committed))
+        keyboardView?.setAssociationCandidates(associationsAfterCommit(committed))
     }
 
     private fun allowsPersonalizedLearning(): Boolean =

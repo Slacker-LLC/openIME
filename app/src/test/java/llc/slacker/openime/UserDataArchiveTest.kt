@@ -35,6 +35,10 @@ class UserDataArchiveTest {
         keyboardHeightPercent = 104,
         floatingWidthPercent = 84,
         floatingOpacityPercent = 96,
+        numberRow = true,
+        emojiAssociation = false,
+        voiceStripFillers = false,
+        voicePunctuationAsSpace = true,
     )
 
     @Test
@@ -58,6 +62,31 @@ class UserDataArchiveTest {
         val decoded = UserDataArchiveCodec.decode(UserDataArchiveCodec.encode(archive))
 
         assertEquals(archive, decoded)
+    }
+
+    @Test
+    fun archivesWrittenBeforeTheNewTogglesDecodeToTheirDefaults() {
+        val archive = UserDataArchive(
+            quickPhrases = emptyList(),
+            customSymbols = emptyList(),
+            userPhrases = emptyList(),
+            settings = settings,
+        )
+        val json = org.json.JSONObject(UserDataArchiveCodec.encode(archive))
+        val legacy = json.getJSONObject("settings")
+        listOf(
+            "number_row",
+            "emoji_association",
+            "voice_strip_fillers",
+            "voice_punctuation_as_space",
+        ).forEach { legacy.remove(it) }
+
+        val decoded = UserDataArchiveCodec.decode(json.toString()).settings
+
+        assertFalse(decoded.numberRow)
+        assertTrue(decoded.emojiAssociation)
+        assertTrue(decoded.voiceStripFillers)
+        assertFalse(decoded.voicePunctuationAsSpace)
     }
 
     @Test
