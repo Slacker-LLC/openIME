@@ -194,10 +194,37 @@ open class ImeKeyboardView(
         onCancelPreviewChanged = { cancelling ->
             voicePanelController.setCancelPreview(cancelling)
         },
-        onCursorStep = { direction ->
-            listener.onTextEdit(if (direction < 0) "left" else "right")
-        },
+        onCursorStep = ::moveCursorFromSpace,
+        onCursorModeChanged = ::lockBottomRowForCursorDrag,
     )
+
+    /**
+     * One horizontal step of a space-bar drag. While pinyin is being composed
+     * the drag moves the pre-edit cursor (the same one a tap on the pre-edit
+     * moves); otherwise it moves the cursor in the target text.
+     */
+    private fun moveCursorFromSpace(direction: Int) {
+        val preedit = composition.text
+        if (preedit != null && preedit.isNotEmpty()) {
+            val next = (composition.selectionStart + direction).coerceIn(0, preedit.length)
+            composition.setSelection(next)
+        } else {
+            listener.onTextEdit(if (direction < 0) "left" else "right")
+        }
+    }
+
+    /**
+     * The drag keeps the pointer on the space key, but a second finger or a
+     * drifting thumb must not press the neighbouring keys of the bottom row.
+     */
+    private fun lockBottomRowForCursorDrag(spaceKey: View, locked: Boolean) {
+        val row = spaceKey.parent as? ViewGroup ?: return
+        for (index in 0 until row.childCount) {
+            val sibling = row.getChildAt(index)
+            if (sibling !== spaceKey && sibling is ImeKeyView) sibling.touchLocked = locked
+        }
+    }
+
     private val spaceVoiceKeyFactory: SpaceVoiceKeyFactory by lazy {
         SpaceVoiceKeyFactory(
             gestureController = spaceVoiceGestureController,
@@ -622,6 +649,7 @@ open class ImeKeyboardView(
             currentHaptic = { hapticEnabled },
             currentPopup = { popupEnabled },
             currentSwipeUpDigits = { ImeSettingsRepository.loadSwipeUpDigits(context) },
+            currentExtraToggle = ::onState,
             currentFuzzy = { fuzzyEnabled },
             currentSkinOpacity = { skinOpacity },
             currentSkinRadius = { skinRadius },
@@ -737,6 +765,8 @@ open class ImeKeyboardView(
             onPinyinSegment = ::onPinyinSegment,
             onShowChoicePopup = ::showChoicePopup,
             onCommitCharacter = ::commitKeyboardCharacter,
+            hintsEnabled = { ImeSettingsRepository.loadLetterHints(context) },
+            swipeUpEnabled = { ImeSettingsRepository.loadSwipeUpDigits(context) },
             onShift = ::cycleShift,
             onDigits = { setMode(KeyboardMode.DIGITS) },
             onModeSwitch = ::cycleMode,
@@ -1505,6 +1535,36 @@ open class ImeKeyboardView(
         enter.contentDescription = label
     }
 
+    private var inlineAutofillController: InlineAutofillController? = null
+
+    /** The autofill host, created on first use (Android 11+ only). */
+    @android.annotation.TargetApi(Build.VERSION_CODES.R)
+    private fun inlineAutofill(): InlineAutofillController? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        inlineAutofillController?.let { return it }
+        lateinit var controller: InlineAutofillController
+        controller = InlineAutofillController(context, context.mainExecutor) { chips ->
+            if (::topZone.isInitialized) {
+                topZone.setAutofillChips(chips, controller.chipSize.width, controller.chipSize.height)
+            }
+        }
+        inlineAutofillController = controller
+        return controller
+    }
+
+    /**
+     * Hosts the autofill chips of one response (Android 11+). Returns false when
+     * nothing can be shown, in which case the system falls back to its dropdown.
+     */
+    @android.annotation.TargetApi(Build.VERSION_CODES.R)
+    fun showInlineSuggestions(suggestions: List<android.view.inputmethod.InlineSuggestion>): Boolean =
+        inlineAutofill()?.show(suggestions) ?: false
+
+    fun clearInlineSuggestions() {
+        // Nothing to clear until a response has been hosted.
+        inlineAutofillController?.clear()
+    }
+
     fun setAssociationCandidates(candidates: List<String>) {
         associationRow.removeAllViews()
         candidates.distinct().take(8).forEach { candidate ->
@@ -1720,6 +1780,8 @@ open class ImeKeyboardView(
     }
 
     open fun shutdown() {
+        // The field these chips belong to is going away.
+        clearInlineSuggestions()
         if (panel == Panel.CLIPBOARD) clipboardPanelController.invalidatePendingLoad()
         stopVoiceIfActive()
         // View.removeCallbacks(null) is a no-op; cancel the root-owned
@@ -2211,6 +2273,10 @@ open class ImeKeyboardView(
         "模糊音纠错", "启用模糊音" -> fuzzyEnabled
         "按键气泡" -> popupEnabled
         "上滑输入数字" -> ImeSettingsRepository.loadSwipeUpDigits(context)
+        "数字和符号提示" -> ImeSettingsRepository.loadLetterHints(context)
+        "表情联想" -> ImeSettingsRepository.loadEmojiAssociation(context)
+        "语音去语气词" -> ImeSettingsRepository.loadVoiceStripFillers(context)
+        "标点用空格代替" -> ImeSettingsRepository.loadVoicePunctuationAsSpace(context)
         else -> true
     }
 
@@ -2234,6 +2300,15 @@ open class ImeKeyboardView(
             }
             // Read at gesture time, so it needs no listener round trip.
             "上滑输入数字" -> ImeSettingsRepository.saveSwipeUpDigits(context, enabled)
+            "数字和符号提示" -> {
+                ImeSettingsRepository.saveLetterHints(context, enabled)
+                // Rebuilt when the keyboard is next shown (right away if it is).
+                renderedMode = null
+                if (panel == Panel.NONE) renderModeBody()
+            }
+            "表情联想" -> ImeSettingsRepository.saveEmojiAssociation(context, enabled)
+            "语音去语气词" -> ImeSettingsRepository.saveVoiceStripFillers(context, enabled)
+            "标点用空格代替" -> ImeSettingsRepository.saveVoicePunctuationAsSpace(context, enabled)
         }
     }
 

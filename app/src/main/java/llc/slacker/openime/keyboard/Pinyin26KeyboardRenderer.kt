@@ -34,6 +34,8 @@ internal class Pinyin26KeyboardRenderer(
     private val onPinyinSegment: () -> Unit,
     private val onShowChoicePopup: (View, List<String>) -> Unit,
     private val onCommitCharacter: (String) -> Unit,
+    private val hintsEnabled: () -> Boolean,
+    private val swipeUpEnabled: () -> Boolean,
     private val onShift: () -> Unit,
     private val onDigits: () -> Unit,
     private val onModeSwitch: () -> Unit,
@@ -155,7 +157,8 @@ internal class Pinyin26KeyboardRenderer(
         } else {
             base
         }
-        val secondary = if (english) null else DIGIT_HINTS[character]
+        // The corner hint is a digit or symbol; swipe up or long press types it.
+        val secondary = if (hintsEnabled()) LetterHintPolicy.hint(character, english) else null
         return createKey(main, false, secondary, ImeTypographyTokens.KEY_LETTER_COMPACT_SP, 0) {
             onLetter(base)
         }.apply {
@@ -167,6 +170,8 @@ internal class Pinyin26KeyboardRenderer(
                     onCommitCharacter(secondary)
                     true
                 }
+                onSwipeUp = { onCommitCharacter(secondary) }
+                swipeUpEnabled = this@Pinyin26KeyboardRenderer.swipeUpEnabled
             }
         }
     }
@@ -192,17 +197,5 @@ internal class Pinyin26KeyboardRenderer(
 
     private companion object {
         val ROWS = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
-        val DIGIT_HINTS = mapOf(
-            'q' to "1",
-            'w' to "2",
-            'e' to "3",
-            'r' to "4",
-            't' to "5",
-            'y' to "6",
-            'u' to "7",
-            'i' to "8",
-            'o' to "9",
-            'p' to "0",
-        )
     }
 }

@@ -23,6 +23,8 @@ internal class SpaceVoiceGestureController(
     private val onVoiceCancel: () -> Unit,
     private val onCancelPreviewChanged: (Boolean) -> Unit,
     private val onCursorStep: (Int) -> Unit,
+    /** Called with the space key when a cursor drag starts and when it ends. */
+    private val onCursorModeChanged: (anchor: View, active: Boolean) -> Unit = { _, _ -> },
 ) {
     private val handler = Handler(Looper.getMainLooper())
     private val longPressTimeoutMs = ViewConfiguration.getLongPressTimeout().toLong()
@@ -92,7 +94,10 @@ internal class SpaceVoiceGestureController(
                 cursorTravel = 0f
                 lastX = rawX
                 handler.removeCallbacks(armVoice)
-                anchor?.isPressed = false
+                anchor?.let {
+                    it.isPressed = false
+                    onCursorModeChanged(it, true)
+                }
             }
 
             if (cursorMode) {
@@ -131,9 +136,9 @@ internal class SpaceVoiceGestureController(
         handler.removeCallbacks(armVoice)
 
         if (cursorMode) {
+            endCursorMode()
             trackingTouch = false
             active = false
-            cursorMode = false
             pointerId = -1
             downX = 0f
             downY = 0f
@@ -171,6 +176,7 @@ internal class SpaceVoiceGestureController(
      */
     fun reset() {
         handler.removeCallbacks(armVoice)
+        endCursorMode()
         if (active) anchor?.isPressed = false
         trackingTouch = false
         active = false
@@ -182,6 +188,13 @@ internal class SpaceVoiceGestureController(
         cursorTravel = 0f
         cancelPreview = false
         anchor = null
+    }
+
+    /** Leaves cursor mode, telling the host to unlock whatever it locked. */
+    private fun endCursorMode() {
+        if (!cursorMode) return
+        cursorMode = false
+        anchor?.let { onCursorModeChanged(it, false) }
     }
 
     fun shutdown() {

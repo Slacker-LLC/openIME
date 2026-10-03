@@ -95,5 +95,3 @@ internal data class KeyboardLayoutMetrics(
     val panelBodyHeightDp: Int =
         (imeHeightDp - ImeGeometryTokens.TOUCH_TARGET_DP).coerceAtLeast(0)
 }
-
-
