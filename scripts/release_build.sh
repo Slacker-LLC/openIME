@@ -12,8 +12,9 @@
 #   OPENIME_GRADLE_ARGS    extra Gradle arguments, e.g. --offline
 #   ANDROID_HOME           SDK containing build-tools/35.0.0 (apksigner, aapt2)
 #
-# Writes to OPENIME_OUT_DIR: openIME-v<VERSION>-arm64-release.apk, SHA256SUMS.txt,
-# THIRD_PARTY_NOTICES.release.md, RELEASE_NOTES.md, apksigner.txt.
+# Writes to OPENIME_OUT_DIR: openIME-v<VERSION>-arm64-release.apk, RELEASE_NOTES.md,
+# apksigner.txt, and SHA256SUMS.txt for the workflow's own check. Only the APK
+# is attached to the GitHub Release; its checksum is printed in the notes.
 # Also appends apk=, version= and cert_sha256= to $GITHUB_OUTPUT when it is set.
 set -euo pipefail
 export PYTHONUTF8=1
@@ -91,8 +92,9 @@ fi
 # 7. Release files.
 NAME="openIME-v${VERSION}-arm64-release.apk"
 cp "$APK" "$OUT/$NAME"
-cp THIRD_PARTY_NOTICES.md "$OUT/THIRD_PARTY_NOTICES.release.md"
 (cd "$OUT" && sha256sum "$NAME" > SHA256SUMS.txt)
+APK_SHA256="$(cut -d' ' -f1 "$OUT/SHA256SUMS.txt")"
+REPO_URL="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-Slacker-LLC/openIME}"
 
 CHANNEL="$(python3 scripts/release_check.py channel)"
 if [[ "$CHANNEL" == "beta" ]]; then
@@ -112,10 +114,9 @@ fi
 
 ### 下载与校验
 
-- \`$NAME\`：$PACKAGE_NOTE。
-- \`SHA256SUMS.txt\`：校验和。\`THIRD_PARTY_NOTICES.release.md\`：第三方许可清单。
-
-下载后在同一目录执行 \`sha256sum -c SHA256SUMS.txt\`，校验通过再安装。
+- \`$NAME\`：$PACKAGE_NOTE。这是本次发布唯一的附件。
+- APK SHA-256：\`$APK_SHA256\`。下载后执行 \`sha256sum $NAME\`，结果一致再安装。
+- 第三方组件的许可证随 APK 一起打包；清单见仓库中的 [THIRD_PARTY_NOTICES.md]($REPO_URL/blob/v$VERSION/THIRD_PARTY_NOTICES.md)。
 
 签名证书 SHA-256：\`$(printf '%s' "$CERT_SHA256" | tr -d ':' | tr 'A-F' 'a-f')\`。每个版本都应一致，可用 \`apksigner verify --print-certs\` 核对。
 
@@ -124,7 +125,7 @@ fi
 - 手写输入尚未接入识别引擎，入口默认隐藏；九键暂不支持与外接键盘同时使用。
 - 首次安装后需要完成完整词典部署，期间候选质量略低。
 - 发布包只含 arm64-v8a；模拟器请使用 Debug 构建。
-- 系统不允许降级或换签名覆盖安装：安装此前版本号更高的包或 Debug 包时，需要先卸载（卸载前可在「设置 → 关于与数据」导出用户数据）。
+- 系统不允许降级或换签名覆盖安装：安装此前版本号更高的包或 Debug 包时，需要先卸载（卸载前可在「设置 → 关于与数据 → 数据管理」导出用户数据）。
 EOF
 } > "$OUT/RELEASE_NOTES.md"
 
