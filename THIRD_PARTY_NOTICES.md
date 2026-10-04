@@ -11,6 +11,7 @@
 | Rime 基础数据 | `app/src/main/assets/rime/` | Rime / luna-pinyin / essay 等上游数据 | 以各目录 `AUTHORS` / 上游许可为准 | 已保留上游 AUTHORS；发布前不得删除这些归属文件 |
 | sherpa-onnx Android runtime | `app/libs/sherpa-onnx-1.13.6.aar` | https://github.com/k2-fsa/sherpa-onnx | Apache-2.0 | APK 包含 `assets/licenses/sherpa-onnx-Apache-2.0.txt` |
 | 中英双语 Streaming Paraformer INT8 语音模型 | `app/src/main/assets/models/voice/bilingual-paraformer/` | https://huggingface.co/csukuangfj/sherpa-onnx-streaming-paraformer-bilingual-zh-en | Apache-2.0 | 只打包 `encoder.int8.onnx`、`decoder.int8.onnx` 和 `tokens.txt`；APK 包含 `assets/licenses/paraformer-model-Apache-2.0.txt`，`manifest.json` 固定模型 ID/版本与文件哈希 |
+| CT-Transformer 中英标点 INT8 模型 | `app/src/main/assets/models/voice/punctuation/` | https://modelscope.cn/models/iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch 、https://github.com/k2-fsa/sherpa-onnx/releases/tag/punctuation-models | Apache-2.0 | 固定 `2024-04-12-int8` 导出，清单包含文件哈希；APK 附 `ct-transformer-Apache-2.0.txt` |
 | Microsoft Fluent Emoji | `app/src/main/assets/emoji/fluent/` | https://github.com/microsoft/fluentui-emoji | MIT | 仅打包当前实际使用的基础情绪表情资源；APK 包含 `assets/licenses/fluent-emoji-MIT.txt` |
 
 ## 发布前检查

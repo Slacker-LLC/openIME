@@ -5,13 +5,11 @@ import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
-import android.graphics.drawable.StateListDrawable
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.text.Editable
-import android.text.TextWatcher
 import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.ViewGroup
@@ -19,17 +17,15 @@ import android.view.WindowInsets
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import llc.slacker.openime.core.CrashGuard
 import llc.slacker.openime.data.ImeSettingsRepository
 import llc.slacker.openime.setup.SetupUi
 import llc.slacker.openime.theme.ImeAppearance
-import llc.slacker.openime.theme.ImeContrastPolicy
 import llc.slacker.openime.theme.ImeDrawableFactory
 import llc.slacker.openime.theme.ImeGeometryTokens
-import llc.slacker.openime.theme.ImeSurfacePolicy
-import llc.slacker.openime.theme.ImeTypographyTokens
 
 /** Match the selected IME by the exact package component, never by substring. */
 internal fun matchesSelectedInputMethod(defaultInputMethodId: String, packageName: String): Boolean {
@@ -37,6 +33,11 @@ internal fun matchesSelectedInputMethod(defaultInputMethodId: String, packageNam
     return separator > 0 && defaultInputMethodId.substring(0, separator) == packageName
 }
 
+/**
+ * Home page. Until openIME is enabled and selected it is a three-step setup
+ * whose bottom button performs the current step; afterwards the steps fold
+ * into one "ready" card and the page becomes a place to try the keyboard.
+ */
 class MainActivity : Activity() {
     override fun attachBaseContext(newBase: android.content.Context) {
         super.attachBaseContext(SetupUi.appearanceContext(newBase))
@@ -64,75 +65,33 @@ class MainActivity : Activity() {
             }
             insets
         }
-        setupClick(findViewById(R.id.open_ime_settings)) {
-            startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
-        }
-        setupClick(findViewById(R.id.choose_ime)) {
-            getSystemService(InputMethodManager::class.java).showInputMethodPicker()
-        }
-        setupClick(findViewById(R.id.open_app_settings)) {
-            if (!isImeReady()) {
-                Toast.makeText(this, R.string.setup_need_switch, Toast.LENGTH_SHORT).show()
-                return@setupClick
+        findViewById<View>(R.id.main_scroll).addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
+            val width = minOf(view.width - view.paddingLeft - view.paddingRight, SetupUi.dp(this, 600))
+            val content = findViewById<View>(R.id.main_content)
+            (content.layoutParams as android.widget.FrameLayout.LayoutParams).let { params ->
+                if (params.width != width) { params.width = width; content.layoutParams = params }
             }
-            startActivity(Intent(this, ImeSettingsActivity::class.java))
-        }
-        setupClick(findViewById(R.id.voice_permission)) {
-            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                return@setupClick
-            }
-            val prefs = getPreferences(MODE_PRIVATE)
-            prefs.edit().putBoolean("microphone_skipped", false).apply()
-            val requested = prefs.getBoolean("microphone_requested", false)
-            if (requested && !shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)) {
-                startActivity(
-                    Intent(
-                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                        Uri.parse("package:$packageName"),
-                    ),
-                )
-            } else {
-                prefs.edit().putBoolean("microphone_requested", true).apply()
-                requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1)
-            }
-        }
-        setupClick(findViewById(R.id.voice_permission_authorize)) { findViewById<View>(R.id.voice_permission).performClick() }
-        setupClick(findViewById(R.id.voice_permission_skip)) {
-            getPreferences(MODE_PRIVATE)
-                .edit()
-                .putBoolean("microphone_skipped", true)
-                .apply()
-            refreshSetupState()
-        }
-        setupClick(findViewById(R.id.test_step)) {
-            val input = findViewById<EditText>(R.id.test_input)
-            input.requestFocus()
-            getSystemService(InputMethodManager::class.java).showSoftInput(
-                input,
-                InputMethodManager.SHOW_IMPLICIT,
-            )
-        }
-        findViewById<EditText>(R.id.test_input).addTextChangedListener(
-            object : TextWatcher {
-                override fun beforeTextChanged(
-                    s: CharSequence?,
-                    start: Int,
-                    count: Int,
-                    after: Int,
-                ) = Unit
-
-                override fun onTextChanged(
-                    s: CharSequence?,
-                    start: Int,
-                    before: Int,
-                    count: Int,
-                ) {
-                    refreshSetupState()
+            val button = findViewById<View>(R.id.open_app_settings)
+            (button.layoutParams as LinearLayout.LayoutParams).let { params ->
+                val buttonWidth = (width - SetupUi.dp(this, 32)).coerceAtLeast(0)
+                if (params.width != buttonWidth) {
+                    params.width = buttonWidth
+                    params.gravity = android.view.Gravity.CENTER_HORIZONTAL
+                    button.layoutParams = params
                 }
-
-                override fun afterTextChanged(s: Editable?) = Unit
-            },
-        )
+            }
+        }
+        styleStaticViews()
+        setupClick(findViewById(R.id.open_ime_settings)) { openInputMethodSettings() }
+        setupClick(findViewById(R.id.choose_ime)) { showInputMethodPicker() }
+        setupClick(findViewById(R.id.open_app_settings)) {
+            if (imeStatus().enabled) showInputMethodPicker() else openInputMethodSettings()
+        }
+        setupClick(findViewById(R.id.open_settings_icon)) { openPreferences() }
+        setupClick(findViewById(R.id.shortcut_preferences)) { openPreferences() }
+        setupClick(findViewById(R.id.shortcut_fuzzy)) { openPreferences(fuzzy = true) }
+        setupClick(findViewById(R.id.voice_permission)) { requestMicrophone() }
+        setupClick(findViewById(R.id.voice_permission_authorize)) { requestMicrophone() }
     }
 
     override fun onResume() {
@@ -149,157 +108,247 @@ class MainActivity : Activity() {
         if (hasFocus) refreshSetupState()
     }
 
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        refreshSetupState()
+    }
+
+    private fun openInputMethodSettings() {
+        startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
+    }
+
+    private fun showInputMethodPicker() {
+        getSystemService(InputMethodManager::class.java).showInputMethodPicker()
+    }
+
+    private fun openPreferences(fuzzy: Boolean = false) {
+        if (!isImeReady()) {
+            Toast.makeText(this, R.string.setup_need_switch, Toast.LENGTH_SHORT).show()
+            return
+        }
+        startActivity(
+            Intent(this, ImeSettingsActivity::class.java)
+                .putExtra(ImeSettingsActivity.EXTRA_OPEN_FUZZY, fuzzy),
+        )
+    }
+
+    private fun requestMicrophone() {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) return
+        val prefs = getPreferences(MODE_PRIVATE)
+        val requested = prefs.getBoolean("microphone_requested", false)
+        if (requested && !shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)) {
+            startActivity(
+                Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:$packageName"),
+                ),
+            )
+        } else {
+            prefs.edit().putBoolean("microphone_requested", true).apply()
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1)
+        }
+    }
+
+    /** Surfaces and tints that do not change with the setup state. */
+    private fun styleStaticViews() {
+        val page = getColor(R.color.setup_page_bg)
+        window.statusBarColor = page
+        window.navigationBarColor = page
+        listOf(R.id.steps_card, R.id.voice_permission, R.id.shortcuts_card, R.id.ready_card).forEach {
+            findViewById<View>(it).clipToOutline = true
+        }
+        listOf(R.id.open_ime_settings, R.id.choose_ime, R.id.shortcut_preferences, R.id.shortcut_fuzzy).forEach {
+            findViewById<View>(it).background = SetupUi.rowBackground(this)
+        }
+        listOf(R.id.voice_permission_icon, R.id.shortcut_preferences_icon, R.id.shortcut_fuzzy_icon).forEach {
+            findViewById<ImageView>(it).apply {
+                background = SetupUi.rounded(getColor(R.color.setup_icon_tile), SetupUi.dp(this@MainActivity, 9).toFloat())
+                imageTintList = ColorStateList.valueOf(getColor(R.color.setup_icon))
+            }
+        }
+        findViewById<View>(R.id.ready_mark).background = circle(getColor(R.color.setup_ready))
+        findViewById<View>(R.id.open_settings_icon).background = ImeDrawableFactory.statefulRounded(
+            getColor(R.color.setup_surface),
+            getColor(R.color.setup_muted),
+            SetupUi.dp(this, ImeGeometryTokens.PILL_RADIUS_DP),
+            SetupUi.accent(this),
+            SetupUi.dp(this, 1),
+        )
+        val tips = findViewById<ViewGroup>(R.id.typing_tips)
+        for (index in 0 until tips.childCount) {
+            tips.getChildAt(index).background =
+                SetupUi.rounded(getColor(R.color.setup_surface), SetupUi.dp(this, ImeGeometryTokens.PILL_RADIUS_DP).toFloat())
+        }
+        findViewById<EditText>(R.id.test_input).apply {
+            background = ImeDrawableFactory.focusedRounded(
+                fillColor = getColor(R.color.setup_surface),
+                radiusPx = SetupUi.dp(this@MainActivity, 14).toFloat(),
+                focusedStrokeColor = SetupUi.accent(this@MainActivity),
+                defaultStrokeColor = getColor(R.color.setup_hairline),
+                strokeWidthPx = SetupUi.dp(this@MainActivity, 1).coerceAtLeast(1) + SetupUi.dp(this@MainActivity, 1) / 2,
+            )
+            SetupUi.styleCursor(this@MainActivity, this)
+        }
+        findViewById<TextView>(R.id.voice_permission_authorize).apply {
+            background = SetupUi.secondaryBackground(this@MainActivity)
+            setTextColor(SetupUi.secondaryTextColor(this@MainActivity))
+            // The row is the one accessible action; the button repeats it.
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        findViewById<View>(R.id.voice_permission_status).background =
+            SetupUi.rounded(getColor(R.color.setup_icon_tile), SetupUi.dp(this, ImeGeometryTokens.PILL_RADIUS_DP).toFloat())
+        findViewById<View>(R.id.open_app_settings).background =
+            SetupUi.buttonBackground(this, SetupUi.primaryButtonColor(this))
+    }
+
     private fun refreshSetupState() {
         val status = imeStatus()
         val enabled = status.enabled
         val selected = status.selected
-        val accent = SetupUi.accent(this)
-        val prefs = getPreferences(MODE_PRIVATE)
-        val microphoneGranted =
-            checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-        val microphoneRequested = prefs.getBoolean("microphone_requested", false)
-        val microphoneSkipped = prefs.getBoolean("microphone_skipped", false)
-        val microphoneDeniedPermanently =
-            microphoneRequested &&
-                !microphoneGranted &&
-                !shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)
-        val testInput = findViewById<EditText>(R.id.test_input)
-        val testDone = testInput.text?.isNotBlank() == true
+        val ready = enabled && selected
 
-        testInput.background = SetupUi.inputBackground(this)
-        testInput.setPadding(SetupUi.dp(this, 16), 0, SetupUi.dp(this, 16), 0)
-        SetupUi.styleCursor(this, testInput)
+        findViewById<View>(R.id.onboarding_group).visibility = if (ready) View.GONE else View.VISIBLE
+        findViewById<View>(R.id.ready_group).visibility = if (ready) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.open_settings_icon).visibility = if (ready) View.VISIBLE else View.GONE
+        moveVoiceBlock(if (ready) R.id.ready_voice_slot else R.id.onboarding_voice_slot)
+        findViewById<TextView>(R.id.voice_section_title).setText(if (ready) R.string.section_voice else R.string.section_optional)
 
-        findViewById<TextView>(R.id.status).setText(
-            when {
-                !enabled -> R.string.setup_enable
-                !selected -> R.string.setup_choose
-                testDone -> R.string.setup_ready
-                else -> R.string.test_step
-            },
-        )
-
-        styleStep(
-            row = findViewById(R.id.open_ime_settings),
-            mark = findViewById(R.id.open_ime_settings_mark),
-            label = findViewById(R.id.open_ime_settings_label),
-            chevron = findViewById(R.id.open_ime_settings_chevron),
-            done = enabled,
-            active = !enabled,
-            doneText = getString(R.string.open_ime_settings_done),
-            activeText = getString(R.string.open_ime_settings),
-            markText = "1",
-            accent = accent,
-        )
-
-        styleStep(
-            row = findViewById(R.id.choose_ime),
-            mark = findViewById(R.id.choose_ime_mark),
-            label = findViewById(R.id.choose_ime_label),
-            chevron = findViewById(R.id.choose_ime_chevron),
-            done = selected,
-            active = enabled && !selected,
-            doneText = "已切换到 openIME",
-            activeText = getString(R.string.choose_ime),
-            markText = "2",
-            accent = accent,
-        )
-        findViewById<View>(R.id.choose_ime).apply {
-            isEnabled = enabled
-            alpha = 1f
+        val currentStep = if (!enabled) 1 else 2
+        findViewById<TextView>(R.id.setup_progress_label).text = getString(R.string.setup_progress, currentStep)
+        listOf(R.id.setup_progress_1, R.id.setup_progress_2, R.id.setup_progress_3).forEachIndexed { index, id ->
+            findViewById<View>(id).background = SetupUi.rounded(
+                getColor(if (index < currentStep) R.color.setup_primary else R.color.setup_progress_todo),
+                SetupUi.dp(this, 2).toFloat(),
+            )
         }
 
-        val voiceDone = microphoneGranted || microphoneSkipped
-        val voiceActive = selected && !voiceDone
-        val voiceActiveText =
-            if (microphoneDeniedPermanently) {
-                getString(R.string.voice_permission_settings)
-            } else {
-                getString(R.string.voice_permission_enable)
+        styleStep(R.id.open_ime_settings, R.id.open_ime_settings_mark, R.id.open_ime_settings_label, "1", done = enabled, active = !enabled)
+        styleStep(R.id.choose_ime, R.id.choose_ime_mark, R.id.choose_ime_label, "2", done = selected, active = enabled && !selected)
+        styleStep(R.id.test_step, R.id.test_step_mark, R.id.test_step_label, "3", done = false, active = false)
+        findViewById<View>(R.id.choose_ime).isEnabled = enabled
+        findViewById<View>(R.id.test_step).isClickable = false
+
+        findViewById<TextView>(R.id.open_app_settings).apply {
+            visibility = if (ready) View.GONE else View.VISIBLE
+            setText(if (enabled) R.string.choose_ime_action else R.string.open_ime_settings_action)
+            contentDescription = text
+            if (Build.VERSION.SDK_INT >= 30) {
+                stateDescription = getString(R.string.setup_progress, currentStep)
             }
-        val voiceDoneText =
-            if (microphoneGranted) {
-                getString(R.string.voice_permission_ready)
-            } else {
-                getString(R.string.voice_permission_skipped)
-            }
-        styleStep(
-            row = findViewById(R.id.voice_permission),
-            mark = findViewById(R.id.voice_permission_mark),
-            label = findViewById(R.id.voice_permission_label),
-            chevron = findViewById(R.id.voice_permission_chevron),
-            done = voiceDone,
-            active = voiceActive,
-            doneText = voiceDoneText,
-            activeText = voiceActiveText,
-            markText = "",
-            accent = accent,
-        )
-        findViewById<View>(R.id.voice_permission).apply {
-            isEnabled = selected && !microphoneGranted
-            alpha = 1f
         }
-        findViewById<TextView>(R.id.voice_permission_description).setText(
+
+        refreshVoice(ready)
+        findViewById<View>(R.id.ready_card).contentDescription =
+            "${getString(R.string.setup_ready)}，${getString(R.string.setup_ready_detail)}"
+    }
+
+    private fun refreshVoice(ready: Boolean) {
+        val granted = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        val requested = getPreferences(MODE_PRIVATE).getBoolean("microphone_requested", false)
+        val deniedPermanently = requested && !granted &&
+            !shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)
+        val label = findViewById<TextView>(R.id.voice_permission_label)
+        val description = findViewById<TextView>(R.id.voice_permission_description)
+        label.setText(if (ready && granted) R.string.voice_title_ready else R.string.voice_title)
+        description.setText(
             when {
-                microphoneGranted -> R.string.voice_permission_ready_description
-                microphoneDeniedPermanently -> R.string.voice_permission_denied
+                granted -> R.string.voice_permission_ready_description
+                deniedPermanently -> R.string.voice_permission_denied
                 else -> R.string.voice_permission_description
             },
         )
-        findViewById<View>(R.id.voice_permission_actions).visibility = if (microphoneGranted || microphoneSkipped) View.GONE else View.VISIBLE
-        findViewById<TextView>(R.id.voice_permission_authorize).background = SetupUi.secondaryBackground(this)
-        findViewById<TextView>(R.id.voice_permission_skip).apply {
-            visibility =
-                if (selected && !microphoneGranted && !microphoneSkipped) {
-                    View.VISIBLE
-                } else {
-                    View.GONE
-                }
-            isEnabled = visibility == View.VISIBLE
-            background = null
-        }
-
-        styleStep(
-            row = findViewById(R.id.test_step),
-            mark = findViewById(R.id.test_step_mark),
-            label = findViewById(R.id.test_step_label),
-            chevron = null,
-            done = testDone,
-            active = selected && !testDone,
-            doneText = getString(R.string.test_step_done),
-            activeText = getString(R.string.test_step),
-            markText = "3",
-            accent = accent,
-        )
-        findViewById<View>(R.id.test_step).apply {
-            isEnabled = selected
-            alpha = 1f
-        }
-        testInput.isEnabled = selected
-        testInput.alpha = 1f
-
-        val ready = enabled && selected
-        findViewById<View>(R.id.open_app_settings).apply {
-            isEnabled = ready
-            alpha = if (ready) 1f else ImeSurfacePolicy.DISABLED_ALPHA
-            background = SetupUi.secondaryBackground(this@MainActivity)
-            contentDescription = getString(
-                if (ready) R.string.open_app_settings else R.string.setup_need_switch,
-            )
+        val authorize = findViewById<TextView>(R.id.voice_permission_authorize)
+        authorize.visibility = if (granted) View.GONE else View.VISIBLE
+        authorize.setText(if (deniedPermanently) R.string.voice_permission_settings else R.string.voice_permission_enable)
+        findViewById<View>(R.id.voice_permission_status).visibility = if (granted) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.voice_permission).apply {
+            // Granted is a status, not an action: the row stops looking pressable.
+            background = if (granted) {
+                SetupUi.cardBackground(this@MainActivity)
+            } else {
+                android.graphics.drawable.LayerDrawable(
+                    arrayOf(SetupUi.cardBackground(this@MainActivity), SetupUi.rowBackground(this@MainActivity)),
+                )
+            }
+            contentDescription = "${label.text}，${description.text}"
             if (Build.VERSION.SDK_INT >= 30) {
-                stateDescription = if (ready) "可用" else "需先完成输入法设置"
+                stateDescription = getString(if (granted) R.string.voice_permission_ready else R.string.voice_permission_enable)
             }
             hideDecorationFromAccessibility(this)
         }
     }
 
+    private fun moveVoiceBlock(slotId: Int) {
+        val block = findViewById<View>(R.id.voice_block)
+        val slot = findViewById<ViewGroup>(slotId)
+        if (block.parent === slot) return
+        (block.parent as? ViewGroup)?.removeView(block)
+        slot.addView(block)
+    }
+
     /**
-     * A setup card is one focusable, described node. Its number, label,
-     * hint, status pill and chevron are decoration for the same action, so a
-     * screen reader must not also land on each of them (and, being inside the
-     * card, they cannot be separate actions anyway). Applied in code because
-     * the status pill is added at runtime and a layout edit must not be able
-     * to bring the duplicates back.
+     * Step marker: the current step is the accent with its number, a finished
+     * step is a green check, a later step is an outlined grey number.
+     */
+    private fun styleStep(rowId: Int, markId: Int, labelId: Int, number: String, done: Boolean, active: Boolean) {
+        val row = findViewById<View>(rowId)
+        val mark = findViewById<TextView>(markId)
+        val label = findViewById<TextView>(labelId)
+        val stroke = SetupUi.dp(this, 1) + SetupUi.dp(this, 1) / 2
+        when {
+            done -> {
+                mark.text = ""
+                mark.background = circle(getColor(R.color.setup_ready))
+                val check = getDrawable(R.drawable.ic_pref_check)?.mutate()?.apply {
+                    val size = SetupUi.dp(this@MainActivity, 16)
+                    setBounds(0, 0, size, size)
+                    setTint(android.graphics.Color.WHITE)
+                }
+                mark.setCompoundDrawablesRelative(check, null, null, null)
+                mark.setPaddingRelative(SetupUi.dp(this, 6), 0, 0, 0)
+            }
+            active -> {
+                mark.text = number
+                mark.setCompoundDrawablesRelative(null, null, null, null)
+                mark.setPadding(0, 0, 0, 0)
+                mark.background = circle(getColor(R.color.setup_primary))
+                mark.setTextColor(getColor(R.color.setup_on_primary))
+            }
+            else -> {
+                mark.text = number
+                mark.setCompoundDrawablesRelative(null, null, null, null)
+                mark.setPadding(0, 0, 0, 0)
+                mark.background = circle(android.graphics.Color.TRANSPARENT, getColor(R.color.setup_step_todo), stroke)
+                mark.setTextColor(getColor(R.color.setup_body))
+            }
+        }
+        label.typeface = android.graphics.Typeface.create(
+            "sans-serif-medium",
+            if (active) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL,
+        )
+        hideDecorationFromAccessibility(row)
+        row.contentDescription = if (active || done) label.text else "${label.text}，${getString(R.string.setup_step_later)}"
+        if (Build.VERSION.SDK_INT >= 30) {
+            row.stateDescription = getString(
+                when {
+                    done -> R.string.setup_step_done
+                    active -> R.string.setup_step_current
+                    else -> R.string.setup_step_later
+                },
+            )
+        }
+    }
+
+    private fun circle(fill: Int, strokeColor: Int? = null, strokeWidth: Int = 0) = GradientDrawable().apply {
+        shape = GradientDrawable.OVAL
+        setColor(fill)
+        strokeColor?.let { setStroke(strokeWidth, it) }
+    }
+
+    /**
+     * A setup card is one focusable, described node. Its marker, label, hint
+     * and button are decoration for the same action, so a screen reader must
+     * not also land on each of them.
      */
     private fun hideDecorationFromAccessibility(card: View) {
         val group = card as? ViewGroup ?: return
@@ -331,120 +380,5 @@ class MainActivity : Activity() {
         val selected = matchesSelectedInputMethod(defaultId, packageName)
         val enabled = selected || manager.enabledInputMethodList.any { it.packageName == packageName }
         return ImeStatus(enabled = enabled, selected = selected)
-    }
-
-    private fun styleStep(
-        row: View,
-        mark: TextView,
-        label: TextView,
-        chevron: ImageView?,
-        done: Boolean,
-        active: Boolean,
-        doneText: String,
-        activeText: String,
-        markText: String,
-        accent: Int,
-    ) {
-        // A completed setup step remains an action: users may need to revisit
-        // the system picker or input-method settings after initial setup.
-        row.isEnabled = true
-        row.background = null
-        label.text = if (done) doneText else activeText
-        label.setTextColor(getColor(if (done || active) R.color.setup_title else R.color.setup_body))
-        // A completed step is easier to scan as a result than as an old
-        // step number. Keep the number for the current step so the flow still
-        // reads as 1 -> 2 while the completed state reads as a check.
-        mark.text = if (done) "" else markText
-        val markIcon = if (row.id == R.id.voice_permission) R.drawable.ic_mic else if (done) R.drawable.ic_check else 0
-        val drawable = if (markIcon != 0) getDrawable(markIcon)?.apply {
-            setBounds(0, 0, SetupUi.dp(this@MainActivity, 16), SetupUi.dp(this@MainActivity, 16))
-        } else null
-        mark.setCompoundDrawablesRelative(drawable, null, null, null)
-        mark.compoundDrawableTintList = ColorStateList.valueOf(
-            if (done) contrastText(getColor(R.color.setup_ready)) else getColor(R.color.setup_body),
-        )
-        mark.background = android.graphics.drawable.GradientDrawable().apply {
-            shape = android.graphics.drawable.GradientDrawable.OVAL
-            setColor(if (done) getColor(R.color.setup_ready) else if (active) accent else getColor(R.color.setup_surface))
-            if (!done && !active) setStroke(SetupUi.dp(this@MainActivity, 1), getColor(R.color.setup_input_line))
-        }
-        mark.setTextColor(
-            when {
-                active -> contrastText(accent)
-                done -> contrastText(getColor(R.color.setup_ready))
-                else -> getColor(R.color.setup_body)
-            },
-        )
-        chevron?.imageTintList = ColorStateList.valueOf(
-            getColor(R.color.setup_body),
-        )
-        chevron?.visibility = View.GONE
-        if (row.id == R.id.open_ime_settings || row.id == R.id.choose_ime) {
-            val layout = row as android.widget.LinearLayout
-            (layout.getChildAt(1) as? android.widget.LinearLayout)?.getChildAt(1)?.visibility = if (done) View.GONE else View.VISIBLE
-            val status = (layout.findViewWithTag<View>("setup-result") as? TextView) ?: TextView(this).apply {
-                tag = "setup-result"; textSize = ImeTypographyTokens.SMALL_SP; setTextColor(getColor(R.color.setup_body))
-                layout.addView(this, android.widget.LinearLayout.LayoutParams(android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT))
-            }
-            val enableStep = row.id == R.id.open_ime_settings
-            status.text = if (done) { if (enableStep) "已启用" else "已切换" } else { if (enableStep) "启用" else "切换" }
-            status.visibility = View.VISIBLE
-            status.gravity = android.view.Gravity.CENTER
-            status.typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
-            status.layoutParams = android.widget.LinearLayout.LayoutParams(
-                if (done) android.widget.LinearLayout.LayoutParams.WRAP_CONTENT else SetupUi.dp(this, 66),
-                if (done) android.widget.LinearLayout.LayoutParams.WRAP_CONTENT else SetupUi.dp(this, 40),
-            )
-            status.background = if (done) null else SetupUi.rounded(
-                if (active) accent else getColor(R.color.setup_disabled), SetupUi.dp(this, 12).toFloat(),
-            )
-            status.setTextColor(if (done) getColor(R.color.setup_body) else if (active) contrastText(accent) else getColor(R.color.setup_disabled_text))
-
-        }
-        if (row.id == R.id.test_step) (row as android.widget.LinearLayout).getChildAt(2)?.visibility = View.GONE
-        hideDecorationFromAccessibility(row)
-        row.alpha = 1f
-        row.contentDescription = when {
-            done -> doneText
-            active -> activeText
-            else -> "$activeText，完成上一步后可用"
-        }
-        if (Build.VERSION.SDK_INT >= 30) {
-            row.stateDescription = when {
-                done -> "已完成，可再次打开"
-                active -> "当前步骤"
-                else -> "暂不可用"
-            }
-        }
-    }
-
-    private fun completedBackground(accent: Int): StateListDrawable {
-        val surface = getColor(R.color.setup_muted)
-        val tint = ImeDrawableFactory.blend(surface, accent, 0.10f)
-        val pressed = ImeDrawableFactory.blend(surface, accent, 0.16f)
-        val radius = SetupUi.dp(this, ImeGeometryTokens.CONTROL_RADIUS_DP).toFloat()
-        return StateListDrawable().apply {
-            addState(
-                intArrayOf(android.R.attr.state_pressed),
-                ImeDrawableFactory.rounded(pressed, radius),
-            )
-            addState(
-                intArrayOf(android.R.attr.state_focused),
-                ImeDrawableFactory.rounded(
-                    color = tint,
-                    radiusPx = radius,
-                    strokeColor = accent,
-                    strokeWidthPx = SetupUi.dp(this@MainActivity, 1),
-                ),
-            )
-            addState(
-                intArrayOf(),
-                ImeDrawableFactory.rounded(tint, radius),
-            )
-        }
-    }
-
-    private fun contrastText(background: Int): Int {
-        return ImeContrastPolicy.contrastText(background)
     }
 }

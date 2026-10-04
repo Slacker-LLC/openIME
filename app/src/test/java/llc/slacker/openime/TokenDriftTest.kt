@@ -42,27 +42,28 @@ class TokenDriftTest {
         val light = source("app/src/main/res/values/colors.xml")
         val dark = source("app/src/main/res/values-night/colors.xml")
 
-        // The setup pages sit on the toolbar surface (#EFF0F4) with white cards
-        // (toolCardBackground), exactly like the reference design's full pages.
+        // App pages (home, preferences) use their own palette: a cool grey
+        // ground with white cards, and an accent dark enough for white text.
+        // docs/APP_UI_SPEC.md lists the same values.
         mapOf(
-            "setup_page_bg" to "#EFF0F4",
+            "setup_page_bg" to "#F2F3F6",
             "setup_surface" to "#FFFFFF",
-            "setup_title" to "#1C1C1E",
-            "setup_body" to "#6D6D72",
-            "setup_primary" to "#1D9BF0",
-            "setup_input_line" to "#B7BCC5",
+            "setup_title" to "#15171C",
+            "setup_body" to "#5B6270",
+            "setup_primary" to "#1668D0",
+            "setup_hairline" to "#E7E9ED",
         ).forEach { (name, value) ->
-            assertTrue("$name drifted from the light IME palette", light.contains("<color name=\"$name\">$value</color>"))
+            assertTrue("$name drifted from the light app palette", light.contains("<color name=\"$name\">$value</color>"))
         }
         mapOf(
-            "setup_page_bg" to "#1C1C1E",
-            "setup_surface" to "#303032",
-            "setup_title" to "#F2F2F7",
-            "setup_body" to "#AEAEB2",
-            "setup_primary" to "#6EC3F7",
-            "setup_input_line" to "#48484A",
+            "setup_page_bg" to "#0F1012",
+            "setup_surface" to "#1B1C20",
+            "setup_title" to "#F2F3F5",
+            "setup_body" to "#A2A8B3",
+            "setup_primary" to "#2D6FD6",
+            "setup_hairline" to "#2C2E33",
         ).forEach { (name, value) ->
-            assertTrue("$name drifted from the dark IME palette", dark.contains("<color name=\"$name\">$value</color>"))
+            assertTrue("$name drifted from the dark app palette", dark.contains("<color name=\"$name\">$value</color>"))
         }
     }
 

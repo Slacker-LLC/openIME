@@ -7,6 +7,9 @@ import com.k2fsa.sherpa.onnx.OnlineModelConfig
 import com.k2fsa.sherpa.onnx.OnlineParaformerModelConfig
 import com.k2fsa.sherpa.onnx.OnlineRecognizer
 import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig
+import com.k2fsa.sherpa.onnx.OfflinePunctuation
+import com.k2fsa.sherpa.onnx.OfflinePunctuationConfig
+import com.k2fsa.sherpa.onnx.OfflinePunctuationModelConfig
 import com.k2fsa.sherpa.onnx.OnlineStream
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
@@ -23,6 +26,8 @@ interface VoiceRecognitionEvents {
     fun onError(message: String)
     /** Microphone capture is live; model loading may still be in progress. */
     fun onReady()
+    /** Capture has ended; decoding may still be draining buffered audio. */
+    fun onCaptureStopped() {}
     /** The buffered audio is now connected to the local recognizer. */
     fun onModelReady() {}
 }
@@ -184,6 +189,7 @@ private class SherpaOnnxStreamingRuntime(
     private var modelFiles: SherpaRuntimeModelFiles? =
         resolveSherpaRuntimeModelFiles(initialSelection, downloadedRoot)
     private var recognizer: OnlineRecognizer? = null
+    private var punctuation: OfflinePunctuation? = null
     private val activeSessions = mutableSetOf<SherpaSession>()
     private var legacySession: SherpaSession? = null
 
@@ -250,6 +256,8 @@ private class SherpaOnnxStreamingRuntime(
         legacySession = null
         recognizer?.release()
         recognizer = null
+        punctuation?.release()
+        punctuation = null
     }
 
     private fun ensureRecognizerLocked(): OnlineRecognizer {
@@ -322,6 +330,10 @@ private class SherpaOnnxStreamingRuntime(
                 // silence before InputFinished so the last chunk can flush.
                 currentStream.acceptWaveform(FloatArray(PARAFORMER_TAIL_PADDING_SAMPLES), SAMPLE_RATE)
                 currentStream.inputFinished()
+                // InputFinished ends feature extraction, but Paraformer's
+                // IsReady accepts the remaining short chunk only with this
+                // option. Otherwise already-recorded tail frames stay undecoded.
+                currentStream.setOption("is_final", "1")
                 val decoded = decodeReadyLocked(currentRecognizer, currentStream)
                 val recognizerFinal = currentRecognizer.getResult(currentStream).text.trim()
                 val usedFallback = recognizerFinal.isBlank() && lastPartial.isNotBlank()
@@ -340,7 +352,40 @@ private class SherpaOnnxStreamingRuntime(
             return result
         }
 
-        override fun punctuate(text: String): String = VoiceTextProcessor.process(text, languageTag)
+        override fun punctuate(text: String): String {
+            val policy = VoiceTextProcessingPolicy(
+                autoTerminalPunctuation = VoiceEditorContext.allowNaturalPunctuation(),
+                stripFillers = VoiceEditorContext.stripFillers(),
+                punctuationAsSpace = VoiceEditorContext.punctuationAsSpace(),
+            )
+            val prepared = VoiceTextProcessor.process(text, languageTag, policy.copy(
+                autoTerminalPunctuation = false, punctuationAsSpace = false,
+            ))
+            // Preserve explicitly dictated marks and structured editor values.
+            val restored = if (policy.autoTerminalPunctuation && prepared.none { it in "，。！？；：,.!?;:" }) {
+                synchronized(runtimeLock) {
+                    checkOpenLocked()
+                    runCatching {
+                        val model = punctuation ?: OfflinePunctuation(context.assets,
+                            OfflinePunctuationConfig(model = OfflinePunctuationModelConfig(
+                                ctTransformer = "models/voice/punctuation/model.int8.onnx",
+                                numThreads = 2,
+                            )),
+                        ).also { punctuation = it }
+                        model.addPunctuation(prepared)
+                    }.onFailure { Log.w("OpenImeVoicePerf", "punctuation failed; keeping transcript", it) }
+                        .getOrNull()
+                }
+            } else null
+            val normalized = if (prepared.none { it in '\u4e00'..'\u9fff' }) {
+                (restored ?: prepared).replace('，', ',').replace('。', '.')
+                    .replace('？', '?').replace('！', '!').replace('：', ':').replace('；', ';')
+            } else restored ?: prepared
+            return VoiceTextProcessor.process(normalized, languageTag, policy.copy(
+                autoTerminalPunctuation = restored == null && policy.autoTerminalPunctuation,
+                stripFillers = false,
+            ))
+        }
 
         override fun close() {
             synchronized(runtimeLock) {

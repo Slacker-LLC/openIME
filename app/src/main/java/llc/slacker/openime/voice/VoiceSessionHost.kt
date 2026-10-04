@@ -8,6 +8,7 @@ package llc.slacker.openime.voice
 interface VoiceSessionHost {
     /** Kept for compatibility; production voice always commits on release of space. */
     fun onVoiceSessionStarted(autoCommitOnFinal: Boolean) {}
+    fun onVoiceCaptureStopped() {}
     fun onVoicePartial(text: String) {}
     fun onVoiceFinal(text: String) {}
     fun onVoiceError(message: String) {}

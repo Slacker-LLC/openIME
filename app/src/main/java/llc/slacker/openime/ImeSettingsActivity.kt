@@ -11,17 +11,18 @@ import android.window.OnBackInvokedCallback
 import llc.slacker.openime.core.KeyboardMode
 import llc.slacker.openime.core.Panel
 import llc.slacker.openime.core.ShiftState
-import llc.slacker.openime.data.ImeHandedness
 import llc.slacker.openime.data.ImeSettingsRepository
 import llc.slacker.openime.keyboard.ImeKeyboardView
 import llc.slacker.openime.setup.SetupUi
-import llc.slacker.openime.theme.AccentPalette
 import llc.slacker.openime.theme.ImeAppearance
 import llc.slacker.openime.theme.ImeContrastPolicy
 import llc.slacker.openime.theme.ImeTheme
 
 class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
-    companion object { const val EXTRA_EDIT_ACCENT = "edit_accent" }
+    companion object {
+        /** Open straight on the fuzzy-pinyin page; Back still returns to preferences. */
+        const val EXTRA_OPEN_FUZZY = "open_fuzzy"
+    }
     override fun attachBaseContext(newBase: android.content.Context) {
         super.attachBaseContext(SetupUi.appearanceContext(newBase))
     }
@@ -62,13 +63,12 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
                 haptic = ImeSettingsRepository.loadHaptic(this@ImeSettingsActivity),
                 popup = ImeSettingsRepository.loadPopup(this@ImeSettingsActivity),
                 fuzzy = ImeSettingsRepository.loadFuzzy(this@ImeSettingsActivity),
-                opacity = ImeSettingsRepository.loadSkinOpacity(this@ImeSettingsActivity),
-                radius = ImeSettingsRepository.loadSkinRadius(this@ImeSettingsActivity),
-                fontSize = ImeSettingsRepository.loadSkinFont(this@ImeSettingsActivity),
-                primaryColor = ImeSettingsRepository.loadSkinColor(this@ImeSettingsActivity),
             )
             showPanel(Panel.SETTINGS)
             savedInstanceState?.getInt("settings_scroll_y")?.let(::restoreSettingsScrollPosition)
+            if (savedInstanceState == null && intent.getBooleanExtra(EXTRA_OPEN_FUZZY, false)) {
+                showPanel(Panel.FUZZY_SETTINGS)
+            }
         }
         host.addView(
             keyboardView,
@@ -79,9 +79,6 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
         )
         setContentView(host)
         refreshWindowChrome()
-        if (savedInstanceState == null && intent.getBooleanExtra(EXTRA_EDIT_ACCENT, false)) {
-            host.post { keyboardView.editAccentColor() }
-        }
         if (Build.VERSION.SDK_INT >= 33) {
             backCallback = OnBackInvokedCallback { handleBack() }
             onBackInvokedDispatcher.registerOnBackInvokedCallback(
@@ -135,16 +132,8 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
     }
 
     private fun refreshWindowChrome() {
-        val appearance = ImeSettingsRepository.loadAppearance(this)
-        val theme = ImeSettingsRepository.loadTheme(this)
-        val systemDark = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-            android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val tokens = theme.tokens(
-            appearance = appearance,
-            systemDark = systemDark,
-            accentOverride = AccentPalette.parse(ImeSettingsRepository.loadSkinColor(this)),
-        )
-        val chrome = tokens.expandedBackground
+        // The page shares the app palette; the status and navigation bars match it.
+        val chrome = getColor(R.color.setup_page_bg)
         host.setBackgroundColor(chrome)
         window.statusBarColor = chrome
         window.navigationBarColor = chrome
@@ -209,15 +198,6 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
     }
     override fun onFuzzyChanged(enabled: Boolean) {
         ImeSettingsRepository.saveFuzzy(this, enabled)
-        refreshLiveIme()
-    }
-    override fun onSkinChanged(opacity: Int, radius: Int, fontSize: Int, primaryColor: String) {
-        ImeSettingsRepository.saveSkin(this, opacity, radius, fontSize, primaryColor)
-        refreshWindowChrome()
-        refreshLiveIme()
-    }
-    override fun onHandednessChanged(handedness: ImeHandedness) {
-        ImeSettingsRepository.saveHandedness(this, handedness)
         refreshLiveIme()
     }
     override fun onKeyboardHeightChanged(percent: Int) {

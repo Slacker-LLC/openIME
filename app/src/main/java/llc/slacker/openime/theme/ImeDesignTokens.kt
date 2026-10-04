@@ -25,14 +25,14 @@ internal object ImeGeometryTokens {
 
     const val TOUCH_TARGET_DP = 48
     const val FIELD_HEIGHT_DP = 56
-    const val PRIMARY_ROW_HEIGHT_DP = 56
+    const val PRIMARY_ROW_HEIGHT_DP = 52
     const val SETTING_ROW_HEIGHT_DP = 56
-    const val TOOL_CARD_HEIGHT_DP = 92
+    const val TOOL_CARD_HEIGHT_DP = 80
     const val VOICE_CONTROL_HEIGHT_DP = TOUCH_TARGET_DP
-    const val SWITCH_WIDTH_DP = 48
+    const val SWITCH_WIDTH_DP = 46
     const val SWITCH_HEIGHT_DP = 28
-    const val SWITCH_KNOB_DP = 20
-    const val SWITCH_PADDING_DP = 4
+    const val SWITCH_KNOB_DP = 24
+    const val SWITCH_PADDING_DP = 2
     const val SWITCH_KNOB_TRAVEL_DP = SWITCH_WIDTH_DP - SWITCH_PADDING_DP * 2 - SWITCH_KNOB_DP
     const val KEY_GAP_DP = 6
     const val KEY_ROW_GAP_DP = KEY_GAP_DP
@@ -89,6 +89,14 @@ internal object ImeTypographyTokens {
     const val KEY_LETTER_COMPACT_SP = 19f
     const val SYMBOL_SP = 24f
     const val DISPLAY_SP = 28f
+
+    // App-page roles (home, preferences): a grouped list reads one step larger
+    // than the keyboard's panels. Mirrored by the ime_text_* dimens.
+    const val DETAIL_SP = 13f
+    const val ROW_SP = 15f
+    const val STATUS_SP = 17f
+    const val PAGE_TITLE_SP = 18f
+    const val HEADING_SP = 26f
 
     // Compatibility names for existing callers; every alias resolves to the
     // canonical six-step scale above.
@@ -150,7 +158,6 @@ enum class ImeTheme(val key: String, val label: String) {
     fun tokens(
         appearance: ImeAppearance = ImeAppearance.DARK,
         systemDark: Boolean = false,
-        accentOverride: Int? = null,
     ): Tokens {
         fun c(hex: String): Int = Color.parseColor(hex)
         val useDark = when (appearance) {
@@ -158,7 +165,7 @@ enum class ImeTheme(val key: String, val label: String) {
             ImeAppearance.LIGHT -> false
             ImeAppearance.DARK -> true
         }
-        val base = if (useDark) {
+        return if (useDark) {
             Tokens(
                 c("#6EC3F7"), c("#1C1C1E"), c("#242426"), c("#242426"), c("#F2F2F7"),
                 c("#3A3A3C"), c("#F2F2F7"), c("#AEAEB2"), c("#2C2C2E"), c("#F2F2F7"), c("#4A4A4D"),
@@ -176,9 +183,6 @@ enum class ImeTheme(val key: String, val label: String) {
                 textSecondaryRole = c("#6D6D72"),
             )
         }
-        val accent = accentOverride ?: return base
-        if (accent == AccentPalette.parse(AccentPalette.DEFAULT)) return base
-        return base.copy(primary = accent)
     }
 }
 
@@ -296,6 +300,39 @@ internal object ImeSurfacePolicy {
     fun destructiveLabel(tokens: ImeTheme.Tokens): Int =
         if (isDark(tokens)) Color.parseColor("#FF6771") else Color.parseColor("#D60016")
 
+    /** Switch track: the accent marks "on" (an interactive state); off is neutral. */
+    fun switchTrack(on: Boolean, tokens: ImeTheme.Tokens): Int = when {
+        on -> tokens.primary
+        else -> if (isDark(tokens)) Color.parseColor("#3A3D43") else Color.parseColor("#D7DAE0")
+    }
+
+    /** Switch knob: white on light surfaces, a soft white on dark ones. */
+    fun switchKnob(tokens: ImeTheme.Tokens): Int =
+        if (isDark(tokens)) Color.parseColor("#F2F3F5") else Color.WHITE
+
+    /** Inset separator between rows of one grouped card. */
+    fun hairline(tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.blend(tokens.keyText, tokens.toolCardBackground, if (isDark(tokens)) 0.10f else 0.08f)
+
+    /** Decorative icon tile behind a setting's glyph: neutral, never the accent. */
+    fun iconTile(tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.blend(tokens.keyText, tokens.toolCardBackground, if (isDark(tokens)) 0.08f else 0.06f)
+
+    fun iconTint(tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.blend(tokens.keyText, tokens.toolCardBackground, 0.82f)
+
+    fun chevron(tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.blend(tokens.keySecondaryText, tokens.toolCardBackground, 0.62f)
+
+    /** Unfilled slider track and segmented-control track, a step off the card. */
+    fun controlTrack(tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.blend(tokens.keyText, tokens.toolCardBackground, if (isDark(tokens)) 0.12f else 0.08f)
+
+    /** The selected segment sits lighter than its track in both themes. */
+    fun segmentSelected(tokens: ImeTheme.Tokens): Int =
+        if (isDark(tokens)) ImeDrawableFactory.blend(tokens.keyText, controlTrack(tokens), 0.18f)
+        else tokens.toolCardBackground
+
     fun destructiveText(tokens: ImeTheme.Tokens): Int {
         val surface = destructiveSurface(tokens)
         return if (ImeContrastPolicy.contrastRatio(tokens.destructive, surface) >= 4.5) {
@@ -351,40 +388,4 @@ internal object ImeFocusRingPolicy {
         } else {
             ImeContrastPolicy.contrastText(background)
         }
-}
-
-/** User-selectable accents share the same color source as the rest of the IME. */
-object AccentPalette {
-    const val DEFAULT = "#1D9BF0"
-    val presets = listOf(
-        "#1D9BF0" to "蓝色",
-        "#FFD400" to "黄色",
-        "#F91880" to "粉色",
-        "#7856FF" to "紫色",
-        "#FF7A00" to "橙色",
-        "#00BA7C" to "绿色",
-        "#00C2D7" to "青色",
-        "#38BDF8" to "天蓝",
-        "#5865F2" to "靛蓝",
-        "#9B5DE5" to "深紫",
-        "#E94FB8" to "洋红",
-        "#F4212E" to "红色",
-        "#FF5A5F" to "珊瑚红",
-        "#F59E0B" to "琥珀",
-        "#84CC16" to "青柠",
-        "#22C55E" to "翠绿",
-        "#10CFA0" to "薄荷",
-        "#14B8A6" to "蓝绿",
-    )
-
-    fun parse(value: String?): Int = runCatching {
-        val raw = normalize(value).removePrefix("#")
-        (0xFF000000L or raw.toLong(16)).toInt()
-    }.getOrDefault((0xFF000000L or DEFAULT.removePrefix("#").toLong(16)).toInt())
-
-    fun normalize(value: String?): String {
-        val raw = value.orEmpty().trim()
-        val hex = if (raw.startsWith("#")) raw else "#$raw"
-        return if (hex.matches(Regex("#?[0-9a-fA-F]{6}"))) hex.uppercase() else DEFAULT
-    }
 }

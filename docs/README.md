@@ -8,6 +8,7 @@
 - [REPAIR_PLAN.md](REPAIR_PLAN.md)：当前稳定化、架构债和 UI/交互清理执行基线。
 - [MAPPING.md](MAPPING.md)：Android 产品能力到真实实现的映射。
 - [COORDINATE_SYSTEM.md](COORDINATE_SYSTEM.md)：归一化坐标与窗口自适应规则。
+- [APP_UI_SPEC.md](APP_UI_SPEC.md)：App 界面尺寸、间距、位置、对齐、安全区、字体适配和实际界面验收规范。
 - [REFERENCE_IME_GUIDE.md](REFERENCE_IME_GUIDE.md)：参考输入法 UI 基线与取舍。
 - [NINE_KEY_REFERENCE.md](NINE_KEY_REFERENCE.md)：九键 / 左栏 / 删除手势：商业与开源输入法的做法及 openIME 的取舍。
 - [LOCAL_VOICE_MODEL.md](LOCAL_VOICE_MODEL.md)：本地语音模型目录、校验和运行边界。

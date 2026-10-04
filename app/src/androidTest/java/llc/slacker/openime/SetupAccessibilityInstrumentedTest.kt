@@ -23,18 +23,19 @@ class SetupAccessibilityInstrumentedTest {
                     R.id.open_app_settings,
                     R.id.voice_permission,
                 ).forEach { id ->
-                    val card = activity.findViewById<ViewGroup>(id)
+                    val card = activity.findViewById<View>(id)
                     assertTrue("Setup card must be clickable", card.isClickable)
                     assertTrue("Setup card must be focusable", card.isFocusable)
                     assertNotNull("Setup card must describe its current action", card.contentDescription)
                     if (android.os.Build.VERSION.SDK_INT >= 30) {
                         assertNotNull("Setup card must expose its current state", card.stateDescription)
                     }
-                    for (index in 0 until card.childCount) {
+                    val children = (card as? ViewGroup)?.let { group -> (0 until group.childCount).map(group::getChildAt) }.orEmpty()
+                    children.forEach { child ->
                         assertEquals(
                             "Setup card visuals must not create duplicate nodes",
                             View.IMPORTANT_FOR_ACCESSIBILITY_NO,
-                            card.getChildAt(index).importantForAccessibility,
+                            child.importantForAccessibility,
                         )
                     }
                 }

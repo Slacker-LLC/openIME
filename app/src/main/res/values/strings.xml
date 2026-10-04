@@ -1,33 +1,51 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  The whole product (keyboard, panels, preferences) is written in Chinese, so the app pages
+  ship one Chinese string set; a partial translation only produced half-English pages.
+-->
 <resources>
     <string name="app_name">openIME</string>
     <string name="subtitle_zh">中文</string>
     <string name="subtitle_en">英文</string>
-    <string name="main_description">本地拼音输入法\n词库和语音都在设备内运行</string>
-    <string name="test_hint">在这里试打</string>
-    <string name="open_ime_settings">启用输入法</string>
-    <string name="open_ime_settings_done">已启用</string>
+    <string name="home_tagline">本地拼音 · 离线语音</string>
+
+    <string name="setup_progress">第 %1$d 步，共 3 步</string>
+    <string name="setup_heading">设置你的新键盘</string>
+    <string name="setup_subheading">完成下面三步，就可以开始打字。</string>
+    <string name="open_ime_settings">启用 openIME</string>
+    <string name="open_ime_settings_hint">在系统设置里打开 openIME 的开关</string>
+    <string name="open_ime_settings_action">前往系统设置启用</string>
     <string name="choose_ime">切换到 openIME</string>
-    <string name="choose_ime_done">已切换到 openIME</string>
-    <string name="setup_enable">启用后即可开始输入</string>
-    <string name="setup_choose">已启用，切换后就能打字</string>
-    <string name="setup_ready">已就绪，在下方试打</string>
-    <string name="typing_tips">输入 nihao 得到 你好。点候选上屏，点空格选首选。</string>
-    <string name="voice_permission_description">语音输入需要麦克风权限。音频只在本机处理，不会上传。可选择授权，也可以跳过后继续试打。</string>
-    <string name="voice_permission_denied">未获得麦克风授权，语音输入无法使用。授权后即可长按空格说话。</string>
-    <string name="voice_permission_enable">语音输入（可选）</string>
-    <string name="voice_permission_settings">前往系统设置</string>
-    <string name="voice_permission_skip">跳过</string>
-    <string name="voice_permission_skipped">已跳过，可随时授权</string>
-    <string name="voice_permission_ready">麦克风已授权</string>
-    <string name="voice_permission_ready_description">长按空格开始说话，松手即可识别。</string>
-    <string name="test_step">试打</string>
-    <string name="test_step_done">试打完成</string>
-    <string name="open_app_settings">打开偏好设置</string>
+    <string name="choose_ime_hint">在输入法选择器里选中它</string>
+    <string name="choose_ime_action">切换到 openIME</string>
+    <string name="test_step">试一试</string>
+    <string name="test_step_hint">输入 nihao，按空格得到「你好」</string>
+    <string name="setup_step_done">已完成，可再次打开</string>
+    <string name="setup_step_current">当前步骤</string>
+    <string name="setup_step_later">完成上一步后可用</string>
+
+    <string name="setup_ready">openIME 已就绪</string>
+    <string name="setup_ready_detail">已启用，并设为当前输入法</string>
+    <string name="section_optional">可选</string>
+    <string name="section_try">试一下</string>
+    <string name="section_voice">语音输入</string>
+    <string name="section_shortcuts">常用设置</string>
+    <string name="test_hint">输入拼音，或按住空格说话</string>
+    <string name="tip_nihao">nihao → 你好</string>
+    <string name="tip_space">空格选首选</string>
+    <string name="tip_voice">按住空格说话</string>
+    <string name="shortcut_fuzzy">模糊音与智能纠错</string>
+
+    <string name="voice_title">语音输入</string>
+    <string name="voice_title_ready">麦克风</string>
+    <string name="voice_permission_description">允许麦克风后，按住空格说话，离线识别</string>
+    <string name="voice_permission_ready_description">按住空格说话，松开后识别</string>
+    <string name="voice_permission_denied">麦克风权限已被拒绝，请在系统设置中允许</string>
+    <string name="voice_permission_enable">允许</string>
+    <string name="voice_permission_settings">去设置</string>
+    <string name="voice_permission_ready">已允许</string>
+
     <string name="setup_need_switch">先启用并切换到 openIME，再进入设置</string>
-    <string name="settings_accent_title">强调色</string>
-    <string name="settings_accent_custom">自定义</string>
-    <string name="settings_accent_hint">输入 6 位十六进制颜色，例如 5B6B7A</string>
     <string name="settings_title">偏好设置</string>
     <string name="activity_label_settings">偏好设置</string>
     <string name="activity_label_quick_phrases">常用语</string>

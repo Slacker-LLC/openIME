@@ -16,6 +16,11 @@ class E2ETestReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val command = intent.getStringExtra(EXTRA_COMMAND) ?: return
+        if (command == "voice-audio-e2e" || command == "voice-punctuation-e2e") {
+            val pending = goAsync()
+            VoiceAudioE2E.replay(context.applicationContext, command == "voice-punctuation-e2e", pending::finish)
+            return
+        }
         if (command.startsWith("clipboard64:")) {
             runCatching {
                 val text = String(

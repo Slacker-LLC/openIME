@@ -1,7 +1,6 @@
 package llc.slacker.openime.core
 
 import android.view.inputmethod.EditorInfo
-import llc.slacker.openime.theme.AccentPalette
 import llc.slacker.openime.theme.ImeAppearance
 import llc.slacker.openime.theme.ImeTheme
 
@@ -24,7 +23,6 @@ enum class Panel {
     TEXT_EDITOR,
     SETTINGS,
     FUZZY_SETTINGS,
-    SKIN_SETTINGS,
     CANDIDATE_EXPANDED,
 }
 
@@ -57,10 +55,6 @@ data class ImeState(
     // First real emoji category tab (see ImeData.emojiByCategory order).
     val emojiCategory: String = "笑脸",
     val voiceState: VoiceUiState = VoiceUiState(),
-    val skinOpacity: Int = 100,
-    val skinRadius: Int = 8,
-    val skinFontSize: Int = 21,
-    val skinPrimaryColor: String = AccentPalette.DEFAULT,
 )
 
 data class VoiceUiState(

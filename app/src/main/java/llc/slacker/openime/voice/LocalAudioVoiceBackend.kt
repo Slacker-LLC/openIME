@@ -11,7 +11,6 @@ import android.os.SystemClock
 import android.util.Log
 import llc.slacker.openime.hotword.HotwordRuntime
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.sqrt
@@ -48,7 +47,7 @@ class PcmRingBuffer(private val capacitySamples: Int) {
         var sourceOffset = offset
         var accepted = length
         if (accepted >= capacitySamples) {
-            droppedSamples += (accepted - capacitySamples).toLong()
+            droppedSamples += count.toLong() + (accepted - capacitySamples).toLong()
             sourceOffset += accepted - capacitySamples
             accepted = capacitySamples
             readIndex = 0
@@ -63,10 +62,10 @@ class PcmRingBuffer(private val capacitySamples: Int) {
             droppedSamples += overflow.toLong()
         }
 
-        repeat(accepted) { index ->
-            buffer[writeIndex] = samples[sourceOffset + index]
-            writeIndex = (writeIndex + 1) % capacitySamples
-        }
+        val first = minOf(accepted, capacitySamples - writeIndex)
+        samples.copyInto(buffer, writeIndex, sourceOffset, sourceOffset + first)
+        samples.copyInto(buffer, 0, sourceOffset + first, sourceOffset + accepted)
+        writeIndex = (writeIndex + accepted) % capacitySamples
         count += accepted
         (this as java.lang.Object).notifyAll()
         return accepted
@@ -76,6 +75,19 @@ class PcmRingBuffer(private val capacitySamples: Int) {
     @Synchronized
     fun awaitAndDrain(maxSamples: Int, timeoutMs: Long): ShortArray {
         require(maxSamples > 0) { "maxSamples must be positive" }
+        awaitDataLocked(timeoutMs)
+        return drainLocked(maxSamples)
+    }
+
+    /** Drain into the inference worker's reusable PCM block. */
+    @Synchronized
+    internal fun awaitAndDrainInto(target: ShortArray, offset: Int, timeoutMs: Long): Int {
+        require(offset >= 0 && offset < target.size) { "invalid PCM target offset" }
+        awaitDataLocked(timeoutMs)
+        return drainIntoLocked(target, offset, target.size - offset)
+    }
+
+    private fun awaitDataLocked(timeoutMs: Long) {
         if (count == 0 && timeoutMs > 0) {
             try {
                 (this as java.lang.Object).wait(timeoutMs)
@@ -83,7 +95,6 @@ class PcmRingBuffer(private val capacitySamples: Int) {
                 Thread.currentThread().interrupt()
             }
         }
-        return drainLocked(maxSamples)
     }
 
     @Synchronized
@@ -109,12 +120,18 @@ class PcmRingBuffer(private val capacitySamples: Int) {
         val take = minOf(maxSamples, count)
         if (take == 0) return ShortArray(0)
         val result = ShortArray(take)
-        repeat(take) { index ->
-            result[index] = buffer[readIndex]
-            readIndex = (readIndex + 1) % capacitySamples
-        }
-        count -= take
+        drainIntoLocked(result, 0, take)
         return result
+    }
+
+    private fun drainIntoLocked(target: ShortArray, offset: Int, maxSamples: Int): Int {
+        val take = minOf(maxSamples, count)
+        val first = minOf(take, capacitySamples - readIndex)
+        buffer.copyInto(target, offset, readIndex, readIndex + first)
+        buffer.copyInto(target, offset + first, 0, take - first)
+        readIndex = (readIndex + take) % capacitySamples
+        count -= take
+        return take
     }
 }
 
@@ -183,8 +200,8 @@ class LocalAudioVoiceBackend(
     private val startGeneration = AtomicLong(0L)
     private val stopRequestedGeneration = AtomicLong(-1L)
     private val stopRequestedAtMs = AtomicLong(0L)
-    private val stopExecutor = Executors.newSingleThreadScheduledExecutor { runnable ->
-        Thread(runnable, "local-voice-tail-stop").apply { isDaemon = true }
+    private val stopExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "local-voice-capture-stop").apply { isDaemon = true }
     }
     private val routeManager = VoiceAudioRouteManager(context)
 
@@ -333,7 +350,12 @@ class LocalAudioVoiceBackend(
             }
             startCaptureThread(session)
             events.onReady()
-            if (session.stopRequested.get()) scheduleCaptureStop(session, generation)
+            if (session.stopRequested.get()) dispatchCaptureStop(session, generation)
+
+            if (session.cancelled.get() || session.failed.get()) {
+                cleanupStartingSession(session)
+                return
+            }
 
             // Waiting for verification/model mapping is safe here: capture is
             // already live and the bounded ring keeps the spoken prefix.
@@ -371,7 +393,7 @@ class LocalAudioVoiceBackend(
         if (current == null) return
         current.releaseAtMs = releasedAt
         current.stopRequested.set(true)
-        if (current.running.get()) scheduleCaptureStop(current, generation)
+        if (current.running.get()) dispatchCaptureStop(current, generation)
         if (current.modelReady.get()) startInferenceThread(current)
         // If the first model load is still running, initializeSession keeps
         // this session alive, then drains the buffered PCM and emits one final.
@@ -421,22 +443,18 @@ class LocalAudioVoiceBackend(
         session.captureThread?.interrupt()
     }
 
-    private fun scheduleCaptureStop(session: Session, generation: Long) {
+    private fun dispatchCaptureStop(session: Session, generation: Long) {
         if (!session.captureStopScheduled.compareAndSet(false, true)) return
-        stopExecutor.schedule(
-            {
-                if (
-                    isCurrent(generation, session) &&
-                    session.stopRequested.get() &&
-                    !session.cancelled.get() &&
-                    !session.failed.get()
-                ) {
-                    requestCaptureStop(session)
-                }
-            },
-            TAIL_CAPTURE_MILLIS,
-            TimeUnit.MILLISECONDS,
-        )
+        stopExecutor.execute {
+            if (
+                isCurrent(generation, session) &&
+                session.stopRequested.get() &&
+                !session.cancelled.get() &&
+                !session.failed.get()
+            ) {
+                requestCaptureStop(session)
+            }
+        }
     }
 
     private fun startCaptureThread(session: Session) {
@@ -459,6 +477,7 @@ class LocalAudioVoiceBackend(
                 when {
                     read > 0 -> {
                         VoicePerformanceTrace.markFirstPcm(session.traceToken)
+                        session.capturedSamples.addAndGet(read.toLong())
                         val droppedBefore = session.ring.droppedSamples
                         session.ring.offer(pcm, 0, read)
                         if (
@@ -469,6 +488,8 @@ class LocalAudioVoiceBackend(
                                 TAG,
                                 "PCM pipeline degraded droppedPcmSamples=${session.ring.droppedSamples}",
                             )
+                            fail(session, "语音处理跟不上录音，音频不完整，请分短句重试")
+                            break
                         }
                         var sum = 0.0
                         repeat(read) { index ->
@@ -491,33 +512,40 @@ class LocalAudioVoiceBackend(
             // to be offered to the ring before ASR finalization.
             session.ring.wake()
             runCatching { session.record.release() }
+            val captureDelay = if (session.releaseAtMs > 0L) {
+                SystemClock.elapsedRealtime() - session.releaseAtMs
+            } else {
+                -1L
+            }
+            Log.i(TAG, "captureFinished releaseToCaptureMs=$captureDelay capturedSamples=${session.capturedSamples.get()}")
+            session.events.onCaptureStopped()
         }
     }
 
     private fun inferenceLoop(session: Session) {
         val voiceSession = checkNotNull(session.voiceSession) { "本地语音模型尚未连接" }
         val pending = ShortArray(LocalVoiceAudioSpec.CHUNK_SAMPLES)
+        val waveform = FloatArray(LocalVoiceAudioSpec.CHUNK_SAMPLES)
         var pendingCount = 0
+        var decodedSamples = 0L
         try {
             while (!session.captureFinished.get() || session.ring.size > 0) {
-                val part = session.ring.awaitAndDrain(
-                    LocalVoiceAudioSpec.CHUNK_SAMPLES - pendingCount,
-                    50,
-                )
-                if (part.isNotEmpty()) {
-                    part.copyInto(pending, pendingCount)
-                    pendingCount += part.size
-                }
+                if (session.cancelled.get() || session.failed.get()) return
+                pendingCount += session.ring.awaitAndDrainInto(pending, pendingCount, 50)
                 if (pendingCount == 0) continue
                 if (pendingCount < pending.size && !session.captureFinished.get()) continue
-                val chunk = pending.copyOf(pendingCount)
+                val chunk = if (pendingCount == waveform.size) waveform else FloatArray(pendingCount)
+                repeat(pendingCount) { index -> chunk[index] = pending[index] / 32768f }
                 pendingCount = 0
                 VoicePerformanceTrace.markFirstDecode(session.traceToken)
-                voiceSession.acceptWaveform(pcm16ToFloat(chunk))
+                voiceSession.acceptWaveform(chunk)
+                decodedSamples += chunk.size
             }
+            if (session.cancelled.get() || session.failed.get()) return
             if (pendingCount > 0) {
                 VoicePerformanceTrace.markFirstDecode(session.traceToken)
                 voiceSession.acceptWaveform(pcm16ToFloat(pending.copyOf(pendingCount)))
+                decodedSamples += pendingCount
             }
             if (
                 !session.failed.get() &&
@@ -530,6 +558,7 @@ class LocalAudioVoiceBackend(
                     TAG,
                     "inputFinished begin releaseAtMs=${session.releaseAtMs} " +
                         "nowMs=$finalizeStartedAt ringRemainingSamples=$remainingBeforeFinish " +
+                        "capturedSamples=${session.capturedSamples.get()} decodedSamples=$decodedSamples " +
                         "droppedSamples=${session.ring.droppedSamples} " +
                         "lastPartialLength=${session.lastPartial.length}",
                 )
@@ -591,6 +620,7 @@ class LocalAudioVoiceBackend(
         var voiceSession: StreamingVoiceModelSession? = null
         val running = AtomicBoolean(false)
         val captureFinished = AtomicBoolean(false)
+        val capturedSamples = AtomicLong(0L)
         val stopRequested = AtomicBoolean(false)
         val cancelled = AtomicBoolean(false)
         val modelReady = AtomicBoolean(false)
@@ -608,6 +638,5 @@ class LocalAudioVoiceBackend(
 
     private companion object {
         const val TAG = "OpenImeVoicePerf"
-        const val TAIL_CAPTURE_MILLIS = 300L
     }
 }

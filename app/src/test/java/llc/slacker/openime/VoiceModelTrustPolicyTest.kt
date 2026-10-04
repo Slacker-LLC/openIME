@@ -53,7 +53,12 @@ class VoiceModelTrustPolicyTest {
         )
         assertEquals("paraformer", manifest.modelType)
         assertEquals(
-            listOf(SHERPA_DECODER, SHERPA_ENCODER, SHERPA_TOKENS),
+            listOf(
+                SHERPA_DECODER,
+                SHERPA_ENCODER,
+                SHERPA_TOKENS,
+                "models/voice/punctuation/model.int8.onnx",
+            ),
             manifest.files,
         )
         val catalog = TrustedVoiceModelCatalog.parse(
