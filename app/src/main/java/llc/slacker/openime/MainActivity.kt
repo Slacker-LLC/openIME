@@ -64,6 +64,22 @@ class MainActivity : Activity() {
             }
             insets
         }
+        findViewById<View>(R.id.main_scroll).addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
+            val width = minOf(view.width - view.paddingLeft - view.paddingRight, SetupUi.dp(this, 600))
+            val content = findViewById<View>(R.id.main_content)
+            (content.layoutParams as android.widget.FrameLayout.LayoutParams).let { params ->
+                if (params.width != width) { params.width = width; content.layoutParams = params }
+            }
+            val button = findViewById<View>(R.id.open_app_settings)
+            (button.layoutParams as android.widget.LinearLayout.LayoutParams).let { params ->
+                val buttonWidth = (width - SetupUi.dp(this, 32)).coerceAtLeast(0)
+                if (params.width != buttonWidth) {
+                    params.width = buttonWidth
+                    params.gravity = android.view.Gravity.CENTER_HORIZONTAL
+                    button.layoutParams = params
+                }
+            }
+        }
         setupClick(findViewById(R.id.open_ime_settings)) {
             startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
         }
@@ -154,6 +170,11 @@ class MainActivity : Activity() {
         val enabled = status.enabled
         val selected = status.selected
         val accent = SetupUi.accent(this)
+        val tokens = SetupUi.tokens(this)
+        findViewById<View>(R.id.main_scroll).setBackgroundColor(tokens.keyboardBackground)
+        window.statusBarColor = tokens.keyboardBackground
+        window.navigationBarColor = tokens.keyboardBackground
+        findViewById<View>(R.id.voice_permission_card).background = SetupUi.keyBackground(this)
         val prefs = getPreferences(MODE_PRIVATE)
         val microphoneGranted =
             checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
@@ -166,16 +187,15 @@ class MainActivity : Activity() {
         val testInput = findViewById<EditText>(R.id.test_input)
         val testDone = testInput.text?.isNotBlank() == true
 
-        testInput.background = SetupUi.inputBackground(this)
-        testInput.setPadding(SetupUi.dp(this, 16), 0, SetupUi.dp(this, 16), 0)
+        testInput.background = SetupUi.keyBackground(this)
+        testInput.setPadding(SetupUi.dp(this, 16), SetupUi.dp(this, 8), SetupUi.dp(this, 16), SetupUi.dp(this, 8))
         SetupUi.styleCursor(this, testInput)
 
         findViewById<TextView>(R.id.status).setText(
             when {
                 !enabled -> R.string.setup_enable
                 !selected -> R.string.setup_choose
-                testDone -> R.string.setup_ready
-                else -> R.string.test_step
+                else -> R.string.setup_ready
             },
         )
 
@@ -248,6 +268,7 @@ class MainActivity : Activity() {
         )
         findViewById<View>(R.id.voice_permission_actions).visibility = if (microphoneGranted || microphoneSkipped) View.GONE else View.VISIBLE
         findViewById<TextView>(R.id.voice_permission_authorize).background = SetupUi.secondaryBackground(this)
+        findViewById<TextView>(R.id.voice_permission_authorize).setTextColor(SetupUi.secondaryTextColor(this))
         findViewById<TextView>(R.id.voice_permission_skip).apply {
             visibility =
                 if (selected && !microphoneGranted && !microphoneSkipped) {
@@ -256,6 +277,7 @@ class MainActivity : Activity() {
                     View.GONE
                 }
             isEnabled = visibility == View.VISIBLE
+            (this as TextView).setTextColor(SetupUi.secondaryTextColor(this@MainActivity))
             background = null
         }
 
@@ -282,7 +304,8 @@ class MainActivity : Activity() {
         findViewById<View>(R.id.open_app_settings).apply {
             isEnabled = ready
             alpha = if (ready) 1f else ImeSurfacePolicy.DISABLED_ALPHA
-            background = SetupUi.secondaryBackground(this@MainActivity)
+            background = SetupUi.buttonBackground(this@MainActivity, SetupUi.primaryButtonColor(this@MainActivity))
+            (this as TextView).setTextColor(android.graphics.Color.WHITE)
             contentDescription = getString(
                 if (ready) R.string.open_app_settings else R.string.setup_need_switch,
             )
@@ -348,7 +371,8 @@ class MainActivity : Activity() {
         // A completed setup step remains an action: users may need to revisit
         // the system picker or input-method settings after initial setup.
         row.isEnabled = true
-        row.background = null
+        val tokens = SetupUi.tokens(this)
+        row.background = if (row.id == R.id.voice_permission) null else SetupUi.keyBackground(this)
         label.text = if (done) doneText else activeText
         label.setTextColor(getColor(if (done || active) R.color.setup_title else R.color.setup_body))
         // A completed step is easier to scan as a result than as an old
@@ -361,20 +385,10 @@ class MainActivity : Activity() {
         } else null
         mark.setCompoundDrawablesRelative(drawable, null, null, null)
         mark.compoundDrawableTintList = ColorStateList.valueOf(
-            if (done) contrastText(getColor(R.color.setup_ready)) else getColor(R.color.setup_body),
+            if (done || active) accent else tokens.keySecondaryText,
         )
-        mark.background = android.graphics.drawable.GradientDrawable().apply {
-            shape = android.graphics.drawable.GradientDrawable.OVAL
-            setColor(if (done) getColor(R.color.setup_ready) else if (active) accent else getColor(R.color.setup_surface))
-            if (!done && !active) setStroke(SetupUi.dp(this@MainActivity, 1), getColor(R.color.setup_input_line))
-        }
-        mark.setTextColor(
-            when {
-                active -> contrastText(accent)
-                done -> contrastText(getColor(R.color.setup_ready))
-                else -> getColor(R.color.setup_body)
-            },
-        )
+        mark.background = SetupUi.rounded(tokens.functionKeyBackground, SetupUi.dp(this, ImeGeometryTokens.KEY_RADIUS_DP).toFloat())
+        mark.setTextColor(if (active) accent else tokens.keySecondaryText)
         chevron?.imageTintList = ColorStateList.valueOf(
             getColor(R.color.setup_body),
         )
@@ -396,9 +410,9 @@ class MainActivity : Activity() {
                 if (done) android.widget.LinearLayout.LayoutParams.WRAP_CONTENT else SetupUi.dp(this, 40),
             )
             status.background = if (done) null else SetupUi.rounded(
-                if (active) accent else getColor(R.color.setup_disabled), SetupUi.dp(this, 12).toFloat(),
+                if (active) SetupUi.primaryButtonColor(this) else tokens.functionKeyBackground, SetupUi.dp(this, ImeGeometryTokens.PILL_RADIUS_DP).toFloat(),
             )
-            status.setTextColor(if (done) getColor(R.color.setup_body) else if (active) contrastText(accent) else getColor(R.color.setup_disabled_text))
+            status.setTextColor(if (done) getColor(R.color.setup_body) else if (active) android.graphics.Color.WHITE else getColor(R.color.setup_disabled_text))
 
         }
         if (row.id == R.id.test_step) (row as android.widget.LinearLayout).getChildAt(2)?.visibility = View.GONE

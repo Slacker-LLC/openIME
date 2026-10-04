@@ -25,14 +25,14 @@ internal object ImeGeometryTokens {
 
     const val TOUCH_TARGET_DP = 48
     const val FIELD_HEIGHT_DP = 56
-    const val PRIMARY_ROW_HEIGHT_DP = 56
+    const val PRIMARY_ROW_HEIGHT_DP = 52
     const val SETTING_ROW_HEIGHT_DP = 56
     const val TOOL_CARD_HEIGHT_DP = 92
     const val VOICE_CONTROL_HEIGHT_DP = TOUCH_TARGET_DP
-    const val SWITCH_WIDTH_DP = 48
-    const val SWITCH_HEIGHT_DP = 28
-    const val SWITCH_KNOB_DP = 20
-    const val SWITCH_PADDING_DP = 4
+    const val SWITCH_WIDTH_DP = 51
+    const val SWITCH_HEIGHT_DP = 31
+    const val SWITCH_KNOB_DP = 27
+    const val SWITCH_PADDING_DP = 2
     const val SWITCH_KNOB_TRAVEL_DP = SWITCH_WIDTH_DP - SWITCH_PADDING_DP * 2 - SWITCH_KNOB_DP
     const val KEY_GAP_DP = 6
     const val KEY_ROW_GAP_DP = KEY_GAP_DP
@@ -295,6 +295,12 @@ internal object ImeSurfacePolicy {
     /** Outlined destructive controls (clear / delete): a red tuned to read on panel heads. */
     fun destructiveLabel(tokens: ImeTheme.Tokens): Int =
         if (isDark(tokens)) Color.parseColor("#FF6771") else Color.parseColor("#D60016")
+
+    /** iOS-style switch track: green when on, neutral grey when off. */
+    fun switchTrack(on: Boolean, tokens: ImeTheme.Tokens): Int = when {
+        on -> if (isDark(tokens)) Color.parseColor("#30D158") else Color.parseColor("#34C759")
+        else -> if (isDark(tokens)) Color.parseColor("#39393D") else Color.parseColor("#E9E9EB")
+    }
 
     fun destructiveText(tokens: ImeTheme.Tokens): Int {
         val surface = destructiveSurface(tokens)

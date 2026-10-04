@@ -9,8 +9,8 @@ internal data class VoiceTextProcessingPolicy(
 /**
  * Fast, deterministic post-processing kept between ASR and InputConnection.
  *
- * The APK currently ships a streaming recognition model without a separate
- * punctuation model. Spoken punctuation is interpreted conservatively and
+ * The streaming runtime restores punctuation before this final formatting step.
+ * Spoken punctuation is interpreted conservatively and
  * terminal punctuation is enabled only for prose-like EditorInfo contexts.
  */
 object VoiceTextProcessor {
@@ -80,7 +80,7 @@ object VoiceTextProcessor {
             if (
                 policy.autoTerminalPunctuation &&
                 text.length >= 4 &&
-                text.last() !in "。！？…"
+                text.last() !in "。！？….!?"
             ) {
                 text += if (text.endsWith("吗") || text.endsWith("呢") || text.endsWith("么")) {
                     "？"
@@ -127,6 +127,8 @@ object VoiceTextProcessor {
     private fun punctuationToSpaces(value: String): String {
         var text = value
             .replace(Regex("[，。！？；：、]+|…+|—{2,}"), " ")
+            // ASCII clause marks next to Chinese are punctuation too.
+            .replace(Regex("(?<=[\\u4e00-\\u9fff])[,.!?;:]+|[,.!?;:]+(?=[\\u4e00-\\u9fff])"), " ")
             // Latin marks only when they end a word, so 3.5 and a.b stay intact.
             .replace(Regex("(?<=\\S)[,.!?;:]+(?=\\s|$)"), " ")
         text = text.replace(Regex("\\s+"), " ").trim()
@@ -155,7 +157,7 @@ object VoiceTextProcessor {
 
     private fun collapsePunctuation(value: String): String = value
         .replace(Regex("[。]{2,}"), "。")
-        .replace(Regex("[！!]{2,}"), "！")
-        .replace(Regex("[？?]{2,}"), "？")
-        .replace(Regex("[，,]{2,}"), "，")
+        .replace(Regex("[！!]{2,}")) { it.value.take(1) }
+        .replace(Regex("[？?]{2,}")) { it.value.take(1) }
+        .replace(Regex("[，,]{2,}")) { it.value.take(1) }
 }

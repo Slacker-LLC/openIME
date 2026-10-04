@@ -109,9 +109,10 @@ internal object VoiceMemoryAdmissionPolicy {
         // memoryClass does not cap native ONNX allocations, but an extremely
         // small heap class is a strong signal that loading a 400+ MB runtime is
         // unsafe even when cached pages temporarily make availMem look large.
+        // Punctuation is native too; do not treat its size as a Java heap limit.
         if (
             snapshot.memoryClassBytes > 0L &&
-            snapshot.memoryClassBytes < requiredMemory / 2L
+            snapshot.memoryClassBytes < minOf(requiredMemory / 2L, 256L * 1024L * 1024L)
         ) {
             return VoiceMemoryAdmission(
                 false,
@@ -384,6 +385,10 @@ class VoiceModelLifecycleManager(
                     VoicePerformanceTrace.markModelReady()
                     events.onModelReady()
                 }
+            }
+
+            override fun onCaptureStopped() {
+                if (isCurrentSession(token)) events.onCaptureStopped()
             }
         })
     }

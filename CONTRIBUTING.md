@@ -6,6 +6,7 @@
 2. 执行 `git lfs pull`，确认语音模型和 AAR 不是文本指针。
 3. 先阅读 [README.md](README.md)、[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
    和 [docs/TEST_ARCHITECTURE.md](docs/TEST_ARCHITECTURE.md)。
+4. 修改 App 界面时按 [App 界面开发规范](docs/APP_UI_SPEC.md) 实现尺寸、间距、对齐、点击区及大字体适配；先复用现有令牌和资源，不自行引入一套数值。
 
 ## 分支与提交
 
@@ -47,6 +48,8 @@ python3 scripts/release_check.py check
 
 如果改动了布局或 Insets，再运行 `visual_check.ps1`，并在 PR 中说明测试设备的
 Android 版本、窗口宽度和是否使用浮动键盘。
+App 界面同时按 `docs/APP_UI_SPEC.md` 检查普通屏、320dp 大字体和宽屏；运行
+`scripts/beta4_e2e.py` 并保存截图、UI XML、结果 JSON 和日志作为可重复的验收工件。
 
 ## Pull Request
 

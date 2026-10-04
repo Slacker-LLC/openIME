@@ -3,6 +3,8 @@ package llc.slacker.openime.theme
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
+import android.graphics.drawable.Drawable
+import android.graphics.drawable.LayerDrawable
 import llc.slacker.openime.R
 
 /**
@@ -10,6 +12,12 @@ import llc.slacker.openime.R
  * Radius and stroke values are pixels; callers keep density conversion.
  */
 internal object ImeDrawableFactory {
+    /** The same one-dp bottom edge as the keyboard's key caps. */
+    fun keyCap(face: Drawable, edgeColor: Int, radiusPx: Int, edgePx: Int): LayerDrawable =
+        LayerDrawable(arrayOf(rounded(edgeColor, radiusPx), face)).apply {
+            setLayerInset(1, 0, 0, 0, edgePx.coerceAtLeast(1))
+        }
+
     fun rounded(
         color: Int,
         radiusPx: Int,

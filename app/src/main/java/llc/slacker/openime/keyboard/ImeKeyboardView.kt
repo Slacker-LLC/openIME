@@ -293,7 +293,7 @@ open class ImeKeyboardView(
     private var keyboardHeightPercent = ImeSettingsRepository.loadKeyboardHeightPercent(context)
     private var floatingWidthPercent = ImeSettingsRepository.loadFloatingWidthPercent(context)
     private var floatingOpacityPercent = ImeSettingsRepository.loadFloatingOpacityPercent(context)
-    private var referenceScale = ImeReferenceSizing.scale(context)
+    private var referenceScale = if (standalonePanel) 1f else ImeReferenceSizing.scale(context)
     private var floatingWindowMode = false
     private var layoutMetrics = buildLayoutMetrics()
     /** Landscape uses compact rows, except in floating mode, which keeps portrait size. */
@@ -1034,7 +1034,7 @@ open class ImeKeyboardView(
         if (measuredWidthPx <= 0) return
 
         val dockWidthPx =
-            if (floatingKeyboardController.enabled || keyboardHandedness == ImeHandedness.STANDARD) {
+            if (standalonePanel || floatingKeyboardController.enabled || keyboardHandedness == ImeHandedness.STANDARD) {
                 measuredWidthPx
             } else {
                 (measuredWidthPx * 0.82f).toInt()
@@ -1042,7 +1042,7 @@ open class ImeKeyboardView(
                     .coerceAtMost(measuredWidthPx)
             }
 
-        val nextScale = ImeReferenceSizing.scale(context, dockWidthPx, landscapeCompact = !floatingWindowMode)
+        val nextScale = if (standalonePanel) 1f else ImeReferenceSizing.scale(context, dockWidthPx, landscapeCompact = !floatingWindowMode)
         // Configuration.screenWidthDp is a whole number while the measured width
         // is not (411dp vs 411.43dp on a 1080px / 420dpi screen), so the two
         // scales differ by up to 1/390 for the same window. That rounding noise
@@ -1105,7 +1105,8 @@ open class ImeKeyboardView(
             return
         }
         val minimumInset = dp(0)
-        val maxWidth = (minOf(maxContentWidthDp.toFloat(), 390f * referenceScale) * resources.displayMetrics.density).toInt()
+        val maxWidth = if (standalonePanel) dp(maxContentWidthDp)
+            else (minOf(maxContentWidthDp.toFloat(), 390f * referenceScale) * resources.displayMetrics.density).toInt()
         contentInsetPx = maxOf(minimumInset, (dockWidthPx - maxWidth) / 2)
         keyboardBody.setPadding(
             contentInsetPx,
@@ -2263,7 +2264,7 @@ open class ImeKeyboardView(
         text = textValue
         textSize = ImeTypographyTokens.SMALL_SP
         includeFontPadding = false
-        setPadding(dp(16), dp(4), 0, dp(8))
+        setPadding(dp(16), dp(if (standalonePanel) 0 else 4), 0, dp(8))
         tag = "panel-section-title"
     }
 
@@ -3098,7 +3099,7 @@ open class ImeKeyboardView(
         mainDock.setBackgroundColor(t.keyboardBackground)
         keyboardBody.setBackgroundColor(t.keyboardBackground)
         topZone.setBackgroundColor(t.toolbarBackground)
-        expandedPanel.setBackgroundColor(if (standalonePanel) t.toolbarBackground else t.keyboardBackground)
+        expandedPanel.setBackgroundColor(t.keyboardBackground)
         candidateOverlay.setBackgroundColor(t.expandedBackground)
         themeApplier.apply(this, t)
         topZone.applyTokens(t)

@@ -105,10 +105,7 @@ internal class ImeThemeApplier(
 
         view.applyMainTextScale(keyMainTextScale())
         val keyFace = statefulRounded(color, pressedColor, skinRadiusPx())
-        val keyEdge = ImeDrawableFactory.rounded(pressedColor, skinRadiusPx())
-        val keyCap = LayerDrawable(arrayOf(keyEdge, keyFace)).apply {
-            setLayerInset(1, 0, 0, 0, toPx(1).coerceAtLeast(1))
-        }
+        val keyCap = ImeDrawableFactory.keyCap(keyFace, pressedColor, skinRadiusPx(), toPx(1))
         val halfGap = toPx(ImeGeometryTokens.KEY_GAP_DP) / 2
         view.background = InsetDrawable(keyCap, halfGap, halfGap, halfGap, halfGap)
         view.background?.alpha =
@@ -137,6 +134,14 @@ internal class ImeThemeApplier(
 
     private fun applyLinearLayout(view: LinearLayout, t: ImeTheme.Tokens) {
         when (view.tag) {
+            "app-setting-key" -> {
+                val radius = toPx(ImeGeometryTokens.KEY_RADIUS_DP)
+                view.background = ImeDrawableFactory.keyCap(
+                    statefulRounded(t.keyBackground, t.keyPressedBackground, radius),
+                    t.border, radius, toPx(1),
+                )
+            }
+            "app-setting-group" -> view.background = null
             "candidate-first-row" -> {
                 val selected = t.keyBackground
                 view.background = statefulRounded(
@@ -602,9 +607,12 @@ internal class ImeThemeApplier(
                     ?.substringBefore('，')
                     .orEmpty()
                 val enabled = toggleState(seed)
-                view.background = ImeDrawableFactory.rounded(
-                    if (enabled) t.primary else t.panelHeadBackground,
-                    toPx(ImeGeometryTokens.PILL_RADIUS_DP),
+                view.background = paintedWithinTarget(
+                    ImeDrawableFactory.rounded(
+                        ImeSurfacePolicy.switchTrack(enabled, t),
+                        toPx(ImeGeometryTokens.PILL_RADIUS_DP),
+                    ),
+                    ImeGeometryTokens.SWITCH_HEIGHT_DP,
                 )
             }
         }
@@ -625,14 +633,8 @@ internal class ImeThemeApplier(
                 )
             }
             "toggle-knob" -> {
-                val parent = view.parent as? FrameLayout
-                val seed = parent?.contentDescription?.toString()
-                    ?.substringBefore('，')
-                    .orEmpty()
-                val trackColor =
-                    if (toggleState(seed)) t.primary else t.panelHeadBackground
                 view.background = ImeDrawableFactory.rounded(
-                    ImeDrawableFactory.contrastText(trackColor),
+                    Color.WHITE,
                     toPx(ImeGeometryTokens.PILL_RADIUS_DP),
                 )
             }
@@ -650,8 +652,8 @@ internal class ImeThemeApplier(
         drawable: android.graphics.drawable.Drawable,
         paintedDp: Int,
     ): InsetDrawable {
-        val inset = toPx((ImeGeometryTokens.TOUCH_TARGET_DP - paintedDp) / 2)
-        return InsetDrawable(drawable, 0, inset, 0, inset)
+        val extra = toPx(ImeGeometryTokens.TOUCH_TARGET_DP) - toPx(paintedDp)
+        return InsetDrawable(drawable, 0, extra / 2, 0, extra - extra / 2)
     }
 
     private fun hasAncestorTag(view: View, tag: String): Boolean {

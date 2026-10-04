@@ -32,6 +32,7 @@ import llc.slacker.openime.theme.ImeAppearance
 import llc.slacker.openime.theme.ImeDrawableFactory
 import llc.slacker.openime.theme.ImeGeometryTokens
 import llc.slacker.openime.theme.ImeMotionTokens
+import llc.slacker.openime.theme.ImeSpacingTokens
 import llc.slacker.openime.theme.ImeTheme
 import llc.slacker.openime.theme.ImeTypographyTokens
 
@@ -83,6 +84,9 @@ internal class SettingsPanelController(
     private val applyTheme: () -> Unit,
     private val onHierarchyRebuilt: () -> Unit,
 ) {
+    private val standalone = context is ImeSettingsActivity
+    private val stackControls: Boolean
+        get() = standalone && (context.resources.configuration.screenWidthDp < 360 || context.resources.configuration.fontScale >= 1.2f)
     private var storedScrollY = 0
     private var settingsScroll: ScrollView? = null
     private var showingSkinOnly = false
@@ -109,7 +113,7 @@ internal class SettingsPanelController(
                 createHeader(if (skinOnly) "强调色与按键皮肤" else "偏好设置"),
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
-                    toPx(ImeGeometryTokens.TOP_BAR_HEIGHT_DP),
+                    if (standalone) context.resources.getDimensionPixelSize(R.dimen.setup_top_bar_height) else toPx(ImeGeometryTokens.TOP_BAR_HEIGHT_DP),
                 ),
             )
         } else {
@@ -131,7 +135,8 @@ internal class SettingsPanelController(
 
         val content = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(toPx(12), toPx(12), toPx(12), toPx(18))
+            val inset = toPx(if (standalone) ImeSpacingTokens.LG_DP else ImeSpacingTokens.MD_DP)
+            setPadding(inset, inset, inset, toPx(if (standalone) ImeSpacingTokens.XL_DP else 18))
             tag = "settings-panel"
         }
 
@@ -153,17 +158,8 @@ internal class SettingsPanelController(
                 },
                 settingsSlider("键盘高度", 80, 120, currentKeyboardHeightPercent(), onKeyboardHeightChanged),
             ), groupParams())
-            if (context !is ImeSettingsActivity) {
-                content.addView(createSectionTitle("更多外观"), wrapParams())
-                content.addView(settingGroup(settingNavigationRow("强调色与按键皮肤", "颜色、圆角、不透明度与字号", onShowSkinSettings)), groupParams())
-            }
-
-            if (context is ImeSettingsActivity) {
-                content.addView(createSectionTitle("强调色"), wrapParams())
-                content.addView(accentColorRow(), groupParams())
-                content.addView(createSectionTitle("按键皮肤"), wrapParams())
-                content.addView(skinSliders(), groupParams())
-            }
+            content.addView(createSectionTitle("更多外观"), wrapParams())
+            content.addView(settingGroup(settingNavigationRow("强调色与按键皮肤", "颜色、圆角、不透明度与字号", onShowSkinSettings)), groupParams())
             content.addView(createSectionTitle("浮动键盘"), wrapParams())
             content.addView(settingGroup(
                 settingsSlider("浮动宽度", 72, 100, currentFloatingWidthPercent()) { onFloatingStyleChanged(it, currentFloatingOpacityPercent()) },
@@ -252,28 +248,35 @@ internal class SettingsPanelController(
 
     private fun segmentedSetting(label: String, labels: List<String>, selected: String, onSelected: (String) -> Unit): View =
         LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
+            val verticalOptions = standalone && context.resources.configuration.fontScale >= 1.6f
+            orientation = if (stackControls) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(toPx(16), 0, toPx(16), 0)
-            addView(labelText(label, ImeTypographyTokens.BODY_SP).apply { typeface = android.graphics.Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER_VERTICAL },
-                LinearLayout.LayoutParams(0, toPx(56), 1f))
+            setPadding(toPx(16), toPx(if (standalone) 8 else 0), toPx(16), toPx(if (standalone) 8 else 0))
+            addView(labelText(label, ImeTypographyTokens.BODY_SP).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                if (!standalone) typeface = android.graphics.Typeface.DEFAULT_BOLD
+            },
+                if (stackControls) LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                else if (standalone) LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = toPx(ImeSpacingTokens.MD_DP) }
+                else LinearLayout.LayoutParams(0, toPx(56), 1f))
             addView(LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                // The painted track is 34dp (inset in the theme) but every option is a
-                // full 48dp touch target.
-                tag = "segmented-track-tall"
+                orientation = if (verticalOptions) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+                tag = if (verticalOptions) "segmented-track" else "segmented-track-tall"
                 setPadding(toPx(2), toPx(2), toPx(2), toPx(2))
                 labels.forEach { value ->
                     addView(TextView(context).apply {
                         text = value; textSize = ImeTypographyTokens.BODY_SP; gravity = Gravity.CENTER; includeFontPadding = false
                         minimumHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
-                        tag = if (value == selected) "segment-selected-tall" else "segment-option-tall"
+                        tag = if (value == selected) { if (verticalOptions) "segment-selected" else "segment-selected-tall" }
+                            else if (verticalOptions) "segment-option" else "segment-option-tall"
                         contentDescription = "$value，${if (value == selected) "已选中" else "未选中"}"
                         isClickable = true; isFocusable = true
                         setOnClickListener { onFeedback(); onSelected(value) }
-                    }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
+                    }, if (verticalOptions) LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                    else LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
                 }
-            }, LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 2f))
+            }, if (stackControls) LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, if (verticalOptions) LinearLayout.LayoutParams.WRAP_CONTENT else toPx(ImeGeometryTokens.TOUCH_TARGET_DP)).apply { topMargin = toPx(ImeSpacingTokens.SM_DP) }
+            else LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 2f))
         }
 
     fun renderFuzzySettings() {
@@ -281,7 +284,7 @@ internal class SettingsPanelController(
             createHeader("模糊音纠错"),
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
+                if (standalone) context.resources.getDimensionPixelSize(R.dimen.setup_top_bar_height) else toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
             ),
         )
         val scroll = ScrollView(context).apply {
@@ -291,7 +294,8 @@ internal class SettingsPanelController(
         }
         val content = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(toPx(12), toPx(12), toPx(12), toPx(18))
+            val inset = toPx(if (standalone) ImeSpacingTokens.LG_DP else ImeSpacingTokens.MD_DP)
+            setPadding(inset, inset, inset, toPx(if (standalone) ImeSpacingTokens.XL_DP else 18))
             tag = "fuzzy-settings-panel"
         }
         content.addView(
@@ -303,8 +307,8 @@ internal class SettingsPanelController(
             },
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(54),
-            ).apply { bottomMargin = toPx(10) },
+                if (standalone) LinearLayout.LayoutParams.WRAP_CONTENT else toPx(54),
+            ).apply { bottomMargin = toPx(if (standalone) ImeSpacingTokens.XL_DP else 10) },
         )
         content.addView(
             settingGroup(
@@ -313,7 +317,7 @@ internal class SettingsPanelController(
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { bottomMargin = toPx(14) },
+            ).apply { bottomMargin = toPx(if (standalone) ImeSpacingTokens.XL_DP else 14) },
         )
         content.addView(createSectionTitle("当前规则"), wrapParams())
         content.addView(
@@ -326,7 +330,7 @@ internal class SettingsPanelController(
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { bottomMargin = toPx(14) },
+            ).apply { bottomMargin = toPx(if (standalone) ImeSpacingTokens.XL_DP else 14) },
         )
         content.addView(
             TextView(context).apply {
@@ -356,9 +360,9 @@ internal class SettingsPanelController(
     private fun settingGroup(vararg rows: View): LinearLayout =
         LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            tag = "setting-group"
+            tag = if (standalone) "app-setting-group" else "setting-group"
             rows.forEachIndexed { index, row ->
-                if (index > 0) {
+                if (index > 0 && !standalone) {
                     addView(
                         View(context).apply { tag = "setting-divider" },
                         LinearLayout.LayoutParams(
@@ -370,13 +374,14 @@ internal class SettingsPanelController(
                         },
                     )
                 }
+                if (standalone) row.tag = "app-setting-key"
                 addView(
                     row,
                     LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
                         if (row is TextView) toPx(54)
                         else LinearLayout.LayoutParams.WRAP_CONTENT,
-                    ),
+                    ).apply { if (standalone && index > 0) topMargin = toPx(ImeSpacingTokens.SM_DP) },
                 )
             }
         }
@@ -416,16 +421,24 @@ internal class SettingsPanelController(
         row.apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(toPx(14), 0, toPx(14), 0)
+            setPadding(toPx(if (standalone) 16 else 14), toPx(if (standalone) 8 else 0), toPx(if (standalone) 16 else 14), toPx(if (standalone) 8 else 0))
             tag = "setting-row"
             minimumHeight = toPx(ImeGeometryTokens.SETTING_ROW_HEIGHT_DP)
             isClickable = true
             isFocusable = true
+            accessibilityDelegate = object : View.AccessibilityDelegate() {
+                override fun onInitializeAccessibilityNodeInfo(host: View, info: android.view.accessibility.AccessibilityNodeInfo) {
+                    super.onInitializeAccessibilityNodeInfo(host, info)
+                    info.className = "android.widget.Switch"
+                    info.isCheckable = true
+                    info.isChecked = toggleState(label)
+                }
+            }
             setOnClickListener { toggleView.performClick() }
             addView(
                 settingIcon(label),
-                LinearLayout.LayoutParams(toPx(26), toPx(26)).apply {
-                    marginEnd = toPx(8)
+                LinearLayout.LayoutParams(toPx(if (standalone) 24 else 26), toPx(if (standalone) 24 else 26)).apply {
+                    marginEnd = toPx(if (standalone) 12 else 8)
                 },
             )
             addView(
@@ -435,7 +448,7 @@ internal class SettingsPanelController(
                     addView(labelText(label, ImeTypographyTokens.BODY_SP), wrapParams())
                     addView(
                         labelText(sub, ImeTypographyTokens.CAPTION_SP).apply {
-                            setPadding(0, toPx(3), 0, 0)
+                            setPadding(0, toPx(if (standalone) 4 else 3), 0, 0)
                         },
                         wrapParams(),
                     )
@@ -447,7 +460,7 @@ internal class SettingsPanelController(
                     1f,
                 ),
             )
-            addView(toggleView, wrapParams())
+            addView(toggleView, wrapParams().apply { if (standalone) marginStart = toPx(ImeSpacingTokens.MD_DP) })
         }
         updateRowAccessibility(toggleState(label))
         return row
@@ -461,7 +474,7 @@ internal class SettingsPanelController(
         LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(toPx(14), 0, toPx(14), 0)
+            setPadding(toPx(if (standalone) 16 else 14), toPx(if (standalone) 8 else 0), toPx(if (standalone) 16 else 14), toPx(if (standalone) 8 else 0))
             tag = "setting-row"
             contentDescription = "$label，$sub，点击进入"
             minimumHeight = toPx(ImeGeometryTokens.SETTING_ROW_HEIGHT_DP)
@@ -473,8 +486,8 @@ internal class SettingsPanelController(
             }
             addView(
                 settingIcon(label),
-                LinearLayout.LayoutParams(toPx(26), toPx(26)).apply {
-                    marginEnd = toPx(8)
+                LinearLayout.LayoutParams(toPx(if (standalone) 24 else 26), toPx(if (standalone) 24 else 26)).apply {
+                    marginEnd = toPx(if (standalone) 12 else 8)
                 },
             )
             addView(
@@ -484,7 +497,7 @@ internal class SettingsPanelController(
                     addView(labelText(label, ImeTypographyTokens.BODY_SP), wrapParams())
                     addView(
                         labelText(sub, ImeTypographyTokens.CAPTION_SP).apply {
-                            setPadding(0, toPx(3), 0, 0)
+                            setPadding(0, toPx(if (standalone) 4 else 3), 0, 0)
                         },
                         wrapParams(),
                     )
@@ -510,7 +523,7 @@ internal class SettingsPanelController(
                     importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                     tag = "setting-chevron"
                 },
-                LinearLayout.LayoutParams(toPx(28), toPx(44)),
+                LinearLayout.LayoutParams(toPx(if (standalone) 24 else 28), toPx(if (standalone) 48 else 44)).apply { if (standalone) marginStart = toPx(ImeSpacingTokens.MD_DP) },
             )
         }
 
@@ -527,6 +540,7 @@ internal class SettingsPanelController(
                 gravity = Gravity.START or Gravity.CENTER_VERTICAL
             }
             tag = "toggle-knob"
+            elevation = toPx(2).toFloat()
             translationX =
                 if (isOn) toPx(ImeGeometryTokens.SWITCH_KNOB_TRAVEL_DP).toFloat()
                 else 0f
@@ -535,12 +549,12 @@ internal class SettingsPanelController(
         return FrameLayout(context).apply {
             setPadding(
                 toPx(ImeGeometryTokens.SWITCH_PADDING_DP),
+                0,
                 toPx(ImeGeometryTokens.SWITCH_PADDING_DP),
-                toPx(ImeGeometryTokens.SWITCH_PADDING_DP),
-                toPx(ImeGeometryTokens.SWITCH_PADDING_DP),
+                0,
             )
             minimumWidth = toPx(ImeGeometryTokens.SWITCH_WIDTH_DP)
-            minimumHeight = toPx(ImeGeometryTokens.SWITCH_HEIGHT_DP)
+            minimumHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
             tag = "toggle"
             isClickable = true
             isFocusable = true
@@ -815,28 +829,23 @@ internal class SettingsPanelController(
         onChange: (Int) -> Unit,
     ): LinearLayout {
         val row = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
+            orientation = if (stackControls) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(toPx(16), toPx(4), toPx(16), toPx(4))
+            setPadding(toPx(16), toPx(if (standalone) 8 else 4), toPx(16), toPx(if (standalone) 8 else 4))
             tag = "setting-row"
             minimumHeight = toPx(ImeGeometryTokens.SETTING_ROW_HEIGHT_DP)
         }
-        row.addView(
-            TextView(context).apply {
-                text = labelText
-                textSize = ImeTypographyTokens.PANEL_BODY_SP
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
-            },
-            LinearLayout.LayoutParams(
-                toPx(72),
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ),
-        )
+        val title = TextView(context).apply {
+            text = labelText
+            textSize = ImeTypographyTokens.PANEL_BODY_SP
+            if (!standalone) typeface = android.graphics.Typeface.DEFAULT_BOLD
+        }
         val valueView = TextView(context).apply {
             tag = "setting-value"
             textSize = ImeTypographyTokens.BODY_SP
             gravity = Gravity.CENTER
             includeFontPadding = false
+            if (standalone) setSingleLine()
             minWidth = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
             contentDescription = "$labelText 当前值"
         }
@@ -875,18 +884,19 @@ internal class SettingsPanelController(
                 },
             )
         }
-        row.addView(
-            seekBar,
-            LinearLayout.LayoutParams(
-                0,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                1f,
-            ),
-        )
-        row.addView(
-            valueView,
-            LinearLayout.LayoutParams(toPx(44), toPx(ImeGeometryTokens.TOUCH_TARGET_DP)),
-        )
+        if (stackControls) {
+            row.addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(title, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                addView(valueView, wrapParams())
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            row.addView(seekBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        } else {
+            row.addView(title, LinearLayout.LayoutParams(toPx(if (standalone) 80 else 72), LinearLayout.LayoutParams.WRAP_CONTENT).apply { if (standalone) marginEnd = toPx(ImeSpacingTokens.MD_DP) })
+            row.addView(seekBar, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(valueView, LinearLayout.LayoutParams(if (standalone) LinearLayout.LayoutParams.WRAP_CONTENT else toPx(44), toPx(ImeGeometryTokens.TOUCH_TARGET_DP)))
+        }
         val initialDescription =
             "$labelText，${seekBar.progress}$suffix"
         valueView.text = "${seekBar.progress}$suffix"
@@ -928,13 +938,13 @@ internal class SettingsPanelController(
         LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
-        ).apply { bottomMargin = toPx(12) }
+        ).apply { bottomMargin = toPx(if (standalone) ImeSpacingTokens.XL_DP else ImeSpacingTokens.MD_DP) }
 
     private fun groupParams() =
         LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT,
-        ).apply { bottomMargin = toPx(12) }
+        ).apply { bottomMargin = toPx(if (standalone) ImeSpacingTokens.XL_DP else ImeSpacingTokens.MD_DP) }
 
     private fun wrapParams() =
         LinearLayout.LayoutParams(

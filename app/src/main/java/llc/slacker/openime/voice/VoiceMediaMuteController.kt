@@ -137,5 +137,6 @@ internal class VoiceMediaMuteController(context: Context) {
         }.onFailure {
             Log.w(TAG, "restoreFailed", it)
         }
+        Log.i(TAG, "mediaRestored")
     }
 }

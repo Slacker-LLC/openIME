@@ -21,7 +21,6 @@ import llc.slacker.openime.theme.AccentPalette
 import llc.slacker.openime.theme.ImeAppearance
 import llc.slacker.openime.theme.ImeDrawableFactory
 import llc.slacker.openime.theme.ImeGeometryTokens
-import llc.slacker.openime.theme.ImeReferenceSizing
 import llc.slacker.openime.theme.ImeSpacingTokens
 import llc.slacker.openime.theme.ImeSurfacePolicy
 import llc.slacker.openime.theme.ImeTheme
@@ -39,11 +38,6 @@ object SetupUi {
             ImeAppearance.SYSTEM -> configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
         }
         configuration.uiMode = (configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK.inv()) or night
-        val metrics = context.resources.displayMetrics
-        val density = metrics.density * ImeReferenceSizing.scale(context)
-        configuration.densityDpi = kotlin.math.round(density * 160f).toInt()
-        configuration.screenWidthDp = kotlin.math.round(metrics.widthPixels / density).toInt()
-        configuration.screenHeightDp = kotlin.math.round(metrics.heightPixels / density).toInt()
         return context.createConfigurationContext(configuration)
     }
 
@@ -54,13 +48,20 @@ object SetupUi {
     fun accent(context: Context): Int =
         tokensForAccent(context).primary
 
+    internal fun primaryButtonColor(context: Context): Int =
+        ImeSurfacePolicy.accentTextOn(accent(context), Color.WHITE)
+
+    internal fun secondaryTextColor(context: Context): Int = tokens(context).let {
+        ImeSurfacePolicy.accentTextOn(it.primary, ImeSurfacePolicy.subtleAccentSurface(it))
+    }
+
     private fun tokensForAccent(context: Context): ImeTheme.Tokens = ImeTheme.IOS.tokens(
         ImeSettingsRepository.loadAppearance(context),
         context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES,
         AccentPalette.parse(ImeSettingsRepository.loadSkinColor(context)),
     )
 
-    private fun tokens(context: Context): ImeTheme.Tokens {
+    internal fun tokens(context: Context): ImeTheme.Tokens {
         val nightMask =
             context.resources.configuration.uiMode and
                 android.content.res.Configuration.UI_MODE_NIGHT_MASK
@@ -72,6 +73,19 @@ object SetupUi {
     }
 
     fun contrastText(background: Int): Int = ImeDrawableFactory.contrastText(background)
+
+    internal fun keyBackground(context: Context) = tokens(context).let { t ->
+        val radius = dp(context, ImeGeometryTokens.KEY_RADIUS_DP)
+        ImeDrawableFactory.keyCap(
+            ImeDrawableFactory.statefulRounded(
+                t.keyBackground,
+                t.keyPressedBackground,
+                radius, t.primary, dp(context, 1),
+            ),
+            t.border,
+            radius, dp(context, 1),
+        )
+    }
 
     fun rounded(
         color: Int,
@@ -91,7 +105,7 @@ object SetupUi {
     fun buttonBackground(
         context: Context,
         color: Int,
-        radiusDp: Float = ImeGeometryTokens.CONTROL_RADIUS_DP.toFloat(),
+        radiusDp: Float = ImeGeometryTokens.PILL_RADIUS_DP.toFloat(),
     ): StateListDrawable {
         val pressed =
             if (color == accent(context)) tokens(context).accentPressed else dim(color, 0.86f)
@@ -129,12 +143,13 @@ object SetupUi {
         }
     }
 
-    /** Secondary rounded-rectangle control used by setup actions. */
+    /** Tinted secondary action, sharing the primary button's capsule shape. */
     fun secondaryBackground(context: Context): StateListDrawable {
-        val surface = context.getColor(R.color.setup_muted)
-        val pressed = context.getColor(R.color.setup_muted_pressed)
+        val t = tokens(context)
+        val surface = ImeSurfacePolicy.subtleAccentSurface(t)
+        val pressed = ImeSurfacePolicy.pressedSurface(surface, t)
         val accent = accent(context)
-        val radius = dp(context, ImeGeometryTokens.CONTROL_RADIUS_DP).toFloat()
+        val radius = dp(context, ImeGeometryTokens.PILL_RADIUS_DP).toFloat()
         return StateListDrawable().apply {
             addState(
                 intArrayOf(android.R.attr.state_enabled, android.R.attr.state_pressed),
@@ -170,7 +185,7 @@ object SetupUi {
             setPadding(dp(context, 8), 0, dp(context, 8), 0)
             val accent = accent(context)
             background = secondaryBackground(context)
-            setTextColor(context.getColor(R.color.setup_title))
+            setTextColor(secondaryTextColor(context))
             setOnClickListener {
                 performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
                 onClick()
@@ -223,8 +238,8 @@ object SetupUi {
             minHeight = dp(context, ImeGeometryTokens.PRIMARY_ROW_HEIGHT_DP)
             background = buttonBackground(
                 context,
-                accent(context),
-                ImeGeometryTokens.CONTROL_RADIUS_DP.toFloat(),
+                primaryButtonColor(context),
+                ImeGeometryTokens.PILL_RADIUS_DP.toFloat(),
             )
             val accent = accent(context)
             setTextColor(
@@ -235,7 +250,7 @@ object SetupUi {
                     ),
                     intArrayOf(
                         context.getColor(R.color.setup_muted_text),
-                        contrastText(accent),
+                        Color.WHITE,
                     ),
                 ),
             )
@@ -308,8 +323,8 @@ object SetupUi {
         LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            minimumHeight = dp(context, ImeGeometryTokens.TOP_BAR_HEIGHT_DP)
-            setPadding(dp(context, 4), 0, dp(context, 4), 0)
+            minimumHeight = context.resources.getDimensionPixelSize(R.dimen.setup_top_bar_height)
+            setPadding(dp(context, ImeSpacingTokens.LG_DP), 0, dp(context, ImeSpacingTokens.LG_DP), 0)
 
             addView(
                 ImageButton(context).apply {
@@ -353,6 +368,8 @@ object SetupUi {
                 TextView(context).apply {
                     text = title
                     textSize = ImeTypographyTokens.TITLE_SP
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
                     setTextColor(context.getColor(R.color.setup_title))
                     typeface = android.graphics.Typeface.DEFAULT_BOLD
                     gravity = Gravity.CENTER_VERTICAL

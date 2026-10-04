@@ -942,7 +942,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             keyboardView?.startVoiceFromSpace()
         } else {
             keyboardView?.stopVoiceFromSpace()
-            voiceMediaMute.restore()
         }
     }
 
@@ -967,10 +966,13 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     }
 
     override fun stopVoiceRecognition() {
-        // Covers both the normal touch-release callback and accessibility's
-        // direct stop path, which can bypass onVoicePressChanged(false).
-        voiceMediaMute.restore()
+        // Stop capture immediately. Decoding still drains recorded audio;
+        // restore media when AudioRecord has actually stopped.
         if (::voiceLifecycle.isInitialized) voiceLifecycle.stop()
+    }
+
+    override fun onVoiceCaptureStopped() {
+        voiceMediaMute.restore()
     }
 
     override fun cancelVoiceRecognition() {

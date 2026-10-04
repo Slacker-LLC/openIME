@@ -101,7 +101,7 @@ internal class VoicePanelController(
             "松开空格结束语音并自动上屏，上滑取消",
         )
         setModelStatus("正在使用离线模型 · 音频不出设备")
-        setTranscript("正在聆听… 松开空格结束")
+        setTranscript("正在准备麦克风…")
 
         listener.onVoiceSessionStarted(true)
         listener.startVoiceRecognition(
@@ -118,7 +118,7 @@ internal class VoicePanelController(
         stopRequested = true
         refreshLanguageControl()
         setModelStatus("正在整理识别结果…")
-        onInlineState("正在识别…", false, false, null)
+        onInlineState(recognizedText.ifBlank { "正在转写已录音频…" }, false, false, null)
     }
 
     fun cancel() {
@@ -212,7 +212,7 @@ internal class VoicePanelController(
                             "整理识别结果…",
                             "正在整理语音识别结果，请稍候",
                         )
-                        onInlineState("正在识别…", false, false, null)
+                        onInlineState(text.ifBlank { "正在转写已录音频…" }, false, false, null)
                     } else {
                         setModelStatus("正在聆听 · 松开空格结束")
                         setMicState(R.drawable.ic_stop, "语音输入进行中，松开空格结束，上滑取消")
@@ -330,6 +330,7 @@ internal class VoicePanelController(
             override fun onReady() {
                 expandedPanel.post {
                     if (generation != eventGeneration || cancelled) return@post
+                    pending = false
                     if (active && !stopRequested) {
                         setMicState(R.drawable.ic_stop, "语音输入进行中，松开空格结束，上滑取消")
                         setGestureHint(
@@ -337,6 +338,7 @@ internal class VoicePanelController(
                             "松开空格结束语音并自动上屏，上滑取消",
                         )
                         setModelStatus("正在录音 · 本地模型准备中")
+                        setTranscript("可以说话了 · 松开空格结束")
                         onInlineState(
                             "正在录音 · 模型准备中…",
                             false,
@@ -352,6 +354,13 @@ internal class VoicePanelController(
                         setModelStatus("正在整理识别结果…")
                         onInlineState("正在识别…", false, false, null)
                     }
+                }
+            }
+
+            override fun onCaptureStopped() {
+                expandedPanel.post {
+                    if (generation != eventGeneration || !active || cancelled) return@post
+                    listener.onVoiceCaptureStopped()
                 }
             }
 
@@ -434,6 +443,7 @@ internal class VoicePanelController(
     }
 
     private fun conciseVoiceError(message: String): String = when {
+        message.contains("音频不完整") -> "语音不完整 · 请分短句重试"
         message.contains("模型") -> "语音不可用 · 请检查本地模型"
         message.contains("麦克风") || message.contains("权限") ->
             "语音不可用 · 请检查麦克风权限"

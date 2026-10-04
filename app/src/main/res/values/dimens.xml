@@ -5,6 +5,7 @@
     <dimen name="ime_text_body">14sp</dimen>
     <dimen name="ime_text_title">16sp</dimen>
     <dimen name="ime_text_candidate">18sp</dimen>
+    <dimen name="ime_text_glyph">20sp</dimen>
     <dimen name="ime_text_key_letter">21sp</dimen>
     <dimen name="ime_text_display">28sp</dimen>
 

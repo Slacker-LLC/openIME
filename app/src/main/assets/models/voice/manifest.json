@@ -1,15 +1,16 @@
 {
   "modelId": "sherpa-onnx-streaming-paraformer-bilingual-zh-en-int8",
-  "modelVersion": "hf-8e40c43-int8",
+  "modelVersion": "hf-8e40c43-int8-punct-20240412",
   "language": "zh-CN,en-US",
   "modelType": "paraformer",
   "engineVersion": "sherpa-onnx-v1.13.6",
-  "fileHash": "b2a084021f5b4aa5293e750e0733b6a8819d37ddd6452518faffa0b3408c5263",
-  "supportsPunctuation": false,
-  "requiredMemory": 520000000,
+  "fileHash": "d0c0b806dffddbd953429b06dfd31197d19cb06d351c76a2f63d9b7c09fcd829",
+  "supportsPunctuation": true,
+  "requiredMemory": 620000000,
   "files": [
     "models/voice/bilingual-paraformer/decoder.int8.onnx",
     "models/voice/bilingual-paraformer/encoder.int8.onnx",
-    "models/voice/bilingual-paraformer/tokens.txt"
+    "models/voice/bilingual-paraformer/tokens.txt",
+    "models/voice/punctuation/model.int8.onnx"
   ]
 }

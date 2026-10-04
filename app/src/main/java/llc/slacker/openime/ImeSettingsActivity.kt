@@ -144,7 +144,7 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
             systemDark = systemDark,
             accentOverride = AccentPalette.parse(ImeSettingsRepository.loadSkinColor(this)),
         )
-        val chrome = tokens.expandedBackground
+        val chrome = tokens.keyboardBackground
         host.setBackgroundColor(chrome)
         window.statusBarColor = chrome
         window.navigationBarColor = chrome
