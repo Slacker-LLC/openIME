@@ -35,7 +35,6 @@ import llc.slacker.openime.core.ImeState
 import llc.slacker.openime.core.KeyboardMode
 import llc.slacker.openime.core.Panel
 import llc.slacker.openime.core.ShiftState
-import llc.slacker.openime.data.ImeHandedness
 import llc.slacker.openime.data.ImeSettingsRepository
 import llc.slacker.openime.data.QuickPhrase
 import llc.slacker.openime.data.QuickPhraseRepository
@@ -48,7 +47,7 @@ import llc.slacker.openime.panel.ImePanelRenderer
 import llc.slacker.openime.panel.PanelHeaderFactory
 import llc.slacker.openime.panel.SettingsPanelController
 import llc.slacker.openime.panel.TextEditorPanelController
-import llc.slacker.openime.theme.AccentPalette
+import llc.slacker.openime.setup.SetupUi
 import llc.slacker.openime.theme.ImeAppearance
 import llc.slacker.openime.theme.ImeDrawableFactory
 import llc.slacker.openime.theme.ImeFocusRingPolicy
@@ -128,8 +127,6 @@ open class ImeKeyboardView(
         fun onHapticChanged(enabled: Boolean)
         fun onPopupChanged(enabled: Boolean)
         fun onFuzzyChanged(enabled: Boolean)
-        fun onSkinChanged(opacity: Int, radius: Int, fontSize: Int, primaryColor: String) {}
-        fun onHandednessChanged(handedness: ImeHandedness) {}
         fun onKeyboardHeightChanged(percent: Int) {}
         fun onFloatingStyleChanged(widthPercent: Int, opacityPercent: Int) {}
         fun onOpenAboutData() {}
@@ -147,6 +144,14 @@ open class ImeKeyboardView(
 
         /** How often a deferred row rebuild re-checks whether the press ended. */
         private const val ROW_REBUILD_POLL_MS = 40L
+
+        /** KEYBOARD_TAP needs API 27; API 26 falls back to the virtual-key click. */
+        private val KEY_TAP_HAPTIC =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                HapticFeedbackConstants.KEYBOARD_TAP
+            } else {
+                HapticFeedbackConstants.VIRTUAL_KEY
+            }
     }
 
 
@@ -289,7 +294,6 @@ open class ImeKeyboardView(
     private var appliedScreenWidthDp = resources.configuration.screenWidthDp
     private var appliedFontScale = resources.configuration.fontScale
     private var appliedDensityDpi = resources.displayMetrics.densityDpi
-    private var keyboardHandedness = ImeSettingsRepository.loadHandedness(context)
     private var keyboardHeightPercent = ImeSettingsRepository.loadKeyboardHeightPercent(context)
     private var floatingWidthPercent = ImeSettingsRepository.loadFloatingWidthPercent(context)
     private var floatingOpacityPercent = ImeSettingsRepository.loadFloatingOpacityPercent(context)
@@ -314,11 +318,6 @@ open class ImeKeyboardView(
     fun currentPanel(): Panel = panel
 
     /** Persist the standalone settings panel's viewport across Activity recreation. */
-    internal fun editAccentColor() {
-        showPanel(Panel.SKIN_SETTINGS)
-        settingsPanelController.showCustomAccentDialog()
-    }
-
     internal fun settingsScrollPosition(): Int =
         settingsPanelController.scrollPosition()
 
@@ -356,10 +355,6 @@ open class ImeKeyboardView(
     }
     private var popupEnabled = ImeSettingsRepository.loadPopup(context)
     private var fuzzyEnabled = ImeSettingsRepository.loadFuzzy(context)
-    private var skinRadius = ImeSettingsRepository.loadSkinRadius(context)
-    private var skinOpacity = ImeSettingsRepository.loadSkinOpacity(context)
-    private var skinFontSize = ImeSettingsRepository.loadSkinFont(context)
-    private var skinPrimaryColor = ImeSettingsRepository.loadSkinColor(context)
 
     protected open fun onViewHierarchyRebuilt() = Unit
 
@@ -391,11 +386,8 @@ open class ImeKeyboardView(
         ImeThemeApplier(
             toPx = ::dp,
             statefulRounded = ::statefulRounded,
-            keyMainTextScale = ::skinFontScale,
+            keyMainTextScale = { referenceScale },
             referenceScale = { referenceScale },
-            skinRadiusPx = { dp(skinRadius) },
-            skinOpacity = { skinOpacity },
-            skinPrimaryColor = { skinPrimaryColor },
             toggleState = ::onState,
             isSideKey = { key ->
                 key.getTag(MARK_SIDE_KEY) == true ||
@@ -415,11 +407,7 @@ open class ImeKeyboardView(
         dp = ::dp,
         contentInsetPx = { contentInsetPx },
         tokens = {
-            theme.tokens(
-                appearance,
-                isNight(),
-                AccentPalette.parse(skinPrimaryColor),
-            )
+            theme.tokens(appearance, isNight())
         },
         rounded = { color, radius -> ImeDrawableFactory.rounded(color, radius) },
         statefulRounded = { normal, pressed, radius -> statefulRounded(normal, pressed, radius) },
@@ -594,11 +582,7 @@ open class ImeKeyboardView(
             status = { topZone.voiceInlineStatus },
             waves = { topZone.voiceInlineWaves },
             tokens = {
-                theme.tokens(
-                    appearance,
-                    isNight(),
-                    AccentPalette.parse(skinPrimaryColor),
-                )
+                theme.tokens(appearance, isNight())
             },
             isGestureSessionActive = { voiceGestureSession },
             isComposing = { composition.text?.isNotEmpty() == true },
@@ -651,11 +635,6 @@ open class ImeKeyboardView(
             currentSwipeUpDigits = { ImeSettingsRepository.loadSwipeUpDigits(context) },
             currentExtraToggle = ::onState,
             currentFuzzy = { fuzzyEnabled },
-            currentSkinOpacity = { skinOpacity },
-            currentSkinRadius = { skinRadius },
-            currentSkinFontSize = { skinFontSize },
-            currentSkinColor = { skinPrimaryColor },
-            currentHandedness = { keyboardHandedness },
             currentKeyboardHeightPercent = { keyboardHeightPercent },
             currentFloatingWidthPercent = { floatingWidthPercent },
             currentFloatingOpacityPercent = { floatingOpacityPercent },
@@ -665,24 +644,9 @@ open class ImeKeyboardView(
                 listener.onAppearanceChanged(selected)
             },
             onToggleChanged = ::updateSettingToggle,
-            onSkinChanged = { opacity, radius, fontSize, color ->
-                skinOpacity = opacity
-                skinRadius = radius
-                skinFontSize = fontSize
-                skinPrimaryColor = AccentPalette.normalize(color)
-                listener.onSkinChanged(
-                    skinOpacity,
-                    skinRadius,
-                    skinFontSize,
-                    skinPrimaryColor,
-                )
-                applyTheme()
-            },
-            onHandednessChanged = ::setHandedness,
             onKeyboardHeightChanged = ::setKeyboardHeightPercent,
             onFloatingStyleChanged = ::setFloatingStyle,
             onShowFuzzySettings = { showPanel(Panel.FUZZY_SETTINGS) },
-            onShowSkinSettings = { showPanel(Panel.SKIN_SETTINGS) },
             onOpenAboutData = listener::onOpenAboutData,
             onFeedback = ::feedback,
             applyTheme = ::applyTheme,
@@ -1033,22 +997,13 @@ open class ImeKeyboardView(
     private fun updateResponsiveGeometry(measuredWidthPx: Int) {
         if (measuredWidthPx <= 0) return
 
-        val dockWidthPx =
-            if (standalonePanel || floatingKeyboardController.enabled || keyboardHandedness == ImeHandedness.STANDARD) {
-                measuredWidthPx
-            } else {
-                (measuredWidthPx * 0.82f).toInt()
-                    .coerceAtLeast(dp(280))
-                    .coerceAtMost(measuredWidthPx)
-            }
-
-        val nextScale = if (standalonePanel) 1f else ImeReferenceSizing.scale(context, dockWidthPx, landscapeCompact = !floatingWindowMode)
+        val nextScale = if (standalonePanel) 1f else ImeReferenceSizing.scale(context, measuredWidthPx, landscapeCompact = !floatingWindowMode)
         // Configuration.screenWidthDp is a whole number while the measured width
         // is not (411dp vs 411.43dp on a 1080px / 420dpi screen), so the two
         // scales differ by up to 1/390 for the same window. That rounding noise
         // used to cross the old 0.001 threshold and rebuilt every key from
         // onSizeChanged, in the middle of the first layout pass. Only a real
-        // change (one-handed dock, floating window, rotation) rescales.
+        // change (floating window, rotation) rescales.
         if (kotlin.math.abs(nextScale - referenceScale) > SCALE_CHANGE_EPSILON) {
             val ratio = nextScale / referenceScale
             referenceScale = nextScale
@@ -1064,17 +1019,8 @@ open class ImeKeyboardView(
         }
 
         (mainDock.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
-            if (dockWidthPx == measuredWidthPx) {
-                params.width = FrameLayout.LayoutParams.MATCH_PARENT
-                params.gravity = Gravity.TOP
-            } else {
-                params.width = dockWidthPx
-                params.gravity = Gravity.TOP or if (keyboardHandedness == ImeHandedness.LEFT) {
-                    Gravity.START
-                } else {
-                    Gravity.END
-                }
-            }
+            params.width = FrameLayout.LayoutParams.MATCH_PARENT
+            params.gravity = Gravity.TOP
             mainDock.layoutParams = params
         }
 
@@ -1090,7 +1036,7 @@ open class ImeKeyboardView(
                 // narrower than the display, so that cached width would clip
                 // the first and last keys. Let the row fill its local window.
                 (row.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
-                    params.width = (dockWidthPx * 0.9f).toInt()
+                    params.width = (measuredWidthPx * 0.9f).toInt()
                     params.gravity = Gravity.CENTER_HORIZONTAL
                     row.layoutParams = params
                 }
@@ -1107,7 +1053,7 @@ open class ImeKeyboardView(
         val minimumInset = dp(0)
         val maxWidth = if (standalonePanel) dp(maxContentWidthDp)
             else (minOf(maxContentWidthDp.toFloat(), 390f * referenceScale) * resources.displayMetrics.density).toInt()
-        contentInsetPx = maxOf(minimumInset, (dockWidthPx - maxWidth) / 2)
+        contentInsetPx = maxOf(minimumInset, (measuredWidthPx - maxWidth) / 2)
         keyboardBody.setPadding(
             contentInsetPx,
             dp(6),
@@ -1115,7 +1061,7 @@ open class ImeKeyboardView(
             dp(10),
         )
         keyboardBody.findViewWithTag<View>("key-row-secondary")?.let { row ->
-            val rowWidth = ((dockWidthPx - contentInsetPx * 2) * 0.9f).toInt()
+            val rowWidth = ((measuredWidthPx - contentInsetPx * 2) * 0.9f).toInt()
             val params = row.layoutParams as? LinearLayout.LayoutParams
             if (params != null) {
                 params.gravity = Gravity.CENTER_HORIZONTAL
@@ -1234,11 +1180,7 @@ open class ImeKeyboardView(
             createEmptyLabel = { title("暂无候选", small = true) },
             applyTheme = ::applyTheme,
             tokens = {
-                theme.tokens(
-                    appearance,
-                    isNight(),
-                    AccentPalette.parse(skinPrimaryColor),
-                )
+                theme.tokens(appearance, isNight())
             },
             statefulBackground = ::statefulRounded,
             onFeedback = ::feedback,
@@ -1532,7 +1474,7 @@ open class ImeKeyboardView(
         val composing = composition.text?.isNotEmpty() == true
         val label = if (composing) "确定" else if (mode == KeyboardMode.PINYIN_9 || mode == KeyboardMode.DIGITS) "↵" else enterKeyPresentationFor(options).label
         enter.setMainText(label)
-        enter.applyMainTextScale(skinFontScale())
+        enter.applyMainTextScale(referenceScale)
         enter.contentDescription = label
     }
 
@@ -1607,23 +1549,6 @@ open class ImeKeyboardView(
         listener.onThemeChanged(newTheme)
     }
 
-    /**
-     * Apply the complete persisted appearance in one render pass.
-     *
-     * The standalone settings page and the live IME can both refresh while a
-     * panel is visible. Updating theme, appearance and skin through separate
-     * setters briefly mixed old and new tokens and rebuilt the whole subtree
-     * several times. Keep the individual setters for user actions, but use
-     * this atomic boundary whenever a persisted snapshot is loaded.
-     */
-    private fun setHandedness(next: ImeHandedness) {
-        if (keyboardHandedness == next) return
-        keyboardHandedness = next
-        ImeSettingsRepository.saveHandedness(context, next)
-        listener.onHandednessChanged(next)
-        updateResponsiveGeometry(width)
-    }
-
     private fun setFloatingStyle(widthPercent: Int, opacityPercent: Int) {
         val width = widthPercent.coerceIn(72, 96)
         val opacity = opacityPercent.coerceIn(82, 100)
@@ -1651,6 +1576,15 @@ open class ImeKeyboardView(
         }
     }
 
+    /**
+     * Apply the complete persisted appearance in one render pass.
+     *
+     * The standalone settings page and the live IME can both refresh while a
+     * panel is visible. Updating theme, appearance and height through separate
+     * setters briefly mixed old and new tokens and rebuilt the whole subtree
+     * several times. Keep the individual setters for user actions, but use
+     * this atomic boundary whenever a persisted snapshot is loaded.
+     */
     internal fun applyPersistedSettings(
         newTheme: ImeTheme,
         newAppearance: ImeAppearance,
@@ -1658,13 +1592,7 @@ open class ImeKeyboardView(
         haptic: Boolean,
         popup: Boolean,
         fuzzy: Boolean,
-        opacity: Int,
-        radius: Int,
-        fontSize: Int,
-        primaryColor: String,
     ) {
-        val normalizedColor = AccentPalette.normalize(primaryColor)
-        val persistedHandedness = ImeSettingsRepository.loadHandedness(context)
         val persistedHeight = ImeSettingsRepository.loadKeyboardHeightPercent(context)
         val persistedFloatingWidth = ImeSettingsRepository.loadFloatingWidthPercent(context)
         val persistedFloatingOpacity = ImeSettingsRepository.loadFloatingOpacityPercent(context)
@@ -1672,13 +1600,7 @@ open class ImeKeyboardView(
             floatingWidthPercent != persistedFloatingWidth ||
                 floatingOpacityPercent != persistedFloatingOpacity
         val heightChanged = keyboardHeightPercent != persistedHeight
-        val geometryChanged = keyboardHandedness != persistedHandedness || heightChanged
-        val visualChanged = theme != newTheme ||
-            appearance != newAppearance ||
-            skinOpacity != opacity ||
-            skinRadius != radius ||
-            skinFontSize != fontSize ||
-            skinPrimaryColor != normalizedColor
+        val visualChanged = theme != newTheme || appearance != newAppearance
 
         theme = newTheme
         appearance = newAppearance
@@ -1686,14 +1608,9 @@ open class ImeKeyboardView(
         hapticEnabled = haptic
         popupEnabled = popup
         fuzzyEnabled = fuzzy
-        skinOpacity = opacity
-        skinRadius = radius
-        skinFontSize = fontSize
-        skinPrimaryColor = normalizedColor
-        if (geometryChanged) {
-            keyboardHandedness = persistedHandedness
+        if (heightChanged) {
             keyboardHeightPercent = persistedHeight
-            if (heightChanged) renderedMode = null
+            renderedMode = null
             layoutMetrics = buildLayoutMetrics()
             applyDynamicHeights()
             if (!standalonePanel && panel == Panel.NONE) {
@@ -1735,23 +1652,6 @@ open class ImeKeyboardView(
     fun setAppearance(newAppearance: ImeAppearance) {
         if (appearance == newAppearance) return
         appearance = newAppearance
-        applyTheme()
-    }
-
-    /** Apply persisted visual settings when another entry point changed them. */
-    fun setSkin(opacity: Int, radius: Int, fontSize: Int, primaryColor: String) {
-        val normalizedColor = AccentPalette.normalize(primaryColor)
-        if (skinOpacity == opacity &&
-            skinRadius == radius &&
-            skinFontSize == fontSize &&
-            skinPrimaryColor == normalizedColor
-        ) {
-            return
-        }
-        skinOpacity = opacity
-        skinRadius = radius
-        skinFontSize = fontSize
-        skinPrimaryColor = normalizedColor
         applyTheme()
     }
 
@@ -2199,7 +2099,6 @@ open class ImeKeyboardView(
             Panel.TEXT_EDITOR -> textEditorPanelController.render()
             Panel.SETTINGS -> settingsPanelController.renderSettings()
             Panel.FUZZY_SETTINGS -> settingsPanelController.renderFuzzySettings()
-            Panel.SKIN_SETTINGS -> settingsPanelController.renderSettings(skinOnly = true)
             else -> closePanelToKeyboard()
         }
         applyTheme()
@@ -2915,20 +2814,18 @@ open class ImeKeyboardView(
     /** Restyle only the Shift key after a label/icon change. */
     private fun applyShiftTheme(shift: ImeKeyView?) {
         val target = shift ?: return
-        val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-            android.content.res.Configuration.UI_MODE_NIGHT_YES
-        themeApplier.apply(target, theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor)))
+        themeApplier.apply(target, currentThemeTokens())
     }
 
     private fun applyAssociationTheme() {
         if (!::topZone.isInitialized) return
-        val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-            android.content.res.Configuration.UI_MODE_NIGHT_YES
-        themeApplier.apply(associationRow, theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor)))
+        themeApplier.apply(associationRow, currentThemeTokens())
     }
 
     protected fun feedback() {
-        if (hapticEnabled) performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+        // KEYBOARD_TAP is the platform's 10–20 ms key click; CLOCK_TICK is a
+        // scroll texture and feels mushy on many actuators.
+        if (hapticEnabled) performHapticFeedback(KEY_TAP_HAPTIC)
         if (soundEnabled) {
             // View effects can be disabled by an IME host window even when the
             // app preference is on. Use the system keypress channel directly;
@@ -2946,11 +2843,9 @@ open class ImeKeyboardView(
 
     /** Haptic-only confirmation (no key click sound), e.g. when voice arms. */
     private fun hapticFeedback() {
-        if (hapticEnabled) performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        // A crisp click marks a gesture threshold; LONG_PRESS rings for too long.
+        if (hapticEnabled) performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
     }
-
-    /** Key main-text size is scaled around the 17sp default from the skin font slider. */
-    private fun skinFontScale(): Float = skinFontSize / 21f * referenceScale
 
     private fun key(
         text: String,
@@ -3086,12 +2981,9 @@ open class ImeKeyboardView(
      */
     internal fun scaledPx(dp: Int): Int = dp(dp)
 
+    /** The preferences page paints with the app palette, the keyboard with key colours. */
     private fun currentThemeTokens(): ImeTheme.Tokens =
-        theme.tokens(
-            appearance,
-            isNight(),
-            AccentPalette.parse(skinPrimaryColor),
-        )
+        if (standalonePanel) SetupUi.tokens(context) else theme.tokens(appearance, isNight())
 
     protected fun applyTheme() {
         val t = currentThemeTokens()
@@ -3112,9 +3004,7 @@ open class ImeKeyboardView(
 
     /** Reuse the renderer's design tokens for views added by production decorators. */
     internal fun applyThemeToSubtree(target: View) {
-        val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-            android.content.res.Configuration.UI_MODE_NIGHT_YES
-        themeApplier.apply(target, theme.tokens(appearance, night, AccentPalette.parse(skinPrimaryColor)))
+        themeApplier.apply(target, currentThemeTokens())
     }
 
     private fun statefulRounded(normal: Int, pressed: Int, radius: Int): StateListDrawable =
@@ -3128,15 +3018,11 @@ open class ImeKeyboardView(
 
     private fun focusStroke(color: Int): Int {
         val background = if (Color.alpha(color) == 0) {
-            theme.tokens(
-                appearance,
-                isNight(),
-                AccentPalette.parse(skinPrimaryColor),
-            ).keyboardBackground
+            theme.tokens(appearance, isNight()).keyboardBackground
         } else {
             color
         }
-        return ImeFocusRingPolicy.resolve(background, AccentPalette.parse(skinPrimaryColor))
+        return ImeFocusRingPolicy.resolve(background, theme.tokens(appearance, isNight()).primary)
     }
 
     private fun dp(value: Int): Int = kotlin.math.round(value * resources.displayMetrics.density * referenceScale).toInt()

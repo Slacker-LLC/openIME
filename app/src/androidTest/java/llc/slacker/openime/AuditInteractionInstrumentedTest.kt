@@ -23,7 +23,6 @@ import llc.slacker.openime.data.CustomSymbolRepository
 import llc.slacker.openime.data.QuickPhraseRepository
 import llc.slacker.openime.floating.FloatingWindowController
 import llc.slacker.openime.keyboard.ImeKeyboardView
-import llc.slacker.openime.theme.AccentPalette
 import llc.slacker.openime.theme.ImeAppearance
 import llc.slacker.openime.theme.ImeGeometryTokens
 import llc.slacker.openime.theme.ImeSurfacePolicy
@@ -448,10 +447,9 @@ class AuditInteractionInstrumentedTest {
     @Test
     fun settingsSlidersExposeCurrentValuesToTouchAndAccessibility() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
-            // Corner radius, opacity and key font size live on the skin sub-page.
-            keyboard.showPanel(Panel.SKIN_SETTINGS)
+            keyboard.showPanel(Panel.SETTINGS)
             val settings = keyboard.findViewWithTag<ViewGroup>("settings-panel")
-            listOf("圆角", "不透明度", "按键字号").forEach { label ->
+            listOf("键盘高度", "浮动宽度", "浮动透明度").forEach { label ->
                 val slider = settings.findViewWithTag<View>("settings-slider:$label")
                 assertTrue("$label must keep a 48dp touch target", slider.minimumHeight >= keyboard.resources.displayMetrics.density * 48f)
                 assertTrue("$label must expose its current value", slider.contentDescription.toString().contains(label))
@@ -546,30 +544,6 @@ class AuditInteractionInstrumentedTest {
     }
 
     @Test
-    fun customAccentControlExposesSelectionAndNoPresetClaimsIt() = withKeyboard { harness, _, keyboard ->
-        harness.awaitMain {
-            keyboard.setSkin(96, 10, 18, "#123456")
-            keyboard.showPanel(Panel.SKIN_SETTINGS)
-            val custom = keyboard.findViewWithTag<View>("accent-custom")
-            assertTrue(custom.contentDescription.toString().contains("已选中"))
-            assertTrue("The custom row must stay a 48dp target", custom.minimumHeight >= keyboard.resources.displayMetrics.density * 48f)
-            AccentPalette.presets.forEach { (hex, label) ->
-                assertNull(
-                    "$label must not look selected while a custom accent is active",
-                    keyboard.findViewWithTag<View>("accent-selected-mark:$hex"),
-                )
-            }
-            // And the other way round: a preset takes the selection from the custom row.
-            keyboard.setSkin(96, 10, 18, "#1D9BF0")
-            keyboard.showPanel(Panel.SKIN_SETTINGS)
-            assertTrue(
-                keyboard.findViewWithTag<View>("accent-custom").contentDescription.toString().contains("未选中"),
-            )
-            true
-        }
-    }
-
-    @Test
     fun persistedSettingsSnapshotAppliesVisualAndInteractionStateTogether() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             keyboard.applyPersistedSettings(
@@ -579,49 +553,16 @@ class AuditInteractionInstrumentedTest {
                 haptic = true,
                 popup = true,
                 fuzzy = true,
-                opacity = 92,
-                radius = 14,
-                fontSize = 19,
-                primaryColor = "#123456",
-            )
-            keyboard.showPanel(Panel.SKIN_SETTINGS)
-            assertTrue(
-                "The persisted custom accent must be what the skin page reports as selected",
-                keyboard.findViewWithTag<View>("accent-custom").contentDescription.toString().contains("已选中"),
             )
             keyboard.showPanel(Panel.FUZZY_SETTINGS)
             val toggle = keyboard.findViewWithTag<View>("toggle")
             assertTrue(toggle.contentDescription.toString().contains("已开启"))
             // An enabled switch is painted with the accent, so this proves the
-            // persisted colour reached the theme, not just the settings text.
+            // persisted appearance reached the theme, not just the settings text.
             assertEquals(
-                Color.parseColor("#123456"),
-                (toggle.background as GradientDrawable).color?.defaultColor,
+                ImeTheme.IOS.tokens(ImeAppearance.LIGHT).primary,
+                switchTrackColor(toggle),
             )
-            true
-        }
-    }
-
-    @Test
-    fun presetAccentSelectionHasAVisibleNonColorMark() = withKeyboard { harness, _, keyboard ->
-        harness.awaitMain {
-            keyboard.setSkin(96, 10, 18, "#1D9BF0")
-            keyboard.showPanel(Panel.SKIN_SETTINGS)
-            assertTrue(
-                "Selected accent must expose a visible check mark in addition to color",
-                keyboard.findViewWithTag<View>("accent-selected-mark:#1D9BF0") != null,
-            )
-            true
-        }
-    }
-
-    @Test
-    fun presetAccentSwatchesExposeAVisibleKeyboardFocusState() = withKeyboard { harness, _, keyboard ->
-        harness.awaitMain {
-            keyboard.showPanel(Panel.SKIN_SETTINGS)
-            val swatch = keyboard.findViewWithTag<View>("accent-swatch")
-            assertTrue("Accent swatches must be keyboard-focusable", swatch.isFocusable)
-            assertTrue("Accent swatches must expose a focusable background", swatch.background is StateListDrawable)
             true
         }
     }
@@ -712,9 +653,12 @@ class AuditInteractionInstrumentedTest {
             keyboard.showPanel(Panel.TOOLS)
             val card = keyboard.findViewWithTag<View>("tool:表情")
             assertTrue("Tool card must be keyboard-focusable", card.isFocusable)
-            assertTrue("Tool card must expose pressed and focus feedback", card.background is StateListDrawable)
+            // The column is the target; its icon tile mirrors the column's state.
+            val tile = (card as ViewGroup).getChildAt(0)
+            assertTrue("Tool tile must expose pressed and focus feedback", tile.background is StateListDrawable)
+            assertTrue("Tool tile must follow the card's pressed state", tile.isDuplicateParentStateEnabled)
             assertEquals("表情", card.contentDescription)
-            val label = (card as ViewGroup).getChildAt(1)
+            val label = card.getChildAt(1)
             assertTrue(
                 "Visual tool label must not create a duplicate node",
                 label.importantForAccessibility == View.IMPORTANT_FOR_ACCESSIBILITY_NO,
@@ -805,19 +749,23 @@ class AuditInteractionInstrumentedTest {
             val panel = keyboard.findViewWithTag<ViewGroup>("fuzzy-settings-panel")
             val row = panel.findViewWithTag<ViewGroup>("setting-row")
             val toggle = panel.findViewWithTag<View>("toggle")
-            val icon = panel.findViewWithTag<View>("setting-icon")
+            // The keyboard's compact rows carry no icon; the preferences page's do.
+            val icon: View? = panel.findViewWithTag<View>("setting-icon")
             assertTrue("Settings row must be keyboard-focusable", row.isFocusable)
             assertTrue("Settings row must expose its current state", row.contentDescription.toString().contains("已关闭"))
             assertTrue("The visual switch must not create a duplicate accessibility node", toggle.importantForAccessibility == View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS)
             assertTrue(
-                "Visual switch track minimum must be wider than tall",
-                toggle.minimumWidth > toggle.minimumHeight,
+                "Visual switch track must be wider than tall",
+                ImeGeometryTokens.SWITCH_WIDTH_DP > ImeGeometryTokens.SWITCH_HEIGHT_DP,
             )
-            assertTrue("Setting icon must remain decorative", icon.importantForAccessibility == View.IMPORTANT_FOR_ACCESSIBILITY_NO)
-            val offColor = (toggle.background as GradientDrawable).color?.defaultColor
+            assertTrue("Switch keeps a 48dp touch target", toggle.minimumHeight >= keyboard.resources.displayMetrics.density * 48f)
+            if (icon != null) {
+                assertTrue("Setting icon must remain decorative", icon.importantForAccessibility == View.IMPORTANT_FOR_ACCESSIBILITY_NO)
+            }
+            val offColor = switchTrackColor(toggle)
             assertTrue(row.performClick())
             assertTrue(row.contentDescription.toString().contains("已开启"))
-            val onColor = (toggle.background as GradientDrawable).color?.defaultColor
+            val onColor = switchTrackColor(toggle)
             assertTrue("Toggle background must follow its enabled state", offColor != onColor)
             true
         }
@@ -1446,4 +1394,8 @@ class AuditInteractionInstrumentedTest {
             event.recycle()
         }
     }
+
+    /** The switch track is painted inside its 48dp target by an inset wrapper. */
+    private fun switchTrackColor(toggle: View): Int? =
+        ((toggle.background as android.graphics.drawable.InsetDrawable).drawable as GradientDrawable).color?.defaultColor
 }

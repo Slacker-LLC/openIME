@@ -1,23 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="setup_page_bg">#EFF0F4</color>
+    <!-- App pages (home, preferences, editors). docs/APP_UI_SPEC.md lists where each one goes. -->
+    <color name="setup_page_bg">#F2F3F6</color>
     <color name="setup_surface">#FFFFFF</color>
-    <color name="setup_title">#1C1C1E</color>
-    <color name="setup_body">#6D6D72</color>
-    <color name="setup_primary">#1D9BF0</color>
-    <color name="setup_primary_pressed">#0E85D5</color>
-    <color name="setup_on_primary">#07131D</color>
-    <color name="setup_muted">#C5C9D2</color>
-    <color name="setup_muted_pressed">#B7BCC5</color>
-    <color name="setup_muted_text">#6D6D72</color>
+    <color name="setup_title">#15171C</color>
+    <color name="setup_body">#5B6270</color>
+    <!-- Accent: interactive controls and their on/current state only. -->
+    <color name="setup_primary">#1668D0</color>
+    <color name="setup_primary_pressed">#1259B4</color>
+    <color name="setup_primary_text">#1668D0</color>
+    <color name="setup_primary_tint">#E3EDFA</color>
+    <color name="setup_on_primary">#FFFFFF</color>
+    <color name="setup_muted">#ECEEF1</color>
+    <color name="setup_muted_pressed">#E1E4E8</color>
+    <color name="setup_muted_text">#6E7480</color>
+    <color name="setup_icon_tile">#EEF0F3</color>
+    <color name="setup_icon">#3C424D</color>
+    <color name="setup_chevron">#A3A8B1</color>
+    <color name="setup_hairline">#E7E9ED</color>
+    <color name="setup_switch_off">#D7DAE0</color>
+    <color name="setup_slider_track">#E3E6EB</color>
+    <color name="setup_segment_selected">#FFFFFF</color>
+    <color name="setup_step_todo">#C5CAD3</color>
+    <color name="setup_progress_todo">#DADDE3</color>
     <color name="setup_ready">#1F8A4C</color>
     <color name="setup_mark_done_bg">#1F8A4C</color>
     <color name="setup_mark_done">#1F8A4C</color>
-    <color name="setup_mark_todo_bg">#EFF0F4</color>
-    <color name="setup_input_line">#B7BCC5</color>
-    <color name="setup_icon_ring">#EFF0F4</color>
-    <color name="brand_accent">#1D9BF0</color>
+    <color name="setup_mark_todo_bg">#ECEEF1</color>
+    <color name="setup_input_line">#D5D9DF</color>
+    <color name="setup_icon_ring">#EEF0F3</color>
+    <color name="brand_accent">#1668D0</color>
     <color name="ic_launcher_background">#1D9BF0</color>
     <color name="setup_disabled">#E8E9ED</color>
-    <color name="setup_disabled_text">#9B9B9F</color>
+    <color name="setup_disabled_text">#8A909B</color>
 </resources>

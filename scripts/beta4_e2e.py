@@ -45,7 +45,7 @@ def capture(dev, name):
     (dev.out / (name+'.xml')).write_text(dev.shell('cat','/sdcard/beta3.xml'))
     return nodes
 
-def verify_layout(dev, name, home, include_steps=True):
+def verify_layout(dev, name, home):
     """Measure the rendered Android UI, including display overrides."""
     sizes=re.findall(r'(?:Physical|Override) size: (\d+)x(\d+)',dev.shell('wm','size'))
     width=int(sizes[-1][0])
@@ -54,25 +54,27 @@ def verify_layout(dev, name, home, include_steps=True):
     tree=ET.fromstring((dev.out/(name+'.xml')).read_text())
     bounds=lambda n:list(map(int,re.findall(r'-?\d+',n.get('bounds'))))
     if home:
+        # The IME is ready during this run, so home shows the ready layout:
+        # the ready card, the try field and the shortcuts card share page edges.
         by_id={n.get('resource-id','').split('/')[-1]:n for n in tree.iter('node')}
-        steps=[bounds(by_id[k]) for k in ('open_ime_settings','choose_ime','test_step')] if include_steps else []
-        button=bounds(by_id['open_app_settings'])
-        for b in steps+[button]:
+        # Large fonts push the lower cards below the fold; check the ones on screen.
+        assert 'ready_card' in by_id, f'{name}: ready card missing'
+        cards=[bounds(by_id[k]) for k in ('ready_card','test_input','shortcuts_card') if k in by_id]
+        for b in cards:
             assert abs(b[0]-left)<=3 and abs(b[2]-(width-left))<=3, f'{name}: inconsistent page edges {b}'
-        assert abs(button[3]-button[1]-52*density)<=3, f'{name}: primary button height'
-        for first,second in zip(steps,steps[1:]):
-            assert abs(second[1]-first[3]-8*density)<=3, f'{name}: step spacing'
-        assert all(b[3]-b[1]>=64*density-3 for b in steps), f'{name}: step touch area'
+        assert all(b[3]-b[1]>=52*density-3 for b in cards), f'{name}: card height'
     else:
-        row=next(n for n in tree.iter('node') if n.get('content-desc','').startswith('强调色与按键皮肤'))
-        b=bounds(row)
-        assert abs(b[0]-left)<=3 and abs(b[2]-(width-left))<=3, f'{name}: settings page edges {b}'
+        # Appearance options sit under the label: card padding 16 + icon 32 + gap 12, track inset 2.
+        options=[bounds(n) for n in tree.iter('node') if n.get('content-desc','').split('，')[0] in ('跟随系统','浅色','深色')]
+        assert options, f'{name}: appearance options missing'
+        assert abs(min(b[0] for b in options)-(left+62*density))<=4, f'{name}: options start {options}'
+        assert abs(max(b[2] for b in options)-(width-left-18*density))<=4, f'{name}: options end {options}'
     return {'screenWidthDp':round(width/density,2),'contentMarginDp':16,'passed':True}
 
 def toggle_space(dev, enabled):
     dev.shell('input','keyevent','4')
     dev.shell('am','start','-n',PKG+'/.MainActivity','-f','0x10008000');time.sleep(1)
-    nodes=dev.dump();button=next(n for n in nodes if n.text=='打开偏好设置')
+    nodes=dev.dump();button=next(n for n in nodes if n.desc=='偏好设置')
     dev.tap(button.cx,button.cy);time.sleep(.6)
     for _ in range(8):
         nodes=dev.dump()
@@ -162,16 +164,13 @@ def main():
         nodes=capture(d,'app-home-light')
         records.append({'case':'rendered home size/spacing/alignment',**verify_layout(d,'app-home-light',True)})
         home_xml=ET.fromstring((a.out/'app-home-light.xml').read_text())
-        assert any(n.get('class')=='android.widget.Button' and n.get('text')=='打开偏好设置' for n in home_xml.iter('node'))
-        button=next(n for n in nodes if n.text=='打开偏好设置')
+        assert any(n.get('text')=='openIME 已就绪' for n in home_xml.iter('node'))
+        button=next(n for n in nodes if n.desc=='偏好设置')
         d.tap(button.cx,button.cy);time.sleep(1)
         nodes=capture(d,'app-settings-light')
         records.append({'case':'rendered settings alignment',**verify_layout(d,'app-settings-light',False)})
         assert any(n.text=='偏好设置' for n in nodes)
-        assert any(n.desc.startswith('强调色与按键皮肤') for n in nodes)
-        skin=next(n for n in nodes if n.desc.startswith('强调色与按键皮肤'))
-        d.tap(skin.cx,skin.cy);time.sleep(.5); capture(d,'app-skin-light')
-        d.shell('input','keyevent','4');time.sleep(.5)
+        assert not any('皮肤' in n.text or '单手' in n.text for n in nodes), 'Removed skin/one-hand settings resurfaced'
         # Set dark mode through its real setting segment.
         nodes=d.dump();dark=next(n for n in nodes if n.desc.startswith('深色，'))
         d.tap(dark.cx,dark.cy);time.sleep(1);capture(d,'app-settings-dark')
@@ -182,23 +181,23 @@ def main():
         d.shell('am','start','-n',PKG+'/.MainActivity','-f','0x10008000');time.sleep(2)
         ensure_ime(d)
         d.shell('am','start','-n',PKG+'/.MainActivity','-f','0x10008000')
-        wait(lambda: any(n.text=='已就绪，在下方试打' for n in d.dump()),15)
+        wait(lambda: any(n.text=='openIME 已就绪' for n in d.dump()),15)
         time.sleep(1)
         nodes=capture(d,'app-home-320dp-large-font')
         verify_layout(d,'app-home-320dp-large-font',True)
-        button=next(n for n in nodes if n.text=='打开偏好设置');d.tap(button.cx,button.cy);time.sleep(1)
+        button=next(n for n in nodes if n.desc=='偏好设置');d.tap(button.cx,button.cy);time.sleep(1)
         nodes=capture(d,'app-settings-320dp-large-font')
         verify_layout(d,'app-settings-320dp-large-font',False)
         assert any(n.text=='偏好设置' for n in nodes), 'Narrow settings page did not actually open'
-        assert any(n.desc.startswith('强调色与按键皮肤') for n in nodes)
-        height_value=next(n for n in nodes if n.desc=='键盘高度 当前值')
+        assert any(n.desc.startswith('跟随系统，') for n in nodes)
+        height_value=next(n for n in nodes if n.text=='100%')
         assert height_value.text=='100%' and height_value.y1-height_value.y0 < 32*d.density(), 'Narrow slider value wraps'
-        records.append({'case':'app home/settings/skin light/dark/320dp font 1.3','passed':True})
+        records.append({'case':'app home/settings light/dark/320dp font 1.3','passed':True})
         d.shell('settings','put','system','font_scale','2.0');time.sleep(1)
         d.shell('am','start','-n',PKG+'/.MainActivity','-f','0x10008000');time.sleep(1)
         nodes=capture(d,'app-home-320dp-font-2')
-        verify_layout(d,'app-home-320dp-font-2',True,include_steps=False)
-        button=next(n for n in nodes if n.text=='打开偏好设置');d.tap(button.cx,button.cy);time.sleep(1)
+        verify_layout(d,'app-home-320dp-font-2',True)
+        button=next(n for n in nodes if n.desc=='偏好设置');d.tap(button.cx,button.cy);time.sleep(1)
         nodes=capture(d,'app-settings-320dp-font-2')
         assert all(any(n.desc.startswith(v+'，') and n.y1-n.y0>=48*2.625-3 for n in nodes) for v in ('跟随系统','浅色','深色')), 'Large-font options clipped'
         records.append({'case':'320dp font 2.0, adaptive options and actual button geometry','passed':True})
@@ -206,7 +205,7 @@ def main():
         d.shell('am','start','-n',PKG+'/.MainActivity','-f','0x10008000');time.sleep(1)
         nodes=capture(d,'app-home-wide')
         verify_layout(d,'app-home-wide',True)
-        button=next(n for n in nodes if n.text=='打开偏好设置');d.tap(button.cx,button.cy);time.sleep(1)
+        button=next(n for n in nodes if n.desc=='偏好设置');d.tap(button.cx,button.cy);time.sleep(1)
         capture(d,'app-settings-wide');verify_layout(d,'app-settings-wide',False)
         records.append({'case':'wide display, centered 600dp content and 16dp margins','passed':True})
     except Exception as error:

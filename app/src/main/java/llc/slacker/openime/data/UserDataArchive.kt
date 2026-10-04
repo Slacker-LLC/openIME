@@ -2,7 +2,6 @@ package llc.slacker.openime.data
 
 import android.content.Context
 import llc.slacker.openime.core.KeyboardMode
-import llc.slacker.openime.theme.AccentPalette
 import llc.slacker.openime.theme.ImeAppearance
 import llc.slacker.openime.theme.ImeTheme
 import org.json.JSONArray
@@ -35,12 +34,7 @@ internal data class ArchiveSettings(
     val popup: Boolean,
     val fuzzy: Boolean,
     val swipeUpDigits: Boolean,
-    val skinOpacity: Int,
-    val skinRadius: Int,
-    val skinFont: Int,
-    val skinColor: String,
     val preferredChineseMode: String,
-    val handedness: String,
     val keyboardHeightPercent: Int,
     val floatingWidthPercent: Int,
     val floatingOpacityPercent: Int,
@@ -183,12 +177,7 @@ internal object UserDataArchiveCodec {
             .put("popup", value.popup)
             .put("fuzzy", value.fuzzy)
             .put("swipe_up_digits", value.swipeUpDigits)
-            .put("skin_opacity", value.skinOpacity)
-            .put("skin_radius", value.skinRadius)
-            .put("skin_font", value.skinFont)
-            .put("skin_color", value.skinColor)
             .put("preferred_chinese_mode", value.preferredChineseMode)
-            .put("handedness", value.handedness)
             .put("keyboard_height_percent", value.keyboardHeightPercent)
             .put("floating_width_percent", value.floatingWidthPercent)
             .put("floating_opacity_percent", value.floatingOpacityPercent)
@@ -206,15 +195,10 @@ internal object UserDataArchiveCodec {
             popup = value.optBoolean("popup", false),
             fuzzy = value.optBoolean("fuzzy", false),
             swipeUpDigits = value.optBoolean("swipe_up_digits", true),
-            skinOpacity = value.optInt("skin_opacity", 95).coerceIn(70, 100),
-            skinRadius = value.optInt("skin_radius", 8).coerceIn(0, 24),
-            skinFont = value.optInt("skin_font", 17).coerceIn(14, 22),
-            skinColor = AccentPalette.normalize(value.optString("skin_color", AccentPalette.DEFAULT)),
             preferredChineseMode = value.optString(
                 "preferred_chinese_mode",
                 KeyboardMode.PINYIN_26.name,
             ),
-            handedness = value.optString("handedness", ImeHandedness.STANDARD.name),
             keyboardHeightPercent =
                 value.optInt("keyboard_height_percent", 100).coerceIn(80, 120),
             floatingWidthPercent =
@@ -340,13 +324,8 @@ internal object UserDataRepository {
                 popup = ImeSettingsRepository.loadPopup(context),
                 fuzzy = ImeSettingsRepository.loadFuzzy(context),
                 swipeUpDigits = ImeSettingsRepository.loadSwipeUpDigits(context),
-                skinOpacity = ImeSettingsRepository.loadSkinOpacity(context),
-                skinRadius = ImeSettingsRepository.loadSkinRadius(context),
-                skinFont = ImeSettingsRepository.loadSkinFont(context),
-                skinColor = ImeSettingsRepository.loadSkinColor(context),
                 preferredChineseMode =
                     ImeSettingsRepository.loadPreferredChineseMode(context).name,
-                handedness = ImeSettingsRepository.loadHandedness(context).name,
                 keyboardHeightPercent =
                     ImeSettingsRepository.loadKeyboardHeightPercent(context),
                 floatingWidthPercent =
@@ -427,22 +406,10 @@ internal object UserDataRepository {
         ImeSettingsRepository.savePopup(context, value.popup)
         ImeSettingsRepository.saveFuzzy(context, value.fuzzy)
         ImeSettingsRepository.saveSwipeUpDigits(context, value.swipeUpDigits)
-        ImeSettingsRepository.saveSkin(
-            context,
-            opacity = value.skinOpacity.coerceIn(70, 100),
-            radius = value.skinRadius.coerceIn(0, 24),
-            fontSize = value.skinFont.coerceIn(14, 22),
-            primaryColor = value.skinColor,
-        )
         ImeSettingsRepository.savePreferredChineseMode(
             context,
             runCatching { KeyboardMode.valueOf(value.preferredChineseMode) }
                 .getOrDefault(KeyboardMode.PINYIN_26),
-        )
-        ImeSettingsRepository.saveHandedness(
-            context,
-            runCatching { ImeHandedness.valueOf(value.handedness) }
-                .getOrDefault(ImeHandedness.STANDARD),
         )
         ImeSettingsRepository.saveKeyboardHeightPercent(
             context,

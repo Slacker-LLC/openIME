@@ -14,7 +14,6 @@ import android.widget.SeekBar
 import android.widget.TextView
 import llc.slacker.openime.R
 import llc.slacker.openime.handwriting.HandwritingPadView
-import llc.slacker.openime.theme.AccentPalette
 import llc.slacker.openime.theme.ImeDrawableFactory
 import llc.slacker.openime.theme.ImeGeometryTokens
 import llc.slacker.openime.theme.ImeSurfacePolicy
@@ -32,9 +31,6 @@ internal class ImeThemeApplier(
     private val statefulRounded: (Int, Int, Int) -> android.graphics.drawable.StateListDrawable,
     private val keyMainTextScale: () -> Float,
     private val referenceScale: () -> Float,
-    private val skinRadiusPx: () -> Int,
-    private val skinOpacity: () -> Int,
-    private val skinPrimaryColor: () -> String,
     private val toggleState: (String) -> Boolean,
     private val isSideKey: (ImeKeyView) -> Boolean,
     private val isFunctionKey: (ImeKeyView) -> Boolean,
@@ -104,12 +100,11 @@ internal class ImeThemeApplier(
         }
 
         view.applyMainTextScale(keyMainTextScale())
-        val keyFace = statefulRounded(color, pressedColor, skinRadiusPx())
-        val keyCap = ImeDrawableFactory.keyCap(keyFace, pressedColor, skinRadiusPx(), toPx(1))
+        val keyRadius = toPx(ImeGeometryTokens.KEY_RADIUS_DP)
+        val keyFace = statefulRounded(color, pressedColor, keyRadius)
+        val keyCap = ImeDrawableFactory.keyCap(keyFace, pressedColor, keyRadius, toPx(1))
         val halfGap = toPx(ImeGeometryTokens.KEY_GAP_DP) / 2
         view.background = InsetDrawable(keyCap, halfGap, halfGap, halfGap, halfGap)
-        view.background?.alpha =
-            skinOpacity().coerceIn(70, 100) * 255 / 100
         view.elevation = 0f
 
         when {
@@ -157,11 +152,25 @@ internal class ImeThemeApplier(
                     toPx(ImeGeometryTokens.KEY_RADIUS_DP),
                 )
             }
+            // Rows sit inside a card that clips to its corners, so the pressed
+            // fill is square and the card supplies the rounding.
             "setting-row" -> if (view.isClickable) {
                 view.background = statefulRounded(
                     Color.TRANSPARENT,
                     ImeSurfacePolicy.pressedSurface(t.toolCardBackground, t),
-                    toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
+                    0,
+                )
+            }
+            "settings-card" -> view.background = ImeDrawableFactory.rounded(
+                t.toolCardBackground,
+                toPx(ImeGeometryTokens.CARD_RADIUS_DP),
+            )
+            "quick-tile" -> {
+                val fill = if (view.isSelected) t.primary else t.toolCardBackground
+                view.background = statefulRounded(
+                    fill,
+                    if (view.isSelected) ImeSurfacePolicy.primaryPressed(t) else ImeSurfacePolicy.pressedSurface(fill, t),
+                    toPx(14),
                 )
             }
             "nine-symbol-scroll-content", "digits-symbol-scroll-content" -> view.background = null
@@ -171,10 +180,14 @@ internal class ImeThemeApplier(
                     if (selected) t.primary else Color.TRANSPARENT, if (selected) toPx(2) else 0)
                 view.invalidate()
             }
-            "segmented-track" -> view.background = ImeDrawableFactory.rounded(t.functionKeyBackground, toPx(12))
+            "segmented-track" -> view.background = ImeDrawableFactory.rounded(
+                if (hasAncestorTag(view, "settings-panel")) ImeSurfacePolicy.controlTrack(t) else t.functionKeyBackground,
+                toPx(12),
+            )
             "segmented-track-tall" -> view.background = paintedWithinTarget(
-                ImeDrawableFactory.rounded(t.functionKeyBackground, toPx(12)),
+                ImeDrawableFactory.rounded(ImeSurfacePolicy.controlTrack(t), toPx(10)),
                 SEGMENT_PAINTED_DP,
+                padsView = false,
             )
             "phrase-card" -> view.background = ImeDrawableFactory.rounded(t.toolCardBackground, toPx(14))
             "setting-group" -> {
@@ -193,21 +206,14 @@ internal class ImeThemeApplier(
                     0,
                 )
             }
-            "panel-head" -> view.setBackgroundColor(t.panelHeadBackground)
+            // A panel's title row shares the panel's ground: no separate band.
+            "panel-head" -> view.setBackgroundColor(t.keyboardBackground)
             "toolbar-row" -> view.setBackgroundColor(t.toolbarBackground)
             "compose-zone" -> view.setBackgroundColor(t.candidateBackground)
             "candidate-field" -> view.background = null
             else -> {
-                if (
-                    (view.tag as? String)?.startsWith("tool:") == true &&
-                    view.isClickable
-                ) {
-                    view.background = statefulRounded(
-                        t.toolCardBackground,
-                        ImeSurfacePolicy.pressedSurface(t.toolCardBackground, t),
-                        toPx(ImeGeometryTokens.CARD_RADIUS_DP),
-                    )
-                }
+                // A tool is a column (tile + name); its tile paints the press.
+                if ((view.tag as? String)?.startsWith("tool:") == true) view.background = null
             }
         }
 
@@ -278,11 +284,26 @@ internal class ImeThemeApplier(
                     toPx(ImeGeometryTokens.KEY_RADIUS_DP),
                 )
             }
+            // Row icons are decoration, so they stay neutral; the accent is
+            // reserved for controls and their on/current state.
             view.tag == "setting-icon" -> {
-                view.imageTintList = ColorStateList.valueOf(t.primary)
-                view.background = ImeDrawableFactory.rounded(
-                    ImeSurfacePolicy.subtleAccentSurface(t),
-                    toPx(ImeGeometryTokens.KEY_RADIUS_DP),
+                view.imageTintList = ColorStateList.valueOf(ImeSurfacePolicy.iconTint(t))
+                view.background = ImeDrawableFactory.rounded(ImeSurfacePolicy.iconTile(t), toPx(9))
+            }
+            view.tag == "setting-chevron" ->
+                view.imageTintList = ColorStateList.valueOf(ImeSurfacePolicy.chevron(t))
+            view.tag == "quick-tile-icon" -> {
+                val selected = (view.parent as? View)?.isSelected == true
+                view.imageTintList = ColorStateList.valueOf(
+                    if (selected) ImeDrawableFactory.contrastText(t.primary) else ImeSurfacePolicy.iconTint(t),
+                )
+            }
+            view.tag == "tool-icon" -> {
+                view.imageTintList = ColorStateList.valueOf(ImeSurfacePolicy.iconTint(t))
+                view.background = statefulRounded(
+                    t.toolCardBackground,
+                    ImeSurfacePolicy.pressedSurface(t.toolCardBackground, t),
+                    toPx(16),
                 )
             }
             view.tag == "undo-toolbar" -> view.imageTintList = ColorStateList.valueOf(t.keySecondaryText)
@@ -293,9 +314,9 @@ internal class ImeThemeApplier(
             view.tag == "key-panel-back" -> {
                 view.imageTintList = ColorStateList.valueOf(t.keyText)
                 view.background = statefulRounded(
-                    t.panelHeadBackground,
-                    ImeSurfacePolicy.pressedSurface(t.panelHeadBackground, t),
-                    toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
+                    Color.TRANSPARENT,
+                    ImeSurfacePolicy.pressedSurface(t.keyboardBackground, t),
+                    toPx(ImeGeometryTokens.PILL_RADIUS_DP),
                 )
             }
             (
@@ -317,8 +338,8 @@ internal class ImeThemeApplier(
     private fun applySeekBar(view: SeekBar, t: ImeTheme.Tokens) {
         view.progressDrawable = view.context.getDrawable(android.R.drawable.progress_horizontal)?.mutate()
         view.progressTintList = ColorStateList.valueOf(t.primary)
-        view.progressBackgroundTintList = ColorStateList.valueOf(t.functionKeyBackground)
-        view.secondaryProgressTintList = ColorStateList.valueOf(t.functionKeyBackground)
+        view.progressBackgroundTintList = ColorStateList.valueOf(ImeSurfacePolicy.controlTrack(t))
+        view.secondaryProgressTintList = ColorStateList.valueOf(ImeSurfacePolicy.controlTrack(t))
         if (android.os.Build.VERSION.SDK_INT >= 29) {
             view.maxHeight = toPx(4)
             view.minHeight = toPx(4)
@@ -360,6 +381,7 @@ internal class ImeThemeApplier(
                 view.setTextColor(t.candidateText)
 
             tag == "panel-note" ||
+                tag == "setting-sub" ||
                 tag == "setting-value" ||
                 tag == "setting-chevron" ||
                 tag == "panel-section-title" ->
@@ -367,6 +389,10 @@ internal class ImeThemeApplier(
 
             tag == "setting-label" ->
                 view.setTextColor(t.keyText)
+
+            tag == "quick-tile-label" -> view.setTextColor(
+                if ((view.parent as? View)?.isSelected == true) ImeDrawableFactory.contrastText(t.primary) else t.keyText,
+            )
 
             tag == "panel-error" -> {
                 val error = t.destructive
@@ -456,17 +482,22 @@ internal class ImeThemeApplier(
 
             tag == "segment-selected" -> {
                 view.setTextColor(t.keyText)
-                view.background = ImeDrawableFactory.rounded(t.toolCardBackground, toPx(10), t.border, toPx(1))
+                view.background = if (hasAncestorTag(view, "settings-panel")) {
+                    ImeDrawableFactory.rounded(ImeSurfacePolicy.segmentSelected(t), toPx(10))
+                } else {
+                    ImeDrawableFactory.rounded(t.toolCardBackground, toPx(10), t.border, toPx(1))
+                }
                 view.typeface = android.graphics.Typeface.DEFAULT_BOLD
             }
             tag == "segment-option" -> { view.setTextColor(t.keySecondaryText); view.background = null }
             tag == "segment-selected-tall" -> {
                 view.setTextColor(t.keyText)
                 view.background = paintedWithinTarget(
-                    ImeDrawableFactory.rounded(t.toolCardBackground, toPx(10), t.border, toPx(1)),
-                    SEGMENT_PAINTED_DP,
+                    ImeDrawableFactory.rounded(ImeSurfacePolicy.segmentSelected(t), toPx(8)),
+                    SEGMENT_PAINTED_DP - 4,
+                    padsView = false,
                 )
-                view.typeface = android.graphics.Typeface.DEFAULT_BOLD
+                view.typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
             }
             tag == "segment-option-tall" -> { view.setTextColor(t.keySecondaryText); view.background = null }
             tag == "keyboard-radio-selected" -> view.setTextColor(t.primary)
@@ -506,16 +537,6 @@ internal class ImeThemeApplier(
                     Color.TRANSPARENT,
                     ImeSurfacePolicy.pressedSurface(t.sideKeyBackground, t),
                     toPx(ImeGeometryTokens.KEY_RADIUS_DP),
-                )
-            }
-
-            tag == "accent-custom" -> { view.setTextColor(t.keyText); view.background = null }
-            tag?.startsWith("accent-selected-mark:") == true -> {
-                val hex = tag.substringAfter(':')
-                view.setTextColor(
-                    ImeDrawableFactory.contrastText(
-                        AccentPalette.parse(hex),
-                    ),
                 )
             }
 
@@ -595,13 +616,6 @@ internal class ImeThemeApplier(
                     toPx(ImeGeometryTokens.KEY_RADIUS_DP),
                 )
             }
-            "accent-swatch" -> {
-                view.background = statefulRounded(
-                    Color.TRANSPARENT,
-                    ImeSurfacePolicy.pressedSurface(t.sideKeyBackground, t),
-                    toPx(ImeGeometryTokens.KEY_RADIUS_DP),
-                )
-            }
             "toggle" -> {
                 val seed = view.contentDescription?.toString()
                     ?.substringBefore('，')
@@ -634,12 +648,13 @@ internal class ImeThemeApplier(
             }
             "toggle-knob" -> {
                 view.background = ImeDrawableFactory.rounded(
-                    Color.WHITE,
+                    ImeSurfacePolicy.switchKnob(t),
                     toPx(ImeGeometryTokens.PILL_RADIUS_DP),
                 )
             }
             "setting-divider" ->
                 view.setBackgroundColor(ImeDrawableFactory.withAlpha(t.border, if (ImeSurfacePolicy.isDark(t)) 150 else 48))
+            "row-hairline" -> view.setBackgroundColor(ImeSurfacePolicy.hairline(t))
         }
     }
 
@@ -651,9 +666,18 @@ internal class ImeThemeApplier(
     private fun paintedWithinTarget(
         drawable: android.graphics.drawable.Drawable,
         paintedDp: Int,
+        padsView: Boolean = true,
     ): InsetDrawable {
         val extra = toPx(ImeGeometryTokens.TOUCH_TARGET_DP) - toPx(paintedDp)
-        return InsetDrawable(drawable, 0, extra / 2, 0, extra - extra / 2)
+        if (padsView) return InsetDrawable(drawable, 0, extra / 2, 0, extra - extra / 2)
+        // An InsetDrawable background also pads its view by the inset, which
+        // squeezed a segment's label into the painted pill and clipped it.
+        return object : InsetDrawable(drawable, 0, extra / 2, 0, extra - extra / 2) {
+            override fun getPadding(padding: android.graphics.Rect): Boolean {
+                padding.set(0, 0, 0, 0)
+                return false
+            }
+        }
     }
 
     private fun hasAncestorTag(view: View, tag: String): Boolean {

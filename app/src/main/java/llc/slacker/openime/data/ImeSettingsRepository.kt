@@ -2,15 +2,8 @@ package llc.slacker.openime.data
 
 import android.content.Context
 import llc.slacker.openime.core.KeyboardMode
-import llc.slacker.openime.theme.AccentPalette
 import llc.slacker.openime.theme.ImeAppearance
 import llc.slacker.openime.theme.ImeTheme
-
-enum class ImeHandedness(val label: String) {
-    STANDARD("标准"),
-    LEFT("左手"),
-    RIGHT("右手"),
-}
 
 /** Lightweight persistent IME settings. */
 object ImeSettingsRepository {
@@ -27,12 +20,7 @@ object ImeSettingsRepository {
     private const val KEY_EMOJI_ASSOCIATION = "emoji_association"
     private const val KEY_VOICE_STRIP_FILLERS = "voice_strip_fillers"
     private const val KEY_VOICE_PUNCTUATION_AS_SPACE = "voice_punctuation_as_space"
-    private const val KEY_SKIN_OPACITY = "skin_opacity"
-    private const val KEY_SKIN_RADIUS = "skin_radius"
-    private const val KEY_SKIN_FONT = "skin_font"
-    private const val KEY_SKIN_COLOR = "skin_color"
     private const val KEY_PREFERRED_CHINESE_MODE = "preferred_chinese_mode"
-    private const val KEY_HANDEDNESS = "handedness"
     private const val KEY_KEYBOARD_HEIGHT = "keyboard_height_percent"
     private const val KEY_FLOATING_WIDTH = "floating_width_percent"
     private const val KEY_FLOATING_OPACITY = "floating_opacity_percent"
@@ -55,20 +43,6 @@ object ImeSettingsRepository {
         if (mode != KeyboardMode.PINYIN_26 && mode != KeyboardMode.PINYIN_9) return
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putString(KEY_PREFERRED_CHINESE_MODE, mode.name).apply()
-    }
-
-    fun loadHandedness(context: Context): ImeHandedness =
-        runCatching {
-            ImeHandedness.valueOf(
-                context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                    .getString(KEY_HANDEDNESS, ImeHandedness.STANDARD.name)
-                    ?: ImeHandedness.STANDARD.name,
-            )
-        }.getOrDefault(ImeHandedness.STANDARD)
-
-    fun saveHandedness(context: Context, handedness: ImeHandedness) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putString(KEY_HANDEDNESS, handedness.name).apply()
     }
 
     fun loadKeyboardHeightPercent(context: Context): Int =
@@ -217,31 +191,5 @@ object ImeSettingsRepository {
     fun saveFuzzy(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_FUZZY, enabled).apply()
-    }
-
-    fun loadSkinOpacity(context: Context): Int =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getInt(KEY_SKIN_OPACITY, 100)
-
-    fun loadSkinRadius(context: Context): Int =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getInt(KEY_SKIN_RADIUS, 8)
-
-    fun loadSkinFont(context: Context): Int =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getInt(KEY_SKIN_FONT, 21)
-
-    fun loadSkinColor(context: Context): String =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(KEY_SKIN_COLOR, AccentPalette.DEFAULT) ?: AccentPalette.DEFAULT
-
-    fun saveSkin(context: Context, opacity: Int, radius: Int, fontSize: Int, primaryColor: String) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putInt(KEY_SKIN_OPACITY, opacity)
-            .putInt(KEY_SKIN_RADIUS, radius)
-            .putInt(KEY_SKIN_FONT, fontSize)
-            .putString(KEY_SKIN_COLOR, AccentPalette.normalize(primaryColor))
-            .apply()
     }
 }

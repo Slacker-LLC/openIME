@@ -13,7 +13,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import llc.slacker.openime.R
 import llc.slacker.openime.data.ImeSettingsRepository
-import llc.slacker.openime.theme.AccentPalette
 import llc.slacker.openime.theme.ImeDrawableFactory
 import llc.slacker.openime.theme.ImeSurfacePolicy
 import llc.slacker.openime.theme.ImeTheme
@@ -52,7 +51,7 @@ internal class VoicePanelView(
         setPadding(toPx(12), toPx(14), toPx(12), toPx(10))
         gravity = Gravity.CENTER_HORIZONTAL
         val dark = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val palette = ImeTheme.IOS.tokens(ImeSettingsRepository.loadAppearance(context), dark, AccentPalette.parse(ImeSettingsRepository.loadSkinColor(context)))
+        val palette = ImeTheme.IOS.tokens(ImeSettingsRepository.loadAppearance(context), dark)
         val modelReady = initialModelState in setOf(VoiceModelLifecycleState.HOT, VoiceModelLifecycleState.RECORDING, VoiceModelLifecycleState.COOLDOWN)
         modelStatus.apply {
             text = if (modelReady) "离线模型已就绪 · 音频不出设备" else "离线模型准备中 · 音频不出设备"
@@ -156,7 +155,7 @@ internal class VoicePanelView(
     private fun updateLanguagePresentation(locked: Boolean) {
         val selected = LANGUAGES[languageIndex].first
         val dark = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val palette = ImeTheme.IOS.tokens(ImeSettingsRepository.loadAppearance(context), dark, AccentPalette.parse(ImeSettingsRepository.loadSkinColor(context)))
+        val palette = ImeTheme.IOS.tokens(ImeSettingsRepository.loadAppearance(context), dark)
         listOf(languageButton, englishButton).forEachIndexed { index, button ->
             val active = index == languageIndex
             button.tag = if (active) "segment-selected" else "segment-option"

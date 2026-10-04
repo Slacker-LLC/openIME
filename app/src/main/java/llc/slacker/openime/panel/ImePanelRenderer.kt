@@ -27,9 +27,9 @@ import llc.slacker.openime.data.ImeSettingsRepository
 import llc.slacker.openime.handwriting.HandwritingPadView
 import llc.slacker.openime.handwriting.HandwritingResult
 import llc.slacker.openime.handwriting.UnavailableHandwritingProvider
-import llc.slacker.openime.theme.AccentPalette
 import llc.slacker.openime.theme.ImeGeometryTokens
 import llc.slacker.openime.theme.ImeSurfacePolicy
+import llc.slacker.openime.theme.ImeSpacingTokens
 import llc.slacker.openime.theme.ImeTheme
 import llc.slacker.openime.theme.ImeTypographyTokens
 import llc.slacker.openime.widget.ImeKeyView
@@ -134,14 +134,14 @@ internal class ImePanelRenderer(
         }
         val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         val cards = listOf(
-            ToolEntry("剪贴板", Panel.CLIPBOARD, R.drawable.ic_clipboard),
-            ToolEntry("表情", Panel.EMOJI, R.drawable.ic_emoji),
-            ToolEntry("符号", Panel.SYMBOLS, R.drawable.ic_symbols),
-            ToolEntry("语音输入", Panel.VOICE, R.drawable.ic_mic),
-            ToolEntry("切换键盘", Panel.KEYBOARD_SELECT, R.drawable.ic_keyboard),
-            ToolEntry("文本编辑", Panel.TEXT_EDITOR, R.drawable.ic_text_cursor),
-            ToolEntry("浮动键盘", iconRes = R.drawable.ic_floating, action = onEnableFloatingKeyboard),
-            ToolEntry("设置", Panel.SETTINGS, R.drawable.ic_settings),
+            ToolEntry("剪贴板", Panel.CLIPBOARD, R.drawable.ic_pref_clipboard),
+            ToolEntry("表情", Panel.EMOJI, R.drawable.ic_pref_emoji),
+            ToolEntry("符号", Panel.SYMBOLS, R.drawable.ic_pref_symbols),
+            ToolEntry("语音输入", Panel.VOICE, R.drawable.ic_pref_mic),
+            ToolEntry("切换键盘", Panel.KEYBOARD_SELECT, R.drawable.ic_pref_globe),
+            ToolEntry("文本编辑", Panel.TEXT_EDITOR, R.drawable.ic_pref_cursor),
+            ToolEntry("浮动键盘", iconRes = R.drawable.ic_pref_floating, action = onEnableFloatingKeyboard),
+            ToolEntry("设置", Panel.SETTINGS, R.drawable.ic_pref_settings),
         ).filter { it.enabled }
 
         cards.chunked(4).forEach { chunk ->
@@ -175,7 +175,7 @@ internal class ImePanelRenderer(
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     toPx(ImeGeometryTokens.TOOL_CARD_HEIGHT_DP),
-                ).apply { bottomMargin = toPx(8) },
+                ).apply { bottomMargin = toPx(ImeSpacingTokens.LG_DP) },
             )
         }
         body.addView(
@@ -639,6 +639,10 @@ internal class ImePanelRenderer(
         }
     }
 
+    /**
+     * One tool: a 56dp icon tile with its name underneath. The whole column is
+     * the touch target; the tile shows the press.
+     */
     private fun toolCard(
         iconRes: Int,
         label: String,
@@ -646,8 +650,7 @@ internal class ImePanelRenderer(
     ): LinearLayout {
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(0, toPx(8), 0, toPx(6))
+            gravity = Gravity.CENTER_HORIZONTAL or Gravity.TOP
             minimumWidth = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
             minimumHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
             tag = "tool:$label"
@@ -664,16 +667,18 @@ internal class ImePanelRenderer(
                 setImageResource(iconRes)
                 scaleType = ImageView.ScaleType.CENTER_INSIDE
                 contentDescription = null
+                isDuplicateParentStateEnabled = true
+                tag = "tool-icon"
             },
-            LinearLayout.LayoutParams(toPx(24), toPx(24)).apply {
-                bottomMargin = toPx(10)
+            LinearLayout.LayoutParams(toPx(56), toPx(56)).apply {
+                bottomMargin = toPx(ImeSpacingTokens.SM_DP)
             },
         )
         card.addView(
             TextView(context).apply {
                 text = label
-                typeface = android.graphics.Typeface.DEFAULT
-                textSize = ImeTypographyTokens.BODY_SP
+                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+                textSize = ImeTypographyTokens.SMALL_SP
                 gravity = Gravity.CENTER
                 includeFontPadding = false
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
@@ -700,7 +705,7 @@ internal class ImePanelRenderer(
                 private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
                 override fun onDraw(canvas: Canvas) {
                     val dark = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES
-                    val tokens = ImeTheme.IOS.tokens(ImeSettingsRepository.loadAppearance(context), dark, AccentPalette.parse(ImeSettingsRepository.loadSkinColor(context)))
+                    val tokens = ImeTheme.IOS.tokens(ImeSettingsRepository.loadAppearance(context), dark)
                     val h = height / 4f
                     paint.color = tokens.functionKeyBackground
                     for (i in 0..3) {

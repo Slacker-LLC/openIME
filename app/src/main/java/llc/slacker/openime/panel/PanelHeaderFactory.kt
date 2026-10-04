@@ -98,7 +98,6 @@ internal class PanelHeaderFactory(
         Panel.TEXT_EDITOR -> "文本编辑"
         Panel.SETTINGS -> "设置"
         Panel.FUZZY_SETTINGS -> "模糊音纠错"
-        Panel.SKIN_SETTINGS -> "强调色与按键皮肤"
         Panel.NONE, Panel.CANDIDATE_EXPANDED -> "键盘"
     }
 }

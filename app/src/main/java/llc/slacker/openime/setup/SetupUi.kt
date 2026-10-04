@@ -17,7 +17,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import llc.slacker.openime.R
 import llc.slacker.openime.data.ImeSettingsRepository
-import llc.slacker.openime.theme.AccentPalette
 import llc.slacker.openime.theme.ImeAppearance
 import llc.slacker.openime.theme.ImeDrawableFactory
 import llc.slacker.openime.theme.ImeGeometryTokens
@@ -45,47 +44,64 @@ object SetupUi {
     fun dp(context: Context, value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
 
-    fun accent(context: Context): Int =
-        tokensForAccent(context).primary
+    /** The app accent: interactive controls and their on/current state, nothing else. */
+    fun accent(context: Context): Int = context.getColor(R.color.setup_primary)
 
-    internal fun primaryButtonColor(context: Context): Int =
-        ImeSurfacePolicy.accentTextOn(accent(context), Color.WHITE)
+    internal fun primaryButtonColor(context: Context): Int = accent(context)
 
-    internal fun secondaryTextColor(context: Context): Int = tokens(context).let {
-        ImeSurfacePolicy.accentTextOn(it.primary, ImeSurfacePolicy.subtleAccentSurface(it))
-    }
+    /** The accent as text, e.g. a tinted secondary button's label. */
+    internal fun secondaryTextColor(context: Context): Int = context.getColor(R.color.setup_primary_text)
 
-    private fun tokensForAccent(context: Context): ImeTheme.Tokens = ImeTheme.IOS.tokens(
-        ImeSettingsRepository.loadAppearance(context),
-        context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES,
-        AccentPalette.parse(ImeSettingsRepository.loadSkinColor(context)),
-    )
-
+    /**
+     * App-page palette in the keyboard's token shape, so the standalone
+     * preferences page (rendered by the keyboard's own panel code) paints with
+     * the same colours as every other app page instead of the key colours.
+     */
     internal fun tokens(context: Context): ImeTheme.Tokens {
         val nightMask =
             context.resources.configuration.uiMode and
                 android.content.res.Configuration.UI_MODE_NIGHT_MASK
-        return ImeTheme.IOS.tokens(
+        val base = ImeTheme.IOS.tokens(
             appearance = ImeSettingsRepository.loadAppearance(context),
             systemDark = nightMask == android.content.res.Configuration.UI_MODE_NIGHT_YES,
-            accentOverride = accent(context),
+        )
+        val page = context.getColor(R.color.setup_page_bg)
+        val surface = context.getColor(R.color.setup_surface)
+        val body = context.getColor(R.color.setup_body)
+        return base.copy(
+            primary = accent(context),
+            keyboardBackground = page,
+            toolbarBackground = page,
+            expandedBackground = page,
+            panelHeadBackground = page,
+            keyBackground = surface,
+            toolCardBackground = surface,
+            keyText = context.getColor(R.color.setup_title),
+            keySecondaryText = body,
+            textSecondaryRole = body,
+            functionKeyBackground = context.getColor(R.color.setup_muted),
+            keyPressedBackground = context.getColor(R.color.setup_muted_pressed),
+            border = context.getColor(R.color.setup_hairline),
         )
     }
 
     fun contrastText(background: Int): Int = ImeDrawableFactory.contrastText(background)
 
-    internal fun keyBackground(context: Context) = tokens(context).let { t ->
-        val radius = dp(context, ImeGeometryTokens.KEY_RADIUS_DP)
-        ImeDrawableFactory.keyCap(
-            ImeDrawableFactory.statefulRounded(
-                t.keyBackground,
-                t.keyPressedBackground,
-                radius, t.primary, dp(context, 1),
-            ),
-            t.border,
-            radius, dp(context, 1),
+    /** A grouped-list card: one rounded surface, no shadow. */
+    fun cardBackground(context: Context) = ImeDrawableFactory.rounded(
+        context.getColor(R.color.setup_surface),
+        dp(context, ImeGeometryTokens.CARD_RADIUS_DP).toFloat(),
+    )
+
+    /** Press feedback for a row inside a card; the card itself paints the surface. */
+    fun rowBackground(context: Context): StateListDrawable =
+        ImeDrawableFactory.statefulRounded(
+            Color.TRANSPARENT,
+            context.getColor(R.color.setup_muted),
+            0,
+            accent(context),
+            dp(context, 1),
         )
-    }
 
     fun rounded(
         color: Int,
@@ -146,7 +162,7 @@ object SetupUi {
     /** Tinted secondary action, sharing the primary button's capsule shape. */
     fun secondaryBackground(context: Context): StateListDrawable {
         val t = tokens(context)
-        val surface = ImeSurfacePolicy.subtleAccentSurface(t)
+        val surface = context.getColor(R.color.setup_primary_tint)
         val pressed = ImeSurfacePolicy.pressedSurface(surface, t)
         val accent = accent(context)
         val radius = dp(context, ImeGeometryTokens.PILL_RADIUS_DP).toFloat()
@@ -367,11 +383,11 @@ object SetupUi {
             addView(
                 TextView(context).apply {
                     text = title
-                    textSize = ImeTypographyTokens.TITLE_SP
+                    textSize = ImeTypographyTokens.PAGE_TITLE_SP
                     maxLines = 1
                     ellipsize = android.text.TextUtils.TruncateAt.END
                     setTextColor(context.getColor(R.color.setup_title))
-                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
                     gravity = Gravity.CENTER_VERTICAL
                     includeFontPadding = false
                     if (Build.VERSION.SDK_INT >= 28) setAccessibilityHeading(true)
@@ -396,8 +412,8 @@ object SetupUi {
     }
 
     fun styleDialog(dialog: AlertDialog, context: Context, destructivePositive: Boolean = false) {
-        val palette = tokensForAccent(context)
-        val accent = ImeSurfacePolicy.selectedText(palette)
+        val palette = tokens(context)
+        val accent = secondaryTextColor(context)
         val alertTitleId = context.resources.getIdentifier("alertTitle", "id", "android")
         if (alertTitleId != 0) {
             dialog.findViewById<TextView>(alertTitleId)?.setTextColor(

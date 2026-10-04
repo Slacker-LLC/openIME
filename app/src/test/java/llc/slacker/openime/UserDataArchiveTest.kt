@@ -5,7 +5,6 @@ import llc.slacker.openime.data.ArchiveCustomSymbol
 import llc.slacker.openime.data.ArchiveQuickPhrase
 import llc.slacker.openime.data.ArchiveSettings
 import llc.slacker.openime.data.ArchiveUserPhrase
-import llc.slacker.openime.data.ImeHandedness
 import llc.slacker.openime.data.RimeUserDictionaryArchive
 import llc.slacker.openime.data.UserDataArchive
 import llc.slacker.openime.data.UserDataArchiveCodec
@@ -26,12 +25,7 @@ class UserDataArchiveTest {
         popup = true,
         fuzzy = false,
         swipeUpDigits = true,
-        skinOpacity = 92,
-        skinRadius = 10,
-        skinFont = 18,
-        skinColor = "#1D9BF0",
         preferredChineseMode = KeyboardMode.PINYIN_9.name,
-        handedness = ImeHandedness.LEFT.name,
         keyboardHeightPercent = 104,
         floatingWidthPercent = 84,
         floatingOpacityPercent = 96,

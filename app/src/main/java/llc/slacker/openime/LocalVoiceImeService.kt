@@ -221,10 +221,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             hapticEnabled = ImeSettingsRepository.loadHaptic(this),
             popupEnabled = ImeSettingsRepository.loadPopup(this),
             fuzzyPinyinEnabled = ImeSettingsRepository.loadFuzzy(this),
-            skinOpacity = ImeSettingsRepository.loadSkinOpacity(this),
-            skinRadius = ImeSettingsRepository.loadSkinRadius(this),
-            skinFontSize = ImeSettingsRepository.loadSkinFont(this),
-            skinPrimaryColor = ImeSettingsRepository.loadSkinColor(this),
         )
     }
 
@@ -425,10 +421,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             hapticEnabled = ImeSettingsRepository.loadHaptic(this),
             popupEnabled = ImeSettingsRepository.loadPopup(this),
             fuzzyPinyinEnabled = ImeSettingsRepository.loadFuzzy(this),
-            skinOpacity = ImeSettingsRepository.loadSkinOpacity(this),
-            skinRadius = ImeSettingsRepository.loadSkinRadius(this),
-            skinFontSize = ImeSettingsRepository.loadSkinFont(this),
-            skinPrimaryColor = ImeSettingsRepository.loadSkinColor(this),
         )
         keyboardView?.applyPersistedSettings(
             newTheme = state.theme,
@@ -437,10 +429,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             haptic = state.hapticEnabled,
             popup = state.popupEnabled,
             fuzzy = state.fuzzyPinyinEnabled,
-            opacity = state.skinOpacity,
-            radius = state.skinRadius,
-            fontSize = state.skinFontSize,
-            primaryColor = state.skinPrimaryColor,
         )
     }
 
@@ -1313,16 +1301,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         ImeSettingsRepository.saveFuzzy(this, enabled)
         // RimeEngine mirrors this value on the candidate hot path.
         if (::rime.isInitialized) rime.invalidateSettingsCache()
-    }
-
-    override fun onSkinChanged(opacity: Int, radius: Int, fontSize: Int, primaryColor: String) {
-        state = state.copy(
-            skinOpacity = opacity,
-            skinRadius = radius,
-            skinFontSize = fontSize,
-            skinPrimaryColor = primaryColor,
-        )
-        ImeSettingsRepository.saveSkin(this, opacity, radius, fontSize, primaryColor)
     }
 
     override fun onShiftStateChanged(state: ShiftState) {

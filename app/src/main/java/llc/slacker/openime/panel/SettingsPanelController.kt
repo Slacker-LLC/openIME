@@ -1,21 +1,12 @@
 package llc.slacker.openime.panel
 
-import android.app.AlertDialog
 import android.content.Context
-import android.content.DialogInterface
-import android.content.res.ColorStateList
-import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
 import android.os.Build
-import android.text.InputFilter
-import android.text.InputType
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
-import android.view.inputmethod.EditorInfo
-import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
@@ -25,11 +16,7 @@ import android.widget.SeekBar
 import android.widget.TextView
 import llc.slacker.openime.ImeSettingsActivity
 import llc.slacker.openime.R
-import llc.slacker.openime.data.ImeHandedness
-import llc.slacker.openime.setup.SetupUi
-import llc.slacker.openime.theme.AccentPalette
 import llc.slacker.openime.theme.ImeAppearance
-import llc.slacker.openime.theme.ImeDrawableFactory
 import llc.slacker.openime.theme.ImeGeometryTokens
 import llc.slacker.openime.theme.ImeMotionTokens
 import llc.slacker.openime.theme.ImeSpacingTokens
@@ -41,6 +28,12 @@ import llc.slacker.openime.theme.ImeTypographyTokens
  *
  * Product settings remain owned by ImeKeyboardView/Service. This controller
  * owns only panel construction, scroll/focus restoration, and control gestures.
+ *
+ * The same settings render two ways. The preferences page is a grouped list:
+ * one card per section, rows split by inset hairlines, a neutral icon tile per
+ * row. The keyboard's own panel is only as tall as the keyboard, so it leads
+ * with four quick toggles, puts appearance and height on the first screen and
+ * uses compact rows without icons or descriptions below that.
  */
 internal class SettingsPanelController(
     private val context: Context,
@@ -62,34 +55,23 @@ internal class SettingsPanelController(
     /** State of the toggles added after the first four, looked up by their label. */
     private val currentExtraToggle: (String) -> Boolean,
     private val currentFuzzy: () -> Boolean,
-    private val currentSkinOpacity: () -> Int,
-    private val currentSkinRadius: () -> Int,
-    private val currentSkinFontSize: () -> Int,
-    private val currentSkinColor: () -> String,
-    private val currentHandedness: () -> ImeHandedness,
     private val currentKeyboardHeightPercent: () -> Int,
     private val currentFloatingWidthPercent: () -> Int,
     private val currentFloatingOpacityPercent: () -> Int,
     private val onThemeSelected: (ImeTheme) -> Unit,
     private val onAppearanceSelected: (ImeAppearance) -> Unit,
     private val onToggleChanged: (String, Boolean) -> Unit,
-    private val onSkinChanged: (Int, Int, Int, String) -> Unit,
-    private val onHandednessChanged: (ImeHandedness) -> Unit,
     private val onKeyboardHeightChanged: (Int) -> Unit,
     private val onFloatingStyleChanged: (Int, Int) -> Unit,
     private val onShowFuzzySettings: () -> Unit,
-    private val onShowSkinSettings: () -> Unit,
     private val onOpenAboutData: () -> Unit,
     private val onFeedback: () -> Unit,
     private val applyTheme: () -> Unit,
     private val onHierarchyRebuilt: () -> Unit,
 ) {
     private val standalone = context is ImeSettingsActivity
-    private val stackControls: Boolean
-        get() = standalone && (context.resources.configuration.screenWidthDp < 360 || context.resources.configuration.fontScale >= 1.2f)
     private var storedScrollY = 0
     private var settingsScroll: ScrollView? = null
-    private var showingSkinOnly = false
 
     fun scrollPosition(): Int =
         (settingsScroll?.scrollY ?: storedScrollY).coerceAtLeast(0)
@@ -101,8 +83,7 @@ internal class SettingsPanelController(
         }
     }
 
-    fun renderSettings(reusePanel: Boolean = false, skinOnly: Boolean = false) {
-        showingSkinOnly = skinOnly
+    fun renderSettings(reusePanel: Boolean = false) {
         val previousFocusKey =
             if (reusePanel) semanticFocusKey(expandedPanel.findFocus()) else null
         val previousScrollY =
@@ -110,7 +91,7 @@ internal class SettingsPanelController(
 
         if (!reusePanel || expandedPanel.childCount == 0) {
             expandedPanel.addView(
-                createHeader(if (skinOnly) "强调色与按键皮肤" else "偏好设置"),
+                createHeader(if (standalone) "偏好设置" else "设置"),
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     if (standalone) context.resources.getDimensionPixelSize(R.dimen.setup_top_bar_height) else toPx(ImeGeometryTokens.TOP_BAR_HEIGHT_DP),
@@ -135,83 +116,15 @@ internal class SettingsPanelController(
 
         val content = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            val inset = toPx(if (standalone) ImeSpacingTokens.LG_DP else ImeSpacingTokens.MD_DP)
-            setPadding(inset, inset, inset, toPx(if (standalone) ImeSpacingTokens.XL_DP else 18))
+            if (standalone) {
+                setPadding(toPx(ImeSpacingTokens.LG_DP), 0, toPx(ImeSpacingTokens.LG_DP), toPx(ImeSpacingTokens.XXL_DP))
+            } else {
+                setPadding(toPx(ImeSpacingTokens.MD_DP), toPx(ImeSpacingTokens.XS_DP), toPx(ImeSpacingTokens.MD_DP), toPx(ImeSpacingTokens.LG_DP))
+            }
             tag = "settings-panel"
         }
+        if (standalone) appSettings(content) else keyboardSettings(content)
 
-        if (skinOnly) {
-            content.addView(createSectionTitle("强调色"), wrapParams())
-            content.addView(accentColorRow(), groupParams())
-            content.addView(createSectionTitle("按键皮肤"), wrapParams())
-            content.addView(skinSliders(), groupParams())
-        } else {
-            content.addView(createSectionTitle("外观与布局"), wrapParams())
-            content.addView(settingGroup(
-                segmentedSetting("外观", ImeAppearance.entries.map { it.label }, currentAppearance().label) { label ->
-                    ImeAppearance.entries.first { it.label == label }.let(onAppearanceSelected)
-                    renderSettings(reusePanel = true)
-                },
-                segmentedSetting("单手模式", ImeHandedness.entries.map { it.label }, currentHandedness().label) { label ->
-                    ImeHandedness.entries.first { it.label == label }.let(onHandednessChanged)
-                    renderSettings(reusePanel = true)
-                },
-                settingsSlider("键盘高度", 80, 120, currentKeyboardHeightPercent(), onKeyboardHeightChanged),
-            ), groupParams())
-            content.addView(createSectionTitle("更多外观"), wrapParams())
-            content.addView(settingGroup(settingNavigationRow("强调色与按键皮肤", "颜色、圆角、不透明度与字号", onShowSkinSettings)), groupParams())
-            content.addView(createSectionTitle("浮动键盘"), wrapParams())
-            content.addView(settingGroup(
-                settingsSlider("浮动宽度", 72, 100, currentFloatingWidthPercent()) { onFloatingStyleChanged(it, currentFloatingOpacityPercent()) },
-                settingsSlider("浮动透明度", 82, 100, currentFloatingOpacityPercent()) { onFloatingStyleChanged(currentFloatingWidthPercent(), it) },
-            ), groupParams())
-        content.addView(createSectionTitle("按键与输入"), wrapParams())
-        content.addView(
-            settingGroup(
-                settingToggleRow("按键音效", "机械轴敲击反馈"),
-                settingToggleRow("触感震动", "轻微触感反馈"),
-                settingToggleRow("按键气泡", "按下时显示字母预览"),
-                settingToggleRow("数字和符号提示", "字母键右上角显示数字和符号"),
-                settingToggleRow("上滑输入数字", "按键上滑输入右上角的数字或符号"),
-            ),
-            groupParams(),
-        )
-
-        content.addView(createSectionTitle("智能输入"), wrapParams())
-        content.addView(
-            settingGroup(
-                settingNavigationRow(
-                    "模糊音与智能纠错",
-                    "进入后配置 z/zh、c/ch、s/sh 等规则",
-                    onShowFuzzySettings,
-                ),
-                settingToggleRow("表情联想", "选词后在联想栏先给出相关表情"),
-            ),
-            groupParams(),
-        )
-
-        content.addView(createSectionTitle("语音输入"), wrapParams())
-        content.addView(
-            settingGroup(
-                settingToggleRow("语音去语气词", "去掉“嗯”“呃”等口头停顿"),
-                settingToggleRow("标点用空格代替", "语音里的逗号、句号等写成空格"),
-            ),
-            groupParams(),
-        )
-
-        content.addView(createSectionTitle("数据"), wrapParams())
-        content.addView(
-            settingGroup(
-                settingNavigationRow(
-                    "关于与数据",
-                    "版本、隐私、导出与导入",
-                    onOpenAboutData,
-                ),
-            ),
-            groupParams(),
-        )
-
-        }
         scroll.addView(
             content,
             ViewGroup.LayoutParams(
@@ -240,44 +153,85 @@ internal class SettingsPanelController(
         }
     }
 
-    private fun skinSliders() = settingGroup(
-        settingsSlider("圆角", 0, 24, currentSkinRadius()) { onSkinChanged(currentSkinOpacity(), it, currentSkinFontSize(), currentSkinColor()) },
-        settingsSlider("不透明度", 70, 100, currentSkinOpacity()) { onSkinChanged(it, currentSkinRadius(), currentSkinFontSize(), currentSkinColor()) },
-        settingsSlider("按键字号", 14, 22, currentSkinFontSize()) { onSkinChanged(currentSkinOpacity(), currentSkinRadius(), it, currentSkinColor()) },
-    )
-
-    private fun segmentedSetting(label: String, labels: List<String>, selected: String, onSelected: (String) -> Unit): View =
-        LinearLayout(context).apply {
-            val verticalOptions = standalone && context.resources.configuration.fontScale >= 1.6f
-            orientation = if (stackControls) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(toPx(16), toPx(if (standalone) 8 else 0), toPx(16), toPx(if (standalone) 8 else 0))
-            addView(labelText(label, ImeTypographyTokens.BODY_SP).apply {
-                gravity = Gravity.CENTER_VERTICAL
-                if (!standalone) typeface = android.graphics.Typeface.DEFAULT_BOLD
+    private fun appSettings(content: LinearLayout) {
+        content.addSection("外观", first = true)
+        content.addCard(
+            segmentedRow("外观", R.drawable.ic_pref_appearance),
+            sliderRow("键盘高度", R.drawable.ic_pref_height, 80, 120, currentKeyboardHeightPercent(), onChange = onKeyboardHeightChanged),
+        )
+        content.addSection("浮动键盘")
+        content.addCard(
+            sliderRow("浮动宽度", R.drawable.ic_pref_width, 72, 100, currentFloatingWidthPercent()) {
+                onFloatingStyleChanged(it, currentFloatingOpacityPercent())
             },
-                if (stackControls) LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-                else if (standalone) LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = toPx(ImeSpacingTokens.MD_DP) }
-                else LinearLayout.LayoutParams(0, toPx(56), 1f))
-            addView(LinearLayout(context).apply {
-                orientation = if (verticalOptions) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
-                tag = if (verticalOptions) "segmented-track" else "segmented-track-tall"
-                setPadding(toPx(2), toPx(2), toPx(2), toPx(2))
-                labels.forEach { value ->
-                    addView(TextView(context).apply {
-                        text = value; textSize = ImeTypographyTokens.BODY_SP; gravity = Gravity.CENTER; includeFontPadding = false
-                        minimumHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
-                        tag = if (value == selected) { if (verticalOptions) "segment-selected" else "segment-selected-tall" }
-                            else if (verticalOptions) "segment-option" else "segment-option-tall"
-                        contentDescription = "$value，${if (value == selected) "已选中" else "未选中"}"
-                        isClickable = true; isFocusable = true
-                        setOnClickListener { onFeedback(); onSelected(value) }
-                    }, if (verticalOptions) LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-                    else LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
-                }
-            }, if (stackControls) LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, if (verticalOptions) LinearLayout.LayoutParams.WRAP_CONTENT else toPx(ImeGeometryTokens.TOUCH_TARGET_DP)).apply { topMargin = toPx(ImeSpacingTokens.SM_DP) }
-            else LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 2f))
-        }
+            sliderRow("浮动透明度", R.drawable.ic_pref_opacity, 82, 100, currentFloatingOpacityPercent()) {
+                onFloatingStyleChanged(currentFloatingWidthPercent(), it)
+            },
+        )
+        content.addSection("按键与输入")
+        content.addCard(
+            toggleRow("按键音效", "机械轴敲击反馈", R.drawable.ic_pref_sound),
+            toggleRow("触感震动", "清脆短促，按下即停", R.drawable.ic_pref_haptic),
+            toggleRow("按键气泡", "按下时显示字母预览", R.drawable.ic_pref_bubble),
+            toggleRow("数字和符号提示", "字母键右上角显示数字和符号", R.drawable.ic_pref_hints),
+            toggleRow("上滑输入数字", "按键上滑输入右上角的数字或符号", R.drawable.ic_pref_swipe_up),
+        )
+        content.addSection("智能输入")
+        content.addCard(
+            navigationRow("模糊音与智能纠错", "z/zh、c/ch、s/sh 等规则", R.drawable.ic_pref_fuzzy, onShowFuzzySettings),
+            toggleRow("表情联想", "选词后在联想栏先给出相关表情", R.drawable.ic_pref_emoji),
+        )
+        content.addSection("语音输入")
+        content.addCard(
+            toggleRow("语音去语气词", "去掉“嗯”“呃”等口头停顿", R.drawable.ic_pref_waveform),
+            toggleRow("标点用空格代替", "语音里的逗号、句号等写成空格", R.drawable.ic_pref_space),
+        )
+        content.addSection("数据")
+        content.addCard(
+            navigationRow("关于与数据", "版本、隐私、导出与导入", R.drawable.ic_pref_info, onOpenAboutData),
+        )
+    }
+
+    private fun keyboardSettings(content: LinearLayout) {
+        content.addView(
+            quickToggles(
+                Triple("按键音效", "按键音效", R.drawable.ic_pref_sound),
+                Triple("触感震动", "触感震动", R.drawable.ic_pref_haptic),
+                Triple("按键气泡", "按键气泡", R.drawable.ic_pref_bubble),
+                Triple("数字和符号提示", "数字提示", R.drawable.ic_pref_hints),
+            ),
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT),
+        )
+        content.addCard(
+            segmentedRow("外观", iconRes = 0),
+            sliderRow("键盘高度", 0, 80, 120, currentKeyboardHeightPercent(), onChange = onKeyboardHeightChanged),
+            topMarginDp = ImeSpacingTokens.MD_DP,
+        )
+        content.addSection("浮动键盘")
+        content.addCard(
+            sliderRow("浮动宽度", 0, 72, 100, currentFloatingWidthPercent(), shortLabel = "宽度") {
+                onFloatingStyleChanged(it, currentFloatingOpacityPercent())
+            },
+            sliderRow("浮动透明度", 0, 82, 100, currentFloatingOpacityPercent(), shortLabel = "透明度") {
+                onFloatingStyleChanged(currentFloatingWidthPercent(), it)
+            },
+        )
+        content.addSection("输入")
+        content.addCard(
+            toggleRow("上滑输入数字", null, 0),
+            toggleRow("表情联想", null, 0),
+            navigationRow("模糊音与智能纠错", null, 0, onShowFuzzySettings),
+        )
+        content.addSection("语音")
+        content.addCard(
+            toggleRow("语音去语气词", null, 0),
+            toggleRow("标点用空格代替", null, 0),
+        )
+        content.addCard(
+            navigationRow("关于与数据", null, 0, onOpenAboutData),
+            topMarginDp = ImeSpacingTokens.MD_DP,
+        )
+    }
 
     fun renderFuzzySettings() {
         expandedPanel.addView(
@@ -295,50 +249,50 @@ internal class SettingsPanelController(
         val content = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             val inset = toPx(if (standalone) ImeSpacingTokens.LG_DP else ImeSpacingTokens.MD_DP)
-            setPadding(inset, inset, inset, toPx(if (standalone) ImeSpacingTokens.XL_DP else 18))
+            setPadding(inset, toPx(ImeSpacingTokens.SM_DP), inset, toPx(if (standalone) ImeSpacingTokens.XL_DP else ImeSpacingTokens.LG_DP))
             tag = "fuzzy-settings-panel"
         }
         content.addView(
-            TextView(context).apply {
-                text = "近音输入时，候选会同时尝试相近声母；不会改变你已输入的拼音。"
-                textSize = ImeTypographyTokens.PANEL_BODY_SP
-                setLineSpacing(0f, 1.15f)
-                tag = "panel-note"
-            },
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                if (standalone) LinearLayout.LayoutParams.WRAP_CONTENT else toPx(54),
-            ).apply { bottomMargin = toPx(if (standalone) ImeSpacingTokens.XL_DP else 10) },
-        )
-        content.addView(
-            settingGroup(
-                settingToggleRow("启用模糊音", "z/zh · c/ch · s/sh · l/n"),
-            ),
+            noteText("近音输入时，候选会同时尝试相近声母；不会改变你已输入的拼音。"),
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { bottomMargin = toPx(if (standalone) ImeSpacingTokens.XL_DP else 14) },
+            ).apply {
+                marginStart = toPx(ImeSpacingTokens.LG_DP)
+                marginEnd = toPx(ImeSpacingTokens.LG_DP)
+                bottomMargin = toPx(ImeSpacingTokens.MD_DP)
+            },
         )
-        content.addView(createSectionTitle("当前规则"), wrapParams())
+        content.addCard(
+            toggleRow(
+                "启用模糊音",
+                if (standalone) "z/zh · c/ch · s/sh · l/n" else null,
+                if (standalone) R.drawable.ic_pref_fuzzy else 0,
+            ),
+        )
+        content.addSection("当前规则")
         content.addView(
             TextView(context).apply {
                 text = "z / zh · c / ch · s / sh · l / n · en / eng · in / ing"
-                textSize = ImeTypographyTokens.PANEL_BODY_SP
-                setPadding(toPx(16), toPx(16), toPx(16), toPx(16))
+                textSize = ImeTypographyTokens.BODY_SP
+                setPadding(toPx(16), toPx(14), toPx(16), toPx(14))
                 tag = "fuzzy-rules"
             },
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { bottomMargin = toPx(if (standalone) ImeSpacingTokens.XL_DP else 14) },
+            ),
         )
         content.addView(
-            TextView(context).apply {
-                text = "规则由输入法自动参与候选计算，暂不单独修改每一组映射。"
-                textSize = ImeTypographyTokens.PANEL_NOTE_SP
-                tag = "panel-note"
+            noteText("规则由输入法自动参与候选计算，暂不单独修改每一组映射。"),
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                marginStart = toPx(ImeSpacingTokens.LG_DP)
+                marginEnd = toPx(ImeSpacingTokens.LG_DP)
+                topMargin = toPx(ImeSpacingTokens.SM_DP)
             },
-            wrapParams(),
         )
         scroll.addView(
             content,
@@ -357,73 +311,139 @@ internal class SettingsPanelController(
         )
     }
 
-    private fun settingGroup(vararg rows: View): LinearLayout =
-        LinearLayout(context).apply {
+    // ---- Sections and cards ----------------------------------------------
+
+    private fun LinearLayout.addSection(title: String, first: Boolean = false) {
+        addView(
+            TextView(context).apply {
+                text = title
+                textSize = if (standalone) ImeTypographyTokens.DETAIL_SP else ImeTypographyTokens.SMALL_SP
+                includeFontPadding = false
+                tag = "panel-section-title"
+                if (Build.VERSION.SDK_INT >= 28) isAccessibilityHeading = true
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                marginStart = toPx(if (standalone) ImeSpacingTokens.LG_DP else 14)
+                topMargin = toPx(
+                    when {
+                        first -> ImeSpacingTokens.MD_DP
+                        standalone -> 28
+                        else -> ImeSpacingTokens.LG_DP
+                    },
+                )
+                bottomMargin = toPx(if (standalone) ImeSpacingTokens.SM_DP else 6)
+            },
+        )
+    }
+
+    /**
+     * One rounded card holding [rows], separated by hairlines that start where
+     * the row text starts (after the icon tile on the preferences page).
+     */
+    private fun LinearLayout.addCard(vararg rows: View, topMarginDp: Int = 0) {
+        val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            tag = if (standalone) "app-setting-group" else "setting-group"
-            rows.forEachIndexed { index, row ->
-                if (index > 0 && !standalone) {
-                    addView(
-                        View(context).apply { tag = "setting-divider" },
-                        LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT,
-                            toPx(1),
-                        ).apply {
-                            marginStart = 0
-                            marginEnd = 0
-                        },
-                    )
-                }
-                if (standalone) row.tag = "app-setting-key"
+            tag = "settings-card"
+            clipToOutline = true
+        }
+        rows.forEachIndexed { index, row ->
+            if (index > 0) {
+                card.addView(
+                    View(context).apply {
+                        tag = "row-hairline"
+                        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                    },
+                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(1).coerceAtLeast(1)).apply {
+                        marginStart = toPx(if (standalone) 60 else 14)
+                    },
+                )
+            }
+            card.addView(
+                row,
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT),
+            )
+        }
+        addView(
+            card,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = toPx(topMarginDp)
+            },
+        )
+    }
+
+    // ---- Rows ---------------------------------------------------------------
+
+    /** Row shell: an optional icon tile, then [body] filling the rest. */
+    private fun rowShell(iconRes: Int, alignTop: Boolean = false): LinearLayout =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = if (alignTop) Gravity.TOP else Gravity.CENTER_VERTICAL
+            tag = "setting-row"
+            minimumHeight = toPx(if (standalone) ImeGeometryTokens.SETTING_ROW_HEIGHT_DP else 52)
+            if (standalone) {
+                setPadding(toPx(16), toPx(12), toPx(16), toPx(12))
+            } else {
+                setPadding(toPx(14), toPx(2), toPx(12), toPx(2))
+            }
+            if (iconRes != 0) {
                 addView(
-                    row,
-                    LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        if (row is TextView) toPx(54)
-                        else LinearLayout.LayoutParams.WRAP_CONTENT,
-                    ).apply { if (standalone && index > 0) topMargin = toPx(ImeSpacingTokens.SM_DP) },
+                    ImageView(context).apply {
+                        setImageResource(iconRes)
+                        scaleType = ImageView.ScaleType.FIT_CENTER
+                        setPadding(toPx(7), toPx(7), toPx(7), toPx(7))
+                        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                        tag = "setting-icon"
+                    },
+                    LinearLayout.LayoutParams(toPx(32), toPx(32)).apply { marginEnd = toPx(12) },
                 )
             }
         }
 
-    private fun settingIcon(label: String): ImageView =
-        ImageView(context).apply {
-            setImageResource(
-                when (label) {
-                    "按键音效" -> R.drawable.ic_volume
-                    "触感震动" -> R.drawable.ic_vibration
-                    "按键气泡" -> R.drawable.ic_bubble
-                    "模糊音与智能纠错", "启用模糊音" -> R.drawable.ic_tune
-                    "关于与数据" -> R.drawable.ic_info
-                    else -> R.drawable.ic_tune
-                },
-            )
-            scaleType = ImageView.ScaleType.CENTER
+    private fun labelBlock(label: String, sub: String?): LinearLayout =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            tag = "setting-icon"
+            addView(rowLabel(label), wrapParams())
+            if (sub != null) {
+                addView(
+                    TextView(context).apply {
+                        text = sub
+                        textSize = ImeTypographyTokens.DETAIL_SP
+                        includeFontPadding = false
+                        setLineSpacing(0f, 1.2f)
+                        tag = "setting-sub"
+                        setPadding(0, toPx(ImeSpacingTokens.XS_DP), 0, 0)
+                    },
+                    wrapParams(),
+                )
+            }
         }
 
-    private fun settingToggleRow(label: String, sub: String): LinearLayout {
-        val row = LinearLayout(context)
+    private fun rowLabel(label: String): TextView = TextView(context).apply {
+        text = label
+        textSize = ImeTypographyTokens.ROW_SP
+        includeFontPadding = false
+        typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+        tag = "setting-label"
+    }
+
+    private fun toggleRow(label: String, sub: String?, iconRes: Int): LinearLayout {
+        val row = rowShell(iconRes)
         fun updateRowAccessibility(enabled: Boolean) {
-            row.contentDescription =
-                "$label，$sub，${if (enabled) "已开启" else "已关闭"}"
+            row.contentDescription = listOfNotNull(label, sub, if (enabled) "已开启" else "已关闭").joinToString("，")
             if (Build.VERSION.SDK_INT >= 30) {
                 row.stateDescription = if (enabled) "已开启" else "已关闭"
             }
         }
-
         val toggleView = toggle(label, ::updateRowAccessibility).apply {
             isFocusable = false
-            importantForAccessibility =
-                View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
         }
         row.apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(toPx(if (standalone) 16 else 14), toPx(if (standalone) 8 else 0), toPx(if (standalone) 16 else 14), toPx(if (standalone) 8 else 0))
-            tag = "setting-row"
-            minimumHeight = toPx(ImeGeometryTokens.SETTING_ROW_HEIGHT_DP)
             isClickable = true
             isFocusable = true
             accessibilityDelegate = object : View.AccessibilityDelegate() {
@@ -435,96 +455,268 @@ internal class SettingsPanelController(
                 }
             }
             setOnClickListener { toggleView.performClick() }
-            addView(
-                settingIcon(label),
-                LinearLayout.LayoutParams(toPx(if (standalone) 24 else 26), toPx(if (standalone) 24 else 26)).apply {
-                    marginEnd = toPx(if (standalone) 12 else 8)
-                },
-            )
-            addView(
-                LinearLayout(context).apply {
-                    orientation = LinearLayout.VERTICAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    addView(labelText(label, ImeTypographyTokens.BODY_SP), wrapParams())
-                    addView(
-                        labelText(sub, ImeTypographyTokens.CAPTION_SP).apply {
-                            setPadding(0, toPx(if (standalone) 4 else 3), 0, 0)
-                        },
-                        wrapParams(),
-                    )
-                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                },
-                LinearLayout.LayoutParams(
-                    0,
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    1f,
-                ),
-            )
-            addView(toggleView, wrapParams().apply { if (standalone) marginStart = toPx(ImeSpacingTokens.MD_DP) })
+            addView(labelBlock(label, sub), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            addView(toggleView, wrapParams().apply { marginStart = toPx(ImeSpacingTokens.MD_DP) })
         }
         updateRowAccessibility(toggleState(label))
         return row
     }
 
-    private fun settingNavigationRow(
-        label: String,
-        sub: String,
-        onTap: () -> Unit,
-    ): LinearLayout =
-        LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(toPx(if (standalone) 16 else 14), toPx(if (standalone) 8 else 0), toPx(if (standalone) 16 else 14), toPx(if (standalone) 8 else 0))
-            tag = "setting-row"
-            contentDescription = "$label，$sub，点击进入"
-            minimumHeight = toPx(ImeGeometryTokens.SETTING_ROW_HEIGHT_DP)
+    private fun navigationRow(label: String, sub: String?, iconRes: Int, onTap: () -> Unit): LinearLayout =
+        rowShell(iconRes).apply {
+            contentDescription = listOfNotNull(label, sub, "点击进入").joinToString("，")
             isClickable = true
             isFocusable = true
             setOnClickListener {
                 onFeedback()
                 onTap()
             }
-            addView(
-                settingIcon(label),
-                LinearLayout.LayoutParams(toPx(if (standalone) 24 else 26), toPx(if (standalone) 24 else 26)).apply {
-                    marginEnd = toPx(if (standalone) 12 else 8)
-                },
-            )
-            addView(
-                LinearLayout(context).apply {
-                    orientation = LinearLayout.VERTICAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    addView(labelText(label, ImeTypographyTokens.BODY_SP), wrapParams())
-                    addView(
-                        labelText(sub, ImeTypographyTokens.CAPTION_SP).apply {
-                            setPadding(0, toPx(if (standalone) 4 else 3), 0, 0)
-                        },
-                        wrapParams(),
-                    )
-                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                },
-                LinearLayout.LayoutParams(
-                    0,
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    1f,
-                ),
-            )
+            addView(labelBlock(label, sub), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             addView(
                 ImageView(context).apply {
-                    setImageResource(R.drawable.ic_arrow_back)
-                    rotation = 180f
-                    imageTintList = ColorStateList.valueOf(
-                        ImeTheme.IOS.tokens(
-                            appearance = currentAppearance(),
-                            accentOverride = AccentPalette.parse(currentSkinColor()),
-                        ).keySecondaryText,
-                    )
-                    scaleType = ImageView.ScaleType.CENTER_INSIDE
+                    setImageResource(R.drawable.ic_chevron_right)
+                    scaleType = ImageView.ScaleType.FIT_CENTER
                     importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                     tag = "setting-chevron"
                 },
-                LinearLayout.LayoutParams(toPx(if (standalone) 24 else 28), toPx(if (standalone) 48 else 44)).apply { if (standalone) marginStart = toPx(ImeSpacingTokens.MD_DP) },
+                LinearLayout.LayoutParams(toPx(18), toPx(18)).apply { marginStart = toPx(ImeSpacingTokens.MD_DP) },
             )
+        }
+
+    /**
+     * Appearance picker. On the preferences page the options sit under the
+     * label, full width; in the keyboard they share the label's line.
+     */
+    private fun segmentedRow(label: String, iconRes: Int): View {
+        val labels = ImeAppearance.entries.map { it.label }
+        val selected = currentAppearance().label
+        // When three equal columns cannot hold the longest option at the
+        // current width and font scale, the options stack, each a full 48dp.
+        val stacked = standalone && !segmentsFitInOneRow(labels)
+        val track = LinearLayout(context).apply {
+            orientation = if (stacked) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+            tag = if (stacked) "segmented-track" else "segmented-track-tall"
+            setPadding(toPx(2), if (stacked) toPx(2) else 0, toPx(2), if (stacked) toPx(2) else 0)
+            labels.forEach { value ->
+                addView(
+                    TextView(context).apply {
+                        text = value
+                        textSize = if (standalone) ImeTypographyTokens.BODY_SP else ImeTypographyTokens.DETAIL_SP
+                        gravity = Gravity.CENTER
+                        includeFontPadding = false
+                        maxLines = 1
+                        ellipsize = TextUtils.TruncateAt.END
+                        minimumHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
+                        tag = when {
+                            stacked -> if (value == selected) "segment-selected" else "segment-option"
+                            else -> if (value == selected) "segment-selected-tall" else "segment-option-tall"
+                        }
+                        contentDescription = "$value，${if (value == selected) "已选中" else "未选中"}"
+                        isClickable = true
+                        isFocusable = true
+                        setOnClickListener {
+                            onFeedback()
+                            ImeAppearance.entries.first { it.label == value }.let(onAppearanceSelected)
+                            renderSettings(reusePanel = true)
+                        }
+                    },
+                    if (stacked) LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                    else LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f),
+                )
+            }
+        }
+        val row = rowShell(iconRes, alignTop = standalone)
+        if (standalone) {
+            row.addView(
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    addView(rowLabel(label), wrapParams().apply { topMargin = toPx(6) })
+                    addView(
+                        track,
+                        LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            if (stacked) LinearLayout.LayoutParams.WRAP_CONTENT else toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
+                        ).apply {
+                            topMargin = toPx(if (stacked) ImeSpacingTokens.SM_DP else ImeSpacingTokens.XS_DP)
+                        },
+                    )
+                },
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
+            )
+        } else {
+            row.addView(rowLabel(label), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(track, LinearLayout.LayoutParams(toPx(216), toPx(ImeGeometryTokens.TOUCH_TARGET_DP)))
+        }
+        return row
+    }
+
+    /**
+     * Whether [labels] fit side by side in the preferences card: page and row
+     * padding 16dp each side, the 32dp icon plus 12dp gap, 2dp track inset and
+     * 8dp breathing room per option. Measured with the real paint, so system
+     * font scale and narrow windows are both covered.
+     */
+    private fun segmentsFitInOneRow(labels: List<String>): Boolean {
+        val metrics = context.resources.displayMetrics
+        val contentDp = minOf(context.resources.configuration.screenWidthDp, 600) - 16 * 4 - 44 - 4
+        val perOptionPx = contentDp * metrics.density / labels.size - 8 * metrics.density
+        val paint = android.text.TextPaint().apply {
+            textSize = android.util.TypedValue.applyDimension(
+                android.util.TypedValue.COMPLEX_UNIT_SP,
+                ImeTypographyTokens.BODY_SP,
+                metrics,
+            )
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+        }
+        return labels.all { paint.measureText(it) <= perOptionPx }
+    }
+
+    private fun sliderRow(
+        label: String,
+        iconRes: Int,
+        min: Int,
+        max: Int,
+        initial: Int,
+        shortLabel: String = label,
+        onChange: (Int) -> Unit,
+    ): LinearLayout {
+        val valueView = TextView(context).apply {
+            tag = "setting-value"
+            textSize = ImeTypographyTokens.BODY_SP
+            gravity = Gravity.CENTER_VERTICAL or Gravity.END
+            includeFontPadding = false
+            setSingleLine()
+            fontFeatureSettings = "tnum"
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        // Room for half the thumb at each end, so 0% and 100% draw whole.
+        val thumbInset = toPx(11)
+        val seekBar = SeekBar(context).apply {
+            this.min = min
+            this.max = max
+            progress = initial.coerceIn(min, max)
+            minimumHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
+            setPadding(thumbInset, 0, thumbInset, 0)
+            isFocusable = true
+            tag = "settings-slider:$label"
+            setOnSeekBarChangeListener(
+                object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                        val description = "$label，$progress%"
+                        valueView.text = "$progress%"
+                        contentDescription = description
+                        if (Build.VERSION.SDK_INT >= 30) stateDescription = description
+                        if (fromUser) onChange(progress)
+                    }
+
+                    override fun onStartTrackingTouch(seekBar: SeekBar) = Unit
+                    override fun onStopTrackingTouch(seekBar: SeekBar) = Unit
+                },
+            )
+        }
+        val initialDescription = "$label，${seekBar.progress}%"
+        valueView.text = "${seekBar.progress}%"
+        seekBar.contentDescription = initialDescription
+        if (Build.VERSION.SDK_INT >= 30) seekBar.stateDescription = initialDescription
+
+        val row = rowShell(iconRes, alignTop = standalone)
+        if (standalone) {
+            row.addView(
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    addView(
+                        LinearLayout(context).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            gravity = Gravity.CENTER_VERTICAL
+                            addView(rowLabel(label), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                            addView(valueView, wrapParams())
+                        },
+                        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                            topMargin = toPx(6)
+                        },
+                    )
+                    addView(
+                        seekBar,
+                        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(40)),
+                    )
+                },
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
+            )
+            row.setPadding(row.paddingLeft, row.paddingTop, row.paddingRight, toPx(4))
+        } else {
+            row.addView(rowLabel(shortLabel), LinearLayout.LayoutParams(toPx(64), LinearLayout.LayoutParams.WRAP_CONTENT))
+            row.addView(seekBar, LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f))
+            row.addView(valueView, LinearLayout.LayoutParams(toPx(44), LinearLayout.LayoutParams.WRAP_CONTENT))
+        }
+        return row
+    }
+
+    /**
+     * The keyboard panel's first row: four equal tiles that flip a setting in
+     * one tap. "On" is the accent fill; "off" is a plain card.
+     */
+    private fun quickToggles(vararg tiles: Triple<String, String, Int>): LinearLayout =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            tag = "quick-toggles"
+            tiles.forEachIndexed { index, (seed, label, iconRes) ->
+                val tile = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER
+                    tag = "quick-tile"
+                    isClickable = true
+                    isFocusable = true
+                    isSelected = toggleState(seed)
+                    fun describe(enabled: Boolean) {
+                        contentDescription = "$seed，${if (enabled) "已开启" else "已关闭"}"
+                        if (Build.VERSION.SDK_INT >= 30) stateDescription = if (enabled) "已开启" else "已关闭"
+                    }
+                    describe(isSelected)
+                    accessibilityDelegate = object : View.AccessibilityDelegate() {
+                        override fun onInitializeAccessibilityNodeInfo(host: View, info: android.view.accessibility.AccessibilityNodeInfo) {
+                            super.onInitializeAccessibilityNodeInfo(host, info)
+                            info.className = "android.widget.ToggleButton"
+                            info.isCheckable = true
+                            info.isChecked = toggleState(seed)
+                        }
+                    }
+                    addView(
+                        ImageView(context).apply {
+                            setImageResource(iconRes)
+                            scaleType = ImageView.ScaleType.FIT_CENTER
+                            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                            tag = "quick-tile-icon"
+                        },
+                        LinearLayout.LayoutParams(toPx(20), toPx(20)),
+                    )
+                    addView(
+                        TextView(context).apply {
+                            text = label
+                            textSize = ImeTypographyTokens.SMALL_SP
+                            includeFontPadding = false
+                            maxLines = 1
+                            ellipsize = TextUtils.TruncateAt.END
+                            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                            tag = "quick-tile-label"
+                        },
+                        wrapParams().apply { topMargin = toPx(6) },
+                    )
+                    setOnClickListener {
+                        onFeedback()
+                        val next = !toggleState(seed)
+                        onToggleChanged(seed, next)
+                        isSelected = next
+                        describe(next)
+                        applyTheme()
+                    }
+                }
+                addView(
+                    tile,
+                    LinearLayout.LayoutParams(0, toPx(68), 1f).apply {
+                        if (index > 0) marginStart = toPx(ImeSpacingTokens.SM_DP)
+                    },
+                )
+            }
         }
 
     private fun toggle(
@@ -540,7 +732,7 @@ internal class SettingsPanelController(
                 gravity = Gravity.START or Gravity.CENTER_VERTICAL
             }
             tag = "toggle-knob"
-            elevation = toPx(2).toFloat()
+            elevation = toPx(1).toFloat()
             translationX =
                 if (isOn) toPx(ImeGeometryTokens.SWITCH_KNOB_TRAVEL_DP).toFloat()
                 else 0f
@@ -577,20 +769,10 @@ internal class SettingsPanelController(
                 onChanged(next)
 
                 val knobView = getChildAt(0)
-                knobView.layoutParams = FrameLayout.LayoutParams(
-                    toPx(ImeGeometryTokens.SWITCH_KNOB_DP),
-                    toPx(ImeGeometryTokens.SWITCH_KNOB_DP),
-                ).apply {
-                    gravity = Gravity.START or Gravity.CENTER_VERTICAL
-                }
                 knobView.animate().cancel()
                 knobView.animate()
                     .translationX(
-                        if (next) {
-                            toPx(ImeGeometryTokens.SWITCH_KNOB_TRAVEL_DP).toFloat()
-                        } else {
-                            0f
-                        },
+                        if (next) toPx(ImeGeometryTokens.SWITCH_KNOB_TRAVEL_DP).toFloat() else 0f,
                     )
                     .setDuration(ImeMotionTokens.STANDARD_TRANSITION_MS)
                     .setInterpolator(DecelerateInterpolator(1.5f))
@@ -609,302 +791,11 @@ internal class SettingsPanelController(
         else -> currentExtraToggle(seed)
     }
 
-    private fun accentColorRow(): LinearLayout {
-        val current = AccentPalette.normalize(currentSkinColor())
-        val row = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            tag = "setting-group"
-            setPadding(toPx(12), toPx(12), toPx(12), toPx(12))
-        }
-        val swatchGrid = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-        }
-
-        AccentPalette.presets.chunked(6).forEach { presetRow ->
-            val swatchRow = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-            }
-            presetRow.forEach { (hex, label) ->
-                val selected = AccentPalette.normalize(hex) == current
-                swatchRow.addView(
-                    FrameLayout(context).apply {
-                        tag = "accent-swatch"
-                        contentDescription =
-                            "强调色$label，${if (selected) "已选中" else "未选中"}"
-                        if (Build.VERSION.SDK_INT >= 30) {
-                            stateDescription =
-                                if (selected) "已选中" else "未选中"
-                        }
-                        isClickable = true
-                        isFocusable = true
-                        addView(
-                            View(context).apply {
-                                background = GradientDrawable().apply {
-                                    shape = GradientDrawable.OVAL
-                                    setColor(AccentPalette.parse(hex))
-                                    if (selected) {
-                                        setStroke(
-                                            toPx(2),
-                                            ImeDrawableFactory.contrastText(
-                                                AccentPalette.parse(hex),
-                                            ),
-                                        )
-                                    }
-                                }
-                            },
-                            FrameLayout.LayoutParams(toPx(32), toPx(32)).apply {
-                                gravity = Gravity.CENTER
-                            },
-                        )
-                        if (selected) {
-                            addView(
-                                ImageView(context).apply {
-                                    setImageResource(R.drawable.ic_check)
-                                    imageTintList = ColorStateList.valueOf(
-                                        ImeDrawableFactory.contrastText(
-                                            AccentPalette.parse(hex),
-                                        ),
-                                    )
-                                    scaleType = ImageView.ScaleType.CENTER_INSIDE
-                                    tag = "accent-selected-mark:$hex"
-                                    importantForAccessibility =
-                                        View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                                },
-                                FrameLayout.LayoutParams(toPx(32), toPx(32)).apply {
-                                    gravity = Gravity.CENTER
-                                },
-                            )
-                        }
-                        setOnClickListener {
-                            onFeedback()
-                            applyAccentColor(hex)
-                        }
-                    },
-                    LinearLayout.LayoutParams(0, toPx(44), 1f),
-                )
-            }
-            swatchGrid.addView(
-                swatchRow,
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    toPx(44),
-                ),
-            )
-        }
-        row.addView(
-            swatchGrid,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(132),
-            ),
-        )
-
-        val customSelected = AccentPalette.presets.none {
-            AccentPalette.normalize(it.first) == current
-        }
-        row.addView(
-            TextView(context).apply {
-                text =
-                    "自定义颜色\n输入 6 位十六进制，如 5B6B7A"
-                textSize = ImeTypographyTokens.PANEL_NOTE_SP
-                gravity = Gravity.CENTER_VERTICAL or Gravity.START
-                includeFontPadding = false
-                maxLines = 2
-                ellipsize = TextUtils.TruncateAt.END
-                setPadding(toPx(10), 0, toPx(10), 0)
-                tag = "accent-custom"
-                minHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
-                minimumHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
-                isClickable = true
-                isFocusable = true
-                contentDescription =
-                    "自定义强调色，${if (customSelected) "已选中" else "未选中"}"
-                if (Build.VERSION.SDK_INT >= 30) {
-                    stateDescription =
-                        if (customSelected) "已选中" else "未选中"
-                }
-                setOnClickListener {
-                    onFeedback()
-                    showCustomAccentDialog()
-                }
-            },
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(48)).apply {
-                topMargin = toPx(6)
-            },
-        )
-        return row
-    }
-
-    private fun applyAccentColor(hex: String) {
-        val normalized = AccentPalette.normalize(hex)
-        onSkinChanged(
-            currentSkinOpacity(),
-            currentSkinRadius(),
-            currentSkinFontSize(),
-            normalized,
-        )
-        renderSettings(reusePanel = true, skinOnly = showingSkinOnly)
-    }
-
-    fun showCustomAccentDialog() {
-        if (context is android.inputmethodservice.InputMethodService) {
-            context.startActivity(android.content.Intent(context, ImeSettingsActivity::class.java)
-                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                .putExtra(ImeSettingsActivity.EXTRA_EDIT_ACCENT, true))
-            return
-        }
-        val field = EditText(context).apply {
-            setText(AccentPalette.normalize(currentSkinColor()).removePrefix("#"))
-            hint = "RRGGBB"
-            inputType =
-                InputType.TYPE_CLASS_TEXT or
-                    InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or
-                    InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-            imeOptions = EditorInfo.IME_ACTION_DONE
-            setSingleLine(true)
-            setSelectAllOnFocus(true)
-            filters = arrayOf(InputFilter.LengthFilter(6))
-        }
-        val palette = ImeTheme.IOS.tokens(currentAppearance(), resourcesDark(), AccentPalette.parse(currentSkinColor()))
-        val inputRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setPadding(toPx(12), 0, toPx(12), 0)
-            background = ImeDrawableFactory.rounded(palette.toolbarBackground, toPx(8), palette.primary, toPx(1))
-            addView(View(context).apply {
-                background = ImeDrawableFactory.rounded(palette.primary, toPx(99))
-            }, LinearLayout.LayoutParams(toPx(16), toPx(16)).apply { marginEnd = toPx(8) })
-            addView(TextView(context).apply { text = "#"; textSize = ImeTypographyTokens.BODY_SP; setTextColor(palette.keyText) }, wrapParams())
-            field.textSize = ImeTypographyTokens.BODY_SP; field.background = null; field.setPadding(0, 0, 0, 0)
-            field.setTextColor(palette.keyText)
-            addView(field, LinearLayout.LayoutParams(0, toPx(44), 1f))
-        }
-        val dialog = AlertDialog.Builder(context)
-            .setTitle("自定义强调色")
-            .setMessage("输入 6 位十六进制颜色，例如 5B6B7A")
-            .setView(FrameLayout(context).apply {
-                setPadding(toPx(24), toPx(8), toPx(24), toPx(8))
-                addView(inputRow, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, toPx(44)))
-            })
-            .setPositiveButton("应用", null)
-            .setNegativeButton("取消", null)
-            .create()
-
-        dialog.setOnShowListener {
-            SetupUi.styleDialog(dialog, context)
-            dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
-            SetupUi.styleCursor(context, field)
-            field.setOnEditorActionListener { _, actionId, _ ->
-                if (actionId == EditorInfo.IME_ACTION_DONE) {
-                    dialog.getButton(DialogInterface.BUTTON_POSITIVE).performClick()
-                    true
-                } else {
-                    false
-                }
-            }
-            field.requestFocus()
-            field.selectAll()
-            dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener {
-                val value = field.text.toString().trim().removePrefix("#")
-                if (!value.matches(Regex("[0-9a-fA-F]{6}"))) {
-                    field.error = "请输入 6 位十六进制颜色"
-                    field.requestFocus()
-                    return@setOnClickListener
-                }
-                applyAccentColor("#$value")
-                dialog.dismiss()
-            }
-        }
-        SetupUi.showDialog(dialog, context, expandedPanel)
-    }
-
-    private fun resourcesDark(): Boolean = context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES
-
-    private fun settingsSlider(
-        labelText: String,
-        min: Int,
-        max: Int,
-        initial: Int,
-        onChange: (Int) -> Unit,
-    ): LinearLayout {
-        val row = LinearLayout(context).apply {
-            orientation = if (stackControls) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(toPx(16), toPx(if (standalone) 8 else 4), toPx(16), toPx(if (standalone) 8 else 4))
-            tag = "setting-row"
-            minimumHeight = toPx(ImeGeometryTokens.SETTING_ROW_HEIGHT_DP)
-        }
-        val title = TextView(context).apply {
-            text = labelText
-            textSize = ImeTypographyTokens.PANEL_BODY_SP
-            if (!standalone) typeface = android.graphics.Typeface.DEFAULT_BOLD
-        }
-        val valueView = TextView(context).apply {
-            tag = "setting-value"
-            textSize = ImeTypographyTokens.BODY_SP
-            gravity = Gravity.CENTER
-            includeFontPadding = false
-            if (standalone) setSingleLine()
-            minWidth = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
-            contentDescription = "$labelText 当前值"
-        }
-        val suffix = when (labelText) {
-            "圆角" -> " dp"
-            "不透明度" -> "%"
-            "按键字号" -> " sp"
-            "键盘高度", "浮动宽度", "浮动透明度" -> "%"
-            else -> ""
-        }
-        val seekBar = SeekBar(context).apply {
-            this.min = min
-            this.max = max
-            progress = initial.coerceIn(min, max)
-            minimumHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
-            isFocusable = true
-            tag = "settings-slider:$labelText"
-            setOnSeekBarChangeListener(
-                object : SeekBar.OnSeekBarChangeListener {
-                    override fun onProgressChanged(
-                        seekBar: SeekBar,
-                        progress: Int,
-                        fromUser: Boolean,
-                    ) {
-                        val description = "$labelText，$progress$suffix"
-                        valueView.text = "$progress$suffix"
-                        contentDescription = description
-                        if (Build.VERSION.SDK_INT >= 30) {
-                            stateDescription = description
-                        }
-                        if (fromUser) onChange(progress)
-                    }
-
-                    override fun onStartTrackingTouch(seekBar: SeekBar) = Unit
-                    override fun onStopTrackingTouch(seekBar: SeekBar) = Unit
-                },
-            )
-        }
-        if (stackControls) {
-            row.addView(LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                addView(title, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-                addView(valueView, wrapParams())
-            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-            row.addView(seekBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-        } else {
-            row.addView(title, LinearLayout.LayoutParams(toPx(if (standalone) 80 else 72), LinearLayout.LayoutParams.WRAP_CONTENT).apply { if (standalone) marginEnd = toPx(ImeSpacingTokens.MD_DP) })
-            row.addView(seekBar, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-            row.addView(valueView, LinearLayout.LayoutParams(if (standalone) LinearLayout.LayoutParams.WRAP_CONTENT else toPx(44), toPx(ImeGeometryTokens.TOUCH_TARGET_DP)))
-        }
-        val initialDescription =
-            "$labelText，${seekBar.progress}$suffix"
-        valueView.text = "${seekBar.progress}$suffix"
-        seekBar.contentDescription = initialDescription
-        if (Build.VERSION.SDK_INT >= 30) {
-            seekBar.stateDescription = initialDescription
-        }
-        return row
+    private fun noteText(value: String): TextView = TextView(context).apply {
+        text = value
+        textSize = ImeTypographyTokens.DETAIL_SP
+        setLineSpacing(0f, 1.2f)
+        tag = "panel-note"
     }
 
     private fun semanticFocusKey(view: View?): String? {
@@ -925,26 +816,6 @@ internal class SettingsPanelController(
         }
         return null
     }
-
-    private fun labelText(value: String, size: Float): TextView =
-        TextView(context).apply {
-            text = value
-            textSize = size
-            includeFontPadding = false
-            tag = if (size <= 11.5f) "panel-note" else "setting-label"
-        }
-
-    private fun chipParams() =
-        LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
-        ).apply { bottomMargin = toPx(if (standalone) ImeSpacingTokens.XL_DP else ImeSpacingTokens.MD_DP) }
-
-    private fun groupParams() =
-        LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-        ).apply { bottomMargin = toPx(if (standalone) ImeSpacingTokens.XL_DP else ImeSpacingTokens.MD_DP) }
 
     private fun wrapParams() =
         LinearLayout.LayoutParams(

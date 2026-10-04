@@ -227,6 +227,5 @@ class TextEditControlsInstrumentedTest {
         override fun onHapticChanged(enabled: Boolean) = Unit
         override fun onPopupChanged(enabled: Boolean) = Unit
         override fun onFuzzyChanged(enabled: Boolean) = Unit
-        override fun onSkinChanged(opacity: Int, radius: Int, fontSize: Int, primaryColor: String) = Unit
     }
 }

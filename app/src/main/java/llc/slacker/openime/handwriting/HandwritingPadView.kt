@@ -9,7 +9,7 @@ import android.graphics.Path
 import android.view.MotionEvent
 import android.view.View
 import llc.slacker.openime.data.ImeSettingsRepository
-import llc.slacker.openime.theme.AccentPalette
+import llc.slacker.openime.theme.ImeTheme
 
 /**
  * Canvas handwriting pad matching the design's helper grid, smooth strokes,
@@ -23,7 +23,8 @@ class HandwritingPadView(
     private val strokes = mutableListOf<Stroke>()
     private var currentPoints = mutableListOf<StrokePoint>()
     private val paint = Paint().apply {
-        color = AccentPalette.parse(ImeSettingsRepository.loadSkinColor(context))
+        // The theme applier replaces this with the live accent once attached.
+        color = ImeTheme.IOS.tokens(ImeSettingsRepository.loadAppearance(context)).primary
         style = Paint.Style.STROKE
         strokeWidth = 5f * resources.displayMetrics.density
         strokeCap = Paint.Cap.ROUND
