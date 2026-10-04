@@ -241,10 +241,10 @@ jobs:
             channel_flags=(--prerelease)
             latest_flag=--latest=false
           fi
+          # The APK is the only asset; its SHA-256 and the signing certificate
+          # are in the release notes, and the licenses ship inside the APK.
           gh release create "$GITHUB_REF_NAME" \
             release-files/openIME-*-arm64-release.apk \
-            release-files/SHA256SUMS.txt \
-            release-files/THIRD_PARTY_NOTICES.release.md \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
             --draft \
@@ -253,8 +253,8 @@ jobs:
             --notes-file release-files/RELEASE_NOTES.md
 
           count="$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets | length')"
-          if [[ "$count" -ne 3 ]]; then
-            echo "::error::Expected 3 release assets, found $count; the draft was left unpublished."
+          if [[ "$count" -ne 1 ]]; then
+            echo "::error::Expected exactly the APK as release asset, found $count; the draft was left unpublished."
             exit 1
           fi
           gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false "$latest_flag"

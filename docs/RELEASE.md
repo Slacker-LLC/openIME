@@ -53,7 +53,7 @@ Rime 共享数据以 `versionCode` 作为部署标记：每次升级后首次启
 openIME-v{VERSION}-arm64-release.apk
 ```
 
-同一个 GitHub Release 还有 `SHA256SUMS.txt` 和 `THIRD_PARTY_NOTICES.release.md`。
+GitHub Release 只附这一个 APK。它的 SHA-256 和签名证书指纹写在发布说明正文里；第三方许可证随 APK 打包（`assets/licenses/`），清单见仓库的 `THIRD_PARTY_NOTICES.md`。流水线内部仍生成 `SHA256SUMS.txt` 用于自检，但不上传。
 Debug 构建保留 `arm64-v8a + x86_64`，只用于真机和模拟器回归，不发布。
 
 ## 签名密钥
@@ -110,7 +110,7 @@ bash scripts/setup_release_signing.sh
      签名证书与 `release-cert.sha256` 一致；
    - 生成 SHA-256 和发布说明（测试版带 Beta 提示）；
    - 另一个只有写权限、不接触密钥的 job 先建**草稿** Release，确认三个附件齐全后才公开（测试版标为 pre-release，不是 latest）。
-5. 发布后核对：下载 APK，`sha256sum -c SHA256SUMS.txt`，`apksigner verify --print-certs`，
+5. 发布后核对：下载 APK，`sha256sum` 与发布说明里的值对比，`apksigner verify --print-certs`，
    在真机上安装、启用、试打。
 
 ### 演练
