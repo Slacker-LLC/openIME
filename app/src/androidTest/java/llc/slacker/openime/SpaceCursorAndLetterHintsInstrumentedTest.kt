@@ -453,7 +453,9 @@ class SpaceCursorAndLetterHintsInstrumentedTest {
         var found: View? = null
         fun walk(view: View) {
             if (found != null) return
-            if (view.tag == "toggle" && view.contentDescription?.startsWith("$label，") == true) found = view
+            // The keyboard panel shows some settings as quick-toggle tiles.
+            val switchLike = view.tag == "toggle" || view.tag == "quick-tile"
+            if (switchLike && view.contentDescription?.startsWith("$label，") == true) found = view
             if (view is ViewGroup) for (i in 0 until view.childCount) walk(view.getChildAt(i))
         }
         walk(this)
