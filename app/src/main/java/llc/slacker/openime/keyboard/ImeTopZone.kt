@@ -54,8 +54,7 @@ internal class ImeTopZone(
     onHideKeyboard: () -> Unit,
     onTools: () -> Unit,
     onExpandCandidates: () -> Unit,
-    private val onUndoClear: () -> Unit,
-    private val onUndoClearExpired: () -> Unit,
+    private val onUndo: () -> Unit,
     private val onAssociationDismiss: () -> Unit = {},
 ) : LinearLayout(context) {
     val toolbarRow = LinearLayout(context)
@@ -73,9 +72,6 @@ internal class ImeTopZone(
     val voiceInlineStatus = TextView(context)
     val voiceInlineWaves = mutableListOf<View>()
     val associationBack = ImageView(context)
-    val undoBanner = LinearLayout(context)
-    private val undoBannerLabel = TextView(context)
-    private val undoBannerAction = TextView(context)
     private lateinit var toolbarIcons: List<View>
     private lateinit var compactToolbarIcons: List<View>
     private var compact = false
@@ -89,22 +85,13 @@ internal class ImeTopZone(
     private lateinit var autofillScroll: HorizontalScrollView
     private val autofillRow = LinearLayout(context)
 
-    /**
-     * What the toolbar row shows; icons, autofill chips, associations and the
-     * undo banner are exclusive.
-     */
-    private enum class ToolbarMode { NORMAL, AUTOFILL, ASSOCIATION, UNDO }
+    /** What the toolbar row shows; icons, autofill chips and associations are exclusive. */
+    private enum class ToolbarMode { NORMAL, AUTOFILL, ASSOCIATION }
 
     private fun idleToolbarMode(): ToolbarMode = when {
         associationsShown -> ToolbarMode.ASSOCIATION
         autofillShown -> ToolbarMode.AUTOFILL
         else -> ToolbarMode.NORMAL
-    }
-    private val hideUndoClearRunnable = Runnable {
-        if (toolbarRow.findViewWithTag<View>("undo-toolbar")?.isActivated == true) {
-            toolbarRow.findViewWithTag<View>("undo-toolbar")?.isActivated = false
-            onUndoClearExpired()
-        }
     }
 
     init {
@@ -125,7 +112,7 @@ internal class ImeTopZone(
         val phraseIcon = toolbarIcon(R.drawable.ic_bubble, "常用语", "quick-phrase-toolbar", onQuickPhrases)
         val emojiIcon = toolbarIcon(R.drawable.ic_emoji, "表情", "toolbar", onEmoji)
         val textEditIcon = toolbarIcon(R.drawable.ic_text_cursor, "文本编辑", "toolbar", onTextEditor)
-        val undoIcon = toolbarIcon(R.drawable.ic_undo, "撤销", "undo-toolbar") { onUndoClear() }
+        val undoIcon = toolbarIcon(R.drawable.ic_undo, "撤销", "undo-toolbar") { onUndo() }
         val toolsIcon = toolbarIcon(R.drawable.ic_grid, "更多", "toolbar", onTools)
         // Docked keeps the full toolbar. Floating (game) mode drops text editing
         // and undo and puts quick phrases one tap away.
@@ -205,43 +192,6 @@ internal class ImeTopZone(
         keyboardHide = toolbarIcon(R.drawable.ic_chevron_down, "收起键盘", "keyboard-hide", onHideKeyboard)
         toolbarRow.addView(keyboardHide, LinearLayout.LayoutParams(0, toPx(48), 1f))
 
-        // After a clear-all: "已清空        [撤销]" for the undo window.
-        undoBanner.apply {
-            tag = "undo-banner"
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            visibility = View.GONE
-            setPadding(toPx(16), 0, toPx(8), 0)
-        }
-        undoBannerLabel.apply {
-            text = "已清空"
-            textSize = ImeTypographyTokens.BODY_SP
-            includeFontPadding = false
-            gravity = Gravity.CENTER_VERTICAL
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-        }
-        undoBannerAction.apply {
-            tag = "undo-clear-action"
-            text = "撤销"
-            textSize = ImeTypographyTokens.BODY_SP
-            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
-            gravity = Gravity.CENTER
-            includeFontPadding = false
-            minWidth = toPx(72)
-            setPadding(toPx(16), 0, toPx(16), 0)
-            isClickable = true
-            isFocusable = true
-            contentDescription = "撤销清空"
-            setOnClickListener {
-                removeCallbacks(hideUndoClearRunnable)
-                hideUndoClear()
-                onFeedback()
-                onUndoClear()
-            }
-        }
-        undoBanner.addView(undoBannerLabel, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
-        undoBanner.addView(undoBannerAction, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, toPx(40)))
-        toolbarRow.addView(undoBanner, LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f))
         addView(
             toolbarRow,
             LinearLayout.LayoutParams(
@@ -448,14 +398,14 @@ internal class ImeTopZone(
 
     fun showAssociations(show: Boolean) {
         associationsShown = show
-        if (toolbarMode != ToolbarMode.UNDO) toolbarMode = idleToolbarMode()
+        toolbarMode = idleToolbarMode()
         refreshToolbar()
     }
 
     /**
      * Shows the autofill [chips] (already inflated by the system) in the toolbar
-     * row, or the normal toolbar again when the list is empty. Associations and
-     * the undo banner keep priority for as long as they are showing.
+     * row, or the normal toolbar again when the list is empty. Associations keep
+     * priority for as long as they are showing.
      */
     fun setAutofillChips(chips: List<View>, chipWidthPx: Int = 0, chipHeightPx: Int = 0) {
         autofillRow.removeAllViews()
@@ -474,7 +424,7 @@ internal class ImeTopZone(
         }
         autofillShown = chips.isNotEmpty()
         autofillScroll.scrollTo(0, 0)
-        if (toolbarMode != ToolbarMode.UNDO) toolbarMode = idleToolbarMode()
+        toolbarMode = idleToolbarMode()
         refreshToolbar()
     }
 
@@ -482,27 +432,8 @@ internal class ImeTopZone(
     private fun dismissAutofillChips() {
         autofillRow.removeAllViews()
         autofillShown = false
-        if (toolbarMode != ToolbarMode.UNDO) toolbarMode = idleToolbarMode()
+        toolbarMode = idleToolbarMode()
         refreshToolbar()
-    }
-
-    fun showUndoClear() {
-        removeCallbacks(hideUndoClearRunnable)
-        toolbarRow.findViewWithTag<View>("undo-toolbar")?.isActivated = true
-        toolbarMode = ToolbarMode.UNDO
-        refreshToolbar()
-        postDelayed(hideUndoClearRunnable, CLEAR_UNDO_VISIBLE_MS)
-    }
-
-    fun hideUndoClear(discardSnapshot: Boolean = false) {
-        removeCallbacks(hideUndoClearRunnable)
-        val wasVisible = toolbarRow.findViewWithTag<View>("undo-toolbar")?.isActivated == true
-        toolbarRow.findViewWithTag<View>("undo-toolbar")?.isActivated = false
-        if (toolbarMode == ToolbarMode.UNDO) {
-            toolbarMode = idleToolbarMode()
-            refreshToolbar()
-        }
-        if (discardSnapshot && wasVisible) onUndoClearExpired()
     }
 
     private var longPressDrag: FloatingDragController? = null
@@ -594,8 +525,7 @@ internal class ImeTopZone(
         associationBack.visibility = if (association || autofill) View.VISIBLE else View.GONE
         associationScroll.visibility = if (association) View.VISIBLE else View.GONE
         autofillScroll.visibility = if (autofill) View.VISIBLE else View.GONE
-        undoBanner.visibility = if (toolbarMode == ToolbarMode.UNDO) View.VISIBLE else View.GONE
-        keyboardHide.visibility = if (toolbarMode == ToolbarMode.UNDO) View.GONE else View.VISIBLE
+        keyboardHide.visibility = View.VISIBLE
         (keyboardHide.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
             if (association || autofill) {
                 params.width = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
@@ -606,16 +536,6 @@ internal class ImeTopZone(
             }
             keyboardHide.layoutParams = params
         }
-    }
-
-    /** Colour the undo banner from the active tokens (called with every theme pass). */
-    fun applyTokens(t: ImeTheme.Tokens) {
-        undoBannerLabel.setTextColor(t.keyText)
-        undoBannerAction.setTextColor(ImeSurfacePolicy.selectedText(t))
-        undoBannerAction.background = ImeDrawableFactory.rounded(
-            ImeSurfacePolicy.subtleAccentSurface(t),
-            toPx(ImeGeometryTokens.PILL_RADIUS_DP),
-        )
     }
 
     fun setContentInset(contentInsetPx: Int) {
@@ -629,7 +549,6 @@ internal class ImeTopZone(
     ) {
         val composing = state == ImeTopZoneState.COMPOSING ||
             state == ImeTopZoneState.CANDIDATE_EXPANDED
-        if (composing && toolbarMode == ToolbarMode.UNDO) hideUndoClear()
         toolbarRow.visibility = if (state == ImeTopZoneState.IDLE) View.VISIBLE else View.GONE
         composeZone.visibility = if (composing) View.VISIBLE else View.GONE
         voiceInlineZone.visibility = if (state == ImeTopZoneState.VOICE_INLINE) View.VISIBLE else View.GONE
@@ -666,8 +585,4 @@ internal class ImeTopZone(
             toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
             toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
         )
-
-    private companion object {
-        const val CLEAR_UNDO_VISIBLE_MS = 5_000L
-    }
 }

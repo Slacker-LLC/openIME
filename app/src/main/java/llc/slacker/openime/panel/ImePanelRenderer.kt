@@ -61,6 +61,7 @@ internal class ImePanelRenderer(
     private val onModeSelected: (KeyboardMode) -> Unit,
     private val onShowPanel: (Panel) -> Unit,
     private val onEnableFloatingKeyboard: () -> Unit,
+    private val onOpenDataManagement: () -> Unit,
     private val onSymbolSelected: (String) -> Unit,
     private val onCharacter: (String) -> Unit,
     private val onSpace: () -> Unit,
@@ -137,11 +138,12 @@ internal class ImePanelRenderer(
             ToolEntry("剪贴板", Panel.CLIPBOARD, R.drawable.ic_pref_clipboard),
             ToolEntry("表情", Panel.EMOJI, R.drawable.ic_pref_emoji),
             ToolEntry("符号", Panel.SYMBOLS, R.drawable.ic_pref_symbols),
-            ToolEntry("语音输入", Panel.VOICE, R.drawable.ic_pref_mic),
-            ToolEntry("切换键盘", Panel.KEYBOARD_SELECT, R.drawable.ic_pref_globe),
             ToolEntry("文本编辑", Panel.TEXT_EDITOR, R.drawable.ic_pref_cursor),
             ToolEntry("浮动键盘", iconRes = R.drawable.ic_pref_floating, action = onEnableFloatingKeyboard),
             ToolEntry("设置", Panel.SETTINGS, R.drawable.ic_pref_settings),
+            // Voice is a long-press on space and the keyboard switcher sits on the
+            // toolbar, so neither repeats here.
+            ToolEntry("数据管理", iconRes = R.drawable.ic_pref_data, action = onOpenDataManagement),
         ).filter { it.enabled }
 
         cards.chunked(4).forEach { chunk ->

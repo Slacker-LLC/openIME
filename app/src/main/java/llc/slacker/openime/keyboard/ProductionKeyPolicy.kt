@@ -22,7 +22,7 @@ internal object ProductionKeyPolicy {
 
     /**
      * Visual reference geometry for the shared Chinese/English 26-key bottom row:
-     * 123 | 中/英 | 空格 | ，。 | 确定. The row mirrors around the space key so the
+     * 123 | ，。 | 空格 | 中/英 | 确定. The row mirrors around the space key so the
      * space bar sits on the keyboard's centre line.
      */
     fun twentySixKeyBottomRowWeights(): BottomRowWeights {

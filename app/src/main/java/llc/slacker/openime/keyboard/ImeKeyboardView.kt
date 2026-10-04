@@ -13,7 +13,6 @@ import android.os.SystemClock
 import android.text.TextUtils
 import android.util.Log
 import android.view.Gravity
-import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.SoundEffectConstants
 import android.view.View
@@ -80,11 +79,6 @@ open class ImeKeyboardView(
         fun onCharacter(char: String)
         fun onBackspace()
         fun onClearAll()
-        fun onUndoClear(): Boolean = false
-        fun onUndoClearExpired() {}
-
-        /** Whether the last clear-all can still be restored (drives the swipe-down hint). */
-        fun hasClearUndo(): Boolean = false
         fun onSpace()
         fun onFloatingKeyboardChanged(floating: Boolean)
         fun onFloatingKeyboardDragged(deltaX: Float, deltaY: Float)
@@ -128,8 +122,10 @@ open class ImeKeyboardView(
         fun onPopupChanged(enabled: Boolean)
         fun onFuzzyChanged(enabled: Boolean)
         fun onKeyboardHeightChanged(percent: Int) {}
+        fun onHapticStrengthChanged(percent: Int) {}
         fun onFloatingStyleChanged(widthPercent: Int, opacityPercent: Int) {}
-        fun onOpenAboutData() {}
+        fun onOpenAbout() {}
+        fun onOpenDataManagement() {}
     }
 
     /** Visual class marker for white keys (nine/digits grid). */
@@ -145,13 +141,11 @@ open class ImeKeyboardView(
         /** How often a deferred row rebuild re-checks whether the press ended. */
         private const val ROW_REBUILD_POLL_MS = 40L
 
-        /** KEYBOARD_TAP needs API 27; API 26 falls back to the virtual-key click. */
-        private val KEY_TAP_HAPTIC =
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                HapticFeedbackConstants.KEYBOARD_TAP
-            } else {
-                HapticFeedbackConstants.VIRTUAL_KEY
-            }
+        /** Slider drags preview the strength at most this often. */
+        private const val STRENGTH_PREVIEW_INTERVAL_MS = 80L
+
+        /** playSoundEffect's "use the default UI click volume" value. */
+        private const val KEY_CLICK_DEFAULT_VOLUME = -1f
     }
 
 
@@ -160,8 +154,6 @@ open class ImeKeyboardView(
         toPx = ::dp,
         onDeleteOne = ::performBackspaceOnce,
         onClearAll = listener::onClearAll,
-        onUndoClear = listener::onUndoClear,
-        hasUndoSnapshot = listener::hasClearUndo,
         onPressFeedback = ::feedback,
         onHapticFeedback = ::hapticFeedback,
         onGestureHint = { anchor, hint -> keyPopupController.showGestureHint(anchor, hint) },
@@ -350,6 +342,10 @@ open class ImeKeyboardView(
     private var shiftState = ShiftState.LOWERCASE
     private var soundEnabled = ImeSettingsRepository.loadSound(context)
     private var hapticEnabled = ImeSettingsRepository.loadHaptic(context)
+    private val keyHaptics = KeyHaptics(context).apply {
+        strengthPercent = ImeSettingsRepository.loadHapticStrengthPercent(context)
+    }
+    private var lastStrengthPreviewMs = 0L
     private val audioManager by lazy {
         context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
     }
@@ -565,6 +561,7 @@ open class ImeKeyboardView(
             onModeSelected = { selected -> setMode(selected) },
             onShowPanel = ::showPanel,
             onEnableFloatingKeyboard = ::enableFloatingKeyboard,
+            onOpenDataManagement = listener::onOpenDataManagement,
             onSymbolSelected = listener::onSymbolSelected,
             onCharacter = listener::onCharacter,
             onSpace = listener::onSpace,
@@ -631,6 +628,7 @@ open class ImeKeyboardView(
             currentAppearance = { appearance },
             currentSound = { soundEnabled },
             currentHaptic = { hapticEnabled },
+            currentHapticStrengthPercent = { keyHaptics.strengthPercent },
             currentPopup = { popupEnabled },
             currentSwipeUpDigits = { ImeSettingsRepository.loadSwipeUpDigits(context) },
             currentExtraToggle = ::onState,
@@ -645,9 +643,11 @@ open class ImeKeyboardView(
             },
             onToggleChanged = ::updateSettingToggle,
             onKeyboardHeightChanged = ::setKeyboardHeightPercent,
+            onHapticStrengthChanged = ::setHapticStrengthPercent,
             onFloatingStyleChanged = ::setFloatingStyle,
             onShowFuzzySettings = { showPanel(Panel.FUZZY_SETTINGS) },
-            onOpenAboutData = listener::onOpenAboutData,
+            onOpenAbout = listener::onOpenAbout,
+            onOpenDataManagement = listener::onOpenDataManagement,
             onFeedback = ::feedback,
             applyTheme = ::applyTheme,
             onHierarchyRebuilt = ::onViewHierarchyRebuilt,
@@ -1150,8 +1150,7 @@ open class ImeKeyboardView(
                 updateTopZone(composition.text?.isNotEmpty() == true)
                 listener.onCandidateExpanded(open)
             },
-            onUndoClear = { if (!listener.onUndoClear()) listener.onTextEdit("undo") },
-            onUndoClearExpired = listener::onUndoClearExpired,
+            onUndo = { listener.onTextEdit("undo") },
             onAssociationDismiss = ::clearAssociationCandidates,
         )
         candidateBarController = CandidateBarController(
@@ -1560,6 +1559,20 @@ open class ImeKeyboardView(
         listener.onFloatingStyleChanged(width, opacity)
     }
 
+    /** Save the new strength and play one click at it, so the slider is felt while dragged. */
+    private fun setHapticStrengthPercent(percent: Int) {
+        val bounded = percent.coerceIn(KeyHaptics.MIN_STRENGTH, KeyHaptics.MAX_STRENGTH)
+        if (keyHaptics.strengthPercent == bounded) return
+        keyHaptics.strengthPercent = bounded
+        ImeSettingsRepository.saveHapticStrengthPercent(context, bounded)
+        listener.onHapticStrengthChanged(bounded)
+        val now = SystemClock.uptimeMillis()
+        if (now - lastStrengthPreviewMs >= STRENGTH_PREVIEW_INTERVAL_MS) {
+            lastStrengthPreviewMs = now
+            keyHaptics.click(this)
+        }
+    }
+
     private fun setKeyboardHeightPercent(percent: Int) {
         val bounded = percent.coerceIn(80, 120)
         if (keyboardHeightPercent == bounded) return
@@ -1608,6 +1621,7 @@ open class ImeKeyboardView(
         hapticEnabled = haptic
         popupEnabled = popup
         fuzzyEnabled = fuzzy
+        keyHaptics.strengthPercent = ImeSettingsRepository.loadHapticStrengthPercent(context)
         if (heightChanged) {
             keyboardHeightPercent = persistedHeight
             renderedMode = null
@@ -1639,14 +1653,6 @@ open class ImeKeyboardView(
         if (::candidateBarController.isInitialized) {
             candidateBarController.confirmCandidateDeletion(candidate, onConfirm)
         }
-    }
-
-    fun showClearUndo() {
-        if (::topZone.isInitialized) topZone.showUndoClear()
-    }
-
-    fun hideClearUndo(discardSnapshot: Boolean = false) {
-        if (::topZone.isInitialized) topZone.hideUndoClear(discardSnapshot)
     }
 
     fun setAppearance(newAppearance: ImeAppearance) {
@@ -2823,16 +2829,15 @@ open class ImeKeyboardView(
     }
 
     protected fun feedback() {
-        // KEYBOARD_TAP is the platform's 10–20 ms key click; CLOCK_TICK is a
-        // scroll texture and feels mushy on many actuators.
-        if (hapticEnabled) performHapticFeedback(KEY_TAP_HAPTIC)
+        if (hapticEnabled) keyHaptics.click(this)
         if (soundEnabled) {
-            // View effects can be disabled by an IME host window even when the
-            // app preference is on. Use the system keypress channel directly;
-            // the view channel remains the fallback for standalone previews.
+            // playSoundEffect(effect) plays only when the system "touch sounds"
+            // setting is on, which most phones ship off, so the in-app switch
+            // did nothing. The volume overload skips that check (AOSP LatinIME
+            // does the same); -1 is the platform's default key-click volume.
             runCatching {
                 if (audioManager != null) {
-                    audioManager?.playSoundEffect(AudioManager.FX_KEYPRESS_STANDARD)
+                    audioManager?.playSoundEffect(AudioManager.FX_KEYPRESS_STANDARD, KEY_CLICK_DEFAULT_VOLUME)
                 } else {
                     isSoundEffectsEnabled = true
                     playSoundEffect(SoundEffectConstants.CLICK)
@@ -2843,8 +2848,8 @@ open class ImeKeyboardView(
 
     /** Haptic-only confirmation (no key click sound), e.g. when voice arms. */
     private fun hapticFeedback() {
-        // A crisp click marks a gesture threshold; LONG_PRESS rings for too long.
-        if (hapticEnabled) performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+        // A gesture threshold gets the same crisp click; LONG_PRESS rings for too long.
+        if (hapticEnabled) keyHaptics.click(this)
     }
 
     private fun key(
@@ -2994,7 +2999,6 @@ open class ImeKeyboardView(
         expandedPanel.setBackgroundColor(t.keyboardBackground)
         candidateOverlay.setBackgroundColor(t.expandedBackground)
         themeApplier.apply(this, t)
-        topZone.applyTokens(t)
         composition.setTextColor(ImeSurfacePolicy.selectedText(t))
         topZone.candidateExpandButton.imageTintList = android.content.res.ColorStateList.valueOf(t.keyText)
         topZone.candidateEmojiButton.imageTintList = android.content.res.ColorStateList.valueOf(t.keySecondaryText)

@@ -200,6 +200,9 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
         ImeSettingsRepository.saveFuzzy(this, enabled)
         refreshLiveIme()
     }
+    override fun onHapticStrengthChanged(percent: Int) {
+        refreshLiveIme()
+    }
     override fun onKeyboardHeightChanged(percent: Int) {
         ImeSettingsRepository.saveKeyboardHeightPercent(this, percent)
         refreshLiveIme()
@@ -210,7 +213,11 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
         refreshLiveIme()
     }
 
-    override fun onOpenAboutData() {
-        startActivity(Intent(this, AboutDataActivity::class.java))
+    override fun onOpenAbout() {
+        startActivity(Intent(this, AboutActivity::class.java))
+    }
+
+    override fun onOpenDataManagement() {
+        startActivity(Intent(this, DataManagementActivity::class.java))
     }
 }

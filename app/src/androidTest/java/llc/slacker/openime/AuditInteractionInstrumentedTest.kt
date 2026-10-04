@@ -87,7 +87,7 @@ class AuditInteractionInstrumentedTest {
                 }
                 "onFuzzyChanged" -> { fuzzyChanges.add(args!![0] as Boolean); null }
                 // A proxy answers null for everything else; a primitive boolean
-                // query (hasClearUndo, onUndoClear) must answer false instead.
+                // query must answer false instead.
                 else -> if (method.returnType == java.lang.Boolean.TYPE) false else null
             }
         } as ImeKeyboardView.Listener

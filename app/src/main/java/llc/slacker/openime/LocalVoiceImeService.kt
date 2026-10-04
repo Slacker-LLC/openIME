@@ -343,10 +343,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
 
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
-        if (!restarting) {
-            gateway.discardClearUndo()
-            keyboardView?.hideClearUndo()
-        }
         reloadPersistedSettings()
         voiceCorrectionTracker.clear()
         val previousRimeInputs = candidateQueries.activeInputs
@@ -847,41 +843,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         voiceComposing = false
         state = state.copy(voiceState = VoiceUiState())
         keyboardView?.renderState(state)
-        if (cleared && gateway.hasClearUndo()) {
-            keyboardView?.showClearUndo()
-        } else {
-            keyboardView?.hideClearUndo()
-        }
-    }
-
-    override fun onUndoClear(): Boolean {
-        if (state.passwordField) return false
-        val restored = gateway.restoreLastClear()
-        if (!restored) {
-            showTextEditFeedback("没有可撤回的清空内容")
-            return false
-        }
-        voiceCorrectionTracker.clear()
-        voiceComposing = false
-        state = state.copy(
-            composition = "",
-            candidates = emptyList(),
-            expandedCandidates = emptyList(),
-            voiceState = VoiceUiState(),
-        )
-        lastComposition = ""
-        renderedCandidateSnapshot = null
-        keyboardView?.clearAssociationCandidates()
-        keyboardView?.hideClearUndo()
-        keyboardView?.renderState(state)
-        return true
-    }
-
-    override fun hasClearUndo(): Boolean = ::gateway.isInitialized && gateway.hasClearUndo()
-
-    override fun onUndoClearExpired() {
-        gateway.discardClearUndo()
-        keyboardView?.hideClearUndo()
     }
 
     override fun onFloatingKeyboardChanged(floating: Boolean) {
@@ -1828,11 +1789,12 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         ::rime.isInitialized &&
             rime.importUserDictionaries(sourceDir, dictionaries, onComplete)
 
-    override fun onOpenAboutData() {
-        startActivity(
-            Intent(this, AboutDataActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-        )
+    override fun onOpenAbout() {
+        startActivity(Intent(this, AboutActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
+    override fun onOpenDataManagement() {
+        startActivity(Intent(this, DataManagementActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
     internal companion object {

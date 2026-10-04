@@ -71,7 +71,8 @@ Apple 的 pt 不是 Android 的 dp/sp。下面是本项目在 Android 上的实�
 ## 键盘内面板
 
 - 设置面板与键盘同高，首屏依次是四个快捷开关（按键音效、触感震动、按键气泡、数字提示，每个 68dp 高）、外观（分段选项与标签同行，宽 216dp）、键盘高度；其余设置在下方滚动。行高 52dp，不带图标和说明。
-- 工具面板：4 列 × 2 行，每项为 56dp 圆角 16dp 的图标块加 12sp 名称，图标为中性色。
+- 工具面板：剪贴板、表情、符号、文本编辑、浮动键盘、设置、数据管理，4 列排布；每项为 56dp 圆角 16dp 的图标块加 12sp 名称，图标为中性色。不放语音输入（按住空格即可）和切换键盘（工具栏已有）。
+- 偏好设置与键盘内设置的最后一组标题为“关于与数据”，下面两行：“关于”（版本、隐私、诊断）和“数据管理”（导出与导入、语音词表、卸载前提示）。
 - 标题行与面板同底色，返回按钮无底色，按下才显示反馈。
 
 ## 宽度与字体变化
@@ -90,9 +91,11 @@ Apple 的 pt 不是 Android 的 dp/sp。下面是本项目在 Android 上的实�
 
 ## 按键触感
 
-- 按键按下用 `HapticFeedbackConstants.KEYBOARD_TAP`（Android 8.0 上回退 `VIRTUAL_KEY`），是系统键盘同款 10–20ms 短击。
-- 删除键手势到位、按住空格进入语音用 `CONTEXT_CLICK`，单下清脆点击。
-- 按键反馈不使用 `LONG_PRESS`、`CLOCK_TICK` 或自定义时长的振动，避免余震拖沓。依据 Android [Haptics design principles](https://developer.android.com/develop/ui/views/haptics/haptics-principles)。
+- Android 14 QPR3 起，`performHapticFeedback(KEYBOARD_TAP)` 由系统按设备配置的固定键盘振幅播放，多数机型偏弱；Gboard 也因此失去了自己的强度滑块。搜狗、小艺、HeliBoard 等都自己驱动振动马达。
+- 本项目由 `KeyHaptics` 直接调用 `Vibrator`：Android 11 起若支持则播放 `PRIMITIVE_CLICK`（强度 1.0），Android 10 用 `EFFECT_CLICK`，Android 8–9 用 20ms 满幅脉冲；用途标记为触摸反馈，仍跟随系统“触摸反馈”强度。没有振动马达时回退 `KEYBOARD_TAP`。
+- “震动强度”滑块 10%–100%（默认 100%）缩放这一下点击：支持原语时按比例缩放 `PRIMITIVE_CLICK`，有振幅控制时缩放振幅，否则缩短脉冲时长；拖动滑杆时最多每 80ms 试震一次。偏好设置放在“触感震动”下方，键盘内设置放在首屏“键盘高度”下方。
+- 按键按下、删除键手势到位、按住空格进入语音都用这一下点击；不使用 `LONG_PRESS`、`CLOCK_TICK` 或长时长振动，避免余震拖沓。依据 Android [Haptics design principles](https://developer.android.com/develop/ui/views/haptics/haptics-principles)。
+- 按键音用带音量参数的 `AudioManager.playSoundEffect(FX_KEYPRESS_STANDARD, -1)`：单参数版本在系统“触摸提示音”关闭时不出声。
 
 ## 验收与可重复工件
 

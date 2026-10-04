@@ -45,7 +45,6 @@ class InputConnectionGateway(
     private val context: Context?,
     private val connection: () -> InputConnection?,
     private val isPassword: () -> Boolean = { false },
-    private val nowMs: () -> Long = { System.nanoTime() / 1_000_000L },
     /**
      * Editors with no text type (terminals, games, remote desktops: TYPE_NULL).
      * Their InputConnection is usually Android's BaseInputConnection in dummy
@@ -75,38 +74,8 @@ class InputConnectionGateway(
         }
     }
 
-    private data class ClearUndoSnapshot(
-        val text: String,
-        val selectionStart: Int,
-        val selectionEnd: Int,
-        val connection: InputConnection,
-        val expiresAtMs: Long,
-    )
-
-    private var clearUndoSnapshot: ClearUndoSnapshot? = null
-
-    private fun invalidateClearUndo() {
-        clearUndoSnapshot = null
-    }
-
-    fun discardClearUndo() {
-        invalidateClearUndo()
-    }
-
-    fun hasClearUndo(): Boolean {
-        if (isPassword()) return false
-        val snapshot = clearUndoSnapshot ?: return false
-        val current = connection() ?: return false
-        if (snapshot.connection !== current || nowMs() > snapshot.expiresAtMs) {
-            invalidateClearUndo()
-            return false
-        }
-        return true
-    }
-
     fun commitText(text: String) {
         if (text.isEmpty()) return
-        invalidateClearUndo()
         val ic = connection() ?: return
         if (isRawKeys() && typeAsKeyEvents(ic, text)) return
         // One Binder transaction carries about 1 MB: committing a huge paste or
@@ -133,7 +102,6 @@ class InputConnectionGateway(
 
     fun setComposingText(text: String) {
         if (isPassword()) return
-        if (text.isNotEmpty()) invalidateClearUndo()
         val ic = connection() ?: return
         if (text.isEmpty()) {
             ic.finishComposingText()
@@ -190,7 +158,6 @@ class InputConnectionGateway(
     }
 
     fun deleteBackwards() {
-        invalidateClearUndo()
         val ic = connection() ?: return
         if (isRawKeys()) {
             sendKeyDownUp(ic, KeyEvent.KEYCODE_DEL)
@@ -220,7 +187,6 @@ class InputConnectionGateway(
 
     /** Delete the active selection without falling back to one-character delete. */
     fun deleteSelection(): Boolean {
-        invalidateClearUndo()
         val ic = connection() ?: return false
         if (isPassword()) {
             if (knownSelectionStart >= 0 && knownSelectionEnd >= 0 && knownSelectionStart != knownSelectionEnd) {
@@ -280,7 +246,6 @@ class InputConnectionGateway(
     }
 
     fun deleteForwards() {
-        invalidateClearUndo()
         val ic = connection() ?: return
         if (isRawKeys()) {
             sendKeyDownUp(ic, KeyEvent.KEYCODE_FORWARD_DEL)
@@ -325,7 +290,6 @@ class InputConnectionGateway(
     fun clearAllText(): Boolean {
         if (isPassword()) return false
         val ic = connection() ?: return false
-        clearUndoSnapshot = null
         ic.beginBatchEdit()
         return try {
             val originalSelection = selectionBeforeDestructiveSelectAll(ic)
@@ -339,7 +303,6 @@ class InputConnectionGateway(
                         restoreSelectionAfterFailedClear(ic, originalSelection)
                     } else {
                         ic.finishComposingText()
-                        rememberClearUndo(selected, originalSelection, ic)
                     }
                     return cleared
                 }
@@ -358,7 +321,6 @@ class InputConnectionGateway(
                             restoreSelectionAfterFailedClear(ic, originalSelection)
                         } else {
                             ic.finishComposingText()
-                            rememberClearUndo(selectedWindow.text, originalSelection, ic)
                         }
                         return cleared
                     }
@@ -383,7 +345,6 @@ class InputConnectionGateway(
                 restoreSelectionAfterFailedClear(ic, originalSelection)
             } else {
                 ic.finishComposingText()
-                rememberClearUndo(window.text, originalSelection, ic)
             }
             cleared
         } finally {
@@ -396,7 +357,7 @@ class InputConnectionGateway(
      *
      * Editors that implement neither select-all nor a complete ExtractedText
      * (custom canvas, Compose and web fields) still answer these two queries.
-     * Everything is captured first, so the clear can be undone, and the
+     * Everything is captured first, so a failed round can put it back, and the
      * deletion repeats until the editor itself reports that nothing is left.
      * That makes an editor which silently caps its answers safe: it is cleared
      * in several rounds instead of being left half full.
@@ -440,93 +401,7 @@ class InputConnectionGateway(
         }
         ic.finishComposingText()
 
-        val head = beforeParts.asReversed().joinToString("")
-        val full = head + selected + afterParts.joinToString("")
-        rememberClearUndo(
-            text = full,
-            selection = SelectionSnapshot.Absolute(head.length, head.length + selected.length),
-            ic = ic,
-        )
         return true
-    }
-
-    /**
-     * Restore only the most recent successful full-document clear. Any normal
-     * edit invalidates the snapshot, and restoration is rejected unless the
-     * target document is still empty.
-     */
-    fun restoreLastClear(): Boolean {
-        if (isPassword()) return false
-        val snapshot = clearUndoSnapshot ?: return false
-        val ic = connection() ?: return false
-        if (snapshot.connection !== ic || nowMs() > snapshot.expiresAtMs) {
-            invalidateClearUndo()
-            return false
-        }
-
-        val window = extractedWindow(ic)
-        val documentEmpty = if (window?.isCompleteDocument == true) {
-            window.text.isEmpty()
-        } else {
-            val before = runCatching { ic.getTextBeforeCursor(1, 0)?.isEmpty() == true }
-                .getOrDefault(false)
-            val after = runCatching { ic.getTextAfterCursor(1, 0)?.isEmpty() == true }
-                .getOrDefault(false)
-            val selected = runCatching { ic.getSelectedText(0)?.isEmpty() != false }
-                .getOrDefault(false)
-            before && after && selected
-        }
-        if (!documentEmpty) {
-            invalidateClearUndo()
-            return false
-        }
-
-        ic.beginBatchEdit()
-        return try {
-            val committed = runCatching { ic.commitText(snapshot.text, 1) }.getOrDefault(false)
-            if (!committed) return false
-            ic.finishComposingText()
-            val start = snapshot.selectionStart.coerceIn(0, snapshot.text.length)
-            val end = snapshot.selectionEnd.coerceIn(0, snapshot.text.length)
-            runCatching { ic.setSelection(start, end) }
-            knownSelectionStart = start
-            knownSelectionEnd = end
-            invalidateClearUndo()
-            true
-        } finally {
-            ic.endBatchEdit()
-        }
-    }
-
-    private fun rememberClearUndo(
-        text: String,
-        selection: SelectionSnapshot?,
-        ic: InputConnection,
-    ) {
-        if (text.isEmpty()) return
-        val start: Int
-        val end: Int
-        when (selection) {
-            is SelectionSnapshot.Absolute -> {
-                start = selection.start
-                end = selection.end
-            }
-            is SelectionSnapshot.Relative -> {
-                start = selection.cursor
-                end = selection.cursor
-            }
-            null -> {
-                start = text.length
-                end = text.length
-            }
-        }
-        clearUndoSnapshot = ClearUndoSnapshot(
-            text = text,
-            selectionStart = start.coerceIn(0, text.length),
-            selectionEnd = end.coerceIn(0, text.length),
-            connection = ic,
-            expiresAtMs = nowMs() + CLEAR_UNDO_TIMEOUT_MS,
-        )
     }
 
     fun performEditorAction(action: Int) {
@@ -534,7 +409,6 @@ class InputConnectionGateway(
     }
 
     fun sendKeyDownUp(keyCode: Int) {
-        invalidateClearUndo()
         val ic = connection() ?: return
         sendKeyDownUp(ic, keyCode)
     }
@@ -740,7 +614,6 @@ class InputConnectionGateway(
             clip.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(safeContext)?.toString().orEmpty()
         }.getOrDefault("")
         if (text.isEmpty()) return ""
-        invalidateClearUndo()
         val committed = connection()?.commitText(text, 1) == true
         if (!committed) return ""
         onPasted(clip)
@@ -748,7 +621,6 @@ class InputConnectionGateway(
     }
 
     fun commitContent(info: InputContentInfo): Boolean {
-        invalidateClearUndo()
         return connection()?.commitContent(info, 0, null) == true
     }
 
@@ -853,7 +725,6 @@ class InputConnectionGateway(
 
     private companion object {
         const val FALLBACK_WINDOW_CHARS = 8_192
-        const val CLEAR_UNDO_TIMEOUT_MS = 5_000L
         const val SURROUNDING_CHUNK = 100_000
         const val MAX_SURROUNDING_ROUNDS = 8
     }

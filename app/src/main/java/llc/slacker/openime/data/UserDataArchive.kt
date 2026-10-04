@@ -42,6 +42,7 @@ internal data class ArchiveSettings(
     val emojiAssociation: Boolean = true,
     val voiceStripFillers: Boolean = true,
     val voicePunctuationAsSpace: Boolean = false,
+    val hapticStrengthPercent: Int = 100,
 )
 
 internal data class RimeUserDictionaryArchive(
@@ -174,6 +175,7 @@ internal object UserDataArchiveCodec {
             .put("appearance", value.appearance)
             .put("sound", value.sound)
             .put("haptic", value.haptic)
+            .put("haptic_strength_percent", value.hapticStrengthPercent)
             .put("popup", value.popup)
             .put("fuzzy", value.fuzzy)
             .put("swipe_up_digits", value.swipeUpDigits)
@@ -192,6 +194,7 @@ internal object UserDataArchiveCodec {
             appearance = value.optString("appearance", ImeAppearance.SYSTEM.name),
             sound = value.optBoolean("sound", true),
             haptic = value.optBoolean("haptic", true),
+            hapticStrengthPercent = value.optInt("haptic_strength_percent", 100).coerceIn(10, 100),
             popup = value.optBoolean("popup", false),
             fuzzy = value.optBoolean("fuzzy", false),
             swipeUpDigits = value.optBoolean("swipe_up_digits", true),
@@ -321,6 +324,7 @@ internal object UserDataRepository {
                 appearance = ImeSettingsRepository.loadAppearance(context).name,
                 sound = ImeSettingsRepository.loadSound(context),
                 haptic = ImeSettingsRepository.loadHaptic(context),
+                hapticStrengthPercent = ImeSettingsRepository.loadHapticStrengthPercent(context),
                 popup = ImeSettingsRepository.loadPopup(context),
                 fuzzy = ImeSettingsRepository.loadFuzzy(context),
                 swipeUpDigits = ImeSettingsRepository.loadSwipeUpDigits(context),
@@ -403,6 +407,7 @@ internal object UserDataRepository {
         )
         ImeSettingsRepository.saveSound(context, value.sound)
         ImeSettingsRepository.saveHaptic(context, value.haptic)
+        ImeSettingsRepository.saveHapticStrengthPercent(context, value.hapticStrengthPercent)
         ImeSettingsRepository.savePopup(context, value.popup)
         ImeSettingsRepository.saveFuzzy(context, value.fuzzy)
         ImeSettingsRepository.saveSwipeUpDigits(context, value.swipeUpDigits)

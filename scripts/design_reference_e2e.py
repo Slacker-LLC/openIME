@@ -228,13 +228,11 @@ try:
         tap('key:1'); tap('key:0'); tap('key:.'); tap('key:5')
         assert editor() == before + '10.5', 'Numeric layout commits wrong literals'
         command('clear-swipe'); command('mode:PINYIN_9'); tap('更多')
-        capture(stem + '-tools', ('tool:语音输入', 'tool:设置', 'tool:文本编辑', 'tool:浮动键盘'))
+        capture(stem + '-tools', ('tool:数据管理', 'tool:设置', 'tool:文本编辑', 'tool:浮动键盘'))
         for label, target, required in [
-            ('切换键盘','keyboard-select',('keyboard-choice-selected',)),
             ('符号','symbols',('symbol-categories',)),
             ('表情','emoji',('emoji-cell',)),
             ('文本编辑','text-editor',('textedit-cross', 'textedit-action:paste')),
-            ('语音输入','voice',('voice-mic', 'segment-selected')),
             ('剪贴板','clipboard',('segmented-track',)),
             ('设置','preferences',('segmented-track-tall', 'settings-slider:键盘高度')),
         ]:
@@ -251,8 +249,11 @@ try:
         capture_app(stem + '-setup', ('shortcut_preferences',))
         ui_tap(pkg + ':id/shortcut_preferences')
         capture_app(stem + '-preferences-full', ('偏好设置', '跟随系统'))
-        ui_tap('关于与数据')
-        capture_app(stem + '-about', ('隐私','用户数据','导出','导入'))
+        ui_tap('关于')
+        capture_app(stem + '-about', ('隐私','诊断'))
+        adb('shell','input','keyevent','4'); time.sleep(.5)
+        ui_tap('数据管理')
+        capture_app(stem + '-data', ('用户数据','导出','导入','语音词表'))
         launch()
         panel('符号', stem + '-symbols-return')
         tap('自定义'); tap('管理自定义符号')
