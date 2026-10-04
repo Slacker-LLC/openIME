@@ -50,6 +50,7 @@ internal class SettingsPanelController(
     private val currentAppearance: () -> ImeAppearance,
     private val currentSound: () -> Boolean,
     private val currentHaptic: () -> Boolean,
+    private val currentHapticStrengthPercent: () -> Int,
     private val currentPopup: () -> Boolean,
     private val currentSwipeUpDigits: () -> Boolean,
     /** State of the toggles added after the first four, looked up by their label. */
@@ -62,9 +63,11 @@ internal class SettingsPanelController(
     private val onAppearanceSelected: (ImeAppearance) -> Unit,
     private val onToggleChanged: (String, Boolean) -> Unit,
     private val onKeyboardHeightChanged: (Int) -> Unit,
+    private val onHapticStrengthChanged: (Int) -> Unit,
     private val onFloatingStyleChanged: (Int, Int) -> Unit,
     private val onShowFuzzySettings: () -> Unit,
-    private val onOpenAboutData: () -> Unit,
+    private val onOpenAbout: () -> Unit,
+    private val onOpenDataManagement: () -> Unit,
     private val onFeedback: () -> Unit,
     private val applyTheme: () -> Unit,
     private val onHierarchyRebuilt: () -> Unit,
@@ -172,6 +175,7 @@ internal class SettingsPanelController(
         content.addCard(
             toggleRow("按键音效", "机械轴敲击反馈", R.drawable.ic_pref_sound),
             toggleRow("触感震动", "清脆短促，按下即停", R.drawable.ic_pref_haptic),
+            sliderRow("震动强度", R.drawable.ic_pref_haptic, 10, 100, currentHapticStrengthPercent(), onChange = onHapticStrengthChanged),
             toggleRow("按键气泡", "按下时显示字母预览", R.drawable.ic_pref_bubble),
             toggleRow("数字和符号提示", "字母键右上角显示数字和符号", R.drawable.ic_pref_hints),
             toggleRow("上滑输入数字", "按键上滑输入右上角的数字或符号", R.drawable.ic_pref_swipe_up),
@@ -186,9 +190,10 @@ internal class SettingsPanelController(
             toggleRow("语音去语气词", "去掉“嗯”“呃”等口头停顿", R.drawable.ic_pref_waveform),
             toggleRow("标点用空格代替", "语音里的逗号、句号等写成空格", R.drawable.ic_pref_space),
         )
-        content.addSection("数据")
+        content.addSection("关于与数据")
         content.addCard(
-            navigationRow("关于与数据", "版本、隐私、导出与导入", R.drawable.ic_pref_info, onOpenAboutData),
+            navigationRow("关于", "版本、隐私与诊断", R.drawable.ic_pref_info, onOpenAbout),
+            navigationRow("数据管理", "导出与导入、语音词表", R.drawable.ic_pref_data, onOpenDataManagement),
         )
     }
 
@@ -205,6 +210,7 @@ internal class SettingsPanelController(
         content.addCard(
             segmentedRow("外观", iconRes = 0),
             sliderRow("键盘高度", 0, 80, 120, currentKeyboardHeightPercent(), onChange = onKeyboardHeightChanged),
+            sliderRow("震动强度", 0, 10, 100, currentHapticStrengthPercent(), onChange = onHapticStrengthChanged),
             topMarginDp = ImeSpacingTokens.MD_DP,
         )
         content.addSection("浮动键盘")
@@ -227,9 +233,10 @@ internal class SettingsPanelController(
             toggleRow("语音去语气词", null, 0),
             toggleRow("标点用空格代替", null, 0),
         )
+        content.addSection("关于与数据")
         content.addCard(
-            navigationRow("关于与数据", null, 0, onOpenAboutData),
-            topMarginDp = ImeSpacingTokens.MD_DP,
+            navigationRow("关于", null, 0, onOpenAbout),
+            navigationRow("数据管理", null, 0, onOpenDataManagement),
         )
     }
 

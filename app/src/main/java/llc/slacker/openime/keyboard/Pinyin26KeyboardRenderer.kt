@@ -78,6 +78,12 @@ internal class Pinyin26KeyboardRenderer(
             createKey("123", true, null, ImeTypographyTokens.BODY_SP, 0, onDigits),
             flexKeyParams(weights.leftOuter),
         )
+        // ，。 sits left of space and 中/英 right of it, next to the enter key.
+        bottom.addView(punctuationKey(english), flexKeyParams(weights.leftInner))
+        bottom.addView(
+            createSpaceVoiceKey("空格", onSpace),
+            flexKeyParams(weights.space),
+        )
         bottom.addView(
             createKey(
                 "中/英",
@@ -86,13 +92,8 @@ internal class Pinyin26KeyboardRenderer(
                 ImeTypographyTokens.BODY_SP,
                 0,
             ) { onModeSwitch() }.apply { tag = "key:mode" },
-            flexKeyParams(weights.leftInner),
+            flexKeyParams(weights.rightInner),
         )
-        bottom.addView(
-            createSpaceVoiceKey("空格", onSpace),
-            flexKeyParams(weights.space),
-        )
-        bottom.addView(punctuationKey(english), flexKeyParams(weights.rightInner))
         bottom.addView(
             createKey(enterLabel, true, null, ImeTypographyTokens.BODY_SP, 0, onEnter).apply {
                 tag = "key-enter"

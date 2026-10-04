@@ -365,15 +365,6 @@ internal class ImeThemeApplier(
             tag == "backspace-clear-hint" ->
                 view.setTextColor(t.keySecondaryText)
 
-            tag == "undo-clear-action" -> {
-                view.setTextColor(t.primary)
-                view.background = statefulRounded(
-                    Color.TRANSPARENT,
-                    ImeSurfacePolicy.subtleAccentSurface(t),
-                    toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                )
-            }
-
             tag == "candidate-first" ->
                 view.setTextColor(t.keyText)
 

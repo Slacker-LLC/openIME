@@ -93,6 +93,48 @@ object SetupUi {
         dp(context, ImeGeometryTokens.CARD_RADIUS_DP).toFloat(),
     )
 
+    /**
+     * A titled explanation card for the About and Data pages: neutral icon tile,
+     * title, body. Callers may append buttons below the text.
+     */
+    fun infoCard(context: Context, title: String, body: String, iconRes: Int): LinearLayout =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = dp(context, ImeSpacingTokens.LG_DP)
+            setPadding(pad, pad, pad, pad)
+            background = cardBackground(context)
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(android.widget.ImageView(context).apply {
+                    setImageResource(iconRes)
+                    imageTintList = ColorStateList.valueOf(context.getColor(R.color.setup_icon))
+                    scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+                    setPadding(dp(context, 7), dp(context, 7), dp(context, 7), dp(context, 7))
+                    background = rounded(context.getColor(R.color.setup_icon_tile), dp(context, 9).toFloat())
+                    importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                }, LinearLayout.LayoutParams(dp(context, 32), dp(context, 32)).apply { marginEnd = dp(context, 12) })
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    addView(TextView(context).apply {
+                        text = title
+                        textSize = ImeTypographyTokens.ROW_SP
+                        setTextColor(context.getColor(R.color.setup_title))
+                        typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+                        if (Build.VERSION.SDK_INT >= 28) isAccessibilityHeading = true
+                    })
+                    addView(TextView(context).apply {
+                        text = body
+                        textSize = ImeTypographyTokens.DETAIL_SP
+                        setTextColor(context.getColor(R.color.setup_body))
+                        setLineSpacing(0f, 1.3f)
+                    }, LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                    ).apply { topMargin = dp(context, ImeSpacingTokens.XS_DP) })
+                }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            })
+        }
+
     /** Press feedback for a row inside a card; the card itself paints the surface. */
     fun rowBackground(context: Context): StateListDrawable =
         ImeDrawableFactory.statefulRounded(

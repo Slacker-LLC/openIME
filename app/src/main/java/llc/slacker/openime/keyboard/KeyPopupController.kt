@@ -93,19 +93,9 @@ internal class KeyPopupController(
             return
         }
         val t = tokens()
-        val clear = hint == GestureHint.CLEAR_PREVIEW || hint == GestureHint.CLEAR_ARMED
-        val armed = hint == GestureHint.CLEAR_ARMED || hint == GestureHint.UNDO_ARMED
-        val label = when (hint) {
-            GestureHint.CLEAR_PREVIEW -> "上滑清空"
-            GestureHint.CLEAR_ARMED -> "松手清空"
-            GestureHint.UNDO_PREVIEW -> "下滑撤回"
-            else -> "松手撤回"
-        }
-        val fill = when {
-            !armed -> ImeDrawableFactory.withAlpha(t.keyText, 0xE0)
-            clear -> t.destructive
-            else -> t.primary
-        }
+        val armed = hint == GestureHint.CLEAR_ARMED
+        val label = if (armed) "松手清空" else "上滑清空"
+        val fill = if (armed) t.destructive else ImeDrawableFactory.withAlpha(t.keyText, 0xE0)
         val textColor = if (armed) contrastText(fill) else t.keyBackground
 
         val height = dp(GESTURE_HINT_HEIGHT_DP)

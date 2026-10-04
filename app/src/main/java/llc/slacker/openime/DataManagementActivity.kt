@@ -8,7 +8,6 @@ import android.os.Bundle
 import android.view.WindowInsets
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.TextView
 import android.widget.Toast
 import llc.slacker.openime.core.CrashGuard
 import llc.slacker.openime.data.UserDataArchive
@@ -17,13 +16,15 @@ import llc.slacker.openime.data.UserDataImportPreview
 import llc.slacker.openime.data.UserDataRepository
 import llc.slacker.openime.hotword.HotwordPacksActivity
 import llc.slacker.openime.setup.SetupUi
-import llc.slacker.openime.theme.ImeDrawableFactory
 import llc.slacker.openime.theme.ImeGeometryTokens
 import llc.slacker.openime.theme.ImeSpacingTokens
-import llc.slacker.openime.theme.ImeTypographyTokens
 import java.io.File
 
-class AboutDataActivity : Activity() {
+/**
+ * 数据管理: export / import of user data, the voice word lists, and what an
+ * uninstall removes. Version, privacy and diagnostics live in [AboutActivity].
+ */
+class DataManagementActivity : Activity() {
     override fun attachBaseContext(newBase: android.content.Context) {
         super.attachBaseContext(SetupUi.appearanceContext(newBase))
     }
@@ -43,8 +44,8 @@ class AboutDataActivity : Activity() {
             )
             addView(
                 SetupUi.activityTopBar(
-                    context = this@AboutDataActivity,
-                    title = "关于与数据",
+                    context = this@DataManagementActivity,
+                    title = "数据管理",
                     onBack = ::finish,
                 ),
                 LinearLayout.LayoutParams(
@@ -52,22 +53,16 @@ class AboutDataActivity : Activity() {
                     dp(ImeGeometryTokens.TOP_BAR_HEIGHT_DP),
                 ).apply { marginStart = -dp(16); marginEnd = -dp(16) },
             )
-            addView(
-                infoCard(
-                    title = "隐私",
-                    body = "本应用不含联网权限，数据只存在本机。",
-                ),
-                wrap().apply { topMargin = dp(ImeSpacingTokens.LG_DP) },
-            )
             val dataCard = infoCard(
                 title = "用户数据",
                 body = "JSON 导出包含常用语、自定义符号、备用用户词条和设置项；剪贴板历史不导出。Rime 自动学习词库在已加载时一并导出，并在导入时按词库合并。",
+                iconRes = R.drawable.ic_pref_data,
             )
-            addView(dataCard, wrap().apply { topMargin = dp(12) })
-            val actions = LinearLayout(this@AboutDataActivity).apply {
+            addView(dataCard, wrap().apply { topMargin = dp(ImeSpacingTokens.SM_DP) })
+            val actions = LinearLayout(this@DataManagementActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 addView(
-                    SetupUi.primaryButton(this@AboutDataActivity, "导出") {
+                    SetupUi.primaryButton(this@DataManagementActivity, "导出") {
                         requestExportDocument()
                     },
                     LinearLayout.LayoutParams(
@@ -77,7 +72,7 @@ class AboutDataActivity : Activity() {
                     ).apply { marginEnd = dp(ImeSpacingTokens.SM_DP) },
                 )
                 addView(
-                    SetupUi.secondaryButton(this@AboutDataActivity, "导入") {
+                    SetupUi.secondaryButton(this@DataManagementActivity, "导入") {
                         requestImportDocument()
                     },
                     LinearLayout.LayoutParams(
@@ -97,11 +92,12 @@ class AboutDataActivity : Activity() {
             val hotwordCard = infoCard(
                 title = "语音词表",
                 body = "内置游戏、科技和应用词表，也可以导入自己的词表文件。识别后把同音的词改成词表里的写法，不联网。",
+                iconRes = R.drawable.ic_pref_waveform,
             )
             addView(hotwordCard, wrap().apply { topMargin = dp(ImeSpacingTokens.LG_DP) })
             hotwordCard.addView(
-                SetupUi.secondaryButton(this@AboutDataActivity, "管理词表") {
-                    startActivity(Intent(this@AboutDataActivity, HotwordPacksActivity::class.java))
+                SetupUi.secondaryButton(this@DataManagementActivity, "管理词表") {
+                    startActivity(Intent(this@DataManagementActivity, HotwordPacksActivity::class.java))
                 },
                 LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44))
                     .apply { topMargin = dp(12); marginStart = dp(44) },
@@ -110,53 +106,10 @@ class AboutDataActivity : Activity() {
                 infoCard(
                     title = "卸载前",
                     body = "卸载会清除本机全部数据，包括学习的用户词库。卸载前可先导出用户数据。",
+                    iconRes = R.drawable.ic_pref_info,
                 ),
                 wrap().apply { topMargin = dp(ImeSpacingTokens.LG_DP) },
             )
-            val safeMode = CrashGuard.isSafeMode(this@AboutDataActivity)
-            val lastReport = CrashGuard.lastReport(this@AboutDataActivity)
-            val diagnostics = infoCard(
-                title = "诊断",
-                body = when {
-                    safeMode -> "输入法刚才多次异常退出，已临时关闭原生词库和语音预加载；约 10 分钟后自动恢复，也可以现在退出。"
-                    lastReport != null -> "最近一次异常：" + lastReport.lineSequence().first().substringAfter("| ").substringBefore(" | thread")
-                    else -> "没有异常记录。"
-                } + "\n诊断信息只含异常类型和代码位置，不含任何输入内容；只有你点“复制”才会离开这里。",
-            )
-            addView(diagnostics, wrap().apply { topMargin = dp(ImeSpacingTokens.LG_DP) })
-            if (lastReport != null || safeMode) {
-                val row = LinearLayout(this@AboutDataActivity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    if (lastReport != null) {
-                        addView(
-                            SetupUi.secondaryButton(this@AboutDataActivity, "复制诊断信息") {
-                                val clipboard = getSystemService(android.content.ClipboardManager::class.java)
-                                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("openIME diagnostics", lastReport))
-                                Toast.makeText(this@AboutDataActivity, "已复制", Toast.LENGTH_SHORT).show()
-                            },
-                            LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(ImeSpacingTokens.SM_DP) },
-                        )
-                    }
-                    if (safeMode) {
-                        addView(
-                            SetupUi.primaryButton(this@AboutDataActivity, "退出安全模式") {
-                                CrashGuard.clearHistory(this@AboutDataActivity)
-                                Toast.makeText(this@AboutDataActivity, "下次打开键盘时恢复完整功能", Toast.LENGTH_SHORT).show()
-                                recreate()
-                            },
-                            LinearLayout.LayoutParams(0, dp(44), 1f),
-                        )
-                    }
-                }
-                diagnostics.addView(
-                    row,
-                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(12); marginStart = dp(44) },
-                )
-            }
-            addView(TextView(this@AboutDataActivity).apply {
-                text = "openIME · 版本 " + versionName(); textSize = ImeTypographyTokens.SMALL_SP; gravity = android.view.Gravity.CENTER
-                setTextColor(getColor(R.color.setup_body))
-            }, wrap().apply { topMargin = dp(18) })
         }
 
         setContentView(
@@ -384,45 +337,8 @@ class AboutDataActivity : Activity() {
         }
     }
 
-    private fun infoCard(title: String, body: String): LinearLayout =
-        LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(
-                dp(ImeSpacingTokens.LG_DP),
-                dp(ImeSpacingTokens.LG_DP),
-                dp(ImeSpacingTokens.LG_DP),
-                dp(ImeSpacingTokens.LG_DP),
-            )
-            background = SetupUi.rounded(
-                getColor(R.color.setup_surface),
-                dp(ImeGeometryTokens.CARD_RADIUS_DP).toFloat(),
-                getColor(R.color.setup_input_line),
-            )
-            addView(LinearLayout(this@AboutDataActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                addView(android.widget.ImageView(this@AboutDataActivity).apply {
-                    setImageResource(if (title == "用户数据") R.drawable.ic_download else if (title == "隐私") R.drawable.ic_shield else R.drawable.ic_info)
-                    imageTintList = android.content.res.ColorStateList.valueOf(SetupUi.accent(this@AboutDataActivity))
-                    scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
-                    setPadding(dp(8), dp(8), dp(8), dp(8))
-                    background = SetupUi.rounded(ImeDrawableFactory.blend(SetupUi.accent(this@AboutDataActivity), getColor(R.color.setup_surface), 0.14f), dp(8).toFloat())
-                }, LinearLayout.LayoutParams(dp(32), dp(32)).apply { marginEnd = dp(12) })
-                addView(LinearLayout(this@AboutDataActivity).apply {
-                    orientation = LinearLayout.VERTICAL
-                    addView(TextView(this@AboutDataActivity).apply {
-                        text = title; textSize = ImeTypographyTokens.BODY_SP; setTextColor(getColor(R.color.setup_title)); typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
-                    }, wrap())
-                    addView(TextView(this@AboutDataActivity).apply {
-                        text = body; textSize = ImeTypographyTokens.BODY_SP; setTextColor(getColor(R.color.setup_body)); setLineSpacing(0f, 1.3f)
-                    }, wrap().apply { topMargin = dp(4) })
-                }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-            }, wrap())
-        }
-
-    @Suppress("DEPRECATION")
-    private fun versionName(): String =
-        packageManager.getPackageInfo(packageName, 0).versionName.orEmpty()
-            .ifBlank { "未知版本" }
+    private fun infoCard(title: String, body: String, iconRes: Int): LinearLayout =
+        SetupUi.infoCard(this, title, body, iconRes)
 
     private fun showError(message: String) {
         val dialog = AlertDialog.Builder(this)

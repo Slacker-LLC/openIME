@@ -9,7 +9,7 @@ class ProductionKeyPolicyTest {
     @Test
     fun twentySixKeyBottomRowFollowsTheReferenceCanvas() {
         val weights = ProductionKeyPolicy.twentySixKeyBottomRowWeights()
-        // 123 | 中/英 | 空格 | ，。 | 确定, in the design's 390 units.
+        // 123 | ，。 | 空格 | 中/英 | 确定, in the design's 390 units.
         assertEquals(70f, weights.leftOuter, 0.0001f)
         assertEquals(48f, weights.leftInner, 0.0001f)
         assertEquals(154f, weights.space, 0.0001f)

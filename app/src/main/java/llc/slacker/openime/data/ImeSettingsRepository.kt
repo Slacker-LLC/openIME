@@ -13,6 +13,7 @@ object ImeSettingsRepository {
     private const val KEY_APPEARANCE = "appearance"
     private const val KEY_SOUND = "sound"
     private const val KEY_HAPTIC = "haptic"
+    private const val KEY_HAPTIC_STRENGTH = "haptic_strength_percent"
     private const val KEY_POPUP = "popup"
     private const val KEY_FUZZY = "fuzzy"
     private const val KEY_SWIPE_UP_DIGITS = "swipe_up_digits"
@@ -124,6 +125,17 @@ object ImeSettingsRepository {
     fun saveHaptic(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_HAPTIC, enabled).apply()
+    }
+
+    /** Key-click strength, 10–100% of the full click. */
+    fun loadHapticStrengthPercent(context: Context): Int =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getInt(KEY_HAPTIC_STRENGTH, 100)
+            .coerceIn(10, 100)
+
+    fun saveHapticStrengthPercent(context: Context, percent: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putInt(KEY_HAPTIC_STRENGTH, percent.coerceIn(10, 100)).apply()
     }
 
     fun loadSwipeUpDigits(context: Context): Boolean =
