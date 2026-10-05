@@ -7,7 +7,8 @@
 # Optional:
 #   OPENIME_RELEASE_TAG    tag being released; must equal v<VERSION>
 #   OPENIME_REHEARSAL=1    the keystore is a throwaway: skip the certificate continuity check
-#   OPENIME_SKIP_TESTS=1   skip :app:testDebugUnitTest (quick local runs only)
+#   OPENIME_SKIP_TESTS=1   skip :app:testDebugUnitTest (the workflow: CI ran them on this commit)
+#   OPENIME_SKIP_LINT=1    skip :app:lintRelease (the workflow: it lints before the CI gate)
 #   OPENIME_OUT_DIR        output directory (default: build/release-files)
 #   OPENIME_GRADLE_ARGS    extra Gradle arguments, e.g. --offline
 #   ANDROID_HOME           SDK containing build-tools/35.0.0 (apksigner, aapt2)
@@ -50,7 +51,8 @@ python3 scripts/release_check.py "${check_args[@]}"
 VERSION="$(python3 scripts/release_check.py version | cut -d' ' -f1)"
 
 # 2. Build. lintRelease runs here because pull-request CI only lints the debug variant.
-tasks=(:app:lintRelease :app:assembleRelease)
+tasks=(:app:assembleRelease)
+[[ "${OPENIME_SKIP_LINT:-0}" == "1" ]] || tasks=(:app:lintRelease "${tasks[@]}")
 [[ "${OPENIME_SKIP_TESTS:-0}" == "1" ]] || tasks=(:app:testDebugUnitTest "${tasks[@]}")
 read -r -a extra_gradle_args <<< "${OPENIME_GRADLE_ARGS:-}"
 ./gradlew "${tasks[@]}" --no-daemon --console=plain "${extra_gradle_args[@]}"
