@@ -92,6 +92,22 @@ class NineKeyChineseTest {
         assertEquals("nihao", decoder.resolve("64426", preferredSuffix = null, fuzzy = false).previewSuffix)
     }
 
+    @Test
+    fun aLoneKeyAlignsToTheTopCandidatesInitial() {
+        // 4 / 5 / 7 / 8 / 9 hold only initials; the pre-edit shows the top
+        // candidate's initial instead of staying on the digit.
+        assertEquals(listOf("h"), pipeline.nineKeyReadingFor("4", "和"))
+        assertEquals(listOf("l"), pipeline.nineKeyReadingFor("5", "了"))
+        assertEquals(listOf("s"), pipeline.nineKeyReadingFor("7", "是"))
+        assertEquals(listOf("t"), pipeline.nineKeyReadingFor("8", "他"))
+        assertEquals(listOf("w"), pipeline.nineKeyReadingFor("9", "我"))
+        // A full syllable still wins, and a character the key cannot start stays unaligned.
+        assertEquals(listOf("a"), pipeline.nineKeyReadingFor("2", "啊"))
+        assertEquals(null, pipeline.nineKeyReadingFor("4", "啊"))
+        // More than one key keeps requiring complete syllables.
+        assertEquals(null, pipeline.nineKeyReadingFor("44", "和"))
+    }
+
     private fun resolve(digits: String): CandidatePipeline.NineKeyResolution =
         pipeline.resolveNineKey(
             digits = digits,

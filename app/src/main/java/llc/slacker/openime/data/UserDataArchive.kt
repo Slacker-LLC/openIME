@@ -43,6 +43,8 @@ internal data class ArchiveSettings(
     val voiceStripFillers: Boolean = true,
     val voicePunctuationAsSpace: Boolean = false,
     val hapticStrengthPercent: Int = 100,
+    val hapticStyle: String = "crisp",
+    val keySoundStyle: String = "system",
 )
 
 internal data class RimeUserDictionaryArchive(
@@ -176,6 +178,8 @@ internal object UserDataArchiveCodec {
             .put("sound", value.sound)
             .put("haptic", value.haptic)
             .put("haptic_strength_percent", value.hapticStrengthPercent)
+            .put("haptic_style", value.hapticStyle)
+            .put("key_sound_style", value.keySoundStyle)
             .put("popup", value.popup)
             .put("fuzzy", value.fuzzy)
             .put("swipe_up_digits", value.swipeUpDigits)
@@ -195,6 +199,8 @@ internal object UserDataArchiveCodec {
             sound = value.optBoolean("sound", true),
             haptic = value.optBoolean("haptic", true),
             hapticStrengthPercent = value.optInt("haptic_strength_percent", 100).coerceIn(10, 100),
+            hapticStyle = value.optString("haptic_style", "crisp"),
+            keySoundStyle = value.optString("key_sound_style", "system"),
             popup = value.optBoolean("popup", false),
             fuzzy = value.optBoolean("fuzzy", false),
             swipeUpDigits = value.optBoolean("swipe_up_digits", true),
@@ -325,6 +331,8 @@ internal object UserDataRepository {
                 sound = ImeSettingsRepository.loadSound(context),
                 haptic = ImeSettingsRepository.loadHaptic(context),
                 hapticStrengthPercent = ImeSettingsRepository.loadHapticStrengthPercent(context),
+                hapticStyle = ImeSettingsRepository.loadHapticStyle(context),
+                keySoundStyle = ImeSettingsRepository.loadKeySoundStyle(context),
                 popup = ImeSettingsRepository.loadPopup(context),
                 fuzzy = ImeSettingsRepository.loadFuzzy(context),
                 swipeUpDigits = ImeSettingsRepository.loadSwipeUpDigits(context),
@@ -408,6 +416,8 @@ internal object UserDataRepository {
         ImeSettingsRepository.saveSound(context, value.sound)
         ImeSettingsRepository.saveHaptic(context, value.haptic)
         ImeSettingsRepository.saveHapticStrengthPercent(context, value.hapticStrengthPercent)
+        ImeSettingsRepository.saveHapticStyle(context, value.hapticStyle)
+        ImeSettingsRepository.saveKeySoundStyle(context, value.keySoundStyle)
         ImeSettingsRepository.savePopup(context, value.popup)
         ImeSettingsRepository.saveFuzzy(context, value.fuzzy)
         ImeSettingsRepository.saveSwipeUpDigits(context, value.swipeUpDigits)

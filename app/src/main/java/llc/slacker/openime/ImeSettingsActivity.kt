@@ -203,6 +203,9 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
     override fun onHapticStrengthChanged(percent: Int) {
         refreshLiveIme()
     }
+    override fun onFeedbackStyleChanged() {
+        refreshLiveIme()
+    }
     override fun onKeyboardHeightChanged(percent: Int) {
         ImeSettingsRepository.saveKeyboardHeightPercent(this, percent)
         refreshLiveIme()

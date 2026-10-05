@@ -5,7 +5,6 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.drawable.StateListDrawable
 import android.inputmethodservice.InputMethodService
-import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -14,7 +13,6 @@ import android.text.TextUtils
 import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
-import android.view.SoundEffectConstants
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
@@ -34,7 +32,9 @@ import llc.slacker.openime.core.ImeState
 import llc.slacker.openime.core.KeyboardMode
 import llc.slacker.openime.core.Panel
 import llc.slacker.openime.core.ShiftState
+import llc.slacker.openime.data.HapticStyle
 import llc.slacker.openime.data.ImeSettingsRepository
+import llc.slacker.openime.data.KeySoundStyle
 import llc.slacker.openime.data.QuickPhrase
 import llc.slacker.openime.data.QuickPhraseRepository
 import llc.slacker.openime.editor.EditorInfoAdapter
@@ -123,6 +123,9 @@ open class ImeKeyboardView(
         fun onFuzzyChanged(enabled: Boolean)
         fun onKeyboardHeightChanged(percent: Int) {}
         fun onHapticStrengthChanged(percent: Int) {}
+
+        /** 震动手感 or 按键音效 changed; the new value is already saved. */
+        fun onFeedbackStyleChanged() {}
         fun onFloatingStyleChanged(widthPercent: Int, opacityPercent: Int) {}
         fun onOpenAbout() {}
         fun onOpenDataManagement() {}
@@ -144,8 +147,8 @@ open class ImeKeyboardView(
         /** Slider drags preview the strength at most this often. */
         private const val STRENGTH_PREVIEW_INTERVAL_MS = 80L
 
-        /** playSoundEffect's "use the default UI click volume" value. */
-        private const val KEY_CLICK_DEFAULT_VOLUME = -1f
+        /** Long enough for SoundPool to decode a just-selected click. */
+        private const val SOUND_PREVIEW_DELAY_MS = 120L
     }
 
 
@@ -344,10 +347,11 @@ open class ImeKeyboardView(
     private var hapticEnabled = ImeSettingsRepository.loadHaptic(context)
     private val keyHaptics = KeyHaptics(context).apply {
         strengthPercent = ImeSettingsRepository.loadHapticStrengthPercent(context)
+        style = HapticStyle.fromKey(ImeSettingsRepository.loadHapticStyle(context))
     }
     private var lastStrengthPreviewMs = 0L
-    private val audioManager by lazy {
-        context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+    private val keySounds = KeySounds(context).apply {
+        style = KeySoundStyle.fromKey(ImeSettingsRepository.loadKeySoundStyle(context))
     }
     private var popupEnabled = ImeSettingsRepository.loadPopup(context)
     private var fuzzyEnabled = ImeSettingsRepository.loadFuzzy(context)
@@ -629,6 +633,8 @@ open class ImeKeyboardView(
             currentSound = { soundEnabled },
             currentHaptic = { hapticEnabled },
             currentHapticStrengthPercent = { keyHaptics.strengthPercent },
+            currentHapticStyle = { keyHaptics.style },
+            currentKeySoundStyle = { keySounds.style },
             currentPopup = { popupEnabled },
             currentSwipeUpDigits = { ImeSettingsRepository.loadSwipeUpDigits(context) },
             currentExtraToggle = ::onState,
@@ -644,6 +650,8 @@ open class ImeKeyboardView(
             onToggleChanged = ::updateSettingToggle,
             onKeyboardHeightChanged = ::setKeyboardHeightPercent,
             onHapticStrengthChanged = ::setHapticStrengthPercent,
+            onHapticStyleChanged = ::setHapticStyle,
+            onKeySoundStyleChanged = ::setKeySoundStyle,
             onFloatingStyleChanged = ::setFloatingStyle,
             onShowFuzzySettings = { showPanel(Panel.FUZZY_SETTINGS) },
             onOpenAbout = listener::onOpenAbout,
@@ -1573,6 +1581,23 @@ open class ImeKeyboardView(
         }
     }
 
+    /** Save the 震动手感 choice and let it be felt once. */
+    private fun setHapticStyle(next: HapticStyle) {
+        keyHaptics.style = next
+        ImeSettingsRepository.saveHapticStyle(context, next.key)
+        listener.onFeedbackStyleChanged()
+        keyHaptics.click(this)
+    }
+
+    /** Save the 按键音效 choice and play it once, even while key sounds are off. */
+    private fun setKeySoundStyle(next: KeySoundStyle) {
+        keySounds.style = next
+        ImeSettingsRepository.saveKeySoundStyle(context, next.key)
+        listener.onFeedbackStyleChanged()
+        // A freshly loaded sample decodes asynchronously; give it a moment.
+        postDelayed({ keySounds.play() }, SOUND_PREVIEW_DELAY_MS)
+    }
+
     private fun setKeyboardHeightPercent(percent: Int) {
         val bounded = percent.coerceIn(80, 120)
         if (keyboardHeightPercent == bounded) return
@@ -1622,6 +1647,8 @@ open class ImeKeyboardView(
         popupEnabled = popup
         fuzzyEnabled = fuzzy
         keyHaptics.strengthPercent = ImeSettingsRepository.loadHapticStrengthPercent(context)
+        keyHaptics.style = HapticStyle.fromKey(ImeSettingsRepository.loadHapticStyle(context))
+        keySounds.style = KeySoundStyle.fromKey(ImeSettingsRepository.loadKeySoundStyle(context))
         if (heightChanged) {
             keyboardHeightPercent = persistedHeight
             renderedMode = null
@@ -1687,6 +1714,7 @@ open class ImeKeyboardView(
     }
 
     open fun shutdown() {
+        keySounds.release()
         // The field these chips belong to is going away.
         clearInlineSuggestions()
         if (panel == Panel.CLIPBOARD) clipboardPanelController.invalidatePendingLoad()
@@ -2830,20 +2858,7 @@ open class ImeKeyboardView(
 
     protected fun feedback() {
         if (hapticEnabled) keyHaptics.click(this)
-        if (soundEnabled) {
-            // playSoundEffect(effect) plays only when the system "touch sounds"
-            // setting is on, which most phones ship off, so the in-app switch
-            // did nothing. The volume overload skips that check (AOSP LatinIME
-            // does the same); -1 is the platform's default key-click volume.
-            runCatching {
-                if (audioManager != null) {
-                    audioManager?.playSoundEffect(AudioManager.FX_KEYPRESS_STANDARD, KEY_CLICK_DEFAULT_VOLUME)
-                } else {
-                    isSoundEffectsEnabled = true
-                    playSoundEffect(SoundEffectConstants.CLICK)
-                }
-            }
-        }
+        if (soundEnabled) keySounds.play()
     }
 
     /** Haptic-only confirmation (no key click sound), e.g. when voice arms. */

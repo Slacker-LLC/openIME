@@ -92,10 +92,11 @@ Apple 的 pt 不是 Android 的 dp/sp。下面是本项目在 Android 上的实�
 ## 按键触感
 
 - Android 14 QPR3 起，`performHapticFeedback(KEYBOARD_TAP)` 由系统按设备配置的固定键盘振幅播放，多数机型偏弱；Gboard 也因此失去了自己的强度滑块。搜狗、小艺、HeliBoard 等都自己驱动振动马达。
-- 本项目由 `KeyHaptics` 直接调用 `Vibrator`：Android 11 起若支持则播放 `PRIMITIVE_CLICK`（强度 1.0），Android 10 用 `EFFECT_CLICK`，Android 8–9 用 20ms 满幅脉冲；用途标记为触摸反馈，仍跟随系统“触摸反馈”强度。没有振动马达时回退 `KEYBOARD_TAP`。
+- 本项目由 `KeyHaptics` 直接调用 `Vibrator`，按“震动手感”选择波形：清脆（默认）用 `PRIMITIVE_TICK` / `EFFECT_TICK` / 8ms 脉冲，有力用 `PRIMITIVE_CLICK` / `EFFECT_CLICK` / 12ms 脉冲，系统用 `KEYBOARD_TAP`（厂商调校，不受强度影响）。用途标记为触摸反馈，仍跟随系统“触摸反馈”强度。线性马达（如小米 X 轴马达）上长脉冲会产生余震，所以不使用超过 12ms 的脉冲。没有振动马达时回退 `KEYBOARD_TAP`。
 - “震动强度”滑块 10%–100%（默认 100%）缩放这一下点击：支持原语时按比例缩放 `PRIMITIVE_CLICK`，有振幅控制时缩放振幅，否则缩短脉冲时长；拖动滑杆时最多每 80ms 试震一次。偏好设置放在“触感震动”下方，键盘内设置放在首屏“键盘高度”下方。
 - 按键按下、删除键手势到位、按住空格进入语音都用这一下点击；不使用 `LONG_PRESS`、`CLOCK_TICK` 或长时长振动，避免余震拖沓。依据 Android [Haptics design principles](https://developer.android.com/develop/ui/views/haptics/haptics-principles)。
-- 按键音用带音量参数的 `AudioManager.playSoundEffect(FX_KEYPRESS_STANDARD, -1)`：单参数版本在系统“触摸提示音”关闭时不出声。
+- 按键音效可选：系统（带音量参数的 `AudioManager.playSoundEffect(FX_KEYPRESS_STANDARD, -1)`，单参数版本在系统“触摸提示音”关闭时不出声）以及 `res/raw/key_sound_*.wav` 五种合成音（清脆、机械、木质、打字机、气泡，`SoundPool` 播放，用途为 UI 提示音）。选择后立即试听一次，不会先播旧的音效或震动。
+- 偏好设置“按键与输入”里依次是：按键音效、音效、触感震动、震动手感、震动强度；键盘内设置把“音效”“震动手感”放在“按键反馈”一组。
 
 ## 验收与可重复工件
 

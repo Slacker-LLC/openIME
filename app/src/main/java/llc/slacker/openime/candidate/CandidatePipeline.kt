@@ -33,7 +33,7 @@ interface CandidateResolver {
         lockPreferred: Boolean = false,
     ): CandidatePipeline.NineKeyResolution
 
-    /** Syllables of [candidate] if it spells exactly all of [digits]; null otherwise. */
+    /** Syllables of [candidate] if it spells exactly all of [digits] (a lone key may be its initial); null otherwise. */
     fun nineKeyReadingFor(digits: String, candidate: String): List<String>? = null
 
     /** Readings of [digits] for the left rail, best first (see [NineKeyReading]). */

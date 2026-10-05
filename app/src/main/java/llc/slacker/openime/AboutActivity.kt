@@ -97,7 +97,8 @@ class AboutActivity : Activity() {
                 safeMode -> "输入法刚才多次异常退出，已临时关闭原生词库和语音预加载；约 10 分钟后自动恢复，也可以现在退出。"
                 lastReport != null -> "最近一次异常：" + lastReport.lineSequence().first().substringAfter("| ").substringBefore(" | thread")
                 else -> "没有异常记录。"
-            } + "\n诊断信息只含异常类型和代码位置，不含任何输入内容；只有你点“复制”才会离开这里。",
+            } + "\n" + llc.slacker.openime.keyboard.KeyHaptics.describe(this) +
+                "\n诊断信息只含异常类型和代码位置，不含任何输入内容；只有你点“复制”才会离开这里。",
             iconRes = R.drawable.ic_pref_info,
         )
         if (lastReport == null && !safeMode) return card
