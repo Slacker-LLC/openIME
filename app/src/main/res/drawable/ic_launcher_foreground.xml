@@ -1,10 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- openIME brand mark "IME": the I is a text cursor in brand blue, ME in ink.
+     108dp adaptive-icon grid. The launcher mask shows only the middle 72dp, so the
+     mark is drawn at 3/4 of the in-app tile's scale to sit like the system icons. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:fillType="evenOdd"
-        android:pathData="M44,32 H64 A12,12 0 0 1 76,44 V64 A12,12 0 0 1 64,76 H44 A12,12 0 0 1 32,64 V44 A12,12 0 0 1 44,32 Z M47,42 H61 V45 H56 V63 H61 V66 H47 V63 H52 V45 H47 Z" />
+    <group
+        android:pivotX="54.5"
+        android:pivotY="54"
+        android:scaleX="0.75"
+        android:scaleY="0.75">
+        <path android:fillColor="@color/brand_blue" android:pathData="M28.5,41 H38.5 A1.5,1.5 0 0 1 40,42.5 V43.5 A1.5,1.5 0 0 1 38.5,45 H36 V63 H38.5 A1.5,1.5 0 0 1 40,64.5 V65.5 A1.5,1.5 0 0 1 38.5,67 H28.5 A1.5,1.5 0 0 1 27,65.5 V64.5 A1.5,1.5 0 0 1 28.5,63 H31 V45 H28.5 A1.5,1.5 0 0 1 27,43.5 V42.5 A1.5,1.5 0 0 1 28.5,41 Z" />
+        <path android:fillColor="@color/brand_ink" android:pathData="M44,67 V41 H50 L54,52 L58,41 H64 V67 H58 V53 L55.5,60 H52.5 L50,53 V67 Z M68,41 H82 V47 H74 V51 H80 V57 H74 V61 H82 V67 H68 Z" />
+    </group>
 </vector>
