@@ -53,8 +53,42 @@ class PreferencesGeometryInstrumentedTest {
                         assertTrue("Slider track ends on the row's 16dp line", abs(trackEnd - trailingEdge) <= slack)
                     }
                 }
+                assertHairlinesStartOnText(root)
                 true
             }
+        }
+    }
+
+    @Test
+    fun fuzzyPageHairlinesStartOnTheRuleText() {
+        DirectActivityHarness(ImeSettingsActivity::class.java).use { harness ->
+            harness.launch()
+            harness.awaitMain { activity ->
+                val entry = collect(activity.window.decorView) { it.tag == "setting-row" && it.contentDescription?.startsWith("模糊音与智能纠错") == true }
+                    .firstOrNull() ?: return@awaitMain null
+                entry.performClick()
+                true
+            }
+            harness.awaitMain { activity ->
+                val root = activity.window.decorView
+                val hairlines = collect(root) { it.tag == "row-hairline" }
+                if (hairlines.size < 8 || hairlines.any { it.width == 0 }) return@awaitMain null
+                assertHairlinesStartOnText(root)
+                true
+            }
+        }
+    }
+
+    /** Each hairline starts where the text of the row above it starts. */
+    private fun assertHairlinesStartOnText(root: View) {
+        collect(root) { it.tag == "row-hairline" }.forEach { line ->
+            val card = line.parent as ViewGroup
+            val above = card.getChildAt(card.indexOfChild(line) - 1)
+            val label = collect(above) { it.tag == "setting-label" }.firstOrNull() ?: return@forEach
+            assertTrue(
+                "Hairline under ${(above as? ViewGroup)?.contentDescription} starts on its text",
+                abs(left(line) - left(label)) <= 1,
+            )
         }
     }
 

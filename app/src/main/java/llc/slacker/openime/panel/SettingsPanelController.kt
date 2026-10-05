@@ -395,7 +395,7 @@ internal class SettingsPanelController(
                         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                     },
                     LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(1).coerceAtLeast(1)).apply {
-                        marginStart = toPx(if (standalone) 60 else 14)
+                        marginStart = textStart(rows[index - 1])
                     },
                 )
             }
@@ -410,6 +410,14 @@ internal class SettingsPanelController(
                 topMargin = toPx(topMarginDp)
             },
         )
+    }
+
+    /** Where [row]'s text starts: its padding, plus the icon tile when it has one. */
+    private fun textStart(row: View): Int {
+        val group = row as? ViewGroup ?: return 0
+        val icon = (0 until group.childCount).map { group.getChildAt(it) }.firstOrNull { it.tag == "setting-icon" }
+        val iconSpan = icon?.let { it.layoutParams.width + ((it.layoutParams as? ViewGroup.MarginLayoutParams)?.marginEnd ?: 0) } ?: 0
+        return group.paddingLeft + iconSpan
     }
 
     // ---- Rows ---------------------------------------------------------------
