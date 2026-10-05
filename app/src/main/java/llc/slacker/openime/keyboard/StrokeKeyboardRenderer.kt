@@ -8,8 +8,8 @@ import llc.slacker.openime.theme.ImeTypographyTokens
 import llc.slacker.openime.widget.ImeKeyView
 
 /**
- * The 笔画 keyboard. It keeps the nine-key frame (symbol rail, 删除/重输/确定
- * column, 123 · 空格 · 中/英 row) so switching between the two moves nothing
+ * The 笔画 keyboard. It keeps the nine-key frame (symbol rail over 符号,
+ * 删除/重输/确定 column, 123 · 空格 · 中/英 row) so switching between the two moves nothing
  * the user already knows, and puts the five strokes and 通配 in two rows of
  * large keys in their usual order: 一 丨 丿 / 丶 乛 通配, numbered 1–5 as in
  * other stroke keyboards.
@@ -36,6 +36,7 @@ internal class StrokeKeyboardRenderer(
     private val onStroke: (String) -> Unit,
     private val swipeUpEnabled: () -> Boolean,
     private val onCommitCharacter: (String) -> Unit,
+    private val onShowSymbols: () -> Unit,
     private val onDigits: () -> Unit,
     private val onSpace: () -> Unit,
     private val onModeSwitch: () -> Unit,
@@ -48,12 +49,20 @@ internal class StrokeKeyboardRenderer(
             tag = "stroke-layout"
         }
 
+        // Symbol rail over a 符号 key, as on the nine-key and numeric keyboards.
         container.addView(
             LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 addView(
                     createSymbolRail(),
-                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(bodyHeightDp())),
+                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(gridHeightDp())),
+                )
+                addView(
+                    createKey("符号", true, null, ImeTypographyTokens.BODY_SP, onShowSymbols).apply {
+                        tag = "key-symbols"
+                        markSideKey(this)
+                    },
+                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(keyRowHeightDp())),
                 )
             },
             columnParams(1f),
@@ -125,7 +134,7 @@ internal class StrokeKeyboardRenderer(
                         contentDescription = "通配，代替一笔"
                     }
                 } else {
-                    createKey(stroke.glyph, false, stroke.digit.toString(), ImeTypographyTokens.CANDIDATE_SP) {
+                    createKey(stroke.glyph, false, stroke.digit.toString(), ImeTypographyTokens.SYMBOL_SP) {
                         onStroke(stroke.glyph)
                     }.apply {
                         tag = "key-stroke:${stroke.code}"

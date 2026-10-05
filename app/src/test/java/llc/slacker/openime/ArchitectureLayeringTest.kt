@@ -51,6 +51,7 @@ class ArchitectureLayeringTest {
         "panel" to "ImeSettingsActivity",
         "panel" to "SymbolManagerActivity",
         "keyboard" to "QuickPhraseEditActivity",
+        "keyboard" to "RailSymbolsActivity",
     )
 
     private val sources: File = sequenceOf(File("."), File(".."))

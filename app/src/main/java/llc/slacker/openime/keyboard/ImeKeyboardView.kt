@@ -22,6 +22,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import llc.slacker.openime.QuickPhraseEditActivity
+import llc.slacker.openime.RailSymbolsActivity
 import llc.slacker.openime.R
 import llc.slacker.openime.candidate.CandidatePipeline
 import llc.slacker.openime.candidate.CandidateResolver
@@ -459,7 +460,7 @@ open class ImeKeyboardView(
             onDigits = { setMode(KeyboardMode.DIGITS) },
             onSpace = ::commitFirstCandidateOrSpace,
             onModeSwitch = ::cycleMode,
-            onRetranslate = { publishComposition("", emptyList()) },
+            onRetranslate = ::retype,
             onEnter = listener::onEnter,
         )
     }
@@ -491,10 +492,11 @@ open class ImeKeyboardView(
             onStroke = ::onStrokeKey,
             swipeUpEnabled = { ImeSettingsRepository.loadSwipeUpDigits(context) },
             onCommitCharacter = ::commitKeyboardCharacter,
+            onShowSymbols = { showPanel(Panel.SYMBOLS) },
             onDigits = { setMode(KeyboardMode.DIGITS) },
             onSpace = ::commitFirstCandidateOrSpace,
             onModeSwitch = ::cycleMode,
-            onRetype = { publishComposition("", emptyList()) },
+            onRetype = ::retype,
             onEnter = listener::onEnter,
         )
     }
@@ -1888,10 +1890,6 @@ open class ImeKeyboardView(
         }
         syncEnterKeyPresentation((context as? android.inputmethodservice.InputMethodService)?.currentInputEditorInfo?.imeOptions)
         findViewWithTag<View>("key-enter")?.let(::applyThemeToSubtree)
-        findViewWithTag<View>("key-retype")?.apply {
-            isEnabled = composing
-            alpha = if (composing) 1f else ImeSurfacePolicy.DISABLED_ALPHA
-        }
         topZone.renderState(
             state = state,
             showCompositionEditor = (composing || candidateBarController.expandedOpen) &&
@@ -2008,6 +2006,7 @@ open class ImeKeyboardView(
             onRailChanged = ::applyThemeToSubtree,
             onChooseReading = ::chooseNineKeyReading,
             fixedPrefix = ::nineKeyFixedPrefix,
+            onEditSymbols = ::openRailSymbolEditor,
         ).also { nineKeySymbolRailController = it }
     }
 
@@ -2019,6 +2018,14 @@ open class ImeKeyboardView(
             }
         }
         strokeRenderer.render(enterLabel = if (composition.text?.isNotEmpty() == true) "确定" else "↵")
+    }
+
+    /**
+     * 重输 clears what is being composed. It looks like the other function keys
+     * at all times; with nothing composed a tap does nothing.
+     */
+    private fun retype() {
+        if (composition.text?.isNotEmpty() == true) publishComposition("", emptyList())
     }
 
     /** One stroke (or 通配) typed at the pre-edit cursor. */
@@ -2229,6 +2236,12 @@ open class ImeKeyboardView(
 
     /** Called on the UI thread after the asynchronous clipboard body is populated. */
     protected open fun onClipboardContentLoaded() = Unit
+
+    private fun openRailSymbolEditor() {
+        context.startActivity(
+            Intent(context, RailSymbolsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }
 
     private fun openQuickPhraseEditor(phrase: QuickPhrase?) {
         val intent = Intent(context, QuickPhraseEditActivity::class.java)

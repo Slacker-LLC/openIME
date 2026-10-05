@@ -1,6 +1,7 @@
 package llc.slacker.openime.candidate
 
 import android.content.Context
+import android.graphics.Paint
 
 /**
  * The five strokes of the 笔画 keyboard, in the order mainstream stroke input
@@ -116,12 +117,17 @@ class StrokeLexicon internal constructor(rows: Sequence<Pair<String, String>>) {
         @Volatile
         private var cached: StrokeLexicon? = null
 
-        /** Loads the table once per process; later calls return the same instance. */
+        /**
+         * Loads the table once per process; later calls return the same
+         * instance. Characters the system font cannot draw are left out: a
+         * candidate shown as an empty box helps no one.
+         */
         fun load(context: Context): StrokeLexicon {
             cached?.let { return it }
             return synchronized(this) {
                 cached ?: context.assets.open(ASSET).bufferedReader(Charsets.UTF_8).useLines { lines ->
-                    StrokeLexicon(parse(lines))
+                    val paint = Paint()
+                    StrokeLexicon(parse(lines).filter { (character, _) -> paint.hasGlyph(character) })
                 }.also { cached = it }
             }
         }

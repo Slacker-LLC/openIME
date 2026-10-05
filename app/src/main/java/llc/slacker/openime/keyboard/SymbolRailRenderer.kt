@@ -30,6 +30,7 @@ internal object SymbolRailRenderer {
         tagPrefix: String,
         onCommit: (String) -> Unit,
         onFeedback: () -> Unit,
+        onAdd: (() -> Unit)? = null,
     ): ScrollView {
         val content = LinearLayout(context).apply {
             tag = contentTag
@@ -57,6 +58,7 @@ internal object SymbolRailRenderer {
             tagPrefix = tagPrefix,
             onCommit = onCommit,
             onFeedback = onFeedback,
+            onAdd = onAdd,
         )
         return scroll
     }
@@ -70,6 +72,8 @@ internal object SymbolRailRenderer {
         toPx: (Int) -> Int = { dp(scroll.context, it) },
         onCommit: (String) -> Unit,
         onFeedback: () -> Unit,
+        /** When set, a ＋ cell after the symbols opens the rail editor. */
+        onAdd: (() -> Unit)? = null,
     ) {
         val content = scroll.getChildAt(0) as? LinearLayout ?: return
         val inheritedTextColor = (0 until content.childCount)
@@ -96,10 +100,34 @@ internal object SymbolRailRenderer {
                     onCommit = onCommit,
                     onFeedback = onFeedback,
                 ),
-                cellParams(content.context, withGap = index < symbols.lastIndex, heightDp = cellHeightDp, toPx = toPx),
+                cellParams(
+                    content.context,
+                    withGap = index < symbols.lastIndex || onAdd != null,
+                    heightDp = cellHeightDp,
+                    toPx = toPx,
+                ),
+            )
+        }
+        if (onAdd != null) {
+            content.addView(
+                symbolCell(
+                    context = content.context,
+                    symbol = ADD_LABEL,
+                    inheritedTextColor = inheritedTextColor,
+                    tagPrefix = tagPrefix,
+                    onCommit = { onAdd() },
+                    onFeedback = onFeedback,
+                ).apply {
+                    tag = "${tagPrefix}add"
+                    contentDescription = "添加和排序常用符号"
+                },
+                cellParams(content.context, withGap = false, heightDp = cellHeightDp, toPx = toPx),
             )
         }
     }
+
+    /** The rail editor's cell: a plain plus, drawn like the symbols around it. */
+    private const val ADD_LABEL = "＋"
 
     fun cellParams(context: Context, withGap: Boolean, heightDp: Int = CELL_HEIGHT_DP, toPx: (Int) -> Int = { dp(context, it) }) = LinearLayout.LayoutParams(
         LinearLayout.LayoutParams.MATCH_PARENT,

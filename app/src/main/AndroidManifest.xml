@@ -40,6 +40,12 @@
             android:windowSoftInputMode="stateAlwaysVisible|adjustResize" />
 
         <activity
+            android:name=".RailSymbolsActivity"
+            android:exported="false"
+            android:label="@string/activity_label_rail_symbols"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name=".SymbolManagerActivity"
             android:exported="false"
             android:label="@string/activity_label_symbols"

@@ -45,6 +45,8 @@ internal data class ArchiveSettings(
     val hapticStrengthPercent: Int = 100,
     val hapticStyle: String = "crisp",
     val keySoundStyle: String = "system",
+    /** The nine-key/stroke symbol rail; null when it is still the default. */
+    val railSymbols: List<String>? = null,
 )
 
 internal data class RimeUserDictionaryArchive(
@@ -191,6 +193,7 @@ internal object UserDataArchiveCodec {
             .put("emoji_association", value.emojiAssociation)
             .put("voice_strip_fillers", value.voiceStripFillers)
             .put("voice_punctuation_as_space", value.voicePunctuationAsSpace)
+            .apply { value.railSymbols?.let { put("rail_symbols", JSONArray(it)) } }
 
     private fun settingsFromJson(value: JSONObject): ArchiveSettings =
         ArchiveSettings(
@@ -219,6 +222,9 @@ internal object UserDataArchiveCodec {
             voiceStripFillers = value.optBoolean("voice_strip_fillers", true),
             voicePunctuationAsSpace =
                 value.optBoolean("voice_punctuation_as_space", false),
+            railSymbols = value.optJSONArray("rail_symbols")?.let { array ->
+                RailSymbolRepository.normalize((0 until array.length()).map { array.optString(it) })
+            },
         )
 
     private inline fun <T> JSONArray?.toObjects(block: (JSONObject) -> T): List<T> {
@@ -349,6 +355,8 @@ internal object UserDataRepository {
                 voiceStripFillers = ImeSettingsRepository.loadVoiceStripFillers(context),
                 voicePunctuationAsSpace =
                     ImeSettingsRepository.loadVoicePunctuationAsSpace(context),
+                railSymbols = RailSymbolRepository.load(context)
+                    .takeIf { RailSymbolRepository.isCustomized(context) },
             ),
             rimeUserDictionaries = rimeUserDictionaries,
         )
@@ -445,5 +453,7 @@ internal object UserDataRepository {
             context,
             value.voicePunctuationAsSpace,
         )
+        // Backups from before the editable rail carry none; keep the current one.
+        value.railSymbols?.let { RailSymbolRepository.save(context, it) }
     }
 }

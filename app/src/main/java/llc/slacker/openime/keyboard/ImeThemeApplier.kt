@@ -174,12 +174,8 @@ internal class ImeThemeApplier(
                 )
             }
             "nine-symbol-scroll-content", "digits-symbol-scroll-content" -> view.background = null
-            "keyboard-choice", "keyboard-choice-selected" -> {
-                val selected = view.tag == "keyboard-choice-selected"
-                view.background = ImeDrawableFactory.rounded(t.toolCardBackground, toPx(16),
-                    if (selected) t.primary else Color.TRANSPARENT, if (selected) toPx(2) else 0)
-                view.invalidate()
-            }
+            // Tool-style tiles: the icon tile carries the colour, not the card.
+            "keyboard-choice", "keyboard-choice-selected" -> view.background = null
             "segmented-track" -> view.background = ImeDrawableFactory.rounded(
                 if (hasAncestorTag(view, "settings-panel")) ImeSurfacePolicy.controlTrack(t) else t.functionKeyBackground,
                 toPx(12),
@@ -298,6 +294,11 @@ internal class ImeThemeApplier(
                     if (selected) ImeDrawableFactory.contrastText(t.primary) else ImeSurfacePolicy.iconTint(t),
                 )
             }
+            view.tag == "tool-icon-selected" -> {
+                val selected = ImeSurfacePolicy.selectedSurface(t)
+                view.imageTintList = ColorStateList.valueOf(ImeSurfacePolicy.selectedText(t))
+                view.background = statefulRounded(selected, ImeSurfacePolicy.pressedSurface(selected, t), toPx(16))
+            }
             view.tag == "tool-icon" -> {
                 view.imageTintList = ColorStateList.valueOf(ImeSurfacePolicy.iconTint(t))
                 view.background = statefulRounded(
@@ -307,10 +308,6 @@ internal class ImeThemeApplier(
                 )
             }
             view.tag == "undo-toolbar" -> view.imageTintList = ColorStateList.valueOf(t.keySecondaryText)
-            view.tag == "keyboard-radio-selected" ->
-                view.imageTintList = ColorStateList.valueOf(ImeSurfacePolicy.selectedText(t))
-            view.tag == "keyboard-radio-off" ->
-                view.imageTintList = ColorStateList.valueOf(t.keySecondaryText)
             view.tag == "key-panel-back" -> {
                 view.imageTintList = ColorStateList.valueOf(t.keyText)
                 view.background = statefulRounded(
@@ -491,7 +488,7 @@ internal class ImeThemeApplier(
                 view.typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
             }
             tag == "segment-option-tall" -> { view.setTextColor(t.keySecondaryText); view.background = null }
-            tag == "keyboard-radio-selected" -> view.setTextColor(t.primary)
+            tag == "tool-label-selected" -> view.setTextColor(ImeSurfacePolicy.selectedText(t))
             tag == "fuzzy-rules" -> view.background = ImeDrawableFactory.rounded(t.toolCardBackground, toPx(16))
             tag == "textedit-spacer" -> view.background = null
             tag == "textedit-center" -> {

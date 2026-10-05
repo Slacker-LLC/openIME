@@ -33,7 +33,22 @@ class UserDataArchiveTest {
         emojiAssociation = false,
         voiceStripFillers = false,
         voicePunctuationAsSpace = true,
+        railSymbols = listOf("～", "，", "@"),
     )
+
+    @Test
+    fun aBackupWithoutARailKeepsTheCurrentOne() {
+        val json = UserDataArchiveCodec.encode(
+            UserDataArchive(
+                quickPhrases = emptyList(),
+                customSymbols = emptyList(),
+                userPhrases = emptyList(),
+                settings = settings.copy(railSymbols = null),
+            ),
+        )
+        assertEquals(false, json.contains("rail_symbols"))
+        assertEquals(null, UserDataArchiveCodec.decode(json).settings.railSymbols)
+    }
 
     @Test
     fun jsonRoundTripPreservesAllExportedSections() {
