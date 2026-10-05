@@ -48,7 +48,6 @@ import llc.slacker.openime.editor.InputMethodSubtypePolicy
 import llc.slacker.openime.editor.editorActionForEnter
 import llc.slacker.openime.editor.shouldClearCompositionForSelectionUpdate
 import llc.slacker.openime.floating.FloatingWindowController
-import llc.slacker.openime.hotword.HotwordRuntime
 import llc.slacker.openime.keyboard.EnglishShiftPolicy
 import llc.slacker.openime.keyboard.HardwareContext
 import llc.slacker.openime.keyboard.HardwareKey
@@ -194,7 +193,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             { ImeSettingsRepository.loadVoicePunctuationAsSpace(this) }
         UserPhraseRepository.configure(this)
         VoiceCorrectionRepository.configure(this)
-        HotwordRuntime.configure(this)
         voiceLifecycle = VoiceModelLifecycleManager(this)
         Thread({
             runCatching { CandidatePipeline(CandidateEngine(PinyinLexicon.load(this))) }
@@ -681,7 +679,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             } else {
                 VoicePerformanceTrace.abandon()
                 onVoiceSessionStarted(autoCommitOnFinal = true)
-                onVoiceFinal(HotwordRuntime.apply(VoiceCorrectionRepository.apply(processed)))
+                onVoiceFinal(VoiceCorrectionRepository.apply(processed))
                 true
             }
         }.getOrDefault(false)
@@ -1491,16 +1489,8 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
                 else -> "none"
             },
         )
-        return boostHotwords(composition, (learned + fallback).distinct().take(MAX_CANDIDATES))
+        return (learned + fallback).distinct().take(MAX_CANDIDATES)
     }
-
-    /** Hotword packs also rank while typing 26-key pinyin; other modes are left alone. */
-    private fun boostHotwords(composition: String, candidates: List<String>): List<String> =
-        if (state.keyboardMode == KeyboardMode.PINYIN_26 && !state.passwordField) {
-            HotwordRuntime.boost(composition, candidates).take(MAX_CANDIDATES)
-        } else {
-            candidates
-        }
 
     /** Query librime away from the IME input thread; stale answers are ignored. */
     private fun requestNativeCandidates(
@@ -1573,7 +1563,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
                 } else {
                     (learned + fallback).distinct().take(MAX_CANDIDATES)
                 }
-                val finalCandidates = boostHotwords(composition, rankedCandidates)
+                val finalCandidates = rankedCandidates
                 val nativeReferences = if (native.isNotEmpty()) {
                     native.associate { it.text to it.reference }
                 } else {

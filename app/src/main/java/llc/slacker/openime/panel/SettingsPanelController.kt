@@ -201,7 +201,7 @@ internal class SettingsPanelController(
         content.addSection("关于与数据")
         content.addCard(
             navigationRow("关于", "版本、隐私与诊断", R.drawable.ic_pref_info, onOpenAbout),
-            navigationRow("数据管理", "导出与导入、语音词表", R.drawable.ic_pref_data, onOpenDataManagement),
+            navigationRow("数据管理", "导出与导入用户数据", R.drawable.ic_pref_data, onOpenDataManagement),
         )
     }
 

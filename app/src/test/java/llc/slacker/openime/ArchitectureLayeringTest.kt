@@ -29,15 +29,14 @@ class ArchitectureLayeringTest {
         "handwriting" to setOf("data", "theme"),
         "rime" to setOf("core", "data"),
         "candidate" to setOf("core", "rime"),
-        "hotword" to setOf("setup", "theme"),
-        "voice" to setOf("data", "editor", "hotword", "theme"),
+        "voice" to setOf("data", "editor", "theme"),
         "panel" to setOf("core", "data", "handwriting", "setup", "theme", "widget"),
         "keyboard" to setOf(
             "candidate", "core", "data", "editor", "floating", "handwriting",
             "panel", "setup", "theme", "voice", "widget",
         ),
         "app" to setOf(
-            "candidate", "core", "data", "editor", "floating", "hotword", "keyboard",
+            "candidate", "core", "data", "editor", "floating", "keyboard",
             "rime", "setup", "theme", "voice",
         ),
     )

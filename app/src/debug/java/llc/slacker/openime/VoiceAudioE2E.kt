@@ -3,7 +3,6 @@ package llc.slacker.openime
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
-import llc.slacker.openime.hotword.HotwordRuntime
 import llc.slacker.openime.voice.VoiceCorrectionRepository
 import llc.slacker.openime.voice.VoiceModelLifecycleManager
 import llc.slacker.openime.voice.VoiceRecognitionEvents
@@ -70,7 +69,7 @@ internal object VoiceAudioE2E {
                             .put("clauses", session.punctuate("今天天气很好我们一起去公园散步吧"))
                     }
                     report.put("rawFinal", raw)
-                    val final = HotwordRuntime.apply(VoiceCorrectionRepository.apply(session.punctuate(raw).orEmpty()))
+                    val final = VoiceCorrectionRepository.apply(session.punctuate(raw).orEmpty())
                     report.put("final", final)
                     handler.post {
                         try {
