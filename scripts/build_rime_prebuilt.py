@@ -9,17 +9,22 @@ This script runs the same compiler on the host instead:
 1. builds `openime_rime_deployer` from the vendored librime (the same sources
    and versions as the APK's native library) into build/rime-host;
 2. runs `--build` over app/src/main/assets/rime-data;
-3. writes the compiled files to <out>/rime-data/build/.
+3. writes the compiled files to <out>/rime-data/build/ and a content hash of
+   the packaged Rime data to <out>/rime-data.revision.
 
 The APK ships that directory as librime's prebuilt data dir
 (shared_data_dir/build), so the phone only copies it. The output is
 byte-identical to what librime compiles on an x86_64 emulator and loads as is
 on arm64 phones; the dictionary sources it came from stay out of the APK.
 
+The phone copies the data again only when that hash changes, so an upgrade
+that leaves the dictionaries alone skips the copy.
+
     python3 scripts/build_rime_prebuilt.py --out app/build/generated/rime-prebuilt
 """
 
 import argparse
+import hashlib
 import os
 import shutil
 import subprocess
@@ -117,13 +122,35 @@ def compile_dictionaries(deployer, out_dir):
         return target
 
 
+def content_hash(compiled, excluded):
+    """SHA-256 over every source file, the compiled tables and the names kept
+    out of the APK: anything that changes what the phone copies changes it."""
+    digest = hashlib.sha256()
+    entries = [("src", path.relative_to(SOURCES), path) for path in SOURCES.rglob("*") if path.is_file()]
+    entries += [("bin", path.relative_to(compiled), path) for path in compiled.iterdir()]
+    for kind, relative, path in sorted(entries):
+        digest.update(f"{kind}:{relative.as_posix()}\0".encode())
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    for name in sorted(excluded):
+        digest.update(f"exclude:{name}\0".encode())
+    return digest.hexdigest()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", required=True, type=Path, help="generated assets root")
+    parser.add_argument(
+        "--exclude", action="append", default=[],
+        help="a source file name the APK leaves out (repeatable); part of the content hash",
+    )
     args = parser.parse_args()
-    target = compile_dictionaries(build_deployer(), args.out.resolve())
+    out = args.out.resolve()
+    target = compile_dictionaries(build_deployer(), out)
+    revision = content_hash(target, args.exclude)
+    (out / "rime-data.revision").write_text(revision + "\n", encoding="utf-8")
     total = sum(path.stat().st_size for path in target.iterdir())
-    print(f"build_rime_prebuilt: {len(EXPECTED)} files, {total // 1024} KiB in {target}")
+    print(f"build_rime_prebuilt: {len(EXPECTED)} files, {total // 1024} KiB in {target}, revision {revision[:12]}")
 
 
 if __name__ == "__main__":

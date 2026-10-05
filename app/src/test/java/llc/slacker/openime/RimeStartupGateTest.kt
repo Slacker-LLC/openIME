@@ -54,7 +54,16 @@ class RimeStartupGateTest {
 
     @Test
     fun rimeDataRevisionTracksApkVersionCode() {
-        assertEquals("apk-1", rimeDataRevision(1))
-        assertEquals("apk-42", rimeDataRevision(42))
+        assertEquals("apk-1", rimeDataRevision(null, 1))
+        assertEquals("apk-42", rimeDataRevision(null, 42))
+        assertEquals("apk-42", rimeDataRevision("not a hash", 42))
+    }
+
+    @Test
+    fun rimeDataRevisionPrefersTheBundledContentHash() {
+        val hash = "0123456789abcdef".repeat(4)
+        // Same data in a newer APK: the copy on the phone stays valid.
+        assertEquals("data-$hash", rimeDataRevision("$hash\n", 501))
+        assertEquals("data-$hash", rimeDataRevision(hash, 601))
     }
 }

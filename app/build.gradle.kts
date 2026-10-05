@@ -155,6 +155,10 @@ abstract class PrebuildRimeData : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val compilerSources: ConfigurableFileCollection
 
+    /** Sources the APK leaves out; they feed the content hash the phone compares. */
+    @get:Input
+    abstract val excludedSources: ListProperty<String>
+
     @get:OutputDirectory
     abstract val outputDir: DirectoryProperty
 
@@ -167,7 +171,10 @@ abstract class PrebuildRimeData : DefaultTask() {
     @TaskAction
     fun compile() {
         execOperations.exec {
-            commandLine("python3", script.get().asFile.absolutePath, "--out", outputDir.get().asFile.absolutePath)
+            commandLine(
+                listOf("python3", script.get().asFile.absolutePath, "--out", outputDir.get().asFile.absolutePath) +
+                    excludedSources.get().flatMap { listOf("--exclude", it) },
+            )
         }
     }
 }
@@ -180,6 +187,7 @@ val prebuildRimeData = tasks.register<PrebuildRimeData>("prebuildRimeData") {
         layout.projectDirectory.file("src/main/cpp/CMakeLists.txt"),
         layout.projectDirectory.dir("src/main/cpp/vendor/librime/src"),
     )
+    excludedSources.set(rimeCompiledOnlySources)
     outputDir.set(layout.buildDirectory.dir("generated/rime-prebuilt"))
 }
 
