@@ -1,54 +1,49 @@
-# Keyboard Coordinate System
+# Coordinate system
 
-## 原则
+Keyboard tests and UI calculations never use screen pixels.
+A pixel position such as "the Q key is at (123, 1876) on a 1080 × 2400 screen" breaks on other screens.
 
-键盘测试和 UI 计算不再依赖具体的屏幕像素，例如：
-
-```text
-1080×2400 上 Q 键在 (123, 1876)
-```
-
-而是统一使用输入法内容区域自身的归一化坐标：
+Instead, all positions are normalized to the content area of the input method:
 
 ```text
-原点：IME 内容区域左上角
-范围：0.0 ~ 1.0
-运行时：normalized × keyboardWidth / keyboardHeight → 真实 px
+Origin:  top left corner of the IME content area
+Range:   0.0 to 1.0
+Runtime: normalized × keyboardWidth / keyboardHeight → real px
 ```
 
-这样 720p、1080p、2K、不同 DPI、横屏和圆角屏都不需要改测试基准。
+This way, the same tests work on 720p, 1080p and 2K screens, at different densities, in landscape and on screens with rounded corners.
 
-## 实现
+## Implementation
 
-`app/src/main/java/llc/slacker/openime/keyboard/KeyboardGeometry.kt`
+File: `app/src/main/java/llc/slacker/openime/keyboard/KeyboardGeometry.kt`
 
-- `NormalizedBounds(left, top, right, bottom)`：归一化矩形。
-- `NormalizedBounds.fromView(view, root)`：从真实 `View` 测量值生成归一化坐标。
-- `toPx(rootWidth, rootHeight)`：运行时转换为真实像素。
+- `NormalizedBounds(left, top, right, bottom)` is a normalized rectangle.
+- `NormalizedBounds.fromView(view, root)` builds it from the measured size of a real `View`.
+- `toPx(rootWidth, rootHeight)` converts it to real pixels at runtime.
 
-`ImeKeyboardView.normalizedBoundsReport()` 输出的是：
+`ImeKeyboardView.normalizedBoundsReport()` prints one line for each key:
 
 ```text
 key|x,y,w,h
 ```
 
-其中 x/y/w/h 全部相对于当前 IME Root，而不是屏幕。
+The values x, y, w and h are relative to the current IME root. They are not relative to the screen.
 
-## 布局规则
+## Layout rules
 
-- 整行：使用 `Row + Weight + Relative Insets`。
-- 按键宽度：优先使用 weight，而不是写死每个键的 XY。
-- 26 键：第一行 10 键、第二行 9 键居中、第三行 Shift/M 区、底部功能键。
-- 拼音九键 / 数字：左筛选栏、中网格、右操作栏；当前不提供英文九键。
-- 高度和字体：dp/sp 约束最小/最大值，避免平板和折叠屏爆炸。
-- Popup、动效、锚点：全部相对于 Key Bounds 计算。
+- Rows use `Row + Weight + Relative Insets`.
+- Key width comes from weight. Never write fixed XY values for keys.
+- 26-key layout: 10 keys in row 1, 9 centered keys in row 2, the Shift-to-M row, and the bottom function keys.
+- Nine-key and digit layouts: a filter column on the left, a grid in the middle and an action column on the right. There is no English nine-key.
+- Height and font: dp and sp have minimum and maximum values, so tablets and foldables stay in range.
+- Popups, animations and anchors are all calculated from key bounds.
 
-## 自动化定位
+## Test automation
 
-`scripts/core_regression.ps1` 和 `scripts/extended_regression.ps1` 不读取绝对 XY：
+`scripts/core_regression.ps1` and `scripts/extended_regression.ps1` read no absolute XY values:
 
-- `E2ETestReceiver` 通过 `tap:<semantic-label>` 驱动真实 `InputMethodService` 的 click listener。
-- 焦点定位通过 `uiautomator dump` 实时读取 EditText bounds。
-- 模式定位通过 `state` 命令读取 `ImeState`。
+- `E2ETestReceiver` runs `tap:<semantic-label>` through the click listener of the real `InputMethodService`.
+- The scripts find the focus with a live `uiautomator dump` of the EditText bounds.
+- The scripts find the mode with the `state` command, which reads `ImeState`.
 
-因此脚本可以运行在 emulator 和真实小米手机上。
+So the scripts run on emulators and on real phones.

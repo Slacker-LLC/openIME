@@ -1,86 +1,86 @@
-# Test Architecture
+# Test architecture
 
-openIME 的测试分四层。文档只记录真实存在的入口；具体当前结果以 GitHub Actions 和本地 SOP 证据为准，不在文档里长期写死 PASS。
+The tests have four layers.
+This document lists only entry points that exist.
+For current results, see GitHub Actions and the local SOP evidence. Do not write PASS in this document.
 
-## 1. JVM Unit
+## 1. JVM unit tests
 
-覆盖纯 Kotlin/可隔离策略，例如：
+These tests cover pure Kotlin code and policies that you can isolate. Examples:
 
-- `CandidateEngineTest.kt`
-- `CandidatePipelineTest.kt`
-- `CandidateSnapshotTest.kt`
-- `InputConnectionGatewayTest.kt`
-- `EditorInfoAdapterTest.kt`
-- `ImeStateTest.kt`
-- `KeyboardLayoutMetricsTest.kt`
-- Voice / Rime policy 与生命周期相关单测
+- `CandidateEngineTest.kt`, `CandidatePipelineTest.kt`, `CandidateSnapshotTest.kt`
+- `InputConnectionGatewayTest.kt`, `EditorInfoAdapterTest.kt`
+- `ImeStateTest.kt`, `KeyboardLayoutMetricsTest.kt`
+- tests for voice and Rime policies and lifecycles
+- `ArchitectureLayeringTest.kt`, which enforces the package dependencies
 
-已经没有生产调用方的历史 helper 及其“自测自己”的测试应直接删除，而不是为了测试数量保留。
+Delete a legacy helper that has no production caller, together with the tests that only test it.
+Do not keep it to raise the test count.
 
-## 2. Android Instrumentation
+## 2. Android instrumentation tests
 
-`app/src/androidTest` 覆盖真实 View、InputConnection、IME 生命周期和 API 兼容：
+`app/src/androidTest` covers real views, `InputConnection`, the IME lifecycle and API compatibility. Examples:
 
-- `AuditInteractionInstrumentedTest.kt`
-- `ClipboardRetentionInstrumentedTest.kt`
-- `TextEditControlsInstrumentedTest.kt`
-- `NineKeyChineseInstrumentedTest.kt`
-- `CandidatePresentationInstrumentedTest.kt`
-- `CompatibilityApiInstrumentedTest.kt`
-- voice lifecycle / ownership tests
+- `AuditInteractionInstrumentedTest.kt`, `ClipboardRetentionInstrumentedTest.kt`
+- `TextEditControlsInstrumentedTest.kt`, `NineKeyChineseInstrumentedTest.kt`
+- `CandidatePresentationInstrumentedTest.kt`, `CompatibilityApiInstrumentedTest.kt`
+- voice lifecycle and ownership tests
 
-GitHub Actions 当前兼容矩阵运行 API 29 和 API 31。更高 API 和真机属于额外验收，不应冒充 CI 覆盖。
+GitHub Actions runs these tests on API 26, 29, 31 and 34.
+Other API levels and real devices are extra acceptance. They are not CI coverage.
 
-## 3. Debug-only E2E Harness
+## 3. Debug-only E2E harness
 
-`app/src/debug` 包含：
+`app/src/debug` contains `DebugKeyboardActivity`, `E2ETestReceiver`, `ImeTestLabActivity`, `LifecycleTestActivity` and `SecurityTestActivity`.
+Only debug builds contain them. The release APK must not depend on them.
 
-- `DebugKeyboardActivity`
-- `E2ETestReceiver`
-- `ImeTestLabActivity`
-- `LifecycleTestActivity`
-- `SecurityTestActivity`
+## 4. Scripts and device SOP
 
-这些入口只属于 debug 构建，release APK 不应依赖它们。
+`scripts/test_sop.ps1` is the single entry point for device tests.
+The scripts cover:
 
-## 4. Script / Device SOP
-
-`scripts/test_sop.ps1` 是统一设备测试入口。现有脚本覆盖：
-
-- core/extended typing
-- 9-key
-- clear/delete/voice
-- field matrix
+- core and extended typing
+- nine-key input
+- clear, delete and voice
+- field-type matrix
 - lifecycle
 - panel data
 - security
-- visual
-- performance/stress
+- visual checks
+- performance and stress
 - upgrade
 
-脚本需要真实设备或 emulator 时必须明确 serial，避免命中错误设备。
+A script that needs a real device or an emulator requires an explicit serial.
+This prevents it from using the wrong device.
 
-## CI Gate
+## CI gate
 
-`.github/workflows/android.yml` 当前执行：
+`.github/workflows/android.yml` runs these steps:
 
-1. 版本与变更记录检查：`scripts/test_release_check.py`、`scripts/release_check.py check`
+1. Version and change log checks: `scripts/test_release_check.py` and `scripts/release_check.py check`
 2. `:app:testDebugUnitTest`
 3. `:app:lintDebug`
-4. `:app:assembleDebug`、`:app:assembleDebugAndroidTest`，并校验 APK 内的包名与版本
-5. API 29 全部仪器测试
-6. API 31 全部仪器测试
+4. `:app:assembleDebug` and `:app:assembleDebugAndroidTest`, then a check of the package name and version in the APKs
+5. All instrumentation tests on API 26, 29, 31 and 34
 
-`am instrument` 即使有测试失败也以 0 退出，所以兼容矩阵会检查输出末尾的 `OK (N tests)`，
-否则让 job 失败；报告保存在 `compatibility-api-*` artifact 里。
+`am instrument` exits with 0 even when a test fails.
+So the compatibility job checks that the end of the output contains `OK (N tests)`, and fails otherwise.
+The reports are in the `compatibility-api-*` artifacts.
 
-`main` 要求 **Build and verify** 通过才能合并；兼容矩阵在 PR 上同样运行并会真实变红，
-但不阻止合并（原因与如何改成必须通过见 [REPOSITORY.md](REPOSITORY.md)）。
-发布工作流额外要求这三项检查都通过，并在 PR 改到发布流水线时用一次性密钥演练
-`lintRelease` + `assembleRelease`（见 [RELEASE.md](RELEASE.md)）。
+`main` requires **Build and verify** before a merge.
+The compatibility tests also run on PRs and turn red when a test fails, but they do not block the merge.
+[REPOSITORY.md](REPOSITORY.md) explains the reason and how to make them required.
+The release workflow requires Build and verify, Compatibility API 29 and Compatibility API 31.
+When a PR changes the release pipeline, CI also rehearses `lintRelease` and `assembleRelease` with a one-time key.
+See [RELEASE.md](RELEASE.md).
 
-PR 或分支上的“最新 HEAD”必须对应最新 CI；旧 SHA 的绿色结果不能证明新提交通过。
+The latest CI result must belong to the latest HEAD of the PR or branch.
+A green result for an old SHA does not prove that a new commit passes.
 
-## 坐标与视觉
+## Coordinates and visuals
 
-`KeyboardGeometry.kt` 的 normalized bounds 用于测试和测量；正式布局仍由当前 IME Window 的实际宽高、Insets 和语义几何 token 决定。视觉证据由 `scripts/visual_check.ps1` 生成，不把本地截图当作长期源码资产提交。
+Tests and measurements use the normalized bounds in `KeyboardGeometry.kt`.
+The real layout comes from the real size of the IME window, its insets and the geometry tokens.
+See [Coordinate system](COORDINATE_SYSTEM.md).
+`scripts/visual_check.ps1` creates visual evidence.
+Do not commit local screenshots as long-term source assets.
