@@ -55,6 +55,8 @@ class CandidatePipeline internal constructor(
     private val engine: CandidateEngine,
     private val nineKeyUiState: NineKeyUiState = NineKeyUiState(),
     private val nineKeyFallbackRegistry: NineKeyFallbackRegistry = NineKeyFallbackRegistry(),
+    /** The 笔画 table once loaded; null (no candidates yet) while it loads. */
+    private val strokeLexicon: () -> StrokeLexicon? = StrokeLexicon::current,
 ) : CandidateResolver {
     /**
      * [pinyinPaths] keeps its historical name for Listener compatibility. For
@@ -91,6 +93,7 @@ class CandidatePipeline internal constructor(
         } else {
             emptyList()
         }
+        KeyboardMode.STROKE -> strokeLexicon()?.candidatesFor(composition).orEmpty()
         KeyboardMode.DIGITS -> emptyList()
     }
 

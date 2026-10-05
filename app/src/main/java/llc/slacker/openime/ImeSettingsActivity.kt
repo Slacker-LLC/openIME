@@ -200,6 +200,9 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
         ImeSettingsRepository.saveFuzzy(this, enabled)
         refreshLiveIme()
     }
+    override fun onFuzzyRulesChanged() {
+        refreshLiveIme()
+    }
     override fun onHapticStrengthChanged(percent: Int) {
         refreshLiveIme()
     }

@@ -4,9 +4,11 @@ import android.content.Context
 import android.content.res.AssetManager
 import android.inputmethodservice.InputMethodService
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import llc.slacker.openime.RimeNative
 import llc.slacker.openime.core.CrashGuard
+import llc.slacker.openime.core.FuzzyRule
 import llc.slacker.openime.core.RimeStartupRecovery
 import llc.slacker.openime.data.ImeSettingsRepository
 import llc.slacker.openime.data.PersonalizationPolicy
@@ -27,7 +29,16 @@ internal data class RimeCandidateEntry(
 internal fun rimeProbeHasCandidate(snapshot: Array<String>?): Boolean =
     snapshot.orEmpty().drop(2).any { !it.isNullOrBlank() }
 
-internal fun rimeDataRevision(versionCode: Long): String = "apk-$versionCode"
+/**
+ * Identity of the bundled Rime data. The build writes a content hash of it
+ * (`<assetRoot>.revision`, see scripts/build_rime_prebuilt.py), so an upgrade
+ * that leaves the dictionaries unchanged keeps the copy already on the phone.
+ * Without one (test fixtures) every APK version counts as new data.
+ */
+internal fun rimeDataRevision(contentHash: String?, versionCode: Long): String =
+    contentHash?.trim()?.takeIf { RIME_CONTENT_HASH.matches(it) }?.let { "data-$it" } ?: "apk-$versionCode"
+
+private val RIME_CONTENT_HASH = Regex("[0-9a-f]{64}")
 
 internal fun rimeSchemaId(fuzzyEnabled: Boolean): String =
     if (fuzzyEnabled) "luna_pinyin_simp_fuzzy" else "luna_pinyin_simp"
@@ -151,7 +162,10 @@ class RimeEngine(
                 val userDirName = if (assetRoot == "rime-data") "rime-user" else "$dataDirName-user"
                 val userDir = File(context.filesDir, userDirName).apply { mkdirs() }
                 if (!startupGate.isCurrent(generation)) return@execute
-                copyAssetsIfNeeded(sharedDir)
+                val copyStartMs = SystemClock.elapsedRealtime()
+                val copied = copyAssetsIfNeeded(sharedDir, userDir)
+                val copyMs = SystemClock.elapsedRealtime() - copyStartMs
+                val rulesChanged = syncFuzzyRulesFile(userDir)
                 if (!startupGate.isCurrent(generation)) return@execute
 
                 // A previous start that died inside native code leaves its marker
@@ -176,9 +190,9 @@ class RimeEngine(
                 }
                 when (action) {
                     RimeStartupRecovery.Action.NORMAL -> Unit
-                    RimeStartupRecovery.Action.CLEAN_BUILD -> clearCompiledData(sharedDir, userDir)
+                    RimeStartupRecovery.Action.CLEAN_BUILD -> restoreCompiledData(sharedDir, userDir)
                     RimeStartupRecovery.Action.RESET_USER_DATA -> {
-                        clearCompiledData(sharedDir, userDir)
+                        restoreCompiledData(sharedDir, userDir)
                         setUserDataAside(userDir)
                     }
                     RimeStartupRecovery.Action.SKIP_NATIVE -> {
@@ -192,7 +206,9 @@ class RimeEngine(
                 // nativeStartup is internally serialized. Even if destroy races
                 // this call, nativeShutdown will either run after it or this
                 // stale worker will perform the same idempotent cleanup below.
-                RimeNative.nativeStartup(sharedDir.absolutePath, userDir.absolutePath)
+                val nativeStartMs = SystemClock.elapsedRealtime()
+                RimeNative.nativeStartup(sharedDir.absolutePath, userDir.absolutePath, fullCheck = rulesChanged)
+                val nativeMs = SystemClock.elapsedRealtime() - nativeStartMs
                 nativeStartupReturned = true
                 if (!startupGate.isCurrent(generation)) {
                     cleanupNative()
@@ -225,7 +241,10 @@ class RimeEngine(
                 recovery.succeeded()
                 errorMessage = ""
                 isReady = true
-                Log.i(TAG, "librime ready schema=$activeSchemaId")
+                Log.i(
+                    TAG,
+                    "librime ready schema=$activeSchemaId copy=${if (copied) "${copyMs}ms" else "skipped"} native=${nativeMs}ms",
+                )
             } catch (throwable: Throwable) {
                 // A Java exception is not a native crash: lift the marker so it is not counted as one.
                 runCatching {
@@ -545,6 +564,50 @@ class RimeEngine(
         cachedFuzzyPinyin = null
     }
 
+    /**
+     * Re-deploy librime when the 模糊音 switches changed: the rules live in
+     * the user dir's openime_fuzzy.yaml, and librime reads them (rebuilding
+     * only the small fuzzy prism) when it starts. Until it is ready again the
+     * Kotlin fallback answers, as during any startup.
+     */
+    fun applyFuzzyRules() {
+        startupExecutor.execute {
+            val file = File(userDir(), FUZZY_RULES_FILE)
+            val current = if (file.exists()) runCatching { file.readText() }.getOrNull() else null
+            if (current == fuzzyRulesFileText() || !isReady) return@execute
+            synchronized(lock) {
+                isReady = false
+                activeSchemaId = null
+                runCatching { RimeNative.nativeShutdown() }
+            }
+            Log.i(TAG, "librime redeploy for new fuzzy rules")
+            start()
+        }
+    }
+
+    private fun fuzzyRulesFileText(): String =
+        FuzzyRule.rimeYaml(ImeSettingsRepository.loadFuzzyRules(context))
+
+    /**
+     * Writes the user's openime_fuzzy.yaml (it shadows the shipped defaults;
+     * the defaults are written too, so a change always replaces the file).
+     * Returns whether it changed: librime's quick startup check works on
+     * whole-second file times and can miss an edit made right after a deploy,
+     * so a changed file asks native startup for a full check.
+     */
+    private fun syncFuzzyRulesFile(userDir: File): Boolean {
+        val file = File(userDir, FUZZY_RULES_FILE)
+        val wanted = fuzzyRulesFileText()
+        if (file.exists() && runCatching { file.readText() }.getOrNull() == wanted) return false
+        file.writeText(wanted)
+        return true
+    }
+
+    private fun userDir(): File {
+        val dataDirName = assetRoot.replace('/', '_')
+        return File(context.filesDir, if (assetRoot == "rime-data") "rime-user" else "$dataDirName-user")
+    }
+
     private fun fuzzyPinyinEnabled(): Boolean {
         cachedFuzzyPinyin?.let { return it }
         val value = ImeSettingsRepository.loadFuzzy(context)
@@ -581,19 +644,33 @@ class RimeEngine(
             }
             .distinctBy { it.text }
 
-    private fun copyAssetsIfNeeded(sharedDir: File) {
+    /**
+     * The APK carries Rime's tables already compiled, in rime-data/build
+     * (librime's prebuilt data dir), and none of the dictionary sources they
+     * came from. librime prefers its own staging dir (user/build) over the
+     * prebuilt one and, without sources, cannot tell a stale staged table from
+     * a current one; so each new APK also clears user/build. The user
+     * dictionary lives beside it in the user dir and is never touched.
+     */
+    /** Returns whether it copied; false when the phone already holds this data. */
+    private fun copyAssetsIfNeeded(sharedDir: File, userDir: File, force: Boolean = false): Boolean {
         // Read the identity of the actually installed APK instead of relying on
         // generated BuildConfig fields. This stays valid even when BuildConfig
-        // generation is disabled and automatically changes on every upgrade.
-        val revision = rimeDataRevision(installedVersionCode())
+        // generation is disabled.
+        val contentHash = runCatching {
+            assetManager.open("$assetRoot.revision").bufferedReader().use { it.readText() }
+        }.getOrNull()
+        val revision = rimeDataRevision(contentHash, installedVersionCode())
         val marker = File(sharedDir, ".openime-rime-$revision")
         val requiredSchemasPresent =
             File(sharedDir, "luna_pinyin_simp.schema.yaml").exists() &&
                 File(sharedDir, "luna_pinyin_simp_fuzzy.schema.yaml").exists()
-        if (marker.exists() && requiredSchemasPresent) return
+        if (!force && marker.exists() && requiredSchemasPresent) return false
         deleteChildren(sharedDir)
+        deleteDirectory(File(userDir, "build"))
         copyAssetTree(assetRoot, sharedDir)
         marker.writeText("openIME Rime data revision $revision\n")
+        return true
     }
 
     @Suppress("DEPRECATION")
@@ -621,14 +698,19 @@ class RimeEngine(
         }
     }
 
-    private fun clearCompiledData(sharedDir: File, userDir: File) {
-        listOf(File(sharedDir, "build"), File(userDir, "build")).forEach { build ->
-            if (build.isDirectory) {
-                deleteChildren(build)
-                build.delete()
-            }
-        }
-        Log.w(TAG, "cleared compiled librime data after a native startup failure")
+    /**
+     * After a native startup crash, put back the APK's prebuilt tables (they
+     * cannot be rebuilt on the phone) and drop anything librime staged.
+     */
+    private fun restoreCompiledData(sharedDir: File, userDir: File) {
+        copyAssetsIfNeeded(sharedDir, userDir, force = true)
+        Log.w(TAG, "restored compiled librime data after a native startup failure")
+    }
+
+    private fun deleteDirectory(directory: File) {
+        if (!directory.isDirectory) return
+        deleteChildren(directory)
+        directory.delete()
     }
 
     /** Keep one backup of a user database that may be damaged and start with an empty one. */
@@ -654,6 +736,7 @@ class RimeEngine(
     private companion object {
         const val TAG = "RimeEngine"
         const val HEALTH_PROBE_INPUT = "ni"
+        const val FUZZY_RULES_FILE = "openime_fuzzy.yaml"
         /**
          * Upper bound for waiting on an in-flight startup before tearing down.
          * Short enough to stay off the IME shutdown path, long enough for the

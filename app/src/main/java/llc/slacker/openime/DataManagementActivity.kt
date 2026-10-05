@@ -14,7 +14,6 @@ import llc.slacker.openime.data.UserDataArchive
 import llc.slacker.openime.data.UserDataArchiveCodec
 import llc.slacker.openime.data.UserDataImportPreview
 import llc.slacker.openime.data.UserDataRepository
-import llc.slacker.openime.hotword.HotwordPacksActivity
 import llc.slacker.openime.setup.SetupUi
 import llc.slacker.openime.theme.ImeGeometryTokens
 import llc.slacker.openime.theme.ImeSpacingTokens
@@ -88,19 +87,6 @@ class DataManagementActivity : Activity() {
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     dp(44),
                 ).apply { topMargin = dp(12); marginStart = dp(44) },
-            )
-            val hotwordCard = infoCard(
-                title = "语音词表",
-                body = "内置游戏、科技和应用词表，也可以导入自己的词表文件。识别后把同音的词改成词表里的写法，不联网。",
-                iconRes = R.drawable.ic_pref_waveform,
-            )
-            addView(hotwordCard, wrap().apply { topMargin = dp(ImeSpacingTokens.LG_DP) })
-            hotwordCard.addView(
-                SetupUi.secondaryButton(this@DataManagementActivity, "管理词表") {
-                    startActivity(Intent(this@DataManagementActivity, HotwordPacksActivity::class.java))
-                },
-                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44))
-                    .apply { topMargin = dp(12); marginStart = dp(44) },
             )
             addView(
                 infoCard(

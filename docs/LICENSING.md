@@ -27,6 +27,10 @@
 `app/src/main/assets/licenses/rime-ice-GPL-3.0.txt`，来源明细见根目录
 `THIRD_PARTY_NOTICES.md`。
 
+APK 不再带这些词典的文本源文件，而是带构建时由 librime 编译好的二进制词库
+（`assets/rime-data/build/`，由 `scripts/build_rime_prebuilt.py` 生成）。对应的源文件
+始终在本仓库中公开，许可证文件照常随 APK 分发。
+
 语音 runtime 以 `app/libs/sherpa-onnx-1.13.6.aar` 提供，上游
 `k2-fsa/sherpa-onnx` 使用 Apache-2.0。内置中英双语 Streaming Paraformer 模型
 `csukuangfj/sherpa-onnx-streaming-paraformer-bilingual-zh-en`

@@ -53,12 +53,23 @@ internal class Pinyin9KeyboardRenderer(
             tag = "pinyin9-layout"
         }
 
+        // Symbol rail over a 符号 key, as on the numeric keyboard.
         val left = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         left.addView(
             createSymbolRail(),
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(nineBodyHeightDp()),
+                toPx(nineGridHeightDp()),
+            ),
+        )
+        left.addView(
+            createKey("符号", true, null, ImeTypographyTokens.BODY_SP, onShowSymbols).apply {
+                tag = "key-symbols"
+                markSideKey(this)
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                toPx(keyRowHeightDp()),
             ),
         )
         container.addView(left, adaptiveColumnParams(1f))

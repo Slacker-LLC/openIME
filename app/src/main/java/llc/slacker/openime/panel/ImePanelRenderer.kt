@@ -83,38 +83,33 @@ internal class ImePanelRenderer(
         }
     }
 
+    /** Same grid as 工具: four per row, an icon tile over a short label. */
     fun renderKeyboardSelect() {
         addHeader("切换键盘")
         val body = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(toPx(8), toPx(12), toPx(8), toPx(10))
+            setPadding(toPx(12), toPx(12), toPx(4), 0)
             tag = "keyboard-select-panel"
         }
         val modes = listOf(
-            KeyboardMode.PINYIN_26 to "拼音 26 键",
-            KeyboardMode.PINYIN_9 to "拼音 9 键",
-            KeyboardMode.ENGLISH_26 to "英文 26 键",
-            KeyboardMode.DIGITS to "数字键盘",
+            Triple(KeyboardMode.PINYIN_26, "拼音 26 键", R.drawable.ic_kb_pinyin26),
+            Triple(KeyboardMode.PINYIN_9, "拼音 9 键", R.drawable.ic_kb_pinyin9),
+            Triple(KeyboardMode.STROKE, "笔画", R.drawable.ic_kb_stroke),
+            Triple(KeyboardMode.ENGLISH_26, "英文 26 键", R.drawable.ic_kb_english),
+            Triple(KeyboardMode.DIGITS, "数字键盘", R.drawable.ic_kb_digits),
         )
-        modes.chunked(2).forEach { chunk ->
+        modes.chunked(TOOL_COLUMNS).forEach { chunk ->
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            chunk.forEach { (modeValue, label) ->
-                row.addView(
-                    keyboardChoice(modeValue, label),
-                    LinearLayout.LayoutParams(0, toPx(96), 1f).apply {
-                        marginEnd = toPx(4); marginStart = toPx(4)
-                    },
-                )
+            chunk.forEach { (mode, label, iconRes) ->
+                row.addView(keyboardChoice(mode, label, iconRes), toolCardParams())
             }
-            if (chunk.size == 1) {
-                row.addView(View(context), LinearLayout.LayoutParams(0, toPx(96), 1f))
-            }
+            repeat(TOOL_COLUMNS - chunk.size) { row.addView(View(context), toolCardParams()) }
             body.addView(
                 row,
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
-                    toPx(96),
-                ).apply { bottomMargin = toPx(8) },
+                    toPx(ImeGeometryTokens.TOOL_CARD_HEIGHT_DP),
+                ).apply { bottomMargin = toPx(ImeSpacingTokens.LG_DP) },
             )
         }
         expandedPanel.addView(
@@ -125,6 +120,9 @@ internal class ImePanelRenderer(
             ),
         )
     }
+
+    private fun toolCardParams() =
+        LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOOL_CARD_HEIGHT_DP), 1f).apply { marginEnd = toPx(8) }
 
     fun renderTools() {
         addHeader("工具")
@@ -146,7 +144,7 @@ internal class ImePanelRenderer(
             ToolEntry("数据管理", iconRes = R.drawable.ic_pref_data, action = onOpenDataManagement),
         ).filter { it.enabled }
 
-        cards.chunked(4).forEach { chunk ->
+        cards.chunked(TOOL_COLUMNS).forEach { chunk ->
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             chunk.forEach { entry ->
                 val action = entry.action ?: {
@@ -162,7 +160,7 @@ internal class ImePanelRenderer(
                     ).apply { marginEnd = toPx(8) },
                 )
             }
-            repeat(4 - chunk.size) {
+            repeat(TOOL_COLUMNS - chunk.size) {
                 row.addView(
                     View(context),
                     LinearLayout.LayoutParams(
@@ -679,6 +677,7 @@ internal class ImePanelRenderer(
         card.addView(
             TextView(context).apply {
                 text = label
+                tag = "tool-label"
                 typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
                 textSize = ImeTypographyTokens.SMALL_SP
                 gravity = Gravity.CENTER
@@ -693,48 +692,17 @@ internal class ImePanelRenderer(
         return card
     }
 
-    private fun keyboardChoice(mode: KeyboardMode, label: String): View {
+    /** A 工具-style tile; the current keyboard's tile is drawn selected. */
+    private fun keyboardChoice(mode: KeyboardMode, label: String, iconRes: Int): View {
         val selected = currentMode() == mode
-        return LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(toPx(14), toPx(12), toPx(14), toPx(8))
+        return toolCard(iconRes, label) { onModeSelected(mode) }.apply {
             tag = if (selected) "keyboard-choice-selected" else "keyboard-choice"
             contentDescription = "$label，${if (selected) "已选中" else "未选中"}"
-            isClickable = true
-            isFocusable = true
-            setOnClickListener { onFeedback(); onModeSelected(mode) }
-            addView(object : View(context) {
-                private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-                override fun onDraw(canvas: Canvas) {
-                    val dark = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES
-                    val tokens = ImeTheme.IOS.tokens(ImeSettingsRepository.loadAppearance(context), dark)
-                    val h = height / 4f
-                    paint.color = tokens.functionKeyBackground
-                    for (i in 0..3) {
-                        val y = i * h
-                        val w = if (mode == KeyboardMode.PINYIN_9 || mode == KeyboardMode.DIGITS) width * 0.19f else width * (0.12f + 0.03f * i)
-                        canvas.drawRoundRect(0f, y, w, y + h * 0.72f, toPx(2).toFloat(), toPx(2).toFloat(), paint)
-                        if (mode != KeyboardMode.DIGITS || i == 0 || i == 3) {
-                            paint.color = if (selected && i >= 2) tokens.primary else tokens.functionKeyBackground
-                            canvas.drawRoundRect(width * 0.81f, y, width.toFloat(), y + h * 0.72f, toPx(2).toFloat(), toPx(2).toFloat(), paint)
-                            paint.color = tokens.functionKeyBackground
-                        }
-                    }
-                }
-            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
-            addView(LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                addView(TextView(context).apply { text = label; textSize = ImeTypographyTokens.BODY_SP; typeface = Typeface.DEFAULT_BOLD }, LinearLayout.LayoutParams(0, toPx(28), 1f))
-                // A vector mark, not a text glyph: it is tinted and sized like every other icon.
-                addView(ImageView(context).apply {
-                    setImageResource(if (selected) R.drawable.ic_check else R.drawable.ic_radio_off)
-                    tag = if (selected) "keyboard-radio-selected" else "keyboard-radio-off"
-                    scaleType = ImageView.ScaleType.FIT_CENTER
-                    setPadding(toPx(2), toPx(2), toPx(2), toPx(2))
-                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                }, LinearLayout.LayoutParams(toPx(24), toPx(24)))
-            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(28)))
+            isSelected = selected
+            if (selected) {
+                findViewWithTag<View>("tool-icon")?.tag = "tool-icon-selected"
+                findViewWithTag<View>("tool-label")?.tag = "tool-label-selected"
+            }
         }
     }
 
@@ -784,4 +752,8 @@ internal class ImePanelRenderer(
         val enabled: Boolean = true,
         val action: (() -> Unit)? = null,
     )
+
+    private companion object {
+        const val TOOL_COLUMNS = 4
+    }
 }

@@ -253,7 +253,7 @@ try:
         capture_app(stem + '-about', ('隐私','诊断'))
         adb('shell','input','keyevent','4'); time.sleep(.5)
         ui_tap('数据管理')
-        capture_app(stem + '-data', ('用户数据','导出','导入','语音词表'))
+        capture_app(stem + '-data', ('用户数据','导出','导入'))
         launch()
         panel('符号', stem + '-symbols-return')
         tap('自定义'); tap('管理自定义符号')

@@ -86,9 +86,7 @@ app/src/main/assets/models/voice/
 - Streaming Paraformer 不走 sherpa-onnx 的 transducer hotword graph，因此不再把
   `VoiceHotwordProvider` 动态热词传给 native stream；本地 `VoiceCorrectionRepository`
   的识别后纠正仍保留。
-- 语音词表（`hotword` 模块）在 `VoiceCorrectionRepository.apply` 之后对最终文本做同音替换，
-  见 [ARCHITECTURE.md](ARCHITECTURE.md#语音词表hotword-模块)。它只改最终结果，不影响解码、
-  不联网；`VoiceHotwordProvider` 保留给将来的 transducer 模型，目前没有调用方。
+- `VoiceHotwordProvider` 保留给将来的 transducer 模型，目前没有调用方。
 - 用户在语音上屏后立即删除并改正的文本会形成私有 `VoiceCorrectionRepository` 对；
   后续相同 ASR 原结果先应用本地纠正，改正目标也会回流动态热词。
 - 密码框可以使用语音，但只在结束时一次性上屏最终结果，不显示中间结果，也不进入热词或纠错学习；日志不记录 PCM、转写、热词、纠错内容。

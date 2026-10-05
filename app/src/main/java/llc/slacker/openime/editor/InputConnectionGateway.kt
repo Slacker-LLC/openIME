@@ -82,6 +82,40 @@ class InputConnectionGateway(
         // transcript in one call throws TransactionTooLargeException and takes the
         // keyboard down with it. Chunk it, never splitting a surrogate pair.
         chunksForCommit(text).forEach { chunk -> ic.commitText(chunk, 1) }
+        // commitText replaces an active composing span.
+        composingInEditor = false
+        ownEditPending = true
+    }
+
+    /**
+     * Set by our own commit, cleared by the selection update it causes. A
+     * Chinese pre-edit has no span in the editor, so without this the update
+     * after a partial commit would look like the user moving the cursor and
+     * drop the rest of the pre-edit.
+     */
+    @Volatile
+    private var ownEditPending = false
+
+    /** Whether the selection update now arriving was caused by our own commit. */
+    fun consumeOwnEdit(): Boolean {
+        val own = ownEditPending
+        ownEditPending = false
+        return own
+    }
+
+    /**
+     * Whether the editor holds a composing span this IME put there. Chinese
+     * input keeps its pre-edit on the keyboard and never sets one, and
+     * setComposingText("") without a span can delete the user's selection in
+     * some editors, so a cancel only touches the editor when this is true.
+     */
+    @Volatile
+    private var composingInEditor = false
+
+    /** A new editor (or a restart) starts without any span of ours. */
+    fun onEditorStarted() {
+        composingInEditor = false
+        ownEditPending = false
     }
 
     /**
@@ -105,8 +139,10 @@ class InputConnectionGateway(
         val ic = connection() ?: return
         if (text.isEmpty()) {
             ic.finishComposingText()
+            composingInEditor = false
         } else {
             ic.setComposingText(text, 1)
+            composingInEditor = true
         }
     }
 
@@ -118,17 +154,19 @@ class InputConnectionGateway(
 
     fun finishComposing() {
         connection()?.finishComposingText()
+        composingInEditor = false
     }
 
-    /** Remove the active pre-edit text without committing it to the editor. */
-    fun cancelComposing() {
+    /**
+     * Remove the active pre-edit text without committing it to the editor.
+     * [owned] is for a caller that knows a span of ours is there (a voice
+     * partial) even if this gateway did not write it.
+     */
+    fun cancelComposing(owned: Boolean = false) {
         val ic = connection() ?: return
-        if (isPassword()) {
-            ic.finishComposingText()
-            return
-        }
-        ic.setComposingText("", 1)
+        if (!isPassword() && (composingInEditor || owned)) ic.setComposingText("", 1)
         ic.finishComposingText()
+        composingInEditor = false
     }
 
     fun clearComposition() {
@@ -290,8 +328,16 @@ class InputConnectionGateway(
     fun clearAllText(): Boolean {
         if (isPassword()) return false
         val ic = connection() ?: return false
+        // The surrounding-text fallback runs outside the batch: some editors
+        // (Compose, web) answer reads inside a batch from the state before it,
+        // and a loop that cannot see its own deletions never ends well.
+        return clearThroughSelection(ic) ?: clearThroughSurroundingText(ic)
+    }
+
+    /** The select-all / ExtractedText paths, in one batch; null when neither applies. */
+    private fun clearThroughSelection(ic: InputConnection): Boolean? {
         ic.beginBatchEdit()
-        return try {
+        try {
             val originalSelection = selectionBeforeDestructiveSelectAll(ic)
 
             if (runCatching { ic.performContextMenuAction(android.R.id.selectAll) }.getOrDefault(false)) {
@@ -327,26 +373,22 @@ class InputConnectionGateway(
                 }
                 restoreSelectionAfterFailedClear(ic, originalSelection)
                 // The editor answered select-all but exposed nothing usable.
-                return clearThroughSurroundingText(ic)
+                return null
             }
 
             // No select-all and no complete ExtractedText: custom, Compose and
             // web editors typically expose only before/after-cursor text.
             val window = extractedWindow(ic)
-            if (window == null || !window.isCompleteDocument) {
-                return clearThroughSurroundingText(ic)
-            }
+            if (window == null || !window.isCompleteDocument) return null
             if (window.text.isEmpty()) return true
-            if (!runCatching { ic.setSelection(0, window.text.length) }.getOrDefault(false)) {
-                return clearThroughSurroundingText(ic)
-            }
+            if (!runCatching { ic.setSelection(0, window.text.length) }.getOrDefault(false)) return null
             val cleared = runCatching { ic.commitText("", 1) }.getOrDefault(false)
             if (!cleared) {
                 restoreSelectionAfterFailedClear(ic, originalSelection)
             } else {
                 ic.finishComposingText()
             }
-            cleared
+            return cleared
         } finally {
             ic.endBatchEdit()
         }
@@ -377,6 +419,8 @@ class InputConnectionGateway(
         if (selected.isNotEmpty() && !runCatching { ic.commitText("", 1) }.getOrDefault(false)) {
             return false
         }
+        // Only text the editor shows gone is "taken": a restore puts back
+        // exactly that, never a round the editor did not apply.
         val beforeParts = ArrayList<String>() // nearest to the cursor first
         val afterParts = ArrayList<String>()
         var before: String = firstBefore
@@ -386,22 +430,34 @@ class InputConnectionGateway(
             val deleted = rounds < MAX_SURROUNDING_ROUNDS &&
                 runCatching { ic.deleteSurroundingText(before.length, after.length) }.getOrDefault(false)
             if (!deleted) {
-                // Put back what was already taken so a failed clear loses nothing.
-                val restored = beforeParts.asReversed().joinToString("") + selected + afterParts.joinToString("")
-                if (restored.isNotEmpty()) runCatching { ic.commitText(restored, 1) }
+                restoreTaken(ic, beforeParts, selected, afterParts)
                 return false
             }
             rounds++
+            val nextBefore = runCatching { ic.getTextBeforeCursor(SURROUNDING_CHUNK, 0)?.toString().orEmpty() }
+                .getOrDefault("")
+            val nextAfter = runCatching { ic.getTextAfterCursor(SURROUNDING_CHUNK, 0)?.toString().orEmpty() }
+                .getOrDefault("")
+            if (nextBefore == before && nextAfter == after) {
+                // The editor reports no change: either it ignored the deletion
+                // or it answers with stale text. Re-inserting anything now could
+                // duplicate the document, so stop with what is confirmed.
+                return false
+            }
             beforeParts.add(before)
             afterParts.add(after)
-            before = runCatching { ic.getTextBeforeCursor(SURROUNDING_CHUNK, 0)?.toString().orEmpty() }
-                .getOrDefault("")
-            after = runCatching { ic.getTextAfterCursor(SURROUNDING_CHUNK, 0)?.toString().orEmpty() }
-                .getOrDefault("")
+            before = nextBefore
+            after = nextAfter
         }
         ic.finishComposingText()
 
         return true
+    }
+
+    /** Put back what was confirmed deleted, so a failed clear loses nothing. */
+    private fun restoreTaken(ic: InputConnection, beforeParts: List<String>, selected: String, afterParts: List<String>) {
+        val restored = beforeParts.asReversed().joinToString("") + selected + afterParts.joinToString("")
+        if (restored.isNotEmpty()) runCatching { ic.commitText(restored, 1) }
     }
 
     fun performEditorAction(action: Int) {

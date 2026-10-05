@@ -25,6 +25,9 @@ import llc.slacker.openime.candidate.CandidateSnapshotEntry
 import llc.slacker.openime.candidate.EmojiAssociationIndex
 import llc.slacker.openime.candidate.NineKeyReading
 import llc.slacker.openime.candidate.PinyinLexicon
+import llc.slacker.openime.candidate.FuzzyPinyin
+import llc.slacker.openime.candidate.Stroke
+import llc.slacker.openime.candidate.StrokeLexicon
 import llc.slacker.openime.candidate.personalizedLearningAllowed
 import llc.slacker.openime.core.CrashGuard
 import llc.slacker.openime.core.ImeState
@@ -46,7 +49,6 @@ import llc.slacker.openime.editor.InputMethodSubtypePolicy
 import llc.slacker.openime.editor.editorActionForEnter
 import llc.slacker.openime.editor.shouldClearCompositionForSelectionUpdate
 import llc.slacker.openime.floating.FloatingWindowController
-import llc.slacker.openime.hotword.HotwordRuntime
 import llc.slacker.openime.keyboard.EnglishShiftPolicy
 import llc.slacker.openime.keyboard.HardwareContext
 import llc.slacker.openime.keyboard.HardwareKey
@@ -192,12 +194,18 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             { ImeSettingsRepository.loadVoicePunctuationAsSpace(this) }
         UserPhraseRepository.configure(this)
         VoiceCorrectionRepository.configure(this)
-        HotwordRuntime.configure(this)
+        FuzzyPinyin.rules = ImeSettingsRepository.loadFuzzyRules(this)
         voiceLifecycle = VoiceModelLifecycleManager(this)
         Thread({
             runCatching { CandidatePipeline(CandidateEngine(PinyinLexicon.load(this))) }
                 .onSuccess { candidatePipeline = it }
                 .onFailure { Log.e(TAG, "lexicon/decoder initialisation failed; running on Rime only", it) }
+            // Only someone who uses the 笔画 keyboard pays for its table; the
+            // keyboard loads it on first use otherwise.
+            if (ImeSettingsRepository.loadPreferredChineseMode(this) == KeyboardMode.STROKE) {
+                runCatching { StrokeLexicon.load(this) }
+                    .onFailure { Log.e(TAG, "stroke table failed to load", it) }
+            }
         }, "openime-lexicon").apply { isDaemon = true; start() }
         rime = RimeEngine(this).also { it.start() }
         candidateQueries = CandidateQueryCoordinator(
@@ -343,6 +351,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
 
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
+        if (::gateway.isInitialized) gateway.onEditorStarted()
         reloadPersistedSettings()
         voiceCorrectionTracker.clear()
         val previousRimeInputs = candidateQueries.activeInputs
@@ -418,6 +427,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             popupEnabled = ImeSettingsRepository.loadPopup(this),
             fuzzyPinyinEnabled = ImeSettingsRepository.loadFuzzy(this),
         )
+        syncFuzzyRules()
         keyboardView?.applyPersistedSettings(
             newTheme = state.theme,
             newAppearance = state.appearance,
@@ -456,9 +466,10 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         // A subtype switch changes the input language contract. Discard only
         // text actually owned by this IME; setComposingText("") without an
         // active composing span can otherwise delete a user's normal selection.
-        val hadComposingText = lastComposition.isNotEmpty() || voiceComposing
+        val hadVoiceComposing = voiceComposing
+        val hadComposingText = lastComposition.isNotEmpty() || hadVoiceComposing
         clearImeCompositionState(render = false)
-        if (hadComposingText) gateway.cancelComposing()
+        if (hadComposingText) gateway.cancelComposing(owned = hadVoiceComposing)
         voiceComposing = false
         voiceCorrectionTracker.clear()
         state = state.copy(
@@ -510,7 +521,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         // shutdown() cancels an active voice session and its callback clears
         // voiceComposing. Check ownership afterwards so we never cancel twice.
         keyboardView?.shutdown()
-        if (lastComposition.isNotEmpty() || voiceComposing) gateway.cancelComposing()
+        if (lastComposition.isNotEmpty() || voiceComposing) gateway.cancelComposing(owned = voiceComposing)
         rime.clear()
         voiceComposing = false
         lastComposition = ""
@@ -546,6 +557,8 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             candidatesStart,
             candidatesEnd,
         )
+        // A cursor move caused by our own commit never drops the pre-edit.
+        if (gateway.consumeOwnEdit()) return
         if (!shouldClearCompositionForSelectionUpdate(
                 hasComposition = lastComposition.isNotEmpty(),
                 oldSelStart = oldSelStart,
@@ -673,7 +686,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             } else {
                 VoicePerformanceTrace.abandon()
                 onVoiceSessionStarted(autoCommitOnFinal = true)
-                onVoiceFinal(HotwordRuntime.apply(VoiceCorrectionRepository.apply(processed)))
+                onVoiceFinal(VoiceCorrectionRepository.apply(processed))
                 true
             }
         }.getOrDefault(false)
@@ -975,7 +988,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
 
     override fun onVoiceError(message: String) {
         voiceMediaMute.restore()
-        if (voiceComposing) gateway.cancelComposing()
+        if (voiceComposing) gateway.cancelComposing(owned = true)
         voiceComposing = false
         state = state.copy(
             voiceState = state.voiceState.copy(
@@ -1000,7 +1013,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
 
     override fun onVoiceCancel() {
         voiceMediaMute.restore()
-        if (!state.passwordField && voiceComposing) gateway.cancelComposing()
+        if (!state.passwordField && voiceComposing) gateway.cancelComposing(owned = true)
         voiceComposing = false
         state = state.copy(
             voiceState = state.voiceState.copy(
@@ -1068,8 +1081,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             // Terminals and games need each letter as it is typed; composing English
             // there shows nothing until the word ends. Pinyin still composes.
             EditorInfoAdapter.kind(state.editorInfo) == EditorInfoAdapter.EditorKind.RAW_KEYS &&
-                state.keyboardMode != KeyboardMode.PINYIN_26 &&
-                state.keyboardMode != KeyboardMode.PINYIN_9
+                !state.keyboardMode.isChineseLayout
             )
         if (directCommit) {
             // Password fields never receive composing text, so the view's
@@ -1260,8 +1272,22 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     override fun onFuzzyChanged(enabled: Boolean) {
         state = state.copy(fuzzyPinyinEnabled = enabled)
         ImeSettingsRepository.saveFuzzy(this, enabled)
-        // RimeEngine mirrors this value on the candidate hot path.
-        if (::rime.isInitialized) rime.invalidateSettingsCache()
+        syncFuzzyRules()
+    }
+
+    override fun onFuzzyRulesChanged() = syncFuzzyRules()
+
+    /**
+     * Hand the 模糊音 switches to both candidate sources: the Kotlin fallback
+     * reads [FuzzyPinyin.rules]; librime re-deploys when the rules file changes.
+     */
+    private fun syncFuzzyRules() {
+        FuzzyPinyin.rules = ImeSettingsRepository.loadFuzzyRules(this)
+        if (::rime.isInitialized) {
+            // RimeEngine mirrors the master switch on the candidate hot path.
+            rime.invalidateSettingsCache()
+            rime.applyFuzzyRules()
+        }
     }
 
     override fun onShiftStateChanged(state: ShiftState) {
@@ -1424,7 +1450,11 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             // editor text in many apps. Deleting the final Pinyin character
             // must remove that span instead of leaving a raw letter behind.
             gateway.cancelComposing()
-        } else {
+        } else if (!state.keyboardMode.isChineseLayout) {
+            // Chinese pre-edit (pinyin, nine-key digits, strokes) stays on the
+            // keyboard, as on Sogou and iFlytek: written into the app's field it
+            // showed "669" or "ni'hao" there and set off the app's own
+            // suggestions. An English word is composed in place, as on Gboard.
             gateway.setComposingText(next)
         }
     }
@@ -1448,6 +1478,14 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             composition,
             state.fuzzyPinyinEnabled,
         )
+        if (mode == KeyboardMode.STROKE) {
+            // Characters the user picked for these strokes before come first.
+            val learned = strokeLearningKey(composition)
+                ?.takeIf { allowsPersonalizedLearning() }
+                ?.let(UserPhraseRepository::candidatesFor)
+                .orEmpty()
+            return (learned + normal).distinct().take(MAX_CANDIDATES)
+        }
         if (mode != KeyboardMode.PINYIN_26 && mode != KeyboardMode.ENGLISH_26) {
             return normal
         }
@@ -1476,16 +1514,8 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
                 else -> "none"
             },
         )
-        return boostHotwords(composition, (learned + fallback).distinct().take(MAX_CANDIDATES))
+        return (learned + fallback).distinct().take(MAX_CANDIDATES)
     }
-
-    /** Hotword packs also rank while typing 26-key pinyin; other modes are left alone. */
-    private fun boostHotwords(composition: String, candidates: List<String>): List<String> =
-        if (state.keyboardMode == KeyboardMode.PINYIN_26 && !state.passwordField) {
-            HotwordRuntime.boost(composition, candidates).take(MAX_CANDIDATES)
-        } else {
-            candidates
-        }
 
     /** Query librime away from the IME input thread; stale answers are ignored. */
     private fun requestNativeCandidates(
@@ -1558,7 +1588,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
                 } else {
                     (learned + fallback).distinct().take(MAX_CANDIDATES)
                 }
-                val finalCandidates = boostHotwords(composition, rankedCandidates)
+                val finalCandidates = rankedCandidates
                 val nativeReferences = if (native.isNotEmpty()) {
                     native.associate { it.text to it.reference }
                 } else {
@@ -1713,10 +1743,17 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         // librime owns normal learning through its userdb. Keep the old local
         // repository only as an offline fallback; never run two unconditional
         // ranking systems over the same successful native selection.
-        if (!rime.isReady && allowsPersonalizedLearning()) {
+        if (state.keyboardMode == KeyboardMode.STROKE) {
+            // Stroke input has no librime session, so it always learns locally.
+            strokeLearningKey(composition)?.takeIf { allowsPersonalizedLearning() }
+                ?.let { UserPhraseRepository.record(it, committed) }
+        } else if (!rime.isReady && allowsPersonalizedLearning()) {
             UserPhraseRepository.record(composition, committed)
         }
-        gateway.commitText(committed)
+        // An English word is followed by a space, as space and a suggestion
+        // tap do on Gboard and Sogou: otherwise "hello world" comes out as
+        // "helloworld".
+        gateway.commitText(if (state.keyboardMode == KeyboardMode.ENGLISH_26) "$committed " else committed)
         gateway.finishComposing()
         voiceCorrectionTracker.finalizeIfNeeded()
         rime.clear()
@@ -1725,6 +1762,13 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         keyboardView?.renderState(state)
         keyboardView?.setAssociationCandidates(associationsAfterCommit(committed))
     }
+
+    /**
+     * The learning key for a stroke composition: its stroke code, prefixed so it
+     * never meets a Pinyin code. Null with 通配, whose matches are a guess.
+     */
+    private fun strokeLearningKey(composition: String): String? =
+        Stroke.codeOf(composition)?.takeIf { Stroke.WILDCARD_CODE !in it }?.let { "stroke:$it" }
 
     private fun allowsPersonalizedLearning(): Boolean =
         personalizedLearningAllowed(state.passwordField, state.editorInfo?.imeOptions)

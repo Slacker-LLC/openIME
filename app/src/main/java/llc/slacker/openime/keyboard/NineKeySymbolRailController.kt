@@ -14,8 +14,7 @@ import android.widget.TextView
 import llc.slacker.openime.candidate.CandidatePipeline
 import llc.slacker.openime.candidate.CandidateResolver
 import llc.slacker.openime.candidate.NineKeyReading
-import llc.slacker.openime.core.ImeData
-import llc.slacker.openime.data.CustomSymbolRepository
+import llc.slacker.openime.data.RailSymbolRepository
 
 /**
  * Owns the Chinese 9-key side rail.
@@ -36,6 +35,7 @@ internal class NineKeySymbolRailController(
     private val onRailChanged: (View) -> Unit,
     private val onChooseReading: (NineKeyReading) -> Unit,
     private val fixedPrefix: () -> String,
+    private val onEditSymbols: () -> Unit,
 ) {
     private enum class RailMode { SYMBOLS, PINYIN }
 
@@ -78,6 +78,7 @@ internal class NineKeySymbolRailController(
             tagPrefix = "punct:",
             onCommit = onCommit,
             onFeedback = onFeedback,
+            onAdd = onEditSymbols,
         ).also {
             rail = it
             railMode = RailMode.SYMBOLS
@@ -165,6 +166,7 @@ internal class NineKeySymbolRailController(
             tagPrefix = "punct:",
             onCommit = onCommit,
             onFeedback = onFeedback,
+            onAdd = onEditSymbols,
         )
         railMode = RailMode.SYMBOLS
         renderedChoices = emptyList()
@@ -264,12 +266,8 @@ internal class NineKeySymbolRailController(
     private fun speakablePath(path: String): String =
         path.replace(" ", "、").replace("|", "、").replace("'", "、")
 
-    private fun commonSymbols(): List<String> =
-        (listOf("，", "。", "？", "！") +
-            CustomSymbolRepository.load(context).map { it.symbol } +
-            ImeData.symbols["常用"].orEmpty())
-            .filter { it.isNotBlank() }
-            .distinct()
+    /** The user's rail (ten common marks until edited), then ＋ to edit it. */
+    private fun commonSymbols(): List<String> = RailSymbolRepository.load(context)
 
     private companion object {
         const val NINE_RAIL_TAG = "nine-punct-stack"

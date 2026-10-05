@@ -1,5 +1,8 @@
 package llc.slacker.openime.panel
 
+import llc.slacker.openime.theme.ImeSurfacePolicy
+import llc.slacker.openime.data.ImeSettingsRepository
+import llc.slacker.openime.core.FuzzyRule
 import android.content.Context
 import android.os.Build
 import android.text.TextUtils
@@ -72,6 +75,8 @@ internal class SettingsPanelController(
     private val onKeySoundStyleChanged: (KeySoundStyle) -> Unit,
     private val onFloatingStyleChanged: (Int, Int) -> Unit,
     private val onShowFuzzySettings: () -> Unit,
+    /** A 模糊音 pair was switched; the new set is already saved. */
+    private val onFuzzyRulesChanged: () -> Unit,
     private val onOpenAbout: () -> Unit,
     private val onOpenDataManagement: () -> Unit,
     private val onFeedback: () -> Unit,
@@ -201,7 +206,7 @@ internal class SettingsPanelController(
         content.addSection("关于与数据")
         content.addCard(
             navigationRow("关于", "版本、隐私与诊断", R.drawable.ic_pref_info, onOpenAbout),
-            navigationRow("数据管理", "导出与导入、语音词表", R.drawable.ic_pref_data, onOpenDataManagement),
+            navigationRow("数据管理", "导出与导入用户数据", R.drawable.ic_pref_data, onOpenDataManagement),
         )
     }
 
@@ -273,7 +278,7 @@ internal class SettingsPanelController(
             tag = "fuzzy-settings-panel"
         }
         content.addView(
-            noteText("近音输入时，候选会同时尝试相近声母；不会改变你已输入的拼音。"),
+            noteText("读不准的音也能打出来：例如打 zi 时，“知 zhi”也会出现在候选里。只影响候选，不改你输入的拼音。"),
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -283,28 +288,39 @@ internal class SettingsPanelController(
                 bottomMargin = toPx(ImeSpacingTokens.MD_DP)
             },
         )
+        // Each pair is its own switch; they only count while 启用模糊音 is on.
+        val ruleRows = ArrayList<View>()
+        fun syncRuleRows(masterOn: Boolean) {
+            ruleRows.forEach { row ->
+                row.isEnabled = masterOn
+                row.alpha = if (masterOn) 1f else ImeSurfacePolicy.DISABLED_ALPHA
+                (row as? ViewGroup)?.let { group ->
+                    for (index in 0 until group.childCount) group.getChildAt(index).isEnabled = masterOn
+                }
+            }
+        }
         content.addCard(
             toggleRow(
                 "启用模糊音",
-                if (standalone) "z/zh · c/ch · s/sh · l/n" else null,
+                if (standalone) "下面每一组都可以单独开关" else null,
                 if (standalone) R.drawable.ic_pref_fuzzy else 0,
+                onChanged = ::syncRuleRows,
             ),
         )
-        content.addSection("当前规则")
-        content.addView(
-            TextView(context).apply {
-                text = "z / zh · c / ch · s / sh · l / n · en / eng · in / ing"
-                textSize = ImeTypographyTokens.BODY_SP
-                setPadding(toPx(16), toPx(14), toPx(16), toPx(14))
-                tag = "fuzzy-rules"
-            },
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ),
+        content.addSection("声母")
+        content.addCard(
+            *FuzzyRule.entries.filter { it.initial }
+                .map { rule -> toggleRow(rule.label, FUZZY_EXAMPLES[rule], 0).also(ruleRows::add) }
+                .toTypedArray(),
+        )
+        content.addSection("韵母")
+        content.addCard(
+            *FuzzyRule.entries.filterNot { it.initial }
+                .map { rule -> toggleRow(rule.label, FUZZY_EXAMPLES[rule], 0).also(ruleRows::add) }
+                .toTypedArray(),
         )
         content.addView(
-            noteText("规则由输入法自动参与候选计算，暂不单独修改每一组映射。"),
+            noteText("每一组默认关闭，按自己容易混的音打开。开得越多，候选越杂。"),
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -314,6 +330,7 @@ internal class SettingsPanelController(
                 topMargin = toPx(ImeSpacingTokens.SM_DP)
             },
         )
+        syncRuleRows(currentFuzzy())
         scroll.addView(
             content,
             ViewGroup.LayoutParams(
@@ -451,7 +468,12 @@ internal class SettingsPanelController(
         tag = "setting-label"
     }
 
-    private fun toggleRow(label: String, sub: String?, iconRes: Int): LinearLayout {
+    private fun toggleRow(
+        label: String,
+        sub: String?,
+        iconRes: Int,
+        onChanged: (Boolean) -> Unit = {},
+    ): LinearLayout {
         val row = rowShell(iconRes)
         fun updateRowAccessibility(enabled: Boolean) {
             row.contentDescription = listOfNotNull(label, sub, if (enabled) "已开启" else "已关闭").joinToString("，")
@@ -459,7 +481,10 @@ internal class SettingsPanelController(
                 row.stateDescription = if (enabled) "已开启" else "已关闭"
             }
         }
-        val toggleView = toggle(label, ::updateRowAccessibility).apply {
+        val toggleView = toggle(label) { enabled ->
+            updateRowAccessibility(enabled)
+            onChanged(enabled)
+        }.apply {
             isFocusable = false
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
         }
@@ -474,7 +499,7 @@ internal class SettingsPanelController(
                     info.isChecked = toggleState(label)
                 }
             }
-            setOnClickListener { toggleView.performClick() }
+            setOnClickListener { if (isEnabled) toggleView.performClick() }
             addView(labelBlock(label, sub), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             addView(toggleView, wrapParams().apply { marginStart = toPx(ImeSpacingTokens.MD_DP) })
         }
@@ -801,7 +826,7 @@ internal class SettingsPanelController(
                     setOnClickListener {
                         onFeedback()
                         val next = !toggleState(seed)
-                        onToggleChanged(seed, next)
+                        dispatchToggle(seed, next)
                         isSelected = next
                         describe(next)
                         applyTheme()
@@ -861,7 +886,7 @@ internal class SettingsPanelController(
             setOnClickListener {
                 onFeedback()
                 val next = !toggleState(seed)
-                onToggleChanged(seed, next)
+                dispatchToggle(seed, next)
                 updateAccessibilityState(next)
                 onChanged(next)
 
@@ -879,14 +904,28 @@ internal class SettingsPanelController(
         }
     }
 
-    private fun toggleState(seed: String): Boolean = when (seed) {
-        "按键音效" -> currentSound()
-        "触感震动" -> currentHaptic()
-        "模糊音纠错", "启用模糊音" -> currentFuzzy()
-        "按键气泡" -> currentPopup()
-        "上滑输入数字" -> currentSwipeUpDigits()
-        else -> currentExtraToggle(seed)
+    /** A 模糊音 pair is saved here; every other switch goes to the host. */
+    private fun dispatchToggle(seed: String, enabled: Boolean) {
+        val rule = FuzzyRule.fromLabel(seed)
+        if (rule == null) {
+            onToggleChanged(seed, enabled)
+            return
+        }
+        val rules = ImeSettingsRepository.loadFuzzyRules(context)
+        ImeSettingsRepository.saveFuzzyRules(context, if (enabled) rules + rule else rules - rule)
+        onFuzzyRulesChanged()
     }
+
+    private fun toggleState(seed: String): Boolean = FuzzyRule.fromLabel(seed)
+        ?.let { it in ImeSettingsRepository.loadFuzzyRules(context) }
+        ?: when (seed) {
+            "按键音效" -> currentSound()
+            "触感震动" -> currentHaptic()
+            "模糊音纠错", "启用模糊音" -> currentFuzzy()
+            "按键气泡" -> currentPopup()
+            "上滑输入数字" -> currentSwipeUpDigits()
+            else -> currentExtraToggle(seed)
+        }
 
     private fun noteText(value: String): TextView = TextView(context).apply {
         text = value
@@ -919,4 +958,21 @@ internal class SettingsPanelController(
             LinearLayout.LayoutParams.WRAP_CONTENT,
             LinearLayout.LayoutParams.WRAP_CONTENT,
         )
+
+    private companion object {
+        /** A character pair each 模糊音 switch makes interchangeable. */
+        val FUZZY_EXAMPLES: Map<FuzzyRule, String> = mapOf(
+            FuzzyRule.Z_ZH to "资 zi · 知 zhi",
+            FuzzyRule.C_CH to "此 ci · 吃 chi",
+            FuzzyRule.S_SH to "四 si · 是 shi",
+            FuzzyRule.N_L to "你 ni · 里 li",
+            FuzzyRule.F_H to "飞 fei · 黑 hei",
+            FuzzyRule.R_L to "热 re · 乐 le",
+            FuzzyRule.AN_ANG to "山 shan · 上 shang",
+            FuzzyRule.EN_ENG to "分 fen · 风 feng",
+            FuzzyRule.IN_ING to "心 xin · 星 xing",
+            FuzzyRule.IAN_IANG to "先 xian · 香 xiang",
+            FuzzyRule.UAN_UANG to "关 guan · 光 guang",
+        )
+    }
 }

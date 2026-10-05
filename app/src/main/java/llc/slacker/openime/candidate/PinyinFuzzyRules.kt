@@ -1,43 +1,55 @@
 package llc.slacker.openime.candidate
 
+import llc.slacker.openime.core.FuzzyRule
 import llc.slacker.openime.core.ImeData
 
 /**
- * Kotlin fallback counterpart of the fuzzy algebra enabled by
- * luna_pinyin_simp_fuzzy.schema.yaml. Fuzzy rules are applied per Pinyin
- * syllable so fallback and librime keep the same semantics for continuous
- * multi-syllable input as well as single syllables.
+ * The 模糊音 pairs switched on. The service sets it from the settings (empty
+ * when 模糊音 is off); the callers' `fuzzy` flag still decides whether fuzzy
+ * spellings are looked up at all.
  */
-internal fun pinyinFuzzyVariants(rawPinyin: String): List<String> {
+object FuzzyPinyin {
+    @Volatile
+    var rules: Set<FuzzyRule> = FuzzyRule.DEFAULTS
+}
+
+/**
+ * Kotlin fallback counterpart of the fuzzy algebra enabled by
+ * luna_pinyin_simp_fuzzy.schema.yaml (openime_fuzzy.yaml). Fuzzy rules are
+ * applied per Pinyin syllable so fallback and librime keep the same semantics
+ * for continuous multi-syllable input as well as single syllables.
+ */
+internal fun pinyinFuzzyVariants(rawPinyin: String, rules: Set<FuzzyRule> = FuzzyPinyin.rules): List<String> {
     val pinyin = rawPinyin.lowercase()
-    if (pinyin.isEmpty()) return emptyList()
+    if (pinyin.isEmpty() || rules.isEmpty()) return emptyList()
 
     val cached = fuzzyVariantCache
-    if (cached.input == pinyin) return cached.variants
+    if (cached.input == pinyin && cached.rules == rules) return cached.variants
 
     val variants = linkedSetOf<String>()
-    singleSyllableFuzzyVariants(pinyin).forEach { variant ->
+    singleSyllableFuzzyVariants(pinyin, rules).forEach { variant ->
         if (variant != pinyin && variants.size < MAX_FUZZY_VARIANTS) variants += variant
     }
 
     if (variants.size < MAX_FUZZY_VARIANTS) {
-        segmentedCanonicalVariants(pinyin).forEach { variant ->
+        segmentedCanonicalVariants(pinyin, rules).forEach { variant ->
             if (variant != pinyin && variants.size < MAX_FUZZY_VARIANTS) variants += variant
         }
     }
 
     return variants.toList().also { result ->
-        fuzzyVariantCache = FuzzyVariantCache(pinyin, result)
+        fuzzyVariantCache = FuzzyVariantCache(pinyin, rules, result)
     }
 }
 
 private data class FuzzyVariantCache(
     val input: String,
+    val rules: Set<FuzzyRule>,
     val variants: List<String>,
 )
 
 @Volatile
-private var fuzzyVariantCache = FuzzyVariantCache("", emptyList())
+private var fuzzyVariantCache = FuzzyVariantCache("", emptySet(), emptyList())
 
 private data class FuzzySyllableMatch(
     val spelling: String,
@@ -45,7 +57,21 @@ private data class FuzzySyllableMatch(
     val exact: Boolean,
 )
 
-private val fuzzySyllableMatchesByFirst: Map<Char, List<FuzzySyllableMatch>> by lazy {
+private data class FuzzySyllableIndex(
+    val rules: Set<FuzzyRule>,
+    val byFirst: Map<Char, List<FuzzySyllableMatch>>,
+)
+
+@Volatile
+private var fuzzySyllableIndex: FuzzySyllableIndex? = null
+
+/** Syllable spellings under [rules], by first letter; rebuilt when the rules change. */
+private fun fuzzySyllableMatchesByFirst(rules: Set<FuzzyRule>): Map<Char, List<FuzzySyllableMatch>> {
+    fuzzySyllableIndex?.takeIf { it.rules == rules }?.let { return it.byFirst }
+    return buildFuzzySyllableMatches(rules).also { fuzzySyllableIndex = FuzzySyllableIndex(rules, it) }
+}
+
+private fun buildFuzzySyllableMatches(rules: Set<FuzzyRule>): Map<Char, List<FuzzySyllableMatch>> {
     val matches = LinkedHashMap<Char, MutableList<FuzzySyllableMatch>>()
     ImeData.pinyinDict.keys
         .asSequence()
@@ -53,7 +79,7 @@ private val fuzzySyllableMatchesByFirst: Map<Char, List<FuzzySyllableMatch>> by 
         .distinct()
         .forEach { canonical ->
             val spellings = linkedSetOf(canonical)
-            spellings.addAll(singleSyllableFuzzyVariants(canonical))
+            spellings.addAll(singleSyllableFuzzyVariants(canonical, rules))
             spellings.forEach spellingLoop@{ spelling ->
                 val first = spelling.firstOrNull() ?: return@spellingLoop
                 matches.getOrPut(first) { mutableListOf() }
@@ -66,7 +92,7 @@ private val fuzzySyllableMatchesByFirst: Map<Char, List<FuzzySyllableMatch>> by 
                     )
             }
         }
-    matches.mapValues { (_, values) ->
+    return matches.mapValues { (_, values) ->
         values
             .distinctBy { it.spelling to it.canonical }
             .sortedWith(
@@ -82,7 +108,7 @@ private val fuzzySyllableMatchesByFirst: Map<Char, List<FuzzySyllableMatch>> by 
  * accepting the same fuzzy spelling alternatives that Rime applies to every
  * syllable. The output is canonical Pinyin used for dictionary lookup.
  */
-private fun segmentedCanonicalVariants(input: String): List<String> {
+private fun segmentedCanonicalVariants(input: String, rules: Set<FuzzyRule>): List<String> {
     if (input.length > MAX_FUZZY_INPUT_LENGTH) return emptyList()
     val states = Array(input.length + 1) { linkedSetOf<String>() }
     states[0] += ""
@@ -91,7 +117,7 @@ private fun segmentedCanonicalVariants(input: String): List<String> {
         val prefixes = states[start]
         if (prefixes.isEmpty()) continue
         val first = input[start]
-        for (match in fuzzySyllableMatchesByFirst[first].orEmpty()) {
+        for (match in fuzzySyllableMatchesByFirst(rules)[first].orEmpty()) {
             if (!input.startsWith(match.spelling, start)) continue
             val end = start + match.spelling.length
             for (prefix in prefixes) {
@@ -109,8 +135,8 @@ private fun segmentedCanonicalVariants(input: String): List<String> {
         .toList()
 }
 
-/** Apply the configured fuzzy groups to one syllable. */
-private fun singleSyllableFuzzyVariants(pinyin: String): List<String> {
+/** Apply [rules] to one syllable, repeatedly (z=zh and an=ang give zang for zhan). */
+private fun singleSyllableFuzzyVariants(pinyin: String, rules: Set<FuzzyRule>): List<String> {
     if (pinyin.isEmpty()) return emptyList()
 
     val variants = linkedSetOf<String>()
@@ -126,23 +152,8 @@ private fun singleSyllableFuzzyVariants(pinyin: String): List<String> {
     while (cursor < pending.size && variants.size < MAX_FUZZY_VARIANTS) {
         val value = pending[cursor++]
 
-        listOf("zh" to "z", "ch" to "c", "sh" to "s").forEach { (long, short) ->
-            when {
-                value.startsWith(long) -> enqueue(short + value.substring(long.length))
-                value.startsWith(short) -> enqueue(long + value.substring(short.length))
-            }
-        }
-
-        when {
-            value.startsWith("n") -> enqueue("l" + value.substring(1))
-            value.startsWith("l") -> enqueue("n" + value.substring(1))
-        }
-
-        when {
-            value.endsWith("eng") -> enqueue(value.dropLast(3) + "en")
-            value.endsWith("en") -> enqueue(value.dropLast(2) + "eng")
-            value.endsWith("ing") -> enqueue(value.dropLast(3) + "in")
-            value.endsWith("in") -> enqueue(value.dropLast(2) + "ing")
+        for (rule in FuzzyRule.entries) {
+            if (rule in rules) rule.variant(value)?.let(::enqueue)
         }
     }
 

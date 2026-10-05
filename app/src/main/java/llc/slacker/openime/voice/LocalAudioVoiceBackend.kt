@@ -9,7 +9,6 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.SystemClock
 import android.util.Log
-import llc.slacker.openime.hotword.HotwordRuntime
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
@@ -576,7 +575,7 @@ class LocalAudioVoiceBackend(
                 )
                 VoicePerformanceTrace.markFinalAsr(session.traceToken)
                 val punctuated = if (raw.isBlank()) raw else voiceSession.punctuate(raw) ?: raw
-                val final = HotwordRuntime.apply(VoiceCorrectionRepository.apply(punctuated))
+                val final = VoiceCorrectionRepository.apply(punctuated)
                 VoicePerformanceTrace.markPunctuationDone(session.traceToken)
                 session.events.onFinal(final)
                 VoicePerformanceTrace.finish(session.traceToken, session.ring.droppedSamples)

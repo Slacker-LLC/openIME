@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.22.1)
 
 project(local_rime)
 
+option(OPENIME_HOST_DEPLOYER "Build the host Rime dictionary compiler instead of the JNI library" OFF)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -73,6 +75,22 @@ set(ENABLE_LOGGING OFF CACHE BOOL "" FORCE)
 set(ENABLE_TIMESTAMP OFF CACHE BOOL "" FORCE)
 add_subdirectory(vendor/librime)
 target_include_directories(rime-static PRIVATE "${RIME_BUNDLED_INCLUDE}")
+
+# Host-only build: the same engine as a dictionary compiler, so the APK can
+# ship compiled dictionaries instead of compiling them on the phone. Driven by
+# scripts/build_rime_prebuilt.py; never part of the Android build.
+if(OPENIME_HOST_DEPLOYER)
+    add_executable(openime_rime_deployer vendor/librime/tools/rime_deployer.cc)
+    target_compile_definitions(openime_rime_deployer PRIVATE RIME_IMPORTS)
+    target_include_directories(openime_rime_deployer PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/vendor/librime/src"
+        "${RIME_BUNDLED_INCLUDE}"
+        "${CMAKE_BINARY_DIR}/vendor/librime/src"
+        "${CMAKE_BINARY_DIR}/include"
+    )
+    target_link_libraries(openime_rime_deployer rime-static ${Opencc_LIBRARY})
+    return()
+endif()
 
 add_library(local_rime SHARED local_rime_jni.cc)
 target_link_options(local_rime PRIVATE "-Wl,-z,max-page-size=16384")

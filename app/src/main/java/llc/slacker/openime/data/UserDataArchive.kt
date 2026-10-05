@@ -1,6 +1,7 @@
 package llc.slacker.openime.data
 
 import android.content.Context
+import llc.slacker.openime.core.FuzzyRule
 import llc.slacker.openime.core.KeyboardMode
 import llc.slacker.openime.theme.ImeAppearance
 import llc.slacker.openime.theme.ImeTheme
@@ -45,6 +46,10 @@ internal data class ArchiveSettings(
     val hapticStrengthPercent: Int = 100,
     val hapticStyle: String = "crisp",
     val keySoundStyle: String = "system",
+    /** The nine-key/stroke symbol rail; null when it is still the default. */
+    val railSymbols: List<String>? = null,
+    /** Keys of the 模糊音 pairs switched on; null in backups made before the switches. */
+    val fuzzyRules: List<String>? = null,
 )
 
 internal data class RimeUserDictionaryArchive(
@@ -191,6 +196,8 @@ internal object UserDataArchiveCodec {
             .put("emoji_association", value.emojiAssociation)
             .put("voice_strip_fillers", value.voiceStripFillers)
             .put("voice_punctuation_as_space", value.voicePunctuationAsSpace)
+            .apply { value.railSymbols?.let { put("rail_symbols", JSONArray(it)) } }
+            .apply { value.fuzzyRules?.let { put("fuzzy_rules", JSONArray(it)) } }
 
     private fun settingsFromJson(value: JSONObject): ArchiveSettings =
         ArchiveSettings(
@@ -219,6 +226,12 @@ internal object UserDataArchiveCodec {
             voiceStripFillers = value.optBoolean("voice_strip_fillers", true),
             voicePunctuationAsSpace =
                 value.optBoolean("voice_punctuation_as_space", false),
+            railSymbols = value.optJSONArray("rail_symbols")?.let { array ->
+                RailSymbolRepository.normalize((0 until array.length()).map { array.optString(it) })
+            },
+            fuzzyRules = value.optJSONArray("fuzzy_rules")?.let { array ->
+                (0 until array.length()).map { array.optString(it) }.filter { FuzzyRule.fromKey(it) != null }
+            },
         )
 
     private inline fun <T> JSONArray?.toObjects(block: (JSONObject) -> T): List<T> {
@@ -349,6 +362,11 @@ internal object UserDataRepository {
                 voiceStripFillers = ImeSettingsRepository.loadVoiceStripFillers(context),
                 voicePunctuationAsSpace =
                     ImeSettingsRepository.loadVoicePunctuationAsSpace(context),
+                railSymbols = RailSymbolRepository.load(context)
+                    .takeIf { RailSymbolRepository.isCustomized(context) },
+                fuzzyRules = FuzzyRule.entries
+                    .filter { it in ImeSettingsRepository.loadFuzzyRules(context) }
+                    .map { it.key },
             ),
             rimeUserDictionaries = rimeUserDictionaries,
         )
@@ -445,5 +463,10 @@ internal object UserDataRepository {
             context,
             value.voicePunctuationAsSpace,
         )
+        // Backups from before the editable rail carry none; keep the current one.
+        value.railSymbols?.let { RailSymbolRepository.save(context, it) }
+        value.fuzzyRules?.let { keys ->
+            ImeSettingsRepository.saveFuzzyRules(context, keys.mapNotNull(FuzzyRule::fromKey).toSet())
+        }
     }
 }

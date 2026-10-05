@@ -92,12 +92,12 @@ LocalVoiceImeService
 ```text
                          app（根包：Service、Activity、RimeNative）
                                     │
-                               keyboard ────────────────┐
-              ┌──────────┬──────────┼──────────┬────────┤
-            panel      voice    candidate  floating  hotword
-              │          │          │          │         │
-   widget  handwriting   │         rime        │       setup
-              └──────────┴──────────┴────┬─────┴─────────┘
+                               keyboard ──────┐
+              ┌──────────┬──────────┼──────────┤
+            panel      voice    candidate  floating
+              │          │          │          │
+   widget  handwriting   │         rime        │     setup
+              └──────────┴──────────┴────┬─────┴───────┘
                                          data
                                        editor
                                         core
@@ -115,11 +115,10 @@ LocalVoiceImeService
 | `floating` | 浮动键盘窗口、拖动、卡片外观 | theme |
 | `handwriting` | 手写板 | data、theme |
 | `rime` | librime 引擎封装、输入规范化、native 候选引用 | core、data（及 JNI 类 `RimeNative`） |
-| `candidate` | 候选管线、快照、九键本地解码、模糊音、拼音词典 | core、rime |
-| `hotword` | 语音词表：解析、同音纠正、打字候选加权、管理界面 | setup、theme |
-| `voice` | 语音识别、模型生命周期、语音面板、识别后处理 | data、editor、hotword、theme |
+| `candidate` | 候选管线、快照、九键本地解码、模糊音、拼音词典、笔画表 | core、rime |
+| `voice` | 语音识别、模型生命周期、语音面板、识别后处理 | data、editor、theme |
 | `panel` | 工具、剪贴板、设置、文本编辑等面板 | core、data、handwriting、setup、theme、widget |
-| `keyboard` | `ImeKeyboardView` 编排、26 键/九键/数字键盘、顶部区、手势、弹窗 | 以上除 app 外的全部 |
+| `keyboard` | `ImeKeyboardView` 编排、26 键/九键/笔画/数字键盘、顶部区、手势、弹窗 | 以上除 app 外的全部 |
 | `app`（根包） | Manifest 里的 Service 和 Activity、JNI 类 | 全部 |
 
 规则：
@@ -129,36 +128,12 @@ LocalVoiceImeService
 - 根包只放 Manifest、JNI 和测试脚本按名字引用的入口类，别的东西不要放进来。
 - 语音层通过窄接口回到界面：`VoiceSessionHost`（键盘监听器继承它）和 `VoiceEditorContext`（Service 提供编辑器信息），
   不直接依赖 `ImeKeyboardView` 或 Service。
-- 新功能自成一个包，按“纯逻辑 / Android 边界 / 唯一入口”拆分，样板是 `hotword`：纯逻辑文件不 import `android.*`，
-  包外只通过 `HotwordRuntime` 和管理 Activity 使用，由 `HotwordModuleBoundaryTest` 检查。
+- 新功能自成一个包，按“纯逻辑 / Android 边界 / 唯一入口”拆分：纯逻辑文件不 import `android.*`，
+  包外只通过一个入口对象和它的 Activity 使用。
 - 可见性默认 `internal`，只有 Manifest 需要的 Activity 是 public。
 
 仍然偏大的地方：`ImeKeyboardView` 约 3000 行，`LocalVoiceImeService` 约 1800 行，`ImeKeyboardView.Listener` 有数十个方法。
 它们是下一步拆分的对象，拆分时沿用上面的包边界，不要新增跨包依赖。
-
-## 语音词表（hotword 模块）
-
-```text
-VoiceRecognitionBackend（Paraformer）
-        │ 最终文本
-        ▼
-LocalAudioVoiceBackend：标点 → VoiceCorrectionRepository.apply → HotwordRuntime.apply → onFinal
-                                                                      │
-                                      HotwordPackStore ──启用的词──▶ HomophoneCorrector ◀── PinyinReadings
-                                      ├ assets/hotwords/*.txt（内置，随版本发布）
-                                      └ files/hotwords/*.txt（用户导入，规范化后保存）
-```
-
-- 流式 Paraformer 无法把热词传进解码器，所以词表在识别之后工作：文本里读音与某个热词相同、
-  但字不同的片段，改成热词的写法。最左最长匹配；已经写对的不动。
-- 读音来自 `rime-data/openime_dicts/8105.dict.yaml`，包含多音字；权重不足最大读音 1% 的冷僻读音
-  被丢弃，避免无关词被当成同音。
-- 词表格式：UTF-8 文本，一行一个 2～8 个汉字的词，`#` 开头为注释，支持 `# title:`、
-  `# description:`、`# default: on|off`。单个文件上限 512 KB、5000 个词。
-- 内置词表由 `default` 头决定初始开关：科技、应用默认开，游戏默认关；导入的词表默认开。
-- 不联网：词表只随版本更新或由用户导入，应用不声明 `INTERNET` 权限。
-- 已知取舍：同音替换不看上下文，两个字的词在日常语句里也可能同音，所以游戏词表默认关闭，
-  每个词表都可以单独关闭。
 
 ## Native 与第三方代码
 
