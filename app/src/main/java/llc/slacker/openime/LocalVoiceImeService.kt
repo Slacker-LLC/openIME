@@ -258,6 +258,9 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     override fun nineKeyReadingFor(digits: String, candidate: String): List<String>? =
         candidatePipeline.nineKeyReadingFor(digits, candidate)
 
+    override fun nineKeyPreviewFor(digits: String, candidate: String): List<String>? =
+        candidatePipeline.nineKeyPreviewFor(digits, candidate)
+
     override fun nineKeyPathsFor(code: String?): List<String> =
         candidatePipeline.nineKeyPathsFor(code)
 

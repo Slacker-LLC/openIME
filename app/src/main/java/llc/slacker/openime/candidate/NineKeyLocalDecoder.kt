@@ -65,6 +65,9 @@ internal class NineKeyLocalDecoder(
     private val syllablePrefixes = HashSet<String>()
     private val completeSyllables = HashSet<String>()
 
+    /** Digit prefix of a syllable -> the letters of the likeliest syllable it starts, and that syllable's score. */
+    private val prefixSpellings = HashMap<String, Pair<String, Int>>()
+
     /** Han character -> syllables that can read it, most likely first. */
     private val readingsByChar = HashMap<String, List<String>>()
     private var previousDigits = ""
@@ -81,7 +84,13 @@ internal class NineKeyLocalDecoder(
             }
             if (isSyllableEntry(entry)) {
                 completeSyllables += entry.pinyin
-                for (length in 1..entry.digits.length) syllablePrefixes += entry.digits.substring(0, length)
+                val score = entryScore(entry)
+                for (length in 1..entry.digits.length) {
+                    val prefix = entry.digits.substring(0, length)
+                    syllablePrefixes += prefix
+                    val known = prefixSpellings[prefix]
+                    if (known == null || score > known.second) prefixSpellings[prefix] = entry.pinyin.substring(0, length) to score
+                }
             }
         }
     }
@@ -186,15 +195,19 @@ internal class NineKeyLocalDecoder(
             ?.pinyin
             ?.take(bounded.length)
             ?.takeIf { digitsForPinyin(it) == bounded }
+        // The pre-edit is always letters: when no word or path decides them,
+        // spellDigits reads whole syllables and the start of an unfinished one
+        // (6442646 -> ni hao go). Showing the digits instead left "669" or a
+        // whole digit string in the pre-edit until (or after) Rime answered.
         val preview = when {
             stable != null -> stable
             continuous != null -> continuous
-            bounded.length == 1 -> bounded
-            paths.isEmpty() -> bounded
+            bounded.length == 1 -> spellDigits(bounded).joinToString(" ")
+            paths.isEmpty() -> prefixPreview ?: spellDigits(bounded).joinToString(" ")
             continuationBase != null && validPreset.isEmpty() && prefixPreview != null -> prefixPreview
             paths.isNotEmpty() -> paths.first()
             prefixPreview != null -> prefixPreview
-            else -> bounded
+            else -> spellDigits(bounded).joinToString(" ")
         }
 
         previousDigits = bounded
@@ -269,6 +282,107 @@ internal class NineKeyLocalDecoder(
             if (initial != null) return listOf(initial)
         }
         return null
+    }
+
+    /**
+     * The pre-edit for a candidate that spells only the start of the digits,
+     * the usual case in long input: its readings, the last one possibly cut
+     * where the digits end (你好工 for 6442646 -> ni hao go), then
+     * [spellDigits] for anything after the word. Null when the candidate does
+     * not fit the digits at all.
+     */
+    @Synchronized
+    fun readingForPrefix(digits: String, text: String): List<String>? {
+        val bounded = digits.filter { it in '2'..'9' }
+        if (bounded.isEmpty() || text.isEmpty()) return null
+        readingFor(bounded, text)?.let { return it }
+        val chars = ArrayList<String>()
+        var index = 0
+        while (index < text.length) {
+            val cp = text.codePointAt(index)
+            chars += String(Character.toChars(cp))
+            index += Character.charCount(cp)
+        }
+        // Each character by its full reading, else by the start of one: Rime's
+        // nine-key matches initials (669 -> 模型 as mo'x) and its key
+        // corrections accept cut syllables (go for gong). Take the characters,
+        // in order, as far as they fit the digits; the rest is spelled.
+        data class Walk(val parts: List<String>, val full: Int)
+        var states = mapOf(0 to Walk(emptyList(), 0))
+        var bestEnd = 0
+        var best = Walk(emptyList(), 0)
+        for (char in chars) {
+            val next = HashMap<Int, Walk>()
+            for ((digitIndex, walk) in states) {
+                if (digitIndex == bounded.length) continue
+                for (reading in readingsByChar[char].orEmpty()) {
+                    val code = digitsForPinyin(reading) ?: continue
+                    for (length in code.length downTo 1) {
+                        if (digitIndex + length > bounded.length) continue
+                        if (!bounded.startsWith(code.substring(0, length), digitIndex)) continue
+                        val end = digitIndex + length
+                        val step = Walk(walk.parts + reading.take(length), walk.full + if (length == code.length) 1 else 0)
+                        val known = next[end]
+                        if (known == null || step.full > known.full) next[end] = step
+                    }
+                }
+            }
+            if (next.isEmpty()) break
+            next.forEach { (end, walk) ->
+                if (end > bestEnd || (end == bestEnd && walk.full > best.full)) {
+                    bestEnd = end
+                    best = walk
+                }
+            }
+            states = next
+        }
+        if (best.parts.isEmpty()) return null
+        return if (bestEnd == bounded.length) best.parts else best.parts + spellDigits(bounded.substring(bestEnd))
+    }
+
+    /**
+     * Letters for [digits], one per digit, when no word decides them: the
+     * fewest whole syllables, the likeliest start of one for an unfinished
+     * end, and a key's first letter only where nothing else reads. Never the
+     * digits themselves.
+     */
+    @Synchronized
+    fun spellDigits(digits: String): List<String> {
+        val bounded = digits.filter { it in '2'..'9' }
+        val n = bounded.length
+        if (n == 0) return emptyList()
+        // A part is a whole syllable, or the start of one: natural at the end
+        // (the syllable is still being typed), a last resort in the middle. Fewer
+        // and whole parts win (a lone a / o / e between syllables counts double,
+        // a grid artefact as in ni'ha'o); then likelier syllables and words.
+        data class Spelling(val parts: List<String>, val cost: Int, val score: Int, val partialEnd: Boolean = false)
+        val better = compareBy<Spelling> { it.cost }.thenBy { it.partialEnd }.thenByDescending { it.score }
+        val states = Array(n + 1) { ArrayList<Spelling>() }
+        states[0] += Spelling(emptyList(), 0, 0)
+        for (start in 0 until n) {
+            val from = states[start].sortedWith(better).take(SPELL_BEAM)
+            if (from.isEmpty()) continue
+            var node = root
+            for (end in start until minOf(n, start + MAX_SYLLABLE_LENGTH)) {
+                node = node.children[bounded[end]] ?: break
+                val chunk = bounded.substring(start, end + 1)
+                val whole = node.exact.filter(::isSyllableEntry).sortedByDescending(::entryScore).take(SPELL_BRANCHES)
+                for (before in from) {
+                    for (entry in whole) {
+                        val parts = before.parts + entry.pinyin
+                        val cost = if (entry.pinyin.length == 1 && n > 1) 2 else 1
+                        states[end + 1] += Spelling(parts, before.cost + cost, before.score + entryScore(entry) + phraseBonus(parts))
+                    }
+                    val (letters, score) = prefixSpellings[chunk] ?: continue
+                    if (whole.any { it.pinyin == letters }) continue
+                    val last = end + 1 == n
+                    states[end + 1] += Spelling(before.parts + letters, before.cost + if (last) 1 else 3, before.score + score / 2, partialEnd = last)
+                }
+            }
+        }
+        states[n].minWithOrNull(better)?.let { return it.parts }
+        // Unreachable while every key starts some syllable; keep the letters promise anyway.
+        return listOf(bounded.map { KEY_LETTERS.getValue(it).first() }.joinToString(""))
     }
 
     /**
@@ -613,10 +727,18 @@ internal class NineKeyLocalDecoder(
         private const val MAX_SYLLABLE_LENGTH = 6
         private const val MAX_PATHS = 12
         private const val MAX_BEAM = 12
+        private const val SPELL_BEAM = 8
+        private const val SPELL_BRANCHES = 8
         private const val MAX_BRANCHES = 10
         private const val MAX_CANDIDATES = 96
         private const val PER_PATH_CANDIDATES = 24
         private const val PART_PENALTY = 55
+
+        /** The letters printed on each nine-key digit. */
+        private val KEY_LETTERS = mapOf(
+            '2' to "abc", '3' to "def", '4' to "ghi", '5' to "jkl",
+            '6' to "mno", '7' to "pqrs", '8' to "tuv", '9' to "wxyz",
+        )
 
         fun digitsForPinyin(pinyin: String): String? {
             if (pinyin.isBlank()) return null

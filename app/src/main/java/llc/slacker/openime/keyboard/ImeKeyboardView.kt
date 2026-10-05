@@ -2579,7 +2579,7 @@ open class ImeKeyboardView(
             topCandidate.offsetByCodePoints(0, fixedSyllables)
         }
         val syllables = candidateProvider
-            ?.nineKeyReadingFor(digits, topCandidate.substring(skipped))
+            ?.nineKeyPreviewFor(digits, topCandidate.substring(skipped))
             ?.takeIf { it.isNotEmpty() }
             ?: return
         val aligned = prefix + syllables.joinToString("'")
@@ -2656,12 +2656,10 @@ open class ImeKeyboardView(
         syllables.forEach { spelled.append(NineKeyLocalDecoder.digitsForPinyin(it) ?: return) }
         if (digits.isEmpty() || !digits.startsWith(spelled)) return
 
-        if (!reading.complete) {
-            // A bare initial is orientation, not a decision: show it, fix nothing.
-            lastNineSegmentPrefix = prefix
-            publishNineKeyDigits(digits, preferredSuffix = syllables.single())
-            return
-        }
+        // A bare initial (m, w, x ...) is a choice like any syllable: tapping it
+        // fixes that letter, so the candidates start with it (m -> 么 吗 们).
+        // Treated as a mere hint it changed nothing visible: Rime still read the
+        // digit and the pre-edit snapped back to its top candidate (6 -> o).
         val rest = digits.substring(spelled.length)
         if (rest.isEmpty()) {
             val last = syllables.last()

@@ -39,9 +39,16 @@ class NineKeyChineseTest {
     }
 
     @Test
-    fun incompleteDigitOnlyPrefixesStayAsDigitsInsteadOfFakeLetters() {
-        assertEquals("2", resolve("2").preview)
-        assertEquals("6", resolve("6").preview)
+    fun aLoneKeyShowsALetterNotItsDigit() {
+        // The pre-edit is letters from the first key on; Rime's answer then
+        // aligns it to the top candidate (4 -> 和 -> h).
+        assertEquals("a", resolve("2").preview)
+        assertEquals("o", resolve("6").preview)
+        listOf("3", "4", "5", "7", "8", "9").forEach { digit ->
+            val preview = resolve(digit).preview
+            assertEquals("one letter for $digit", 1, preview.length)
+            assertEquals(digit, NineKeyLocalDecoder.digitsForPinyin(preview))
+        }
     }
 
     @Test
