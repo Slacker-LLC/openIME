@@ -4,7 +4,6 @@
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循
 [语义化版本](https://semver.org/lang/zh-CN/)。每个 `## [版本] - 日期` 小节就是该版本
 GitHub Release 的发布说明；版本与发布流程见 [docs/RELEASE.md](docs/RELEASE.md)。
-首个公开版本之前的开发期记录见 [docs/CHANGELOG_PRE_1.0.md](docs/CHANGELOG_PRE_1.0.md)。
 
 ## [Unreleased]
 

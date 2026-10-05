@@ -1,28 +1,28 @@
 name: Feature request
-description: 提议新的输入、适配或维护能力
+description: Suggest a new input, compatibility or maintenance feature
 title: "[Feature] "
 labels: [enhancement]
 body:
   - type: textarea
     id: problem
     attributes:
-      label: 要解决的问题
-      placeholder: 当前什么场景不方便，谁会遇到？
+      label: Problem
+      placeholder: Which situation is difficult today? Who does it affect?
     validations:
       required: true
   - type: textarea
     id: proposal
     attributes:
-      label: 建议方案
-      placeholder: 期望的交互、候选、布局或配置行为。
+      label: Proposed solution
+      placeholder: Describe the interaction, candidates, layout or setting that you want.
     validations:
       required: true
   - type: textarea
     id: alternatives
     attributes:
-      label: 备选方案
+      label: Alternatives
   - type: input
     id: device
     attributes:
-      label: 相关设备或窗口尺寸
-      placeholder: 例如 390dp、平板、折叠屏、横屏
+      label: Related device or window size
+      placeholder: "For example 390 dp, tablet, foldable, landscape"

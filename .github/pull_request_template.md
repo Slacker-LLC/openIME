@@ -1,34 +1,34 @@
-## 改动说明
+## Summary
 
-<!-- 用几句话说明为什么改、改了什么。 -->
+<!-- Explain why you make this change and what it changes. Use a few sentences. -->
 
-## 影响范围
+## Affected areas
 
-- [ ] 输入引擎 / 候选 / 分词
-- [ ] InputConnection / 编辑器行为
-- [ ] 键盘布局 / Insets / 浮动键盘
-- [ ] 工具面板 / 设置
-- [ ] 语音模型 / 音频权限
-- [ ] 构建、测试或文档
+- [ ] Input engine, candidates, word splitting
+- [ ] InputConnection, editor behavior
+- [ ] Keyboard layout, insets, floating keyboard
+- [ ] Tool panels, settings
+- [ ] Voice model, audio permission
+- [ ] Build, tests or documents
 
-## 验证
+## Verification
 
 - [ ] `:app:testDebugUnitTest`
 - [ ] `:app:lintDebug`
 - [ ] `:app:assembleDebug`
-- [ ] 真实 IME 回归（如适用）
-- [ ] 已执行 `git diff --check`
+- [ ] Real input method regression (if it applies)
+- [ ] `git diff --check`
 
-测试设备、Android 版本和命令：
+Test device, Android version and commands:
 
-## 变更记录与版本
+## Change log and version
 
-- [ ] 用户可见的改动（功能、行为、修复、权限、数据格式）已写入 `CHANGELOG.md` 的 `[Unreleased]`；纯内部改动不需要
-- [ ] 没有修改 `VERSION`（只有发布 PR 才升级版本，见 `docs/RELEASE.md`）
-- [ ] PR 标题能独立说清结果：合并时它就是提交标题，描述就是提交正文
+- [ ] I added each user-visible change to `[Unreleased]` in `CHANGELOG.md`. Internal changes do not need an entry.
+- [ ] I did not change `VERSION`. Only a release PR changes it. See `docs/RELEASE.md`.
+- [ ] The PR title states the result. It becomes the commit title, and the description becomes the commit body.
 
-## 隐私与交付检查
+## Privacy and delivery
 
-- [ ] 没有提交密码、剪贴板、录音、设备日志或个人路径
-- [ ] 模型、词典或第三方文件的来源和许可证没有被破坏
-- [ ] 若改动用户数据或设置格式，已说明升级兼容性
+- [ ] The change has no passwords, clipboard content, recordings, device logs or personal paths.
+- [ ] The change keeps the source and license of each model, dictionary and third-party file.
+- [ ] If the change affects user data or settings formats, the description explains upgrade compatibility.

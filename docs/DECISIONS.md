@@ -1,18 +1,95 @@
-# Visual language decisions
+# Design decisions
 
-- 2026-09-29｜浅色次级文字对比度｜保留键盘原始 `keySecondaryText=#6E6E73`，新增页面角色 `textSecondaryRole=#6D6D72`｜原值对 `surface=#EEF0F3` 约 4.44:1，低于规范 4.5:1；只修页面角色，避免改变键盘既有视觉。
-- 2026-09-29｜候选展开图标状态｜复用 `ic_chevron_down`，展开时旋转 180°｜保持单一矢量资产，不再用 Unicode 上下箭头。
-- 2026-09-29｜Setup XML 色板｜仅保留启动前必须使用的资源色，并由 TokenDriftTest 与 Kotlin token 对齐｜Android XML 在 Kotlin 初始化前需要资源颜色，不能完全移除。
-- 2026-09-29｜退格连删节奏｜继续保留现有 60ms 匀速重复｜视觉语言 v1 明确要求本轮不改，留作后续交互专项。
-- 2026-09-29｜语音松手尾部｜松手后保留 300ms 采集窗口，并用 generation/session 所有权阻止旧会话影响新会话｜修复 AudioRecord 尾部被立即截断，同时保持取消即时生效。
-- 2026-09-29｜九键解码线程策略｜先记录 `publishNineKeyDigits -> resolveNineKey` 的 20 次窗口 P50/P95；未取得中低端机 P95 前保持现有线程，不提前迁移｜只有 P95 超过 8ms 才按规范迁到 `CandidateQueryCoordinator`。
-- 2026-09-29｜九键首帧与 Rime 刷新｜候选按压或滚动期间暂缓应用异步 Rime 结果；同时记录从请求到结果可应用的端到端延迟｜防止手指下的候选列表重排；是否在 Rime 就绪时跳过首帧回退，等实测 P95 是否低于 40ms 后再定。
-- 2026-09-29｜Rime 用户词库导出｜vendored librime 1.17.0 已编入 levers 模块，`UserDictManager::Export/Import` 可在关闭用户库会话后导出/合并 UTF-8 快照｜用户数据 JSON 在 Rime 会话已加载时包含自动学习词库；不可用时必须明确提示，不静默遗漏。
-- 2026-09-29｜流式语音模型｜默认模型切换为 `sherpa-onnx-streaming-paraformer-bilingual-zh-en` 的 INT8 encoder/decoder；运行时使用 `OnlineParaformerModelConfig` + `greedy_search`，结束时补 300ms 静音；不再向 Paraformer stream 传 transducer-only 动态 hotwords｜优先降低模型体积和保持中英流式识别，同时遵循 sherpa-onnx v1.13.6 官方 Paraformer 配置。
-- 2026-10-03｜语音词表｜内置词表随版本发布（`assets/hotwords/`），用户可导入文本词表；二者都不联网，不新增 `INTERNET` 权限，不做在线定期更新｜Paraformer 不能把热词传进解码器，所以词表走识别后的“同音替换”：读音（取自 `8105.dict.yaml`，含多音字）相同而字不同的片段改成词表写法。游戏词表默认关闭，避免日常聊天被误改。
-- 2026-10-03｜整体分包｜99 个平铺文件按功能分进 theme/core/editor/data/setup/widget/floating/handwriting/rime/candidate/hotword/voice/panel/keyboard，根包只留 Service、Activity 和 JNI 类；依赖方向由 `ArchitectureLayeringTest` 固定｜包名只影响组织和可见性，不改 Manifest、native 符号和测试脚本引用的名字；Gradle 多模块暂不做，因为 `keyboard` 与 `panel`、`voice` 仍通过大接口耦合，需要先拆 `ImeKeyboardView.Listener`。
-- 2026-10-04｜自动填充条带｜只声明 `supportsInlineSuggestions`、自己拼装 androidx.autofill v1 的样式 Bundle（版本表 + 一个空的 v1 样式），不引入 androidx.autofill 依赖；条目按固定像素尺寸（150dp × 40dp）渲染并横向滚动｜`InlineContentView` 是远程 Surface，没有固有尺寸，`WRAP_CONTENT` 会得到 0×0；样式 Bundle 只有十几行，为它引入第一个 androidx 运行时依赖不值得。响应早于键盘视图到达时先暂存，不能返回 false（系统会退回下拉菜单）。
-- 2026-10-04｜字母键上的数字和符号｜不加一行数字，而是像搜狗、讯飞、微信键盘那样把数字和符号印在字母键右上角，上滑（复用九键的“上滑输入数字”开关）或长按输入；第一排 q–p 是 1–0，其余是标点，中文模式用全角形式（！ ￥ ？ （ ） ： ；），英文模式半角；提示可单独关闭（“数字和符号提示”，默认开启）｜多一行数字要么挤压每一行（竖屏约 43dp，横屏约 34dp），要么让键盘变高；输入法窗口高度一变，面板、浮动键盘、九键都要跟着变。提示 + 上滑不改布局，也是国内主流输入法的做法。
-- 2026-10-04｜空格滑动光标锁定底行｜进入光标模式（横向 18dp、横向分量大于纵向 1.25 倍、早于长按语音超时）后，同一行的其他按键 `touchLocked`（变灰、不响应）；拼音预编辑存在时移动的是预编辑光标｜手指一直在空格上，但第二根手指或漂移的拇指可能按到邻键；预编辑期间把方向键事件发给应用会打断组合。
-- 2026-10-04｜“标点用空格代替”｜只作用于语音识别结果：逗号、句号、问号等写成一个空格，结尾标点直接去掉，括号和 3.5、a.b 不变｜把这项需求理解为语音文本后处理的开关（与去语气词同属“语音输入”设置组），默认关闭。
-- 2026-10-05｜移出语音词表｜0.0.6-beta.1 起去掉语音词表（`hotword` 模块、内置词表、管理页、打字候选加权）｜同音替换还不成熟，先不发；去掉前的代码保存在 `archive/voice-word-lists` 分支（即 0.0.5-beta.1 的 `f3bb5cc`），以后改好再合回。
+This log records decisions that are not obvious from the code.
+Each entry has a date, the topic, the decision and the reason.
+Add new entries at the end.
+
+## 2026-09-29
+
+- **Secondary text contrast (light theme).**
+  Keep the keyboard value `keySecondaryText=#6E6E73`. Add a page role `textSecondaryRole=#6D6D72`.
+  *Reason:* the old value has a contrast of about 4.44:1 on `surface=#EEF0F3`, below the 4.5:1 rule.
+  Only the page role changes, so the keyboard look stays the same.
+- **Candidate expand icon.**
+  Reuse `ic_chevron_down` and rotate it 180° when expanded.
+  *Reason:* one vector asset. No Unicode arrows.
+- **Setup XML colors.**
+  Keep only the resource colors that Android needs before Kotlin starts. `TokenDriftTest` keeps them equal to the Kotlin tokens.
+  *Reason:* XML needs resource colors before Kotlin initializes.
+- **Backspace repeat.**
+  Keep the constant 60 ms repeat.
+  *Reason:* visual language v1 says not to change it in that round. A later interaction project can change it.
+- **Voice release tail.**
+  After release, keep a 300 ms capture window. Use generation and session ownership so that an old session cannot affect a new one.
+  *Reason:* an immediate cut loses the tail of `AudioRecord`. A cancel still takes effect at once.
+  *Later change:* see `LOCAL_VOICE_MODEL.md`. The microphone now stops at release, and a 300 ms zero pad feeds the model.
+- **Nine-key decoder thread.**
+  First record the 20-sample window P50 and P95 of `publishNineKeyDigits → resolveNineKey`.
+  Keep the current thread until we have a P95 from a low-end or mid-range phone.
+  *Reason:* move the decoder to `CandidateQueryCoordinator` only if P95 is above 8 ms.
+- **Nine-key first frame and Rime refresh.**
+  While a finger presses or scrolls the candidate list, delay asynchronous Rime results. Record the delay from request to applicable result.
+  *Reason:* the list must not reorder under the finger.
+  Skip the fallback first frame only if the measured P95 is below 40 ms.
+- **Rime user dictionary export.**
+  The vendored librime 1.17.0 includes the levers module. `UserDictManager::Export/Import` can export or merge a UTF-8 snapshot after the user database session closes.
+  *Reason:* the user data JSON includes learned words when a Rime session is loaded. When export is not possible, the app must say so. It must not skip the words silently.
+- **Streaming voice model.**
+  Use the INT8 encoder and decoder of `sherpa-onnx-streaming-paraformer-bilingual-zh-en` with `OnlineParaformerModelConfig` and `greedy_search`.
+  *Reason:* smaller model and streaming Chinese and English recognition, with the official sherpa-onnx v1.13.6 configuration.
+  Do not send transducer-only dynamic hotwords to the Paraformer stream.
+
+## 2026-10-03
+
+- **Voice word lists.** *(Removed on 2026-10-05.)*
+  The idea was a built-in word list plus a user import list, both offline, with no `INTERNET` permission.
+  Paraformer cannot take hotwords in the decoder, so the lists worked as homophone replacement after recognition.
+  See the 2026-10-05 entry.
+- **Package split.**
+  Split the 99 flat files into packages: theme, core, editor, data, setup, widget, floating, handwriting, rime, candidate, voice, panel and keyboard.
+  The root package keeps only the service, activities and JNI classes.
+  `ArchitectureLayeringTest` enforces the dependency direction.
+  *Reason:* packages change organization and visibility only. They do not change the manifest, native symbols or the names that test scripts use.
+  We delay Gradle modules, because `keyboard`, `panel` and `voice` still connect through a large interface.
+  First split `ImeKeyboardView.Listener`.
+
+## 2026-10-04
+
+- **Autofill strip.**
+  Declare only `supportsInlineSuggestions` and build the androidx.autofill v1 style bundle by hand (a version table and one empty v1 style).
+  Do not add the androidx.autofill dependency.
+  Render entries at a fixed size of 150 dp × 40 dp in a horizontal scroll.
+  If a response arrives before the keyboard view exists, hold it. Never return false, because the system then falls back to the dropdown menu.
+  *Reason:* `InlineContentView` is a remote surface with no intrinsic size, so `WRAP_CONTENT` gives 0×0.
+  The style bundle is a dozen lines. It is not worth the first androidx runtime dependency.
+- **Numbers and symbols on letter keys.**
+  Do not add a number row.
+  Print the number or symbol at the top right of each letter key, as Sogou, iFlytek and WeChat keyboards do.
+  Swipe up (this uses the nine-key "swipe up for digits" setting) or long-press to enter it.
+  The first row q to p gives 1 to 0. The other rows give punctuation.
+  Chinese mode uses full-width forms (！ ￥ ？ （ ） ： ；). English mode uses half-width forms.
+  A separate setting, 数字和符号提示 ("Number and symbol hints", default on), turns the hints off.
+  *Reason:* an extra row would squeeze every row (about 43 dp in portrait, 34 dp in landscape) or make the keyboard taller.
+  A taller keyboard changes the IME window height, and the panels, the floating keyboard and the nine-key layout would all change.
+  Hints plus swipe do not change the layout. Major Chinese keyboards do the same.
+- **Space-swipe cursor locks the bottom row.**
+  The cursor mode starts when three conditions are true.
+  The finger moved 18 dp horizontally.
+  The horizontal part is more than 1.25 times the vertical part.
+  The long-press voice timeout has not ended.
+  Then the other keys in the same row get `touchLocked` (grey, no response).
+  With a pinyin preedit, the swipe moves the preedit cursor.
+  *Reason:* the finger stays on space, but a second finger or a drifting thumb can hit a nearby key.
+  Sending arrow key events to the app during a preedit would break the composition.
+- **标点用空格代替 ("Replace punctuation with spaces").**
+  This setting acts only on voice results.
+  Commas, periods and question marks become one space. Final punctuation is removed. Parentheses, `3.5` and `a.b` stay.
+  It belongs to the 语音输入 ("Voice input") group with the filler-word option. The default is off.
+  *Reason:* we read the request as a switch for voice text post-processing.
+
+## 2026-10-05
+
+- **Voice word lists removed.**
+  From 0.0.6-beta.1, the `hotword` module, the built-in lists, the management page and the typing candidate weighting are gone.
+  *Reason:* homophone replacement is not mature. We do not ship it yet.
+  The earlier code is on the `archive/voice-word-lists` branch (`f3bb5cc`, the 0.0.5-beta.1 commit). We can merge it back after a fix.

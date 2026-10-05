@@ -1,17 +1,21 @@
-# 许可证与第三方组件
+# Licensing
 
-## 主项目
+## Main project
 
-`openIME` 以 **GPL-3.0-only** 发布，全文见仓库根目录 `LICENSE`。
+openIME uses the **GPL-3.0-only** license. The full text is in `LICENSE`.
 
-选择它的原因：APK 内置的 Rime Ice 词典按 GPL-3.0-only 使用（见下），主项目采用同一份许可证，
-分发 APK 时整体的许可证状况没有歧义——不用争论词典数据与程序是「聚合」还是「衍生」。
-其余组件（librime、OpenCC、Snappy、sherpa-onnx、Paraformer 与 CT-Transformer 模型、Fluent Emoji）均为 BSD / Apache-2.0 / MIT，
-与 GPL-3.0 兼容。想改用别的许可证需要先去掉或替换 Rime Ice 词典。
+The APK contains the Rime Ice dictionaries, which use GPL-3.0-only.
+The main project uses the same license.
+This way, the license of the APK as a whole is clear.
+We do not need to decide if the dictionary data and the program are an aggregate or a derivative work.
 
-## 已随仓库提供的第三方组件
+All other components use BSD, Apache-2.0 or MIT licenses, which are compatible with GPL-3.0.
+These components are librime, OpenCC, Snappy, sherpa-onnx, the Paraformer and CT-Transformer models and Fluent Emoji.
+To use a different main license, first remove or replace the Rime Ice dictionaries.
 
-第三方源码和数据的原始许可证随各自目录保留，主要包括：
+## Third-party components in the repository
+
+Each directory keeps the original license of its third-party source and data:
 
 - `app/src/main/cpp/vendor/librime/`
 - `app/src/main/cpp/vendor/OpenCC/`
@@ -19,31 +23,38 @@
 - `app/src/main/assets/rime/`
 - `app/src/main/assets/rime-data/`
 
-`app/src/main/assets/rime-data/openime_dicts/` 中的 `8105`、`base`、`ext` 和
-`others` 词典来自 Rime Ice 固定提交
-`75e6572bebc05b49021e842949ce947882e3e4b2`，按 GPL-3.0-only 使用。
-`app/src/main/assets/pinyin_phrases.tsv` 是由这些词典生成的高频子集，沿用相同来源与
-许可证范围。许可证全文位于
-`app/src/main/assets/licenses/rime-ice-GPL-3.0.txt`，来源明细见根目录
-`THIRD_PARTY_NOTICES.md`。
+### Dictionaries
 
-APK 不再带这些词典的文本源文件，而是带构建时由 librime 编译好的二进制词库
-（`assets/rime-data/build/`，由 `scripts/build_rime_prebuilt.py` 生成）。对应的源文件
-始终在本仓库中公开，许可证文件照常随 APK 分发。
+The `8105`, `base`, `ext` and `others` dictionaries in `app/src/main/assets/rime-data/openime_dicts/` come from Rime Ice.
+We pin commit `75e6572bebc05b49021e842949ce947882e3e4b2`.
+They use GPL-3.0-only.
 
-语音 runtime 以 `app/libs/sherpa-onnx-1.13.6.aar` 提供，上游
-`k2-fsa/sherpa-onnx` 使用 Apache-2.0。内置中英双语 Streaming Paraformer 模型
-`csukuangfj/sherpa-onnx-streaming-paraformer-bilingual-zh-en`
-模型卡标记为 Apache-2.0；正式包只使用其 INT8 encoder/decoder。
-具体来源、文件位置和发布核对项统一记录在根目录 `THIRD_PARTY_NOTICES.md`。
-标点模型固定使用 sherpa-onnx `2024-04-12-int8` 导出，上游 ModelScope
-`iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch` 的模型卡标记 Apache License 2.0；
-APK 附带 `ct-transformer-Apache-2.0.txt`，其文件参加语音模型清单哈希校验。
-Git LFS 只负责文件存储，不改变文件的许可证。
+`app/src/main/assets/pinyin_phrases.tsv` is a subset of frequent entries that we generate from these dictionaries.
+It has the same source and license.
 
+The license text is in `app/src/main/assets/licenses/rime-ice-GPL-3.0.txt`.
 
-## APK 内许可证
+The APK does not contain the dictionary text files.
+It contains binary dictionaries that librime compiles at build time (`assets/rime-data/build/`, made by `scripts/build_rime_prebuilt.py`).
+The source files are always public in this repository.
+The license files ship in the APK.
 
-正式 APK 在 `assets/licenses/` 内携带主要第三方许可证文本，包括 librime、OpenCC、Snappy、Rime Ice、sherpa-onnx runtime、当前 Paraformer / CT-Transformer 模型和 Fluent Emoji。根目录 `THIRD_PARTY_NOTICES.md` 记录组件、来源、版本或固定提交与对应文件位置。
+### Voice runtime and models
 
-发布工作流同时把 `THIRD_PARTY_NOTICES.md` 作为 GitHub Release 附件上传，便于在 APK 外直接查看。
+- The runtime is `app/libs/sherpa-onnx-1.13.6.aar`. The upstream project `k2-fsa/sherpa-onnx` uses Apache-2.0.
+- The speech model is `csukuangfj/sherpa-onnx-streaming-paraformer-bilingual-zh-en`.
+  Its model card states Apache-2.0. The release APK uses only the INT8 encoder and decoder.
+- The punctuation model is the sherpa-onnx `2024-04-12-int8` export of ModelScope `iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch`.
+  Its model card states Apache License 2.0.
+  The APK contains `ct-transformer-Apache-2.0.txt`.
+  The file hashes are part of the voice model manifest.
+
+Git LFS only stores the files. It does not change their licenses.
+
+## Licenses in the APK
+
+The release APK carries the main third-party license texts in `assets/licenses/`.
+These are librime, OpenCC, Snappy, Rime Ice, the sherpa-onnx runtime, the Paraformer and CT-Transformer models and Fluent Emoji.
+
+`THIRD_PARTY_NOTICES.md` lists each component, its source, its version or pinned commit and its file location.
+The release notes link to this file, so you can read it outside the APK.
