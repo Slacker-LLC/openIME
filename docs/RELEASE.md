@@ -105,12 +105,14 @@ bash scripts/setup_release_signing.sh
 
    标签只有管理员能创建，创建后不能被移动或删除（见 REPOSITORY.md）。
 4. `.github/workflows/release.yml` 自动执行：
-   - 标签格式、`VERSION`、`CHANGELOG.md` 三者一致；标签在 `main` 上，且该提交的 CI 已通过；
-   - 单元测试、`lintRelease`、`assembleRelease`；
+   - 标签在 `main` 上；
+   - 不等 CI，先用未签名配置编译并跑 `lintRelease`（和 main 的 CI 同时进行，不读取任何密钥）；
+   - 等该提交的 CI 通过（Build and verify、Compatibility API 29/31）。单元测试已在 CI 里跑过，这里不重复；
+   - 标签格式、`VERSION`、`CHANGELOG.md` 三者一致，然后用正式密钥 `assembleRelease`（只剩打包和签名）；
    - APK 签名校验（不能是 Debug 证书）、只含 `arm64-v8a`、APK 内版本与 `VERSION` 一致、
      签名证书与 `release-cert.sha256` 一致；
    - 生成 SHA-256 和发布说明（测试版带 Beta 提示）；
-   - 另一个只有写权限、不接触密钥的 job 先建**草稿** Release，确认三个附件齐全后才公开（测试版标为 pre-release，不是 latest）。
+   - 另一个只有写权限、不接触密钥的 job 先建**草稿** Release，确认 APK 已附上后才公开（测试版标为 pre-release，不是 latest）。
 5. 发布后核对：下载 APK，`sha256sum` 与发布说明里的值对比，`apksigner verify --print-certs`，
    在真机上安装、启用、试打。
 
