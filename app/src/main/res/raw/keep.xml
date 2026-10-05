@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ime_space_xs mirrors ImeSpacingTokens.XS_DP (TokenDriftTest); layouts may not use it. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:keep="@dimen/ime_space_xs" />

@@ -186,10 +186,10 @@ internal class SettingsPanelController(
         content.addSection("按键与输入")
         content.addCard(
             toggleRow("按键音效", "按键时播放提示音", R.drawable.ic_pref_sound),
-            soundStyleRow(R.drawable.ic_pref_sound),
+            soundStyleRow(NESTED_ROW),
             toggleRow("触感震动", "清脆短促，按下即停", R.drawable.ic_pref_haptic),
-            hapticStyleRow(R.drawable.ic_pref_haptic),
-            sliderRow("震动强度", R.drawable.ic_pref_haptic, 10, 100, currentHapticStrengthPercent(), onChange = onHapticStrengthChanged),
+            hapticStyleRow(NESTED_ROW),
+            sliderRow("震动强度", NESTED_ROW, 10, 100, currentHapticStrengthPercent(), onChange = onHapticStrengthChanged),
             toggleRow("按键气泡", "按下时显示字母预览", R.drawable.ic_pref_bubble),
             toggleRow("数字和符号提示", "字母键右上角显示数字和符号", R.drawable.ic_pref_hints),
             toggleRow("上滑输入数字", "按键上滑输入右上角的数字或符号", R.drawable.ic_pref_swipe_up),
@@ -414,19 +414,25 @@ internal class SettingsPanelController(
 
     // ---- Rows ---------------------------------------------------------------
 
-    /** Row shell: an optional icon tile, then [body] filling the rest. */
-    private fun rowShell(iconRes: Int, alignTop: Boolean = false): LinearLayout =
+    /**
+     * Row shell: an optional icon tile, then the body filling the rest. The tile
+     * is centred on the whole row, whatever sits under the label. [NESTED_ROW]
+     * leaves the tile out and starts the body on the text column, for settings
+     * that refine the row above (音效 under 按键音效).
+     */
+    private fun rowShell(iconRes: Int): LinearLayout =
         LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = if (alignTop) Gravity.TOP else Gravity.CENTER_VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
             tag = "setting-row"
             minimumHeight = toPx(if (standalone) ImeGeometryTokens.SETTING_ROW_HEIGHT_DP else 52)
+            val nestedInset = if (iconRes == NESTED_ROW) toPx(ICON_TILE_DP + ICON_TILE_GAP_DP) else 0
             if (standalone) {
-                setPadding(toPx(16), toPx(12), toPx(16), toPx(12))
+                setPadding(toPx(16) + nestedInset, toPx(12), toPx(16), toPx(12))
             } else {
                 setPadding(toPx(14), toPx(2), toPx(12), toPx(2))
             }
-            if (iconRes != 0) {
+            if (iconRes != 0 && iconRes != NESTED_ROW) {
                 addView(
                     ImageView(context).apply {
                         setImageResource(iconRes)
@@ -435,7 +441,7 @@ internal class SettingsPanelController(
                         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                         tag = "setting-icon"
                     },
-                    LinearLayout.LayoutParams(toPx(32), toPx(32)).apply { marginEnd = toPx(12) },
+                    LinearLayout.LayoutParams(toPx(ICON_TILE_DP), toPx(ICON_TILE_DP)).apply { marginEnd = toPx(ICON_TILE_GAP_DP) },
                 )
             }
         }
@@ -525,7 +531,10 @@ internal class SettingsPanelController(
                     importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                     tag = "setting-chevron"
                 },
-                LinearLayout.LayoutParams(toPx(18), toPx(18)).apply { marginStart = toPx(ImeSpacingTokens.MD_DP) },
+                LinearLayout.LayoutParams(toPx(ImeGeometryTokens.CHEVRON_DP), toPx(ImeGeometryTokens.CHEVRON_DP)).apply {
+                    marginStart = toPx(ImeSpacingTokens.MD_DP)
+                    marginEnd = -toPx(ImeGeometryTokens.CHEVRON_GLYPH_END_INSET_DP)
+                },
             )
         }
 
@@ -589,11 +598,11 @@ internal class SettingsPanelController(
             overScrollMode = View.OVER_SCROLL_NEVER
             addView(chips)
         }
-        val row = rowShell(iconRes, alignTop = true)
+        val row = rowShell(iconRes)
         row.addView(
             LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(rowLabel(label), wrapParams().apply { topMargin = toPx(if (iconRes != 0) 6 else 8) })
+                addView(rowLabel(label), wrapParams().apply { topMargin = toPx(if (standalone) 0 else 8) })
                 addView(
                     scroller,
                     LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(ImeGeometryTokens.TOUCH_TARGET_DP)).apply {
@@ -648,12 +657,16 @@ internal class SettingsPanelController(
                 )
             }
         }
-        val row = rowShell(iconRes, alignTop = standalone)
+        val row = rowShell(iconRes)
         if (standalone) {
+            // The track lines up with the label and the value; the thumb's outer
+            // half overhangs the text column at 0% and 100%.
+            row.clipChildren = false
+            row.clipToPadding = false
             row.addView(
                 LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
-                    addView(rowLabel(label), wrapParams().apply { topMargin = toPx(6) })
+                    addView(rowLabel(label), wrapParams().apply { topMargin = toPx(3) })
                     addView(
                         track,
                         LinearLayout.LayoutParams(
@@ -742,8 +755,12 @@ internal class SettingsPanelController(
         seekBar.contentDescription = initialDescription
         if (Build.VERSION.SDK_INT >= 30) seekBar.stateDescription = initialDescription
 
-        val row = rowShell(iconRes, alignTop = standalone)
+        val row = rowShell(iconRes)
         if (standalone) {
+            // The track lines up with the label and the value; the thumb's outer
+            // half overhangs the text column at 0% and 100%.
+            row.clipChildren = false
+            row.clipToPadding = false
             row.addView(
                 LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
@@ -754,18 +771,21 @@ internal class SettingsPanelController(
                             addView(rowLabel(label), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
                             addView(valueView, wrapParams())
                         },
-                        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                            topMargin = toPx(6)
-                        },
+                        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT),
                     )
                     addView(
                         seekBar,
-                        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(40)),
+                        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(40)).apply {
+                            marginStart = -thumbInset
+                            marginEnd = -thumbInset
+                            // The bar's empty lower half hangs into the row padding, so
+                            // the padding stays even and the icon sits on the row's centre.
+                            bottomMargin = -toPx(6)
+                        },
                     )
                 },
                 LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
             )
-            row.setPadding(row.paddingLeft, row.paddingTop, row.paddingRight, toPx(4))
         } else {
             row.addView(rowLabel(shortLabel), LinearLayout.LayoutParams(toPx(64), LinearLayout.LayoutParams.WRAP_CONTENT))
             row.addView(seekBar, LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f))
@@ -977,6 +997,10 @@ internal class SettingsPanelController(
         )
 
     private companion object {
+        /** rowShell icon value for a row that refines the one above: no tile, body on the text column. */
+        const val NESTED_ROW = -1
+        const val ICON_TILE_DP = 32
+        const val ICON_TILE_GAP_DP = 12
         /** How much a pressed switch knob widens (iOS-like). */
         const val KNOB_PRESS_STRETCH = 1.14f
 
