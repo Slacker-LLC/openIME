@@ -82,6 +82,40 @@ class InputConnectionGateway(
         // transcript in one call throws TransactionTooLargeException and takes the
         // keyboard down with it. Chunk it, never splitting a surrogate pair.
         chunksForCommit(text).forEach { chunk -> ic.commitText(chunk, 1) }
+        // commitText replaces an active composing span.
+        composingInEditor = false
+        ownEditPending = true
+    }
+
+    /**
+     * Set by our own commit, cleared by the selection update it causes. A
+     * Chinese pre-edit has no span in the editor, so without this the update
+     * after a partial commit would look like the user moving the cursor and
+     * drop the rest of the pre-edit.
+     */
+    @Volatile
+    private var ownEditPending = false
+
+    /** Whether the selection update now arriving was caused by our own commit. */
+    fun consumeOwnEdit(): Boolean {
+        val own = ownEditPending
+        ownEditPending = false
+        return own
+    }
+
+    /**
+     * Whether the editor holds a composing span this IME put there. Chinese
+     * input keeps its pre-edit on the keyboard and never sets one, and
+     * setComposingText("") without a span can delete the user's selection in
+     * some editors, so a cancel only touches the editor when this is true.
+     */
+    @Volatile
+    private var composingInEditor = false
+
+    /** A new editor (or a restart) starts without any span of ours. */
+    fun onEditorStarted() {
+        composingInEditor = false
+        ownEditPending = false
     }
 
     /**
@@ -105,8 +139,10 @@ class InputConnectionGateway(
         val ic = connection() ?: return
         if (text.isEmpty()) {
             ic.finishComposingText()
+            composingInEditor = false
         } else {
             ic.setComposingText(text, 1)
+            composingInEditor = true
         }
     }
 
@@ -118,17 +154,15 @@ class InputConnectionGateway(
 
     fun finishComposing() {
         connection()?.finishComposingText()
+        composingInEditor = false
     }
 
     /** Remove the active pre-edit text without committing it to the editor. */
     fun cancelComposing() {
         val ic = connection() ?: return
-        if (isPassword()) {
-            ic.finishComposingText()
-            return
-        }
-        ic.setComposingText("", 1)
+        if (!isPassword() && composingInEditor) ic.setComposingText("", 1)
         ic.finishComposingText()
+        composingInEditor = false
     }
 
     fun clearComposition() {

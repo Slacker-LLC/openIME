@@ -351,6 +351,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
 
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
+        if (::gateway.isInitialized) gateway.onEditorStarted()
         reloadPersistedSettings()
         voiceCorrectionTracker.clear()
         val previousRimeInputs = candidateQueries.activeInputs
@@ -555,6 +556,8 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             candidatesStart,
             candidatesEnd,
         )
+        // A cursor move caused by our own commit never drops the pre-edit.
+        if (gateway.consumeOwnEdit()) return
         if (!shouldClearCompositionForSelectionUpdate(
                 hasComposition = lastComposition.isNotEmpty(),
                 oldSelStart = oldSelStart,
@@ -1446,7 +1449,11 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             // editor text in many apps. Deleting the final Pinyin character
             // must remove that span instead of leaving a raw letter behind.
             gateway.cancelComposing()
-        } else {
+        } else if (!state.keyboardMode.isChineseLayout) {
+            // Chinese pre-edit (pinyin, nine-key digits, strokes) stays on the
+            // keyboard, as on Sogou and iFlytek: written into the app's field it
+            // showed "669" or "ni'hao" there and set off the app's own
+            // suggestions. An English word is composed in place, as on Gboard.
             gateway.setComposingText(next)
         }
     }
