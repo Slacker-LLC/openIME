@@ -30,6 +30,7 @@ import llc.slacker.openime.candidate.NineKeyLocalDecoder
 import llc.slacker.openime.candidate.NineKeyPerformanceTrace
 import llc.slacker.openime.candidate.NineKeyReading
 import llc.slacker.openime.candidate.StrokeLexicon
+import llc.slacker.openime.core.FuzzyRule
 import llc.slacker.openime.core.ImeState
 import llc.slacker.openime.core.KeyboardMode
 import llc.slacker.openime.core.Panel
@@ -2277,7 +2278,10 @@ open class ImeKeyboardView(
         tag = "panel-section-title"
     }
 
-    private fun onState(seed: String): Boolean = when (seed) {
+    private fun onState(seed: String): Boolean = FuzzyRule.fromLabel(seed)
+        // A 模糊音 pair: its own saved state (the theme paints the track from this).
+        ?.let { it in ImeSettingsRepository.loadFuzzyRules(context) }
+        ?: when (seed) {
         "按键音效" -> soundEnabled
         "触感震动" -> hapticEnabled
         "模糊音纠错", "启用模糊音" -> fuzzyEnabled
@@ -2288,7 +2292,7 @@ open class ImeKeyboardView(
         "语音去语气词" -> ImeSettingsRepository.loadVoiceStripFillers(context)
         "标点用空格代替" -> ImeSettingsRepository.loadVoicePunctuationAsSpace(context)
         else -> true
-    }
+        }
 
     private fun updateSettingToggle(seed: String, enabled: Boolean) {
         when (seed) {

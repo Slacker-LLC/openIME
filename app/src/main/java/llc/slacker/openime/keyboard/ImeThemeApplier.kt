@@ -625,12 +625,16 @@ internal class ImeThemeApplier(
                     ?.substringBefore('，')
                     .orEmpty()
                 val enabled = toggleState(seed)
+                // padsView = false: the track must not replace the switch's own
+                // 2dp side padding, or the knob sits 0 from the left edge when
+                // off and 4 from the right when on.
                 view.background = paintedWithinTarget(
                     ImeDrawableFactory.rounded(
                         ImeSurfacePolicy.switchTrack(enabled, t),
                         toPx(ImeGeometryTokens.PILL_RADIUS_DP),
                     ),
                     ImeGeometryTokens.SWITCH_HEIGHT_DP,
+                    padsView = false,
                 )
             }
         }

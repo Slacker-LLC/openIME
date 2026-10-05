@@ -7,6 +7,7 @@ import android.content.Context
 import android.os.Build
 import android.text.TextUtils
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
@@ -854,10 +855,8 @@ internal class SettingsPanelController(
                 gravity = Gravity.START or Gravity.CENTER_VERTICAL
             }
             tag = "toggle-knob"
-            elevation = toPx(1).toFloat()
-            translationX =
-                if (isOn) toPx(ImeGeometryTokens.SWITCH_KNOB_TRAVEL_DP).toFloat()
-                else 0f
+            // A soft lift, as on iOS: the knob reads as a part that slides.
+            elevation = toPx(2).toFloat()
         }
 
         return FrameLayout(context).apply {
@@ -883,6 +882,26 @@ internal class SettingsPanelController(
 
             updateAccessibilityState(isOn)
             addView(knob)
+            // The knob's travel from the laid-out pixels, not a dp constant:
+            // rounded separately, the constants left the two ends a pixel apart.
+            fun travel(): Float = (width - paddingLeft - paddingRight - knob.width).coerceAtLeast(0).toFloat()
+            addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                if (knob.animation == null && !knob.isPressed) {
+                    knob.translationX = if (toggleState(seed)) travel() else 0f
+                }
+            }
+            // Pressed, the knob stretches a little toward where it will go.
+            setOnTouchListener { _, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        knob.pivotX = if (toggleState(seed)) knob.width.toFloat() else 0f
+                        knob.animate().scaleX(KNOB_PRESS_STRETCH).setDuration(ImeMotionTokens.STANDARD_TRANSITION_MS).start()
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+                        knob.animate().scaleX(1f).setDuration(ImeMotionTokens.STANDARD_TRANSITION_MS).start()
+                }
+                false
+            }
             setOnClickListener {
                 onFeedback()
                 val next = !toggleState(seed)
@@ -890,12 +909,10 @@ internal class SettingsPanelController(
                 updateAccessibilityState(next)
                 onChanged(next)
 
-                val knobView = getChildAt(0)
-                knobView.animate().cancel()
-                knobView.animate()
-                    .translationX(
-                        if (next) toPx(ImeGeometryTokens.SWITCH_KNOB_TRAVEL_DP).toFloat() else 0f,
-                    )
+                knob.animate().cancel()
+                knob.animate()
+                    .translationX(if (next) travel() else 0f)
+                    .scaleX(1f)
                     .setDuration(ImeMotionTokens.STANDARD_TRANSITION_MS)
                     .setInterpolator(DecelerateInterpolator(1.5f))
                     .start()
@@ -960,6 +977,9 @@ internal class SettingsPanelController(
         )
 
     private companion object {
+        /** How much a pressed switch knob widens (iOS-like). */
+        const val KNOB_PRESS_STRETCH = 1.14f
+
         /** A character pair each 模糊音 switch makes interchangeable. */
         val FUZZY_EXAMPLES: Map<FuzzyRule, String> = mapOf(
             FuzzyRule.Z_ZH to "资 zi · 知 zhi",

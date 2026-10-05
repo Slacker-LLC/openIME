@@ -29,11 +29,12 @@ internal object ImeGeometryTokens {
     const val SETTING_ROW_HEIGHT_DP = 56
     const val TOOL_CARD_HEIGHT_DP = 80
     const val VOICE_CONTROL_HEIGHT_DP = TOUCH_TARGET_DP
-    const val SWITCH_WIDTH_DP = 46
-    const val SWITCH_HEIGHT_DP = 28
-    const val SWITCH_KNOB_DP = 24
+    // iOS switch geometry: a 51x31 track and a 27 knob, so the knob sits 2
+    // from every edge, on and off alike.
+    const val SWITCH_WIDTH_DP = 51
+    const val SWITCH_HEIGHT_DP = 31
+    const val SWITCH_KNOB_DP = 27
     const val SWITCH_PADDING_DP = 2
-    const val SWITCH_KNOB_TRAVEL_DP = SWITCH_WIDTH_DP - SWITCH_PADDING_DP * 2 - SWITCH_KNOB_DP
     const val KEY_GAP_DP = 6
     const val KEY_ROW_GAP_DP = KEY_GAP_DP
     const val KEY_SIDE_MARGIN_DP = 2
