@@ -248,6 +248,8 @@ internal class ImeThemeApplier(
             view.tag == "candidate-emoji" || view.tag == "candidate-expand" -> 20
             view.tag == "key-panel-back" -> 24
             view.tag?.toString()?.startsWith("clip-pin:") == true || view.tag?.toString()?.startsWith("phrase-") == true -> 18
+            // Tile icons (工具 and 切换键盘 share the tile): one size for both pages.
+            view.tag == "tool-icon" || view.tag == "tool-icon-selected" -> 28
             hasAncestorTag(view, "tools-panel") -> 24
             (view.parent as? View)?.tag == "toolbar-row" -> 22
             else -> 0
