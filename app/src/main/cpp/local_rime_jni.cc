@@ -310,7 +310,7 @@ void shutdown_locked() {
 
 extern "C" JNIEXPORT void JNICALL
 Java_llc_slacker_openime_RimeNative_nativeStartup(
-    JNIEnv* env, jclass, jstring shared_dir, jstring user_dir) {
+    JNIEnv* env, jclass, jstring shared_dir, jstring user_dir, jboolean full_check) {
   std::lock_guard<std::mutex> lock(g_mutex);
   if (g_api && g_session) return;
   // Recover from any previous partial initialization before retrying.
@@ -339,9 +339,13 @@ Java_llc_slacker_openime_RimeNative_nativeStartup(
   // Deployment is performed off the Android main thread by RimeEngine. Wait
   // here so the first keyboard session never races schema generation.
   if (g_api->start_maintenance) {
-    // False makes Rime check the data signature and skip a full rebuild on
-    // every service restart. The first install still deploys all schemas.
-    g_api->start_maintenance(False);
+    // A quick check compares whole-second modification times and skips the
+    // workspace update when nothing looks newer than the last deploy; it is
+    // enough on an ordinary start. A full check always recompiles the schema
+    // configs (and rebuilds only the prisms whose input changed): the caller
+    // asks for it when it has just changed a config, as the 模糊音 rules,
+    // which a same-second edit could hide from the quick check.
+    g_api->start_maintenance(full_check ? True : False);
     if (g_api->join_maintenance_thread) g_api->join_maintenance_thread();
   }
 

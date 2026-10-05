@@ -68,9 +68,7 @@ class RimeFuzzySchemaTest {
         assertTrue(schema.contains("schema_id: luna_pinyin_simp_fuzzy"))
         assertTrue(schema.contains("prism: luna_pinyin_simp_fuzzy"))
         listOf(
-            "pinyin:/zh_z_bufen",
-            "pinyin:/n_l_bufen",
-            "pinyin:/en_eng_bufen",
+            "openime_fuzzy:/rules",
             "pinyin:/abbreviation",
             "pinyin:/spelling_correction",
             "pinyin:/key_correction",
@@ -82,8 +80,8 @@ class RimeFuzzySchemaTest {
     @Test
     fun normalSchemaDoesNotEnableFuzzyRules() {
         val schema = asset("rime-data/luna_pinyin_simp.schema.yaml").readText()
-        listOf("zh_z_bufen", "n_l_bufen", "en_eng_bufen").forEach { rule ->
-            assertTrue("normal schema unexpectedly enables $rule", !schema.contains("pinyin:/$rule"))
+        listOf("pinyin:/zh_z_bufen", "pinyin:/n_l_bufen", "pinyin:/en_eng_bufen", "openime_fuzzy:/rules").forEach { rule ->
+            assertTrue("normal schema unexpectedly enables $rule", !schema.contains(rule))
         }
     }
 }

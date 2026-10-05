@@ -7,7 +7,8 @@ internal object RimeNative {
     }
 
     @JvmStatic
-    external fun nativeStartup(sharedDir: String, userDir: String)
+    /** [fullCheck] recompiles every schema config; see RimeEngine.syncFuzzyRulesFile. */
+    external fun nativeStartup(sharedDir: String, userDir: String, fullCheck: Boolean)
 
     @JvmStatic
     external fun nativeSelectSchema(schemaId: String): Boolean

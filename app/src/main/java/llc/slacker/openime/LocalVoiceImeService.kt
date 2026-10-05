@@ -25,6 +25,7 @@ import llc.slacker.openime.candidate.CandidateSnapshotEntry
 import llc.slacker.openime.candidate.EmojiAssociationIndex
 import llc.slacker.openime.candidate.NineKeyReading
 import llc.slacker.openime.candidate.PinyinLexicon
+import llc.slacker.openime.candidate.FuzzyPinyin
 import llc.slacker.openime.candidate.Stroke
 import llc.slacker.openime.candidate.StrokeLexicon
 import llc.slacker.openime.candidate.personalizedLearningAllowed
@@ -193,6 +194,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             { ImeSettingsRepository.loadVoicePunctuationAsSpace(this) }
         UserPhraseRepository.configure(this)
         VoiceCorrectionRepository.configure(this)
+        FuzzyPinyin.rules = ImeSettingsRepository.loadFuzzyRules(this)
         voiceLifecycle = VoiceModelLifecycleManager(this)
         Thread({
             runCatching { CandidatePipeline(CandidateEngine(PinyinLexicon.load(this))) }
@@ -424,6 +426,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             popupEnabled = ImeSettingsRepository.loadPopup(this),
             fuzzyPinyinEnabled = ImeSettingsRepository.loadFuzzy(this),
         )
+        syncFuzzyRules()
         keyboardView?.applyPersistedSettings(
             newTheme = state.theme,
             newAppearance = state.appearance,
@@ -1265,8 +1268,22 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     override fun onFuzzyChanged(enabled: Boolean) {
         state = state.copy(fuzzyPinyinEnabled = enabled)
         ImeSettingsRepository.saveFuzzy(this, enabled)
-        // RimeEngine mirrors this value on the candidate hot path.
-        if (::rime.isInitialized) rime.invalidateSettingsCache()
+        syncFuzzyRules()
+    }
+
+    override fun onFuzzyRulesChanged() = syncFuzzyRules()
+
+    /**
+     * Hand the 模糊音 switches to both candidate sources: the Kotlin fallback
+     * reads [FuzzyPinyin.rules]; librime re-deploys when the rules file changes.
+     */
+    private fun syncFuzzyRules() {
+        FuzzyPinyin.rules = ImeSettingsRepository.loadFuzzyRules(this)
+        if (::rime.isInitialized) {
+            // RimeEngine mirrors the master switch on the candidate hot path.
+            rime.invalidateSettingsCache()
+            rime.applyFuzzyRules()
+        }
     }
 
     override fun onShiftStateChanged(state: ShiftState) {

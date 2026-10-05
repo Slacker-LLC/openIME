@@ -8,6 +8,7 @@ import android.os.SystemClock
 import android.util.Log
 import llc.slacker.openime.RimeNative
 import llc.slacker.openime.core.CrashGuard
+import llc.slacker.openime.core.FuzzyRule
 import llc.slacker.openime.core.RimeStartupRecovery
 import llc.slacker.openime.data.ImeSettingsRepository
 import llc.slacker.openime.data.PersonalizationPolicy
@@ -164,6 +165,7 @@ class RimeEngine(
                 val copyStartMs = SystemClock.elapsedRealtime()
                 val copied = copyAssetsIfNeeded(sharedDir, userDir)
                 val copyMs = SystemClock.elapsedRealtime() - copyStartMs
+                val rulesChanged = syncFuzzyRulesFile(userDir)
                 if (!startupGate.isCurrent(generation)) return@execute
 
                 // A previous start that died inside native code leaves its marker
@@ -205,7 +207,7 @@ class RimeEngine(
                 // this call, nativeShutdown will either run after it or this
                 // stale worker will perform the same idempotent cleanup below.
                 val nativeStartMs = SystemClock.elapsedRealtime()
-                RimeNative.nativeStartup(sharedDir.absolutePath, userDir.absolutePath)
+                RimeNative.nativeStartup(sharedDir.absolutePath, userDir.absolutePath, fullCheck = rulesChanged)
                 val nativeMs = SystemClock.elapsedRealtime() - nativeStartMs
                 nativeStartupReturned = true
                 if (!startupGate.isCurrent(generation)) {
@@ -562,6 +564,50 @@ class RimeEngine(
         cachedFuzzyPinyin = null
     }
 
+    /**
+     * Re-deploy librime when the 模糊音 switches changed: the rules live in
+     * the user dir's openime_fuzzy.yaml, and librime reads them (rebuilding
+     * only the small fuzzy prism) when it starts. Until it is ready again the
+     * Kotlin fallback answers, as during any startup.
+     */
+    fun applyFuzzyRules() {
+        startupExecutor.execute {
+            val file = File(userDir(), FUZZY_RULES_FILE)
+            val current = if (file.exists()) runCatching { file.readText() }.getOrNull() else null
+            if (current == fuzzyRulesFileText() || !isReady) return@execute
+            synchronized(lock) {
+                isReady = false
+                activeSchemaId = null
+                runCatching { RimeNative.nativeShutdown() }
+            }
+            Log.i(TAG, "librime redeploy for new fuzzy rules")
+            start()
+        }
+    }
+
+    private fun fuzzyRulesFileText(): String =
+        FuzzyRule.rimeYaml(ImeSettingsRepository.loadFuzzyRules(context))
+
+    /**
+     * Writes the user's openime_fuzzy.yaml (it shadows the shipped defaults;
+     * the defaults are written too, so a change always replaces the file).
+     * Returns whether it changed: librime's quick startup check works on
+     * whole-second file times and can miss an edit made right after a deploy,
+     * so a changed file asks native startup for a full check.
+     */
+    private fun syncFuzzyRulesFile(userDir: File): Boolean {
+        val file = File(userDir, FUZZY_RULES_FILE)
+        val wanted = fuzzyRulesFileText()
+        if (file.exists() && runCatching { file.readText() }.getOrNull() == wanted) return false
+        file.writeText(wanted)
+        return true
+    }
+
+    private fun userDir(): File {
+        val dataDirName = assetRoot.replace('/', '_')
+        return File(context.filesDir, if (assetRoot == "rime-data") "rime-user" else "$dataDirName-user")
+    }
+
     private fun fuzzyPinyinEnabled(): Boolean {
         cachedFuzzyPinyin?.let { return it }
         val value = ImeSettingsRepository.loadFuzzy(context)
@@ -690,6 +736,7 @@ class RimeEngine(
     private companion object {
         const val TAG = "RimeEngine"
         const val HEALTH_PROBE_INPUT = "ni"
+        const val FUZZY_RULES_FILE = "openime_fuzzy.yaml"
         /**
          * Upper bound for waiting on an in-flight startup before tearing down.
          * Short enough to stay off the IME shutdown path, long enough for the

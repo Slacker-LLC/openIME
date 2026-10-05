@@ -6,11 +6,11 @@ __include: luna_pinyin_simp.schema:/
 schema:
   schema_id: luna_pinyin_simp_fuzzy
   name: 朙月拼音·简化字·模糊音
-  version: "0.24"
+  version: "0.25"
   author:
     - openIME
   description: |
-    朙月拼音简化字方案，额外启用 openIME 模糊音规则；全拼和 2-9 九键数字码共用同一词库/userdb。
+    朙月拼音简化字方案，额外启用 openIME 模糊音规则（openime_fuzzy.yaml）；全拼和 2-9 九键数字码共用同一词库/userdb。
 
 speller:
   alphabet: zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA987654321
@@ -18,9 +18,9 @@ speller:
   delimiter: " '"
   algebra:
     __patch:
-      - pinyin:/zh_z_bufen
-      - pinyin:/n_l_bufen
-      - pinyin:/en_eng_bufen
+      # The 模糊音 pairs: openime_fuzzy.yaml in rime-data holds the defaults;
+      # one written to the user dir (by the switches) takes precedence.
+      - openime_fuzzy:/rules
       - pinyin:/abbreviation
       - pinyin:/spelling_correction
       - pinyin:/key_correction

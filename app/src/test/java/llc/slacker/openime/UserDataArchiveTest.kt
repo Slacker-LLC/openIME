@@ -34,6 +34,7 @@ class UserDataArchiveTest {
         voiceStripFillers = false,
         voicePunctuationAsSpace = true,
         railSymbols = listOf("～", "，", "@"),
+        fuzzyRules = listOf("z_zh", "f_h"),
     )
 
     @Test

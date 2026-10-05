@@ -7,6 +7,26 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PinyinFuzzyRulesTest {
+    // These cases were written for the pairs that used to be always on.
+    private val previousFuzzyRules = llc.slacker.openime.candidate.FuzzyPinyin.rules
+
+    @org.junit.Before
+    fun enableFormerFuzzyPairs() {
+        llc.slacker.openime.candidate.FuzzyPinyin.rules = setOf(
+            llc.slacker.openime.core.FuzzyRule.Z_ZH,
+            llc.slacker.openime.core.FuzzyRule.C_CH,
+            llc.slacker.openime.core.FuzzyRule.S_SH,
+            llc.slacker.openime.core.FuzzyRule.N_L,
+            llc.slacker.openime.core.FuzzyRule.EN_ENG,
+            llc.slacker.openime.core.FuzzyRule.IN_ING,
+        )
+    }
+
+    @org.junit.After
+    fun restoreFuzzyPairs() {
+        llc.slacker.openime.candidate.FuzzyPinyin.rules = previousFuzzyRules
+    }
+
 
     @Test
     fun coversZhZInBothDirections() {

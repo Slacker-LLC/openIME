@@ -1,6 +1,7 @@
 package llc.slacker.openime.data
 
 import android.content.Context
+import llc.slacker.openime.core.FuzzyRule
 import llc.slacker.openime.core.KeyboardMode
 import llc.slacker.openime.theme.ImeAppearance
 import llc.slacker.openime.theme.ImeTheme
@@ -18,6 +19,7 @@ object ImeSettingsRepository {
     private const val KEY_SOUND_STYLE = "key_sound_style"
     private const val KEY_POPUP = "popup"
     private const val KEY_FUZZY = "fuzzy"
+    private const val KEY_FUZZY_RULES = "fuzzy_rules"
     private const val KEY_SWIPE_UP_DIGITS = "swipe_up_digits"
     private const val KEY_LETTER_HINTS = "letter_hints"
     private const val KEY_EMOJI_ASSOCIATION = "emoji_association"
@@ -225,4 +227,20 @@ object ImeSettingsRepository {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_FUZZY, enabled).apply()
     }
+
+    /** The 模糊音 pairs the user switched on; [FuzzyRule.DEFAULTS] until changed. */
+    fun loadFuzzyRules(context: Context): Set<FuzzyRule> {
+        val keys = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getStringSet(KEY_FUZZY_RULES, null) ?: return FuzzyRule.DEFAULTS
+        return keys.mapNotNull(FuzzyRule::fromKey).toSet()
+    }
+
+    fun saveFuzzyRules(context: Context, rules: Set<FuzzyRule>) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putStringSet(KEY_FUZZY_RULES, rules.map { it.key }.toSet()).apply()
+    }
+
+    /** The pairs in effect: none while 模糊音 is off. */
+    fun activeFuzzyRules(context: Context): Set<FuzzyRule> =
+        if (loadFuzzy(context)) loadFuzzyRules(context) else emptySet()
 }

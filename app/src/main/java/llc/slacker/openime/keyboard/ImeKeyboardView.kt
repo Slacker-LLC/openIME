@@ -123,6 +123,9 @@ open class ImeKeyboardView(
         fun onHapticChanged(enabled: Boolean)
         fun onPopupChanged(enabled: Boolean)
         fun onFuzzyChanged(enabled: Boolean)
+
+        /** A 模糊音 pair was switched; the new set is already saved. */
+        fun onFuzzyRulesChanged() {}
         fun onKeyboardHeightChanged(percent: Int) {}
         fun onHapticStrengthChanged(percent: Int) {}
 
@@ -692,6 +695,7 @@ open class ImeKeyboardView(
             onKeySoundStyleChanged = ::setKeySoundStyle,
             onFloatingStyleChanged = ::setFloatingStyle,
             onShowFuzzySettings = { showPanel(Panel.FUZZY_SETTINGS) },
+            onFuzzyRulesChanged = listener::onFuzzyRulesChanged,
             onOpenAbout = listener::onOpenAbout,
             onOpenDataManagement = listener::onOpenDataManagement,
             onFeedback = ::feedback,
