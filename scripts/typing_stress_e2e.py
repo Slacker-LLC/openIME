@@ -35,6 +35,7 @@ LAB = f"{PKG}/{CLASSES}.ImeTestLabActivity"
 RECEIVER = f"{PKG}/{CLASSES}.E2ETestReceiver"
 ACTION = f"{CLASSES}.TEST_COMMAND"
 FIELD = "lab_multiline"
+FIELD_HINT = "多行文本"
 ROOT = Path(__file__).resolve().parent.parent
 STROKE_TABLE = ROOT / "app" / "build" / "generated" / "assets" / "prebuildRimeData" / "stroke_table.tsv"
 
@@ -108,7 +109,9 @@ class Device:
                 continue
             for el in root.iter("node"):
                 if el.get("resource-id", "").endswith(f"/{FIELD}"):
-                    return el.get("text", "")
+                    # uiautomator reports an empty field's hint as its text.
+                    text = el.get("text", "")
+                    return "" if text == el.get("hint", FIELD_HINT) or text == FIELD_HINT else text
         return ""
 
     def field_bounds(self) -> tuple[int, int, int, int] | None:
@@ -286,6 +289,52 @@ def probe_preedit_stays_on_keyboard(dev: Device, keys: list[str]) -> str | None:
     return None
 
 
+def visible_tags(dev: Device, predicate) -> list[tuple[str, str, float, float]]:
+    """Bounds entries matching [predicate] whose centre is on screen above the navigation bar."""
+    height = int(re.search(r"(\d+)x(\d+)", dev.shell("wm", "size")).group(2))
+    return [b for b in dev.bounds if predicate(b) and 0 < b[3] < height - 120]
+
+
+def type_from_symbol_panel(dev: Device, categories: list[str], per_category: int = 2) -> str:
+    """Open 符号, tap the first symbols of each category; returns what should have been typed."""
+    expected = ""
+    dev.tap_tag("key-symbols")
+    time.sleep(1.0)
+    for category in categories:
+        dev.command(f"tap:{category}")
+        time.sleep(0.8)
+        dev.refresh_bounds()
+        keys = visible_tags(dev, lambda b: b[0].startswith("key:"))[:per_category]
+        for tag, desc, x, y in keys:
+            dev.shell("input", "tap", str(int(x)), str(int(y)))
+            time.sleep(0.25)
+            expected += tag[len("key:"):]
+    dev.shell("input", "keyevent", "BACK")
+    time.sleep(0.6)
+    return expected
+
+
+def type_emoji(dev: Device, count: int = 6) -> str:
+    dev.command("tap:表情")
+    time.sleep(1.2)
+    dev.refresh_bounds()
+    cells = visible_tags(dev, lambda b: b[0] == "emoji-cell")[:count]
+    expected = ""
+    for _, desc, x, y in cells:
+        dev.shell("input", "tap", str(int(x)), str(int(y)))
+        time.sleep(0.25)
+        expected += desc
+    dev.shell("input", "keyevent", "BACK")
+    time.sleep(0.6)
+    return expected
+
+
+def set_rotation(dev: Device, landscape: bool) -> None:
+    dev.shell("settings", "put", "system", "accelerometer_rotation", "0")
+    dev.shell("settings", "put", "system", "user_rotation", "1" if landscape else "0")
+    time.sleep(2)
+
+
 def is_cjk(text: str) -> bool:
     return all("㐀" <= ch <= "鿿" or "\U00020000" <= ch <= "\U0003134f" for ch in text)
 
@@ -342,6 +391,81 @@ def run_case(dev: Device, name: str, minimum: int) -> tuple[bool, str]:
         type_digits(dev, "2026100512")
         set_mode(dev, "PINYIN_26")
         type_pinyin26(dev, PINYIN_WORDS[16:24])
+    elif name == "symbols":
+        set_mode(dev, "PINYIN_9")
+        expected = type_from_symbol_panel(
+            dev, ["常用", "中文", "英文", "数学", "序号", "特殊", "网络颜文字", "拼音", "日文", "注音", "制表", "单位", "编程"],
+        )
+        minimum = min(minimum, len(expected))
+    elif name == "emoji":
+        set_mode(dev, "PINYIN_26")
+        expected = type_emoji(dev, 8)
+        minimum = min(minimum, len(expected))
+    elif name == "rail":
+        set_mode(dev, "PINYIN_9")
+        cells = visible_tags(dev, lambda b: b[0].startswith("punct:") and b[0] != "punct:add")[:3]
+        expected = ""
+        for tag, _, x, y in cells:
+            dev.shell("input", "tap", str(int(x)), str(int(y)))
+            time.sleep(0.25)
+            expected += tag[len("punct:"):]
+        dev.tap_tag("key-9:0")
+        expected += "0"
+        minimum = min(minimum, len(expected))
+    elif name == "expand":
+        set_mode(dev, "PINYIN_26")
+        picked = ""
+        for word in ["shi", "zhong", "hao", "de", "ren"]:
+            for letter in word:
+                dev.tap_tag(f"key:{letter}")
+            time.sleep(0.5)
+            dev.refresh_bounds()
+            dev.tap_tag("candidate-expand")
+            time.sleep(0.8)
+            dev.refresh_bounds()
+            grid = visible_tags(dev, lambda b: b[0] in ("candidate-grid", "candidate-grid-first"))
+            if len(grid) < 3:
+                return False, f"expanded candidates for {word}: only {len(grid)}"
+            tag, desc, x, y = grid[2]
+            dev.shell("input", "tap", str(int(x)), str(int(y)))
+            time.sleep(0.5)
+            dev.refresh_bounds()
+            picked += desc.removeprefix("候选:")
+        expected = picked
+        minimum = min(minimum, len(expected))
+    elif name == "clear":
+        set_mode(dev, "PINYIN_26")
+        type_pinyin26(dev, PINYIN_WORDS[:6])
+        dev.refresh_bounds()
+        hit = next(b for b in dev.bounds if b[0] == "key-backspace")
+        dev.shell("input", "swipe", str(int(hit[2])), str(int(hit[3])), str(int(hit[2])), str(int(hit[3] - 330)), "300")
+        time.sleep(1)
+        text = dev.field_text()
+        dev.shot(name)
+        return (text == ""), f"after swipe-up clear the field holds {text!r}"
+    elif name in ("landscape", "dark"):
+        if name == "landscape":
+            set_rotation(dev, True)
+        else:
+            dev.shell("cmd", "uimode", "night", "yes")
+            time.sleep(1.5)
+        try:
+            show_keyboard(dev)
+            clear_field(dev)
+            set_mode(dev, "PINYIN_26")
+            type_pinyin26(dev, PINYIN_WORDS[:14])
+            set_mode(dev, "PINYIN_9")
+            type_nine_key(dev, PINYIN_WORDS[14:28])
+            time.sleep(1)
+            text = dev.field_text()
+            dev.shot(name)
+        finally:
+            if name == "landscape":
+                set_rotation(dev, False)
+            else:
+                dev.shell("cmd", "uimode", "night", "no")
+        ok = len(text) >= minimum and is_cjk(text)
+        return ok, f"{len(text)} characters: {text[:40]}…"
     else:
         return False, f"unknown case {name}"
     time.sleep(1)
@@ -366,7 +490,10 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=ROOT / "build" / "typing-stress")
     parser.add_argument("--min", type=int, default=50)
     parser.add_argument("--package", default=PKG, help="applicationId of the debug build (e.g. with a .dev suffix)")
-    parser.add_argument("cases", nargs="*", default=["pinyin26", "pinyin9", "nine-rail", "stroke", "english", "digits", "mixed"])
+    parser.add_argument("cases", nargs="*", default=[
+        "pinyin26", "pinyin9", "nine-rail", "stroke", "english", "digits", "mixed",
+        "symbols", "emoji", "rail", "expand", "clear", "landscape", "dark",
+    ])
     args = parser.parse_args()
     PKG = args.package
     IME = f"{PKG}/{CLASSES}.LocalVoiceImeService"
