@@ -18,7 +18,9 @@ import android.widget.ScrollView
 import android.widget.TextView
 import llc.slacker.openime.R
 import llc.slacker.openime.SymbolManagerActivity
+import llc.slacker.openime.core.EmojiCatalog
 import llc.slacker.openime.core.ImeData
+import llc.slacker.openime.core.SymbolCatalog
 import llc.slacker.openime.core.KeyboardMode
 import llc.slacker.openime.core.Panel
 import llc.slacker.openime.data.CustomSymbolRepository
@@ -429,9 +431,7 @@ internal class ImePanelRenderer(
         notifyRebuilt: Boolean,
     ) {
         body.removeAllViews()
-        val categories = listOf(
-            "常用", "中文", "英文", "数学", "序号", "特殊", "网络颜文字", "单位", "编程", "自定义",
-        )
+        val categories = SymbolCatalog.CATEGORIES
         body.orientation = LinearLayout.HORIZONTAL
         body.setPadding(toPx(8), toPx(5), toPx(4), 0)
         val categoryColumn = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
@@ -482,20 +482,25 @@ internal class ImePanelRenderer(
                 ),
             )
         }
-        items.chunked(5).forEach { chunk ->
+        // Kaomoji and other long items get three wide cells a row and a smaller
+        // size; five narrow cells cut (づ｡◕‿‿◕｡)づ down to "(づ｡".
+        val wide = items.any { it.codePointCount(0, it.length) > WIDE_SYMBOL_CODE_POINTS }
+        val columns = if (wide) 3 else 5
+        val textSize = if (wide) ImeTypographyTokens.BODY_SP else ImeTypographyTokens.KEY_LETTER_SP
+        items.chunked(columns).forEach { chunk ->
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             chunk.forEach { symbol ->
                 row.addView(
                     createKey(
                         symbol,
                         false,
-                        ImeTypographyTokens.KEY_LETTER_SP,
+                        textSize,
                     ) { onSymbolSelected(symbol) },
-                    gridCellParams(54, 5, 0),
+                    gridCellParams(54, columns, 0),
                 )
             }
-            repeat(5 - chunk.size) {
-                row.addView(View(context), gridCellParams(54, 5, 0))
+            repeat(columns - chunk.size) {
+                row.addView(View(context), gridCellParams(54, columns, 0))
             }
             grid.addView(
                 row,
@@ -525,7 +530,7 @@ internal class ImePanelRenderer(
         notifyRebuilt: Boolean,
     ) {
         body.removeAllViews()
-        val categories = listOf("全部") + ImeData.emojiByCategory.keys.toList()
+        val categories = listOf("全部") + EmojiCatalog.byCategory(context).keys.toList()
         fun displayCategory(category: String): String = when (category) {
             "人物/手势" -> "手势"
             "动物/自然" -> "动物"
@@ -552,9 +557,9 @@ internal class ImePanelRenderer(
             setPadding(toPx(4), 0, toPx(4), 0)
         }
         val items = if (emojiCategory == "全部") {
-            (EmojiRecentRepository.load(context) + ImeData.emojiByCategory.values.flatten()).distinct()
+            (EmojiRecentRepository.load(context) + EmojiCatalog.byCategory(context).values.flatten()).distinct()
         } else {
-            val catalog = ImeData.emojiByCategory[emojiCategory].orEmpty()
+            val catalog = EmojiCatalog.byCategory(context)[emojiCategory].orEmpty()
             if (emojiCategory == "笑脸") (ImeData.referenceSmileys + catalog).distinct() else catalog
         }
         if (items.isEmpty() && emojiCategory == "最近") {
@@ -707,7 +712,10 @@ internal class ImePanelRenderer(
     }
 
     private fun symbolItems(category: String): List<String> = when (category) {
-        "中文" -> listOf("，", "。", "、", "；", "：", "？", "！", "…", "—", "～", "·", "「", "」", "『", "』", "（", "）", "《", "》", "【", "】", "“", "”", "‘", "’")
+        "中文" -> (
+            listOf("，", "。", "、", "；", "：", "？", "！", "…", "—", "～", "·", "「", "」", "『", "』", "（", "）", "《", "》", "【", "】", "“", "”", "‘", "’") +
+                SymbolCatalog.CHINESE_EXTRA
+            ).distinct()
         "英文" -> ImeData.symbols["英文标点"].orEmpty()
         "数学" -> listOf(
             ImeData.symbols["数学运算"].orEmpty(),
@@ -726,11 +734,16 @@ internal class ImePanelRenderer(
         "编程" -> ImeData.symbols["技术编程"].orEmpty()
         "特殊" -> listOf(
             ImeData.symbols["特殊图形"].orEmpty(),
+            SymbolCatalog.SPECIAL_EXTRA,
             ImeData.symbols["几何图形"].orEmpty(),
             ImeData.symbols["箭头线条"].orEmpty(),
             ImeData.symbols["括号边框"].orEmpty(),
-        ).flatten()
-        "网络颜文字" -> ImeData.symbols["网络颜文字"].orEmpty()
+        ).flatten().distinct()
+        "网络颜文字" -> (ImeData.symbols["网络颜文字"].orEmpty() + SymbolCatalog.KAOMOJI_EXTRA).distinct()
+        "拼音" -> SymbolCatalog.PINYIN_TONES
+        "日文" -> SymbolCatalog.JAPANESE
+        "注音" -> SymbolCatalog.ZHUYIN
+        "制表" -> SymbolCatalog.BOX_DRAWING
         "自定义" -> CustomSymbolRepository.load(context).map { it.symbol }
         else -> listOf(
             ImeData.symbols["常用"].orEmpty(),
@@ -755,5 +768,7 @@ internal class ImePanelRenderer(
 
     private companion object {
         const val TOOL_COLUMNS = 4
+        /** Longer than this, a symbol is text (kaomoji, 【】 pairs...) and needs a wide cell. */
+        const val WIDE_SYMBOL_CODE_POINTS = 3
     }
 }

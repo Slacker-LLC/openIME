@@ -29,11 +29,17 @@ internal object ImeGeometryTokens {
     const val SETTING_ROW_HEIGHT_DP = 56
     const val TOOL_CARD_HEIGHT_DP = 80
     const val VOICE_CONTROL_HEIGHT_DP = TOUCH_TARGET_DP
-    const val SWITCH_WIDTH_DP = 46
-    const val SWITCH_HEIGHT_DP = 28
-    const val SWITCH_KNOB_DP = 24
+    // iOS switch geometry: a 51x31 track and a 27 knob, so the knob sits 2
+    // from every edge, on and off alike.
+    const val SWITCH_WIDTH_DP = 51
+    const val SWITCH_HEIGHT_DP = 31
+    const val SWITCH_KNOB_DP = 27
     const val SWITCH_PADDING_DP = 2
-    const val SWITCH_KNOB_TRAVEL_DP = SWITCH_WIDTH_DP - SWITCH_PADDING_DP * 2 - SWITCH_KNOB_DP
+    // ic_chevron_right at 18dp: the stroke ends 6dp short of the box's right
+    // edge, so rows pull the box out by that much and the glyph ends on the
+    // same 16dp line as switches and values.
+    const val CHEVRON_DP = 18
+    const val CHEVRON_GLYPH_END_INSET_DP = 6
     const val KEY_GAP_DP = 6
     const val KEY_ROW_GAP_DP = KEY_GAP_DP
     const val KEY_SIDE_MARGIN_DP = 2
@@ -47,7 +53,8 @@ internal object ImeGeometryTokens {
     const val TOOLBAR_HEIGHT_DP = TOUCH_TARGET_DP
     const val TOP_BAR_HEIGHT_DP = 48
     const val ICON_SIZE_DP = 24
-    const val STEP_MARK_SIZE_DP = 28
+    // Same as a settings icon tile, so step text lines up with the rows below.
+    const val STEP_MARK_SIZE_DP = 32
     const val HERO_MARK_SIZE_DP = 72
     const val COMPOSED_TOP_ZONE_HEIGHT_DP = 70
 }

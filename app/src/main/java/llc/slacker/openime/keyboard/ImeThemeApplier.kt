@@ -227,8 +227,12 @@ internal class ImeThemeApplier(
     }
 
     private fun applyScrollView(view: ScrollView, t: ImeTheme.Tokens) {
-        if (view.tag == "nine-punct-stack" && view.getChildAt(0)?.tag == "nine-pinyin-panel") {
-            // Reading list: the whole rail is one panel and its items are flat.
+        val content = view.getChildAt(0)?.tag
+        if (
+            (view.tag == "nine-punct-stack" || view.tag == "digits-symbol-scroll") &&
+            content in setOf("nine-pinyin-panel", "nine-symbol-scroll-content", "digits-symbol-scroll-content")
+        ) {
+            // Reading or symbol list: the whole rail is one panel and its items are flat.
             // Inset by half a key gap so the panel lines up with the key grid.
             view.background = InsetDrawable(
                 ImeDrawableFactory.rounded(t.sideKeyBackground, toPx(ImeGeometryTokens.KEY_RADIUS_DP)),
@@ -244,6 +248,8 @@ internal class ImeThemeApplier(
             view.tag == "candidate-emoji" || view.tag == "candidate-expand" -> 20
             view.tag == "key-panel-back" -> 24
             view.tag?.toString()?.startsWith("clip-pin:") == true || view.tag?.toString()?.startsWith("phrase-") == true -> 18
+            // Tile icons (工具 and 切换键盘 share the tile): one size for both pages.
+            view.tag == "tool-icon" || view.tag == "tool-icon-selected" -> 28
             hasAncestorTag(view, "tools-panel") -> 24
             (view.parent as? View)?.tag == "toolbar-row" -> 22
             else -> 0
@@ -269,6 +275,15 @@ internal class ImeThemeApplier(
         }
 
         when {
+            view.tag == "punct:add" || view.tag == "digit-symbol:add" -> {
+                // The rail's circled plus: drawn like the symbols around it.
+                view.imageTintList = ColorStateList.valueOf(t.sideKeyText)
+                view.background = statefulRounded(
+                    Color.TRANSPARENT,
+                    ImeSurfacePolicy.pressedSurface(t.sideKeyBackground, t),
+                    toPx(ImeGeometryTokens.KEY_RADIUS_DP),
+                )
+            }
             (view.tag as? String)?.startsWith("clip-pin:") == true || (view.tag as? String)?.startsWith("phrase-") == true -> {
                 view.imageTintList = ColorStateList.valueOf(if (view.isSelected) t.primary else t.keySecondaryText)
             }
@@ -501,9 +516,10 @@ internal class ImeThemeApplier(
             }
             tag?.startsWith("punct:") == true ||
                 tag?.startsWith("digit-symbol:") == true -> {
+                // Flat on the rail's panel; only a press shows a surface.
                 view.setTextColor(t.keyText)
                 view.background = statefulRounded(
-                    t.sideKeyBackground,
+                    Color.TRANSPARENT,
                     ImeSurfacePolicy.pressedSurface(t.sideKeyBackground, t),
                     toPx(ImeGeometryTokens.KEY_RADIUS_DP),
                 )
@@ -609,12 +625,16 @@ internal class ImeThemeApplier(
                     ?.substringBefore('，')
                     .orEmpty()
                 val enabled = toggleState(seed)
+                // padsView = false: the track must not replace the switch's own
+                // 2dp side padding, or the knob sits 0 from the left edge when
+                // off and 4 from the right when on.
                 view.background = paintedWithinTarget(
                     ImeDrawableFactory.rounded(
                         ImeSurfacePolicy.switchTrack(enabled, t),
                         toPx(ImeGeometryTokens.PILL_RADIUS_DP),
                     ),
                     ImeGeometryTokens.SWITCH_HEIGHT_DP,
+                    padsView = false,
                 )
             }
         }
@@ -622,6 +642,9 @@ internal class ImeThemeApplier(
 
     private fun applyTaggedView(view: View, t: ImeTheme.Tokens) {
         when (view.tag) {
+            SymbolRailRenderer.DIVIDER_TAG -> view.setBackgroundColor(
+                ImeDrawableFactory.blend(t.keySecondaryText, t.sideKeyBackground, 0.22f),
+            )
             "handwriting-canvas" -> {
                 view.background = ImeDrawableFactory.rounded(
                     t.canvasBackground,

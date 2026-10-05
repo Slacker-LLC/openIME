@@ -81,7 +81,7 @@ class TokenDriftTest {
             """<dimen name="setup_touch_target">48dp</dimen>""",
             """<dimen name="setup_top_bar_height">56dp</dimen>""",
             """<dimen name="setup_icon_size">24dp</dimen>""",
-            """<dimen name="setup_step_mark_size">28dp</dimen>""",
+            """<dimen name="setup_step_mark_size">32dp</dimen>""",
             """<dimen name="setup_card_radius">16dp</dimen>""",
             """<dimen name="setup_hero_mark_size">72dp</dimen>""",
         ).forEach { expected ->

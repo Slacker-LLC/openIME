@@ -30,6 +30,7 @@ import llc.slacker.openime.candidate.Stroke
 import llc.slacker.openime.candidate.StrokeLexicon
 import llc.slacker.openime.candidate.personalizedLearningAllowed
 import llc.slacker.openime.core.CrashGuard
+import llc.slacker.openime.core.EmojiCatalog
 import llc.slacker.openime.core.ImeState
 import llc.slacker.openime.core.KeyboardMode
 import llc.slacker.openime.core.Panel
@@ -200,6 +201,8 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             runCatching { CandidatePipeline(CandidateEngine(PinyinLexicon.load(this))) }
                 .onSuccess { candidatePipeline = it }
                 .onFailure { Log.e(TAG, "lexicon/decoder initialisation failed; running on Rime only", it) }
+            // The emoji panel's full list checks every emoji against the font: do it here, not on first open.
+            runCatching { EmojiCatalog.byCategory(this) }
             // Only someone who uses the 笔画 keyboard pays for its table; the
             // keyboard loads it on first use otherwise.
             if (ImeSettingsRepository.loadPreferredChineseMode(this) == KeyboardMode.STROKE) {
@@ -257,6 +260,9 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
 
     override fun nineKeyReadingFor(digits: String, candidate: String): List<String>? =
         candidatePipeline.nineKeyReadingFor(digits, candidate)
+
+    override fun nineKeyPreviewFor(digits: String, candidate: String): List<String>? =
+        candidatePipeline.nineKeyPreviewFor(digits, candidate)
 
     override fun nineKeyPathsFor(code: String?): List<String> =
         candidatePipeline.nineKeyPathsFor(code)

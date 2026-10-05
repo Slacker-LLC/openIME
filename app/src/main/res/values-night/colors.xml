@@ -28,7 +28,11 @@
     <color name="setup_mark_todo_bg">#2A2C31</color>
     <color name="setup_input_line">#3A3D43</color>
     <color name="setup_icon_ring">#2A2C31</color>
-    <color name="brand_accent">#2D6FD6</color>
     <color name="setup_disabled">#2A2C31</color>
     <color name="setup_disabled_text">#6B717C</color>
+    <!-- Brand: one blue (the app accent), ink, and the white tile of the IME mark. -->
+    <color name="brand_blue">#1668D0</color>
+    <color name="brand_ink">#15171C</color>
+    <color name="brand_tile">#FFFFFF</color>
+    <color name="brand_tile_edge">#3A3F4A</color>
 </resources>

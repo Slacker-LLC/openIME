@@ -38,7 +38,7 @@
 
     <string name="voice_title">语音输入</string>
     <string name="voice_title_ready">麦克风</string>
-    <string name="voice_permission_description">允许麦克风后，按住空格说话，离线识别</string>
+    <string name="voice_permission_description">允许麦克风后，按住空格说话</string>
     <string name="voice_permission_ready_description">按住空格说话，松开后识别</string>
     <string name="voice_permission_denied">麦克风权限已被拒绝，请在系统设置中允许</string>
     <string name="voice_permission_enable">允许</string>

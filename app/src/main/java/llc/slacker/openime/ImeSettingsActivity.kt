@@ -93,7 +93,11 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
         super.onSaveInstanceState(outState)
     }
 
+    // Android 13+ gets the back gesture through the OnBackInvokedCallback
+    // registered in onCreate; this override only serves Android 12 and below,
+    // where back still arrives here. The app does not use AndroidX.
     @Deprecated("Deprecated in Java")
+    @android.annotation.SuppressLint("GestureBackNavigation")
     override fun onBackPressed() {
         handleBack()
     }

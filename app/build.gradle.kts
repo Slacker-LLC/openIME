@@ -201,8 +201,8 @@ dependencies {
     implementation(files("libs/sherpa-onnx-1.13.6.aar"))
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20260814")
-    androidTestImplementation("androidx.test.ext:junit:1.2.1")
-    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test:runner:1.7.0")
 }
 
 // Kotlin 2.1 writes JVM unit-test classes to tmp/kotlin-classes while this

@@ -9,7 +9,8 @@ class NoDecorativeGlyphTest {
     fun interactiveUiDoesNotUseUnicodeAsIcons() {
         val root = repoRoot()
         val forbidden = listOf("⌄", "⌃", "✓", "⏹", "🎤", "☺", "›", "▲", "◀", "▶", "▼")
-        val excluded = setOf("ImeData.kt")
+        // Symbol and emoji data the user types, not glyphs used as icons.
+        val excluded = setOf("ImeData.kt", "SymbolCatalog.kt")
         val violations = File(root, "app/src/main/java")
             .walkTopDown()
             .filter { it.isFile && it.extension == "kt" && it.name !in excluded }

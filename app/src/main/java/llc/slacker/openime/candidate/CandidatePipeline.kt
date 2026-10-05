@@ -36,6 +36,13 @@ interface CandidateResolver {
     /** Syllables of [candidate] if it spells exactly all of [digits] (a lone key may be its initial); null otherwise. */
     fun nineKeyReadingFor(digits: String, candidate: String): List<String>? = null
 
+    /**
+     * Pre-edit syllables for [digits] given the top [candidate]: its reading
+     * when it spells them all, else the part it spells (its last syllable cut
+     * where the digits end) followed by a spelling of the rest. Never digits.
+     */
+    fun nineKeyPreviewFor(digits: String, candidate: String): List<String>? = null
+
     /** Readings of [digits] for the left rail, best first (see [NineKeyReading]). */
     fun nineKeyReadingsFor(digits: String, preferred: String?): List<NineKeyReading> = emptyList()
 
@@ -269,6 +276,9 @@ class CandidatePipeline internal constructor(
 
     override fun nineKeyReadingFor(digits: String, candidate: String): List<String>? =
         nineKeyDecoder.readingFor(digits, candidate)
+
+    override fun nineKeyPreviewFor(digits: String, candidate: String): List<String>? =
+        nineKeyDecoder.readingForPrefix(digits, candidate)
 
     override fun nineKeyPathsFor(code: String?): List<String> =
         nineKeyUiState.pathsFor(code)

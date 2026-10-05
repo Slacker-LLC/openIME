@@ -73,7 +73,7 @@ internal class NineKeySymbolRailController(
             contentTag = NINE_CONTENT_TAG,
             contentDescription = "九键拼音筛选或常用符号，上下滑动查看更多",
             symbols = commonSymbols(),
-            cellHeightDp = cellHeightDp(),
+            cellHeightDp = symbolCellHeightDp(),
             toPx = toPx,
             tagPrefix = "punct:",
             onCommit = onCommit,
@@ -161,7 +161,7 @@ internal class NineKeySymbolRailController(
         SymbolRailRenderer.populate(
             scroll = scroll,
             symbols = commonSymbols(),
-            cellHeightDp = cellHeightDp(),
+            cellHeightDp = symbolCellHeightDp(),
             toPx = toPx,
             tagPrefix = "punct:",
             onCommit = onCommit,
@@ -265,6 +265,9 @@ internal class NineKeySymbolRailController(
 
     private fun speakablePath(path: String): String =
         path.replace(" ", "、").replace("|", "、").replace("'", "、")
+
+    /** Three symbols to the rail's three key rows, level with the keys beside them. */
+    private fun symbolCellHeightDp(): Int = cellHeightDp()
 
     /** The user's rail (ten common marks until edited), then ＋ to edit it. */
     private fun commonSymbols(): List<String> = RailSymbolRepository.load(context)
