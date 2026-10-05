@@ -1742,7 +1742,10 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         } else if (!rime.isReady && allowsPersonalizedLearning()) {
             UserPhraseRepository.record(composition, committed)
         }
-        gateway.commitText(committed)
+        // An English word is followed by a space, as space and a suggestion
+        // tap do on Gboard and Sogou: otherwise "hello world" comes out as
+        // "helloworld".
+        gateway.commitText(if (state.keyboardMode == KeyboardMode.ENGLISH_26) "$committed " else committed)
         gateway.finishComposing()
         voiceCorrectionTracker.finalizeIfNeeded()
         rime.clear()

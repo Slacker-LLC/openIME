@@ -508,15 +508,23 @@ class InputConnectionGatewayTest {
         var selEnd: Int,
         private val answerCap: Int = Int.MAX_VALUE,
         private val refuseDelete: Boolean = false,
+        /** Like some Compose/web editors: reads inside a batch see the text from before it. */
+        private val staleWhileBatched: Boolean = false,
+        /** Reads never reflect edits at all. */
+        private val alwaysStale: Boolean = false,
     ) : InputConnection {
         val text = StringBuilder(initial)
         private val lo get() = minOf(selStart, selEnd)
         private val hi get() = maxOf(selStart, selEnd)
+        private var batchDepth = 0
+        private var snapshot: Triple<String, Int, Int>? = if (alwaysStale) Triple(initial, selStart, selEnd) else null
+
+        private fun view(): Triple<String, Int, Int> = snapshot ?: Triple(text.toString(), lo, hi)
 
         override fun getTextBeforeCursor(length: Int, flags: Int): CharSequence =
-            text.substring(0, lo).takeLast(minOf(length, answerCap))
+            view().let { (value, start, _) -> value.substring(0, start).takeLast(minOf(length, answerCap)) }
         override fun getTextAfterCursor(length: Int, flags: Int): CharSequence =
-            text.substring(hi).take(minOf(length, answerCap))
+            view().let { (value, _, end) -> value.substring(end).take(minOf(length, answerCap)) }
         override fun getSelectedText(flags: Int): CharSequence? =
             if (lo == hi) null else text.substring(lo, hi)
         override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
@@ -546,8 +554,14 @@ class InputConnectionGatewayTest {
         override fun performContextMenuAction(id: Int): Boolean = false
         override fun getExtractedText(request: ExtractedTextRequest?, flags: Int): ExtractedText? = null
 
-        override fun beginBatchEdit(): Boolean = true
-        override fun endBatchEdit(): Boolean = true
+        override fun beginBatchEdit(): Boolean {
+            if (staleWhileBatched && batchDepth++ == 0) snapshot = Triple(text.toString(), lo, hi)
+            return true
+        }
+        override fun endBatchEdit(): Boolean {
+            if (staleWhileBatched && --batchDepth == 0 && !alwaysStale) snapshot = null
+            return true
+        }
         override fun clearMetaKeyStates(states: Int): Boolean = false
         override fun closeConnection() = Unit
         override fun commitCompletion(text: CompletionInfo?): Boolean = false
@@ -591,6 +605,25 @@ class InputConnectionGatewayTest {
 
         assertFalse(gateway.clearAllText())
         assertEquals("abcdef", editor.text.toString())
+    }
+
+    @Test
+    fun clearAllEmptiesAnEditorWhoseReadsInsideABatchAreStale() {
+        // Minis for Android: swipe-up clear used to repeat the text many times.
+        val editor = SurroundingOnlyEditor("helloworldtest", selStart = 14, selEnd = 14, staleWhileBatched = true)
+        val gateway = InputConnectionGateway(null, { editor })
+
+        assertTrue(gateway.clearAllText())
+        assertEquals("", editor.text.toString())
+    }
+
+    @Test
+    fun clearAllNeverAddsTextWhenAnEditorNeverReportsItsEdits() {
+        val editor = SurroundingOnlyEditor("helloworldtest", selStart = 14, selEnd = 14, alwaysStale = true)
+        val gateway = InputConnectionGateway(null, { editor })
+
+        gateway.clearAllText()
+        assertTrue("text grew to '${editor.text}'", editor.text.length <= "helloworldtest".length)
     }
 
     @Test
