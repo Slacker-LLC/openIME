@@ -14,6 +14,8 @@ object ImeSettingsRepository {
     private const val KEY_SOUND = "sound"
     private const val KEY_HAPTIC = "haptic"
     private const val KEY_HAPTIC_STRENGTH = "haptic_strength_percent"
+    private const val KEY_HAPTIC_STYLE = "haptic_style"
+    private const val KEY_SOUND_STYLE = "key_sound_style"
     private const val KEY_POPUP = "popup"
     private const val KEY_FUZZY = "fuzzy"
     private const val KEY_SWIPE_UP_DIGITS = "swipe_up_digits"
@@ -136,6 +138,26 @@ object ImeSettingsRepository {
     fun saveHapticStrengthPercent(context: Context, percent: Int) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putInt(KEY_HAPTIC_STRENGTH, percent.coerceIn(10, 100)).apply()
+    }
+
+    /** 震动手感 key: "crisp" (default), "firm" or "system". */
+    fun loadHapticStyle(context: Context): String =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_HAPTIC_STYLE, "crisp") ?: "crisp"
+
+    fun saveHapticStyle(context: Context, key: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY_HAPTIC_STYLE, key).apply()
+    }
+
+    /** 按键音效 sound key: "system" (default) or one of the bundled clicks. */
+    fun loadKeySoundStyle(context: Context): String =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_SOUND_STYLE, "system") ?: "system"
+
+    fun saveKeySoundStyle(context: Context, key: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY_SOUND_STYLE, key).apply()
     }
 
     fun loadSwipeUpDigits(context: Context): Boolean =

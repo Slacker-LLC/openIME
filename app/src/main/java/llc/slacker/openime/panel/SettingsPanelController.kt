@@ -16,6 +16,8 @@ import android.widget.SeekBar
 import android.widget.TextView
 import llc.slacker.openime.ImeSettingsActivity
 import llc.slacker.openime.R
+import llc.slacker.openime.data.HapticStyle
+import llc.slacker.openime.data.KeySoundStyle
 import llc.slacker.openime.theme.ImeAppearance
 import llc.slacker.openime.theme.ImeGeometryTokens
 import llc.slacker.openime.theme.ImeMotionTokens
@@ -51,6 +53,8 @@ internal class SettingsPanelController(
     private val currentSound: () -> Boolean,
     private val currentHaptic: () -> Boolean,
     private val currentHapticStrengthPercent: () -> Int,
+    private val currentHapticStyle: () -> HapticStyle,
+    private val currentKeySoundStyle: () -> KeySoundStyle,
     private val currentPopup: () -> Boolean,
     private val currentSwipeUpDigits: () -> Boolean,
     /** State of the toggles added after the first four, looked up by their label. */
@@ -64,6 +68,8 @@ internal class SettingsPanelController(
     private val onToggleChanged: (String, Boolean) -> Unit,
     private val onKeyboardHeightChanged: (Int) -> Unit,
     private val onHapticStrengthChanged: (Int) -> Unit,
+    private val onHapticStyleChanged: (HapticStyle) -> Unit,
+    private val onKeySoundStyleChanged: (KeySoundStyle) -> Unit,
     private val onFloatingStyleChanged: (Int, Int) -> Unit,
     private val onShowFuzzySettings: () -> Unit,
     private val onOpenAbout: () -> Unit,
@@ -173,8 +179,10 @@ internal class SettingsPanelController(
         )
         content.addSection("按键与输入")
         content.addCard(
-            toggleRow("按键音效", "机械轴敲击反馈", R.drawable.ic_pref_sound),
+            toggleRow("按键音效", "按键时播放提示音", R.drawable.ic_pref_sound),
+            soundStyleRow(R.drawable.ic_pref_sound),
             toggleRow("触感震动", "清脆短促，按下即停", R.drawable.ic_pref_haptic),
+            hapticStyleRow(R.drawable.ic_pref_haptic),
             sliderRow("震动强度", R.drawable.ic_pref_haptic, 10, 100, currentHapticStrengthPercent(), onChange = onHapticStrengthChanged),
             toggleRow("按键气泡", "按下时显示字母预览", R.drawable.ic_pref_bubble),
             toggleRow("数字和符号提示", "字母键右上角显示数字和符号", R.drawable.ic_pref_hints),
@@ -212,6 +220,11 @@ internal class SettingsPanelController(
             sliderRow("键盘高度", 0, 80, 120, currentKeyboardHeightPercent(), onChange = onKeyboardHeightChanged),
             sliderRow("震动强度", 0, 10, 100, currentHapticStrengthPercent(), onChange = onHapticStrengthChanged),
             topMarginDp = ImeSpacingTokens.MD_DP,
+        )
+        content.addSection("按键反馈")
+        content.addCard(
+            soundStyleRow(0),
+            hapticStyleRow(0),
         )
         content.addSection("浮动键盘")
         content.addCard(
@@ -489,6 +502,83 @@ internal class SettingsPanelController(
                 LinearLayout.LayoutParams(toPx(18), toPx(18)).apply { marginStart = toPx(ImeSpacingTokens.MD_DP) },
             )
         }
+
+    private fun soundStyleRow(iconRes: Int): View =
+        choiceRow("音效", iconRes, KeySoundStyle.entries.map { it.label }, currentKeySoundStyle().label) { label ->
+            onKeySoundStyleChanged(KeySoundStyle.entries.first { it.label == label })
+        }
+
+    private fun hapticStyleRow(iconRes: Int): View =
+        choiceRow("震动手感", iconRes, HapticStyle.entries.map { it.label }, currentHapticStyle().label) { label ->
+            onHapticStyleChanged(HapticStyle.entries.first { it.label == label })
+        }
+
+    /**
+     * A label with a scrollable row of options under it. Choosing one saves it,
+     * previews it (the callback plays the sound or vibration) and redraws the
+     * row so the selection moves; it never plays the old feedback first.
+     */
+    private fun choiceRow(
+        label: String,
+        iconRes: Int,
+        options: List<String>,
+        selected: String,
+        onChoose: (String) -> Unit,
+    ): View {
+        val chips = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            options.forEachIndexed { index, option ->
+                val active = option == selected
+                addView(
+                    TextView(context).apply {
+                        text = option
+                        textSize = ImeTypographyTokens.BODY_SP
+                        gravity = Gravity.CENTER
+                        includeFontPadding = false
+                        minWidth = toPx(56)
+                        setPadding(toPx(14), 0, toPx(14), 0)
+                        tag = if (active) "tab-active" else "panel-tab"
+                        typeface = android.graphics.Typeface.create(
+                            "sans-serif-medium",
+                            if (active) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL,
+                        )
+                        contentDescription = "$label：$option，${if (active) "已选中" else "未选中"}"
+                        if (Build.VERSION.SDK_INT >= 30) stateDescription = if (active) "已选中" else "未选中"
+                        isClickable = true
+                        isFocusable = true
+                        setOnClickListener {
+                            onChoose(option)
+                            renderSettings(reusePanel = true)
+                        }
+                    },
+                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, toPx(40)).apply {
+                        if (index > 0) marginStart = toPx(6)
+                    },
+                )
+            }
+        }
+        val scroller = HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            addView(chips)
+        }
+        val row = rowShell(iconRes, alignTop = true)
+        row.addView(
+            LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(rowLabel(label), wrapParams().apply { topMargin = toPx(if (iconRes != 0) 6 else 8) })
+                addView(
+                    scroller,
+                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(ImeGeometryTokens.TOUCH_TARGET_DP)).apply {
+                        topMargin = toPx(ImeSpacingTokens.XS_DP)
+                    },
+                )
+            },
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        return row
+    }
 
     /**
      * Appearance picker. On the preferences page the options sit under the

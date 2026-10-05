@@ -257,7 +257,18 @@ internal class NineKeyLocalDecoder(
             }
             return false
         }
-        return if (walk(0, 0)) picked.filterNotNull() else null
+        if (walk(0, 0)) return picked.filterNotNull()
+        // One key and one character: the key can only be the character's
+        // initial (4 -> 和 shows "h", like the rail). Without this the pre-edit
+        // stayed on the bare digit for keys whose letters are all initials
+        // (4, 5, 7, 8, 9) while 2 / 3 / 6 showed a / e / o.
+        if (bounded.length == 1 && chars.size == 1) {
+            val initial = readingsByChar[chars[0]].orEmpty()
+                .map { it.take(1) }
+                .firstOrNull { digitsForPinyin(it) == bounded }
+            if (initial != null) return listOf(initial)
+        }
+        return null
     }
 
     /**
