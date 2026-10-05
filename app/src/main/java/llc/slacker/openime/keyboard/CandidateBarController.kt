@@ -344,8 +344,11 @@ internal class CandidateBarController(
                     isClickable = false
                     importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                 },
+                // WRAP_CONTENT, not MATCH_PARENT: items are reused across
+                // queries, and a TextView with a non-wrap width keeps its old
+                // width on setText, clipping a wider new candidate.
                 LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                 ),
             )
