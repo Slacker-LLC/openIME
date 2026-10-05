@@ -117,6 +117,18 @@ class Device:
         match = re.search(rf'resource-id="[^"]*/{FIELD}"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', xml)
         return tuple(map(int, match.groups())) if match else None
 
+    def preedit(self) -> str | None:
+        """The keyboard's own pre-edit line (the IME window's text field), or None."""
+        self.shell("uiautomator", "dump", "--windows", "/sdcard/stress-ime.xml")
+        xml = self.shell("cat", "/sdcard/stress-ime.xml")
+        values = re.findall(
+            rf'<node[^>]*text="([^"]*)"[^>]*resource-id="[^"]*"[^>]*class="android.widget.EditText"[^>]*package="{re.escape(PKG)}"',
+            xml,
+        )
+        hint = re.search(r'resource-id="[^"]*/' + FIELD, xml)
+        # The IME window comes first in the dump; the lab fields follow it.
+        return values[0] if values and not (hint and xml.find(values[0]) > hint.start()) else None
+
     def shot(self, name: str) -> None:
         (self.out / f"{name}.png").write_bytes(self.run("exec-out", "screencap", "-p", binary=True))
 
@@ -162,13 +174,65 @@ def type_pinyin26(dev: Device, words: list[str]) -> None:
         time.sleep(0.15)
 
 
-def type_nine_key(dev: Device, words: list[str]) -> None:
+def type_nine_key(dev: Device, words: list[str], check_preedit: bool = False) -> list[str]:
+    """Type each word's digits and commit; with [check_preedit], report any pre-edit holding digits."""
+    problems = []
     for word in words:
         for letter in word.replace("v", "u"):
             dev.tap_tag(f"key-9:{T9[letter]}")
         time.sleep(0.4)
+        if check_preedit:
+            shown = dev.preedit()
+            if shown is None or any(ch.isdigit() for ch in shown):
+                problems.append(f"{word}: pre-edit {shown!r}")
         dev.tap_tag("key-space")
         time.sleep(0.15)
+    return problems
+
+
+RAIL_TAGS = ("nine-pinyin-path-filter", "nine-pinyin-path-selected")
+
+
+def check_nine_key_rail(dev: Device, sequences: list[str]) -> list[str]:
+    """Tap every reading the left rail offers: each must change the pre-edit or the candidates."""
+    problems = []
+    for digits in sequences:
+        index = 0
+        while True:
+            dev.tap_tag("key-retype")
+            for digit in digits:
+                dev.tap_tag(f"key-9:{digit}")
+            time.sleep(0.9)
+            dev.refresh_bounds()
+            rail = [b for b in dev.bounds if b[0] in RAIL_TAGS]
+            if index >= len(rail):
+                break
+            name = rail[index][1]
+            symbols_y = next(b[3] for b in dev.bounds if b[0] == "key-symbols")
+            for _ in range(4):  # scroll the rail until the reading is above the 符号 key
+                hit = next((b for b in dev.bounds if b[0] in RAIL_TAGS and b[1] == name), None)
+                if hit is None or hit[3] < symbols_y - 90:
+                    break
+                dev.shell("input", "swipe", str(int(hit[2])), str(int(symbols_y - 120)),
+                          str(int(hit[2])), str(int(symbols_y - 420)), "250")
+                time.sleep(0.5)
+                dev.refresh_bounds()
+            if hit is None or hit[3] >= symbols_y - 90:
+                problems.append(f"{digits}: {name} unreachable")
+                index += 1
+                continue
+            before = (dev.preedit(), [b[1] for b in dev.bounds if b[0] == "candidate-first-row"])
+            dev.shell("input", "tap", str(int(hit[2])), str(int(hit[3])))
+            time.sleep(0.9)
+            dev.refresh_bounds()
+            after = (dev.preedit(), [b[1] for b in dev.bounds if b[0] == "candidate-first-row"])
+            if after[0] is None or any(ch.isdigit() for ch in after[0]):
+                problems.append(f"{digits}: after {name} the pre-edit is {after[0]!r}")
+            elif after == before and "已选择" not in name:
+                problems.append(f"{digits}: tapping {name} changed nothing ({before})")
+            index += 1
+    dev.tap_tag("key-retype")
+    return problems
 
 
 def stroke_codes(count: int) -> list[tuple[str, str]]:
@@ -240,8 +304,13 @@ def run_case(dev: Device, name: str, minimum: int) -> tuple[bool, str]:
     elif name == "pinyin9":
         set_mode(dev, "PINYIN_9")
         probe = probe_preedit_stays_on_keyboard(dev, [f"key-9:{d}" for d in "669"])
-        type_nine_key(dev, PINYIN_WORDS)
+        digit_problems = type_nine_key(dev, PINYIN_WORDS, check_preedit=True)
+        probe = probe or ("; ".join(digit_problems) if digit_problems else None)
         chinese = True
+    elif name == "nine-rail":
+        set_mode(dev, "PINYIN_9")
+        problems = check_nine_key_rail(dev, ["2", "4", "6", "9", "64", "74", "646", "6464", "94664", "6442646", "644264658846649669"])
+        return (not problems), ("; ".join(problems) if problems else "every rail reading responds, pre-edit always letters")
     elif name == "stroke":
         set_mode(dev, "STROKE")
         probe = probe_preedit_stays_on_keyboard(dev, [f"key-stroke:{c}" for c in "phz"])
@@ -297,7 +366,7 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=ROOT / "build" / "typing-stress")
     parser.add_argument("--min", type=int, default=50)
     parser.add_argument("--package", default=PKG, help="applicationId of the debug build (e.g. with a .dev suffix)")
-    parser.add_argument("cases", nargs="*", default=["pinyin26", "pinyin9", "stroke", "english", "digits", "mixed"])
+    parser.add_argument("cases", nargs="*", default=["pinyin26", "pinyin9", "nine-rail", "stroke", "english", "digits", "mixed"])
     args = parser.parse_args()
     PKG = args.package
     IME = f"{PKG}/{CLASSES}.LocalVoiceImeService"
