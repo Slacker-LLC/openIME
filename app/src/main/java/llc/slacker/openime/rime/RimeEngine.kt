@@ -151,7 +151,7 @@ class RimeEngine(
                 val userDirName = if (assetRoot == "rime-data") "rime-user" else "$dataDirName-user"
                 val userDir = File(context.filesDir, userDirName).apply { mkdirs() }
                 if (!startupGate.isCurrent(generation)) return@execute
-                copyAssetsIfNeeded(sharedDir)
+                copyAssetsIfNeeded(sharedDir, userDir)
                 if (!startupGate.isCurrent(generation)) return@execute
 
                 // A previous start that died inside native code leaves its marker
@@ -176,9 +176,9 @@ class RimeEngine(
                 }
                 when (action) {
                     RimeStartupRecovery.Action.NORMAL -> Unit
-                    RimeStartupRecovery.Action.CLEAN_BUILD -> clearCompiledData(sharedDir, userDir)
+                    RimeStartupRecovery.Action.CLEAN_BUILD -> restoreCompiledData(sharedDir, userDir)
                     RimeStartupRecovery.Action.RESET_USER_DATA -> {
-                        clearCompiledData(sharedDir, userDir)
+                        restoreCompiledData(sharedDir, userDir)
                         setUserDataAside(userDir)
                     }
                     RimeStartupRecovery.Action.SKIP_NATIVE -> {
@@ -581,7 +581,15 @@ class RimeEngine(
             }
             .distinctBy { it.text }
 
-    private fun copyAssetsIfNeeded(sharedDir: File) {
+    /**
+     * The APK carries Rime's tables already compiled, in rime-data/build
+     * (librime's prebuilt data dir), and none of the dictionary sources they
+     * came from. librime prefers its own staging dir (user/build) over the
+     * prebuilt one and, without sources, cannot tell a stale staged table from
+     * a current one; so each new APK also clears user/build. The user
+     * dictionary lives beside it in the user dir and is never touched.
+     */
+    private fun copyAssetsIfNeeded(sharedDir: File, userDir: File, force: Boolean = false) {
         // Read the identity of the actually installed APK instead of relying on
         // generated BuildConfig fields. This stays valid even when BuildConfig
         // generation is disabled and automatically changes on every upgrade.
@@ -590,8 +598,9 @@ class RimeEngine(
         val requiredSchemasPresent =
             File(sharedDir, "luna_pinyin_simp.schema.yaml").exists() &&
                 File(sharedDir, "luna_pinyin_simp_fuzzy.schema.yaml").exists()
-        if (marker.exists() && requiredSchemasPresent) return
+        if (!force && marker.exists() && requiredSchemasPresent) return
         deleteChildren(sharedDir)
+        deleteDirectory(File(userDir, "build"))
         copyAssetTree(assetRoot, sharedDir)
         marker.writeText("openIME Rime data revision $revision\n")
     }
@@ -621,14 +630,19 @@ class RimeEngine(
         }
     }
 
-    private fun clearCompiledData(sharedDir: File, userDir: File) {
-        listOf(File(sharedDir, "build"), File(userDir, "build")).forEach { build ->
-            if (build.isDirectory) {
-                deleteChildren(build)
-                build.delete()
-            }
-        }
-        Log.w(TAG, "cleared compiled librime data after a native startup failure")
+    /**
+     * After a native startup crash, put back the APK's prebuilt tables (they
+     * cannot be rebuilt on the phone) and drop anything librime staged.
+     */
+    private fun restoreCompiledData(sharedDir: File, userDir: File) {
+        copyAssetsIfNeeded(sharedDir, userDir, force = true)
+        Log.w(TAG, "restored compiled librime data after a native startup failure")
+    }
+
+    private fun deleteDirectory(directory: File) {
+        if (!directory.isDirectory) return
+        deleteChildren(directory)
+        directory.delete()
     }
 
     /** Keep one backup of a user database that may be damaged and start with an empty one. */

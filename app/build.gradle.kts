@@ -1,4 +1,6 @@
 import org.gradle.api.tasks.testing.Test
+import org.gradle.process.ExecOperations
+import javax.inject.Inject
 
 val customBuildDir = providers.gradleProperty("customBuildDir").orNull
 if (customBuildDir != null) {
@@ -13,6 +15,16 @@ val releaseKeystorePath = releaseValue("OPENIME_KEYSTORE_PATH")
 val releaseKeystorePassword = releaseValue("OPENIME_KEYSTORE_PASSWORD")
 val releaseKeyAlias = releaseValue("OPENIME_KEY_ALIAS")
 val releaseKeyPassword = releaseValue("OPENIME_KEY_PASSWORD")
+/** Rime sources that only the dictionary compiler reads; kept out of the APK. */
+val rimeCompiledOnlySources = listOf(
+    "luna_pinyin.dict.yaml",
+    "stroke.dict.yaml",
+    "base.dict.yaml",
+    "ext.dict.yaml",
+    "others.dict.yaml",
+    "essay.txt",
+)
+
 val releaseSigningReady = listOf(
     releaseKeystorePath,
     releaseKeystorePassword,
@@ -107,6 +119,13 @@ android {
         // sherpa-onnx can map the bundled models directly from the APK only
         // when these large assets are stored without ZIP compression.
         noCompress += listOf("onnx", "txt")
+        // The Rime dictionary sources are compiled at build time (see
+        // prebuildRimeData below); the phone only needs the compiled tables.
+        // 8105.dict.yaml stays: the Kotlin lexicon reads it directly. The
+        // first entries are aapt's defaults, which this list replaces.
+        ignoreAssetsPatterns += listOf(
+            "!.svn", "!.git", "!.ds_store", "!*.scc", ".*", "<dir>_*", "!CVS", "!thumbs.db", "!picasa.ini", "!*~",
+        ) + rimeCompiledOnlySources.map { "!$it" }
     }
 
     compileOptions {
@@ -118,6 +137,55 @@ android {
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
         }
+    }
+}
+
+/**
+ * Compiles the Rime dictionaries with a host build of the vendored librime and
+ * adds the result to the APK as rime-data/build, librime's prebuilt data dir.
+ * The phone then copies the tables instead of compiling them for a minute
+ * after every install or upgrade. See scripts/build_rime_prebuilt.py.
+ */
+abstract class PrebuildRimeData : DefaultTask() {
+    @get:InputDirectory
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val dictionarySources: DirectoryProperty
+
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val compilerSources: ConfigurableFileCollection
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @get:Internal
+    abstract val script: RegularFileProperty
+
+    @get:Inject
+    abstract val execOperations: ExecOperations
+
+    @TaskAction
+    fun compile() {
+        execOperations.exec {
+            commandLine("python3", script.get().asFile.absolutePath, "--out", outputDir.get().asFile.absolutePath)
+        }
+    }
+}
+
+val prebuildRimeData = tasks.register<PrebuildRimeData>("prebuildRimeData") {
+    dictionarySources.set(layout.projectDirectory.dir("src/main/assets/rime-data"))
+    script.set(rootProject.layout.projectDirectory.file("scripts/build_rime_prebuilt.py"))
+    compilerSources.from(
+        script,
+        layout.projectDirectory.file("src/main/cpp/CMakeLists.txt"),
+        layout.projectDirectory.dir("src/main/cpp/vendor/librime/src"),
+    )
+    outputDir.set(layout.buildDirectory.dir("generated/rime-prebuilt"))
+}
+
+androidComponents {
+    onVariants { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(prebuildRimeData, PrebuildRimeData::outputDir)
     }
 }
 

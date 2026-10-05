@@ -64,6 +64,37 @@ class RimeNineKeyInstrumentedTest {
     }
 
     @Test
+    fun productionDictionariesStartFromThePrebuiltTables() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val originalFuzzy = ImeSettingsRepository.loadFuzzy(context)
+        ImeSettingsRepository.saveFuzzy(context, false)
+        val rime = RimeEngine(context = context)
+        try {
+            rime.start()
+            // Compiling on the phone takes about a minute (far longer on CI's
+            // software emulator); copying the APK's prebuilt tables, seconds.
+            val startupTimeoutMs = 60_000L
+            val deadline = SystemClock.elapsedRealtime() + startupTimeoutMs
+            while (!rime.isReady && rime.errorMessage.isBlank() && SystemClock.elapsedRealtime() < deadline) {
+                SystemClock.sleep(100L)
+            }
+            assertTrue("librime failed to start within ${startupTimeoutMs}ms: ${rime.errorMessage}", rime.isReady)
+            assertTrue("64426 should resolve 你好", "你好" in rime.candidates("64426"))
+            // librime stages what it compiles in the user dir; nothing there
+            // means it used the APK's tables as they are.
+            val staged = java.io.File(context.filesDir, "rime-user/build")
+                .listFiles().orEmpty()
+                .filter { it.name.endsWith(".bin") }
+                .map { it.name }
+            assertEquals("librime recompiled dictionaries on the phone", emptyList<String>(), staged)
+        } finally {
+            ImeSettingsRepository.saveFuzzy(context, originalFuzzy)
+            rime.invalidateSettingsCache()
+            rime.shutdown()
+        }
+    }
+
+    @Test
     fun auditProductionPresetsAgainstNativeRimePreeditWithoutPresetLayer() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         assumeTrue(

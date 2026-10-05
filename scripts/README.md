@@ -10,6 +10,7 @@
 ```bash
 python3 scripts/release_check.py check          # VERSION 与 CHANGELOG.md 一致（CI 也会运行）
 python3 -m unittest discover -s scripts -p 'test_*.py'
+python3 scripts/build_rime_prebuilt.py --out <dir>  # 在电脑上预编译 Rime 词库（Gradle 的 prebuildRimeData 会自动运行）
 bash scripts/release_build.sh                   # 构建并校验已签名的 arm64 release（需要签名环境变量，见 docs/RELEASE.md）
 bash scripts/setup_release_signing.sh           # 一次性：生成发布密钥并写入 Actions secrets
 bash scripts/apply_repo_settings.sh --dry-run   # 查看将要应用的仓库规则（见 docs/REPOSITORY.md）
