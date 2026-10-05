@@ -266,8 +266,8 @@ internal class NineKeySymbolRailController(
     private fun speakablePath(path: String): String =
         path.replace(" ", "、").replace("|", "、").replace("'", "、")
 
-    /** 3.5 symbols to the rail's three key rows: the fourth peeks out, so the list reads as scrollable. */
-    private fun symbolCellHeightDp(): Int = cellHeightDp() * 6 / 7
+    /** Three symbols to the rail's three key rows, level with the keys beside them. */
+    private fun symbolCellHeightDp(): Int = cellHeightDp()
 
     /** The user's rail (ten common marks until edited), then ＋ to edit it. */
     private fun commonSymbols(): List<String> = RailSymbolRepository.load(context)

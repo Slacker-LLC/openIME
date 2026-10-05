@@ -61,7 +61,7 @@ internal class NumericKeyboardRenderer(
             contentTag = DIGITS_CONTENT_TAG,
             contentDescription = "数字键盘符号，上下滑动查看更多",
             symbols = digitSymbols(),
-            cellHeightDp = keyRowHeightDp() * 6 / 7, // the fourth symbol peeks out: the rail scrolls
+            cellHeightDp = keyRowHeightDp(),
             toPx = toPx,
             tagPrefix = "digit-symbol:",
             onCommit = onCommitCharacter,
@@ -209,7 +209,7 @@ internal class NumericKeyboardRenderer(
         SymbolRailRenderer.populate(
             scroll = rail,
             symbols = digitSymbols(),
-            cellHeightDp = keyRowHeightDp() * 6 / 7, // the fourth symbol peeks out: the rail scrolls
+            cellHeightDp = keyRowHeightDp(),
             toPx = toPx,
             tagPrefix = "digit-symbol:",
             onCommit = onCommitCharacter,

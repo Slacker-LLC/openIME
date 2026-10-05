@@ -19,6 +19,8 @@ class InteractionPolishInstrumentedTest {
 
     @Test
     fun emojiRecentIsMostRecentlyUsedAndDeduplicated() {
+        // Start from no recents: earlier sessions on the device (or E2E runs) leave some.
+        EmojiRecentRepository.clear(context)
         EmojiRecentRepository.record(context, "😀")
         EmojiRecentRepository.record(context, "😂")
         EmojiRecentRepository.record(context, "😀")

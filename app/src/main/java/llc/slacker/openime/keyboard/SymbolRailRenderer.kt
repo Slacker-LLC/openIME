@@ -97,9 +97,8 @@ internal object SymbolRailRenderer {
             )
         }
         // One flat list on one panel (the theme draws the panel), hairlines
-        // between the items: it reads as something to scroll, not a column of
-        // separate keys. Cells are a little shorter than a key row, so the next
-        // one peeks out at the bottom.
+        // between the items and faded edges: it reads as something to scroll,
+        // not a column of separate keys. Three items show, level with the keys.
         fun divider() {
             content.addView(
                 View(content.context).apply {
