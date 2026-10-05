@@ -28,6 +28,7 @@ import llc.slacker.openime.candidate.CandidateResolver
 import llc.slacker.openime.candidate.NineKeyLocalDecoder
 import llc.slacker.openime.candidate.NineKeyPerformanceTrace
 import llc.slacker.openime.candidate.NineKeyReading
+import llc.slacker.openime.candidate.StrokeLexicon
 import llc.slacker.openime.core.ImeState
 import llc.slacker.openime.core.KeyboardMode
 import llc.slacker.openime.core.Panel
@@ -329,7 +330,7 @@ open class ImeKeyboardView(
         }
         if (panel == Panel.NONE) {
             when (mode) {
-                KeyboardMode.PINYIN_9 -> {
+                KeyboardMode.PINYIN_9, KeyboardMode.STROKE -> {
                     nineKeySymbolRailController?.refreshSymbols()
                     applyThemeToSubtree(this)
                 }
@@ -459,6 +460,41 @@ open class ImeKeyboardView(
             onSpace = ::commitFirstCandidateOrSpace,
             onModeSwitch = ::cycleMode,
             onRetranslate = { publishComposition("", emptyList()) },
+            onEnter = listener::onEnter,
+        )
+    }
+    private val strokeRenderer: StrokeKeyboardRenderer by lazy {
+        StrokeKeyboardRenderer(
+            context = context,
+            keyboardBody = keyboardBody,
+            toPx = ::dp,
+            keyRowHeightDp = ::keyRowHeightDp,
+            gridHeightDp = ::nineGridHeightDp,
+            bodyHeightDp = ::nineBodyHeightDp,
+            createKey = { text, function, secondary, textSize, onTap ->
+                key(
+                    text = text,
+                    func = function,
+                    secondary = secondary,
+                    mainTextSizeOverride = textSize,
+                    onTap = onTap,
+                )
+            },
+            createBackspaceKey = ::backspaceKey,
+            createSpaceVoiceKey = { label, onTap ->
+                spaceVoiceKey(label, white = true, onTap = onTap)
+            },
+            // The nine-key rail: stroke glyphs are not digits, so it stays on symbols.
+            createSymbolRail = { requireNineKeySymbolRailController().buildRail() },
+            markSideKey = { key -> key.setTag(MARK_SIDE_KEY, true) },
+            markWhiteKey = { key -> key.setTag(MARK_WHITE_KEY, true) },
+            onStroke = ::onStrokeKey,
+            swipeUpEnabled = { ImeSettingsRepository.loadSwipeUpDigits(context) },
+            onCommitCharacter = ::commitKeyboardCharacter,
+            onDigits = { setMode(KeyboardMode.DIGITS) },
+            onSpace = ::commitFirstCandidateOrSpace,
+            onModeSwitch = ::cycleMode,
+            onRetype = { publishComposition("", emptyList()) },
             onEnter = listener::onEnter,
         )
     }
@@ -1218,7 +1254,7 @@ open class ImeKeyboardView(
 
     fun cycleMode() {
         val next = when (mode) {
-            KeyboardMode.PINYIN_26, KeyboardMode.PINYIN_9 -> KeyboardMode.ENGLISH_26
+            KeyboardMode.PINYIN_26, KeyboardMode.PINYIN_9, KeyboardMode.STROKE -> KeyboardMode.ENGLISH_26
             KeyboardMode.ENGLISH_26 -> preferredChineseMode
             KeyboardMode.DIGITS -> lastTextMode
         }
@@ -1233,8 +1269,8 @@ open class ImeKeyboardView(
         hidePopup()
         if (newMode != KeyboardMode.DIGITS) {
             lastTextMode = newMode
-            if (newMode == KeyboardMode.PINYIN_26 || newMode == KeyboardMode.PINYIN_9) {
-                // Persist the 26/9-key choice so it survives process death.
+            if (newMode.isChineseLayout) {
+                // Persist the 26-key/9-key/stroke choice so it survives process death.
                 if (preferredChineseMode != newMode) {
                     ImeSettingsRepository.savePreferredChineseMode(context, newMode)
                 }
@@ -1479,7 +1515,7 @@ open class ImeKeyboardView(
         val options = imeOptions ?: return
         val enter = findViewWithTag<ImeKeyView>("key-enter") ?: return
         val composing = composition.text?.isNotEmpty() == true
-        val label = if (composing) "确定" else if (mode == KeyboardMode.PINYIN_9 || mode == KeyboardMode.DIGITS) "↵" else enterKeyPresentationFor(options).label
+        val label = if (composing) "确定" else if (mode == KeyboardMode.PINYIN_9 || mode == KeyboardMode.STROKE || mode == KeyboardMode.DIGITS) "↵" else enterKeyPresentationFor(options).label
         enter.setMainText(label)
         enter.applyMainTextScale(referenceScale)
         enter.contentDescription = label
@@ -1885,6 +1921,7 @@ open class ImeKeyboardView(
             KeyboardMode.PINYIN_26 -> renderPinyin26()
             KeyboardMode.ENGLISH_26 -> renderEnglish26()
             KeyboardMode.PINYIN_9 -> renderPinyin9()
+            KeyboardMode.STROKE -> renderStroke()
             KeyboardMode.DIGITS -> renderDigits()
         }
         updateTopZone(composition.text?.isNotEmpty() == true)
@@ -1905,8 +1942,12 @@ open class ImeKeyboardView(
     private fun syncModeAccessibility() {
         val modeKey = findViewWithTag<View>("key:mode") ?: return
         val target = when (mode) {
-            KeyboardMode.PINYIN_26, KeyboardMode.PINYIN_9 -> "英文 26 键"
-            KeyboardMode.ENGLISH_26 -> if (preferredChineseMode == KeyboardMode.PINYIN_9) "中文九键" else "中文 26 键"
+            KeyboardMode.PINYIN_26, KeyboardMode.PINYIN_9, KeyboardMode.STROKE -> "英文 26 键"
+            KeyboardMode.ENGLISH_26 -> when (preferredChineseMode) {
+                KeyboardMode.PINYIN_9 -> "中文九键"
+                KeyboardMode.STROKE -> "笔画"
+                else -> "中文 26 键"
+            }
             KeyboardMode.DIGITS -> "文字键盘"
         }
         modeKey.contentDescription = when (mode) {
@@ -1917,6 +1958,7 @@ open class ImeKeyboardView(
             modeKey.stateDescription = when (mode) {
                 KeyboardMode.PINYIN_26 -> "当前中文 26 键"
                 KeyboardMode.PINYIN_9 -> "当前中文九键"
+                KeyboardMode.STROKE -> "当前笔画"
                 KeyboardMode.ENGLISH_26 -> "当前英文 26 键"
                 KeyboardMode.DIGITS -> "当前数字键盘"
             }
@@ -1967,6 +2009,23 @@ open class ImeKeyboardView(
             onChooseReading = ::chooseNineKeyReading,
             fixedPrefix = ::nineKeyFixedPrefix,
         ).also { nineKeySymbolRailController = it }
+    }
+
+    private fun renderStroke() {
+        if (StrokeLexicon.current() == null) {
+            Thread({ runCatching { StrokeLexicon.load(context) } }, "openime-stroke-table").apply {
+                isDaemon = true
+                start()
+            }
+        }
+        strokeRenderer.render(enterLabel = if (composition.text?.isNotEmpty() == true) "确定" else "↵")
+    }
+
+    /** One stroke (or 通配) typed at the pre-edit cursor. */
+    private fun onStrokeKey(glyph: String) {
+        clearAssociationCandidates()
+        val (next, selection) = replaceCompositionSelection(glyph)
+        publishComposition(next, candidatesForComposition(next), selection)
     }
 
     private fun renderDigits() {

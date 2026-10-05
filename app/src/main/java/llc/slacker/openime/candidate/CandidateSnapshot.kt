@@ -29,7 +29,7 @@ internal data class CandidateSnapshot(
     /**
      * Space/enter commit the rendered first candidate. PINYIN_9 deliberately
      * does not fall back to committing the guessed/local preview as raw Latin
-     * text when no real candidate exists yet.
+     * text when no real candidate exists yet, nor STROKE its stroke glyphs.
      */
     fun firstForCommit(
         currentGeneration: Long,
@@ -38,7 +38,7 @@ internal data class CandidateSnapshot(
     ): CandidateSnapshotEntry? {
         if (!matches(currentGeneration, currentComposition, currentMode)) return null
         entries.firstOrNull()?.let { return it }
-        if (mode == KeyboardMode.PINYIN_9) return null
+        if (mode == KeyboardMode.PINYIN_9 || mode == KeyboardMode.STROKE) return null
         return composition.takeIf { it.isNotEmpty() }?.let(::CandidateSnapshotEntry)
     }
 

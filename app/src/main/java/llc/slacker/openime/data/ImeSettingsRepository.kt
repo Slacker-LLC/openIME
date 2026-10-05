@@ -38,12 +38,11 @@ object ImeSettingsRepository {
                 .getString(KEY_PREFERRED_CHINESE_MODE, KeyboardMode.PINYIN_26.name)
                 ?: KeyboardMode.PINYIN_26.name
             val parsed = KeyboardMode.valueOf(name)
-            if (parsed == KeyboardMode.PINYIN_9 || parsed == KeyboardMode.PINYIN_26) parsed
-            else KeyboardMode.PINYIN_26
+            if (parsed.isChineseLayout) parsed else KeyboardMode.PINYIN_26
         }.getOrDefault(KeyboardMode.PINYIN_26)
 
     fun savePreferredChineseMode(context: Context, mode: KeyboardMode) {
-        if (mode != KeyboardMode.PINYIN_26 && mode != KeyboardMode.PINYIN_9) return
+        if (!mode.isChineseLayout) return
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putString(KEY_PREFERRED_CHINESE_MODE, mode.name).apply()
     }

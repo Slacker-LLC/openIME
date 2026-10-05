@@ -8,7 +8,13 @@ enum class KeyboardMode {
     PINYIN_26,
     ENGLISH_26,
     PINYIN_9,
+    /** 笔画: five stroke keys and 通配; characters come from StrokeLexicon. */
+    STROKE,
     DIGITS,
+    ;
+
+    /** A Chinese layout: 中/英 returns to the last one used, and it is remembered. */
+    val isChineseLayout: Boolean get() = this == PINYIN_26 || this == PINYIN_9 || this == STROKE
 }
 
 enum class Panel {

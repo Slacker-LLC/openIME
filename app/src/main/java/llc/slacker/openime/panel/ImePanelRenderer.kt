@@ -93,6 +93,7 @@ internal class ImePanelRenderer(
         val modes = listOf(
             KeyboardMode.PINYIN_26 to "拼音 26 键",
             KeyboardMode.PINYIN_9 to "拼音 9 键",
+            KeyboardMode.STROKE to "笔画",
             KeyboardMode.ENGLISH_26 to "英文 26 键",
             KeyboardMode.DIGITS to "数字键盘",
         )
@@ -712,7 +713,7 @@ internal class ImePanelRenderer(
                     paint.color = tokens.functionKeyBackground
                     for (i in 0..3) {
                         val y = i * h
-                        val w = if (mode == KeyboardMode.PINYIN_9 || mode == KeyboardMode.DIGITS) width * 0.19f else width * (0.12f + 0.03f * i)
+                        val w = if (mode == KeyboardMode.PINYIN_9 || mode == KeyboardMode.STROKE || mode == KeyboardMode.DIGITS) width * 0.19f else width * (0.12f + 0.03f * i)
                         canvas.drawRoundRect(0f, y, w, y + h * 0.72f, toPx(2).toFloat(), toPx(2).toFloat(), paint)
                         if (mode != KeyboardMode.DIGITS || i == 0 || i == 3) {
                             paint.color = if (selected && i >= 2) tokens.primary else tokens.functionKeyBackground

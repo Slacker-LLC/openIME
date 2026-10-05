@@ -10,7 +10,11 @@ This script runs the same compiler on the host instead:
    and versions as the APK's native library) into build/rime-host;
 2. runs `--build` over app/src/main/assets/rime-data;
 3. writes the compiled files to <out>/rime-data/build/ and a content hash of
-   the packaged Rime data to <out>/rime-data.revision.
+   the packaged Rime data to <out>/rime-data.revision;
+4. writes <out>/stroke_table.tsv for the 笔画 keyboard: every character of
+   stroke.dict.yaml with its stroke code (h s p n z), most frequent first by
+   the 8105 table's weights. The keyboard reads it directly, so
+   stroke.dict.yaml itself stays out of the APK.
 
 The APK ships that directory as librime's prebuilt data dir
 (shared_data_dir/build), so the phone only copies it. The output is
@@ -122,6 +126,42 @@ def compile_dictionaries(deployer, out_dir):
         return target
 
 
+def dict_body(path):
+    """The tab-separated rows after a Rime dict.yaml's `...` header line."""
+    in_body = False
+    with open(path, encoding="utf-8") as lines:
+        for line in lines:
+            if not in_body:
+                in_body = line.strip() == "..."
+                continue
+            if line.startswith("#") or not line.strip():
+                continue
+            yield line.rstrip("\n").split("\t")
+
+
+def write_stroke_table(out_dir):
+    weights = {}
+    for fields in dict_body(SOURCES / "openime_dicts" / "8105.dict.yaml"):
+        if len(fields) >= 3 and fields[2].strip().isdigit():
+            weights[fields[0]] = max(weights.get(fields[0], 0), int(fields[2]))
+    rows = []
+    seen = set()
+    for fields in dict_body(SOURCES / "stroke.dict.yaml"):
+        if len(fields) < 2 or len(fields[0]) != 1:
+            continue
+        character, code = fields[0], fields[1].strip()
+        if not code or set(code) - set("hspnz") or (character, code) in seen:
+            continue
+        seen.add((character, code))
+        rows.append((-weights.get(character, 0), len(rows), character, code))
+    rows.sort()
+    target = out_dir / "stroke_table.tsv"
+    with open(target, "w", encoding="utf-8", newline="\n") as table:
+        for _, _, character, code in rows:
+            table.write(f"{character}\t{code}\n")
+    return len(rows)
+
+
 def content_hash(compiled, excluded):
     """SHA-256 over every source file, the compiled tables and the names kept
     out of the APK: anything that changes what the phone copies changes it."""
@@ -149,8 +189,12 @@ def main():
     target = compile_dictionaries(build_deployer(), out)
     revision = content_hash(target, args.exclude)
     (out / "rime-data.revision").write_text(revision + "\n", encoding="utf-8")
+    strokes = write_stroke_table(out)
     total = sum(path.stat().st_size for path in target.iterdir())
-    print(f"build_rime_prebuilt: {len(EXPECTED)} files, {total // 1024} KiB in {target}, revision {revision[:12]}")
+    print(
+        f"build_rime_prebuilt: {len(EXPECTED)} files, {total // 1024} KiB in {target}, "
+        f"revision {revision[:12]}, {strokes} stroke codes"
+    )
 
 
 if __name__ == "__main__":

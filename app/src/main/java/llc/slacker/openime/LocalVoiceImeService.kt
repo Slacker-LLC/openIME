@@ -25,6 +25,8 @@ import llc.slacker.openime.candidate.CandidateSnapshotEntry
 import llc.slacker.openime.candidate.EmojiAssociationIndex
 import llc.slacker.openime.candidate.NineKeyReading
 import llc.slacker.openime.candidate.PinyinLexicon
+import llc.slacker.openime.candidate.Stroke
+import llc.slacker.openime.candidate.StrokeLexicon
 import llc.slacker.openime.candidate.personalizedLearningAllowed
 import llc.slacker.openime.core.CrashGuard
 import llc.slacker.openime.core.ImeState
@@ -198,6 +200,12 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             runCatching { CandidatePipeline(CandidateEngine(PinyinLexicon.load(this))) }
                 .onSuccess { candidatePipeline = it }
                 .onFailure { Log.e(TAG, "lexicon/decoder initialisation failed; running on Rime only", it) }
+            // Only someone who uses the 笔画 keyboard pays for its table; the
+            // keyboard loads it on first use otherwise.
+            if (ImeSettingsRepository.loadPreferredChineseMode(this) == KeyboardMode.STROKE) {
+                runCatching { StrokeLexicon.load(this) }
+                    .onFailure { Log.e(TAG, "stroke table failed to load", it) }
+            }
         }, "openime-lexicon").apply { isDaemon = true; start() }
         rime = RimeEngine(this).also { it.start() }
         candidateQueries = CandidateQueryCoordinator(
@@ -1068,8 +1076,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             // Terminals and games need each letter as it is typed; composing English
             // there shows nothing until the word ends. Pinyin still composes.
             EditorInfoAdapter.kind(state.editorInfo) == EditorInfoAdapter.EditorKind.RAW_KEYS &&
-                state.keyboardMode != KeyboardMode.PINYIN_26 &&
-                state.keyboardMode != KeyboardMode.PINYIN_9
+                !state.keyboardMode.isChineseLayout
             )
         if (directCommit) {
             // Password fields never receive composing text, so the view's
@@ -1448,6 +1455,14 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             composition,
             state.fuzzyPinyinEnabled,
         )
+        if (mode == KeyboardMode.STROKE) {
+            // Characters the user picked for these strokes before come first.
+            val learned = strokeLearningKey(composition)
+                ?.takeIf { allowsPersonalizedLearning() }
+                ?.let(UserPhraseRepository::candidatesFor)
+                .orEmpty()
+            return (learned + normal).distinct().take(MAX_CANDIDATES)
+        }
         if (mode != KeyboardMode.PINYIN_26 && mode != KeyboardMode.ENGLISH_26) {
             return normal
         }
@@ -1713,7 +1728,11 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         // librime owns normal learning through its userdb. Keep the old local
         // repository only as an offline fallback; never run two unconditional
         // ranking systems over the same successful native selection.
-        if (!rime.isReady && allowsPersonalizedLearning()) {
+        if (state.keyboardMode == KeyboardMode.STROKE) {
+            // Stroke input has no librime session, so it always learns locally.
+            strokeLearningKey(composition)?.takeIf { allowsPersonalizedLearning() }
+                ?.let { UserPhraseRepository.record(it, committed) }
+        } else if (!rime.isReady && allowsPersonalizedLearning()) {
             UserPhraseRepository.record(composition, committed)
         }
         gateway.commitText(committed)
@@ -1725,6 +1744,13 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         keyboardView?.renderState(state)
         keyboardView?.setAssociationCandidates(associationsAfterCommit(committed))
     }
+
+    /**
+     * The learning key for a stroke composition: its stroke code, prefixed so it
+     * never meets a Pinyin code. Null with 通配, whose matches are a guess.
+     */
+    private fun strokeLearningKey(composition: String): String? =
+        Stroke.codeOf(composition)?.takeIf { Stroke.WILDCARD_CODE !in it }?.let { "stroke:$it" }
 
     private fun allowsPersonalizedLearning(): Boolean =
         personalizedLearningAllowed(state.passwordField, state.editorInfo?.imeOptions)
