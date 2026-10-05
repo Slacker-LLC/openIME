@@ -227,8 +227,12 @@ internal class ImeThemeApplier(
     }
 
     private fun applyScrollView(view: ScrollView, t: ImeTheme.Tokens) {
-        if (view.tag == "nine-punct-stack" && view.getChildAt(0)?.tag == "nine-pinyin-panel") {
-            // Reading list: the whole rail is one panel and its items are flat.
+        val content = view.getChildAt(0)?.tag
+        if (
+            (view.tag == "nine-punct-stack" || view.tag == "digits-symbol-scroll") &&
+            content in setOf("nine-pinyin-panel", "nine-symbol-scroll-content", "digits-symbol-scroll-content")
+        ) {
+            // Reading or symbol list: the whole rail is one panel and its items are flat.
             // Inset by half a key gap so the panel lines up with the key grid.
             view.background = InsetDrawable(
                 ImeDrawableFactory.rounded(t.sideKeyBackground, toPx(ImeGeometryTokens.KEY_RADIUS_DP)),
@@ -269,6 +273,15 @@ internal class ImeThemeApplier(
         }
 
         when {
+            view.tag == "punct:add" || view.tag == "digit-symbol:add" -> {
+                // The rail's circled plus: drawn like the symbols around it.
+                view.imageTintList = ColorStateList.valueOf(t.sideKeyText)
+                view.background = statefulRounded(
+                    Color.TRANSPARENT,
+                    ImeSurfacePolicy.pressedSurface(t.sideKeyBackground, t),
+                    toPx(ImeGeometryTokens.KEY_RADIUS_DP),
+                )
+            }
             (view.tag as? String)?.startsWith("clip-pin:") == true || (view.tag as? String)?.startsWith("phrase-") == true -> {
                 view.imageTintList = ColorStateList.valueOf(if (view.isSelected) t.primary else t.keySecondaryText)
             }
@@ -501,9 +514,10 @@ internal class ImeThemeApplier(
             }
             tag?.startsWith("punct:") == true ||
                 tag?.startsWith("digit-symbol:") == true -> {
+                // Flat on the rail's panel; only a press shows a surface.
                 view.setTextColor(t.keyText)
                 view.background = statefulRounded(
-                    t.sideKeyBackground,
+                    Color.TRANSPARENT,
                     ImeSurfacePolicy.pressedSurface(t.sideKeyBackground, t),
                     toPx(ImeGeometryTokens.KEY_RADIUS_DP),
                 )
@@ -622,6 +636,9 @@ internal class ImeThemeApplier(
 
     private fun applyTaggedView(view: View, t: ImeTheme.Tokens) {
         when (view.tag) {
+            SymbolRailRenderer.DIVIDER_TAG -> view.setBackgroundColor(
+                ImeDrawableFactory.blend(t.keySecondaryText, t.sideKeyBackground, 0.22f),
+            )
             "handwriting-canvas" -> {
                 view.background = ImeDrawableFactory.rounded(
                     t.canvasBackground,

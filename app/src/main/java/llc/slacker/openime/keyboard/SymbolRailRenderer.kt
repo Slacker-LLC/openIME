@@ -6,9 +6,11 @@ import android.graphics.Rect
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import llc.slacker.openime.R
 import llc.slacker.openime.theme.ImeGeometryTokens
 
 /**
@@ -18,6 +20,7 @@ import llc.slacker.openime.theme.ImeGeometryTokens
  */
 internal object SymbolRailRenderer {
     private const val CELL_HEIGHT_DP = 54
+    private const val FADING_EDGE_DP = 18
 
     fun build(
         context: Context,
@@ -39,6 +42,9 @@ internal object SymbolRailRenderer {
         val scroll = ScrollView(context).apply {
             tag = railTag
             isVerticalScrollBarEnabled = false
+            // The list fades out at its edges: more lies beyond.
+            isVerticalFadingEdgeEnabled = true
+            setFadingEdgeLength(toPx(FADING_EDGE_DP))
             overScrollMode = View.OVER_SCROLL_NEVER
             clipToPadding = false
             this.contentDescription = contentDescription
@@ -90,7 +96,24 @@ internal object SymbolRailRenderer {
                 cellParams(content.context, withGap = true, heightDp = cellHeightDp, toPx = toPx),
             )
         }
+        // One flat list on one panel (the theme draws the panel), hairlines
+        // between the items: it reads as something to scroll, not a column of
+        // separate keys. Cells are a little shorter than a key row, so the next
+        // one peeks out at the bottom.
+        fun divider() {
+            content.addView(
+                View(content.context).apply {
+                    tag = DIVIDER_TAG
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                },
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1).apply {
+                    marginStart = toPx(DIVIDER_INSET_DP)
+                    marginEnd = toPx(DIVIDER_INSET_DP)
+                },
+            )
+        }
         symbols.forEachIndexed { index, symbol ->
+            if (index > 0) divider()
             content.addView(
                 symbolCell(
                     context = content.context,
@@ -100,34 +123,34 @@ internal object SymbolRailRenderer {
                     onCommit = onCommit,
                     onFeedback = onFeedback,
                 ),
-                cellParams(
-                    content.context,
-                    withGap = index < symbols.lastIndex || onAdd != null,
-                    heightDp = cellHeightDp,
-                    toPx = toPx,
-                ),
+                flatCellParams(heightDp = cellHeightDp, toPx = toPx),
             )
         }
         if (onAdd != null) {
+            if (symbols.isNotEmpty()) divider()
             content.addView(
-                symbolCell(
-                    context = content.context,
-                    symbol = ADD_LABEL,
-                    inheritedTextColor = inheritedTextColor,
-                    tagPrefix = tagPrefix,
-                    onCommit = { onAdd() },
-                    onFeedback = onFeedback,
-                ).apply {
+                ImageView(content.context).apply {
+                    setImageResource(R.drawable.ic_rail_add)
+                    scaleType = ImageView.ScaleType.CENTER
                     tag = "${tagPrefix}add"
                     contentDescription = "添加和排序常用符号"
+                    isClickable = true
+                    isFocusable = true
+                    setOnClickListener {
+                        onFeedback()
+                        onAdd()
+                    }
                 },
-                cellParams(content.context, withGap = false, heightDp = cellHeightDp, toPx = toPx),
+                flatCellParams(heightDp = cellHeightDp, toPx = toPx),
             )
         }
     }
 
-    /** The rail editor's cell: a plain plus, drawn like the symbols around it. */
-    private const val ADD_LABEL = "＋"
+    const val DIVIDER_TAG = "rail-divider"
+    private const val DIVIDER_INSET_DP = 10
+
+    private fun flatCellParams(heightDp: Int, toPx: (Int) -> Int) =
+        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(heightDp))
 
     fun cellParams(context: Context, withGap: Boolean, heightDp: Int = CELL_HEIGHT_DP, toPx: (Int) -> Int = { dp(context, it) }) = LinearLayout.LayoutParams(
         LinearLayout.LayoutParams.MATCH_PARENT,

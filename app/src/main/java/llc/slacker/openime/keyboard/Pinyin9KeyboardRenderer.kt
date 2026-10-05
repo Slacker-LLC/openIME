@@ -116,23 +116,33 @@ internal class Pinyin9KeyboardRenderer(
             orientation = LinearLayout.VERTICAL
             tag = "pinyin9-actions"
         }
+        // 删除 · 重输 · 0 · 确定, one key row each: 0 has its own key, as on a
+        // phone keypad, instead of only a swipe-up on 1.
         side.addView(
             createBackspaceKey().apply { markSideKey(this) },
-            sideKeyParams(nineBodyHeightDp() / 3),
+            sideKeyParams(nineBodyHeightDp() / 4),
         )
         side.addView(
             createKey("重输", true, null, ImeTypographyTokens.BODY_SP, onRetranslate).apply {
                 tag = "key-retype"
                 markSideKey(this)
             },
-            sideKeyParams(nineBodyHeightDp() / 3),
+            sideKeyParams(nineBodyHeightDp() / 4),
+        )
+        side.addView(
+            createKey("0", true, null, ImeTypographyTokens.KEY_LETTER_SP) { onCommitCharacter("0") }.apply {
+                tag = "key-9:0"
+                contentDescription = "0"
+                markSideKey(this)
+            },
+            sideKeyParams(nineBodyHeightDp() / 4),
         )
         side.addView(
             createKey(enterLabel, true, null, ImeTypographyTokens.BODY_SP, onEnter).apply {
                 tag = "key-enter"
                 markSideKey(this)
             },
-            sideKeyParams(nineBodyHeightDp() / 3),
+            sideKeyParams(nineBodyHeightDp() / 4),
         )
         container.addView(side, adaptiveColumnParams(1f))
 
