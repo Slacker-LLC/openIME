@@ -42,6 +42,10 @@ class FuzzyRulesInstrumentedTest {
         val userRules = File(context.filesDir, "rime-user/openime_fuzzy.yaml")
         ImeSettingsRepository.saveFuzzy(context, true)
         ImeSettingsRepository.saveFuzzyRules(context, setOf(FuzzyRule.Z_ZH))
+        // librime is one per process. When this app is also the active IME its
+        // service may already hold the session, and a second engine would reuse
+        // it as deployed: take it down first so this engine deploys the rules.
+        llc.slacker.openime.RimeNative.nativeShutdown()
         val rime = RimeEngine(context = context)
         try {
             rime.start()
@@ -75,6 +79,9 @@ class FuzzyRulesInstrumentedTest {
             ImeSettingsRepository.saveFuzzy(context, originalFuzzy)
             ImeSettingsRepository.saveFuzzyRules(context, originalRules)
             rime.shutdown()
+            // Leave no prism built for these rules behind for later tests.
+            userRules.delete()
+            File(context.filesDir, "rime-user/build").listFiles().orEmpty().forEach { it.delete() }
         }
     }
 }

@@ -29,10 +29,11 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 PKG = "llc.slacker.openime"
-IME = f"{PKG}/.LocalVoiceImeService"
-LAB = f"{PKG}/.ImeTestLabActivity"
-RECEIVER = f"{PKG}/.E2ETestReceiver"
-ACTION = f"{PKG}.TEST_COMMAND"
+CLASSES = "llc.slacker.openime"  # class names stay put when the applicationId gets a suffix
+IME = f"{PKG}/{CLASSES}.LocalVoiceImeService"
+LAB = f"{PKG}/{CLASSES}.ImeTestLabActivity"
+RECEIVER = f"{PKG}/{CLASSES}.E2ETestReceiver"
+ACTION = f"{CLASSES}.TEST_COMMAND"
 FIELD = "lab_multiline"
 ROOT = Path(__file__).resolve().parent.parent
 STROKE_TABLE = ROOT / "app" / "build" / "generated" / "assets" / "prebuildRimeData" / "stroke_table.tsv"
@@ -121,9 +122,12 @@ class Device:
 
 
 def show_keyboard(dev: Device) -> None:
-    if dev.shell("settings", "get", "secure", "default_input_method").strip() != IME:
-        dev.shell("ime", "enable", IME)
-        dev.shell("ime", "set", IME)
+    # Use the id exactly as the system lists it (short form for the plain package).
+    ime_id = next((line.strip() for line in dev.shell("ime", "list", "-a", "-s").splitlines()
+                   if line.strip().startswith(f"{PKG}/")), IME)
+    if dev.shell("settings", "get", "secure", "default_input_method").strip() != ime_id:
+        dev.shell("ime", "enable", ime_id)
+        dev.shell("ime", "set", ime_id)
         time.sleep(1)
     dev.shell("am", "start", "-n", LAB, "--es", "focus_id", FIELD, "-f", "0x10008000")
     time.sleep(2.5)
@@ -287,12 +291,18 @@ def run_case(dev: Device, name: str, minimum: int) -> tuple[bool, str]:
 
 
 def main() -> int:
+    global PKG, IME, LAB, RECEIVER
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--serial")
     parser.add_argument("--out", type=Path, default=ROOT / "build" / "typing-stress")
     parser.add_argument("--min", type=int, default=50)
+    parser.add_argument("--package", default=PKG, help="applicationId of the debug build (e.g. with a .dev suffix)")
     parser.add_argument("cases", nargs="*", default=["pinyin26", "pinyin9", "stroke", "english", "digits", "mixed"])
     args = parser.parse_args()
+    PKG = args.package
+    IME = f"{PKG}/{CLASSES}.LocalVoiceImeService"
+    LAB = f"{PKG}/{CLASSES}.ImeTestLabActivity"
+    RECEIVER = f"{PKG}/{CLASSES}.E2ETestReceiver"
     dev = Device(args.serial, args.out)
 
     show_keyboard(dev)

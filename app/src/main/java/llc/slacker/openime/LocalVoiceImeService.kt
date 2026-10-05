@@ -466,9 +466,10 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         // A subtype switch changes the input language contract. Discard only
         // text actually owned by this IME; setComposingText("") without an
         // active composing span can otherwise delete a user's normal selection.
-        val hadComposingText = lastComposition.isNotEmpty() || voiceComposing
+        val hadVoiceComposing = voiceComposing
+        val hadComposingText = lastComposition.isNotEmpty() || hadVoiceComposing
         clearImeCompositionState(render = false)
-        if (hadComposingText) gateway.cancelComposing()
+        if (hadComposingText) gateway.cancelComposing(owned = hadVoiceComposing)
         voiceComposing = false
         voiceCorrectionTracker.clear()
         state = state.copy(
@@ -520,7 +521,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         // shutdown() cancels an active voice session and its callback clears
         // voiceComposing. Check ownership afterwards so we never cancel twice.
         keyboardView?.shutdown()
-        if (lastComposition.isNotEmpty() || voiceComposing) gateway.cancelComposing()
+        if (lastComposition.isNotEmpty() || voiceComposing) gateway.cancelComposing(owned = voiceComposing)
         rime.clear()
         voiceComposing = false
         lastComposition = ""
@@ -987,7 +988,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
 
     override fun onVoiceError(message: String) {
         voiceMediaMute.restore()
-        if (voiceComposing) gateway.cancelComposing()
+        if (voiceComposing) gateway.cancelComposing(owned = true)
         voiceComposing = false
         state = state.copy(
             voiceState = state.voiceState.copy(
@@ -1012,7 +1013,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
 
     override fun onVoiceCancel() {
         voiceMediaMute.restore()
-        if (!state.passwordField && voiceComposing) gateway.cancelComposing()
+        if (!state.passwordField && voiceComposing) gateway.cancelComposing(owned = true)
         voiceComposing = false
         state = state.copy(
             voiceState = state.voiceState.copy(

@@ -157,10 +157,14 @@ class InputConnectionGateway(
         composingInEditor = false
     }
 
-    /** Remove the active pre-edit text without committing it to the editor. */
-    fun cancelComposing() {
+    /**
+     * Remove the active pre-edit text without committing it to the editor.
+     * [owned] is for a caller that knows a span of ours is there (a voice
+     * partial) even if this gateway did not write it.
+     */
+    fun cancelComposing(owned: Boolean = false) {
         val ic = connection() ?: return
-        if (!isPassword() && composingInEditor) ic.setComposingText("", 1)
+        if (!isPassword() && (composingInEditor || owned)) ic.setComposingText("", 1)
         ic.finishComposingText()
         composingInEditor = false
     }

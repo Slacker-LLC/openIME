@@ -694,6 +694,11 @@ class AuditInteractionInstrumentedTest {
             .targetContext
         val custom = CustomSymbolRepository.upsert(context, 0L, "测试", "⌘")
             ?: error("Unable to create the custom symbol fixture")
+        // The nine-key rail is the user's own list (edited from its ＋), not the custom symbols.
+        llc.slacker.openime.data.RailSymbolRepository.save(
+            context,
+            llc.slacker.openime.data.RailSymbolRepository.DEFAULT + "※",
+        )
         try {
             withKeyboard { harness, _, keyboard ->
                 harness.awaitMain {
@@ -704,7 +709,9 @@ class AuditInteractionInstrumentedTest {
                     val rail = keyboard.findViewWithTag<View>("nine-punct-stack")
                     if (rail !is ScrollView) return@awaitMain null
                     assertTrue("Nine-key symbols must advertise vertical scrolling", rail.contentDescription.toString().contains("上下滑动"))
-                    assertNotNull("Custom symbols must appear in the nine-key rail", keyboard.findViewWithTag<View>("punct:⌘"))
+                    assertNotNull("The user's rail symbols must appear in the nine-key rail", keyboard.findViewWithTag<View>("punct:※"))
+                    assertNotNull("The nine-key rail ends in its ＋ editor cell", keyboard.findViewWithTag<View>("punct:add"))
+                    assertEquals("Custom symbols stay in the symbol panel", null, keyboard.findViewWithTag<View>("punct:⌘"))
                     true
                 }
                 harness.awaitMain {
@@ -721,6 +728,7 @@ class AuditInteractionInstrumentedTest {
             }
         } finally {
             CustomSymbolRepository.remove(context, custom.id)
+            llc.slacker.openime.data.RailSymbolRepository.reset(context)
         }
     }
 

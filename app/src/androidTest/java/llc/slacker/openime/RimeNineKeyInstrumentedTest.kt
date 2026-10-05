@@ -68,6 +68,9 @@ class RimeNineKeyInstrumentedTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val originalFuzzy = ImeSettingsRepository.loadFuzzy(context)
         ImeSettingsRepository.saveFuzzy(context, false)
+        // From a clean staging dir, with librime not already running in this process.
+        RimeNative.nativeShutdown()
+        java.io.File(context.filesDir, "rime-user/build").listFiles().orEmpty().forEach { it.delete() }
         val rime = RimeEngine(context = context)
         try {
             rime.start()
