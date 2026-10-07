@@ -31,6 +31,7 @@ object ImeSettingsRepository {
     private const val KEY_FLOATING_WIDTH = "floating_width_percent"
     private const val KEY_FLOATING_OPACITY = "floating_opacity_percent"
     private const val KEY_LANDSCAPE_LAYOUT = "landscape_layout"
+    private const val KEY_SPLIT_MIRRORED = "split_mirrored"
     private const val KEY_SMS_CODE_CHIP = "sms_code_chip"
     private const val KEY_CLIPBOARD_CHIP = "clipboard_chip"
 
@@ -61,6 +62,13 @@ object ImeSettingsRepository {
     fun saveKeyboardHeightPercent(context: Context, percent: Int) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putInt(KEY_KEYBOARD_HEIGHT, percent.coerceIn(80, 120)).apply()
+    }
+
+    fun loadSplitMirrored(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_SPLIT_MIRRORED, false)
+
+    fun saveSplitMirrored(context: Context, mirrored: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_SPLIT_MIRRORED, mirrored).apply()
     }
 
     fun loadSmsCodeChip(context: Context): Boolean =

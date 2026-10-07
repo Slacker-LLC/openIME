@@ -522,6 +522,9 @@ open class ImeKeyboardView(
             onModeSwitch = ::cycleMode,
             onRetranslate = ::retype,
             onEnter = listener::onEnter,
+            splitLayout = ::splitKeyboard,
+            mirrored = { ImeSettingsRepository.loadSplitMirrored(context) },
+            onMirror = ::mirrorSplit,
         )
     }
     private val strokeRenderer: StrokeKeyboardRenderer by lazy {
@@ -847,6 +850,7 @@ open class ImeKeyboardView(
             onModeSwitch = ::cycleMode,
             onSpace = listener::onSpace,
             onEnter = listener::onEnter,
+            splitLayout = ::splitKeyboard,
         )
     }
 
@@ -1704,10 +1708,24 @@ open class ImeKeyboardView(
     }
 
     /** Save the 震动手感 choice and let it be felt once. */
+    /** Landscape split halves (Sogou's 左右分离), only for the docked full-width keyboard. */
+    private fun splitKeyboard(): Boolean =
+        !standalonePanel && !floatingWindowMode &&
+            appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE &&
+            ImeSettingsRepository.loadLandscapeLayout(context) == LandscapeLayout.SPLIT
+
+    private fun mirrorSplit() {
+        ImeSettingsRepository.saveSplitMirrored(context, !ImeSettingsRepository.loadSplitMirrored(context))
+        renderedMode = null
+        if (panel == Panel.NONE) renderModeBody()
+    }
+
     private fun setLandscapeLayout(next: LandscapeLayout) {
         if (ImeSettingsRepository.loadLandscapeLayout(context) == next) return
         ImeSettingsRepository.saveLandscapeLayout(context, next)
         listener.onLandscapeLayoutChanged(next)
+        renderedMode = null
+        if (panel == Panel.NONE && !standalonePanel) renderModeBody()
     }
 
     private fun setHapticStyle(next: HapticStyle) {

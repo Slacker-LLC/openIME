@@ -41,12 +41,17 @@ internal class Pinyin26KeyboardRenderer(
     private val onModeSwitch: () -> Unit,
     private val onSpace: () -> Unit,
     private val onEnter: () -> Unit,
+    private val splitLayout: () -> Boolean = { false },
 ) {
     fun render(
         english: Boolean,
         shiftState: ShiftState,
         enterLabel: String,
     ) {
+        if (splitLayout()) {
+            renderSplit(english, shiftState, enterLabel)
+            return
+        }
         ROWS.forEachIndexed { rowIndex, rowText ->
             val row = rowHost().apply {
                 if (rowIndex == 1) tag = "key-row-secondary"
@@ -99,6 +104,47 @@ internal class Pinyin26KeyboardRenderer(
                 tag = "key-enter"
             },
             flexKeyParams(weights.rightOuter),
+        )
+        keyboardBody.addView(bottom, rowParams())
+    }
+
+    /**
+     * Landscape split keyboard (Sogou's 左右分离): one half of the letters under each
+     * thumb with a gap between them, and the space bar running through the gap.
+     * Every half is five key-widths wide; short rows stretch their keys to fill it.
+     */
+    private fun renderSplit(english: Boolean, shiftState: ShiftState, enterLabel: String) {
+        fun row(build: LinearLayout.() -> Unit) {
+            keyboardBody.addView(rowHost().apply(build), rowParams())
+        }
+        fun LinearLayout.letters(chars: String, weight: Float) {
+            chars.forEach { addView(letterKey(it, english, shiftState), flexKeyParams(weight)) }
+        }
+        fun LinearLayout.gap() = addView(View(context), flexKeyParams(SPLIT_GAP))
+
+        row { letters("qwert", 1f); gap(); letters("yuiop", 1f) }
+        row { letters("asdfg", 1f); gap(); letters("hjkl", 1.25f) }
+        row {
+            addView(shiftKey(shiftState), flexKeyParams(1f)); letters("zxcv", 1f)
+            gap()
+            letters("bnm", 1f); addView(createBackspaceKey(), flexKeyParams(2f))
+        }
+
+        val bottom = rowHost()
+        bottom.addView(
+            createKey("123", true, null, ImeTypographyTokens.BODY_SP, 0, onDigits),
+            flexKeyParams(1.5f),
+        )
+        bottom.addView(punctuationKey(english), flexKeyParams(1.5f))
+        bottom.addView(createSpaceVoiceKey("空格", onSpace), flexKeyParams(SPLIT_GAP + 4f))
+        bottom.addView(
+            createKey("中/英", true, null, ImeTypographyTokens.BODY_SP, 0) { onModeSwitch() }
+                .apply { tag = "key:mode" },
+            flexKeyParams(1.5f),
+        )
+        bottom.addView(
+            createKey(enterLabel, true, null, ImeTypographyTokens.BODY_SP, 0, onEnter).apply { tag = "key-enter" },
+            flexKeyParams(1.5f),
         )
         keyboardBody.addView(bottom, rowParams())
     }
@@ -201,6 +247,7 @@ internal class Pinyin26KeyboardRenderer(
         )
 
     private companion object {
+        const val SPLIT_GAP = 3f
         val ROWS = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
     }
 }

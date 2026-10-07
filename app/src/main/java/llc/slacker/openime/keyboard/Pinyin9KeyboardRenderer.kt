@@ -46,6 +46,9 @@ internal class Pinyin9KeyboardRenderer(
     private val onModeSwitch: () -> Unit,
     private val onRetranslate: () -> Unit,
     private val onEnter: () -> Unit,
+    private val splitLayout: () -> Boolean = { false },
+    private val mirrored: () -> Boolean = { false },
+    private val onMirror: () -> Unit = {},
 ) {
     fun render(enterLabel: String) {
         val container = LinearLayout(context).apply {
@@ -72,8 +75,6 @@ internal class Pinyin9KeyboardRenderer(
                 toPx(keyRowHeightDp()),
             ),
         )
-        container.addView(left, adaptiveColumnParams(1f))
-
         val center = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         center.addView(
             buildNineGrid().apply { tag = "pinyin9-grid" },
@@ -110,8 +111,6 @@ internal class Pinyin9KeyboardRenderer(
                 toPx(keyRowHeightDp()),
             ),
         )
-        container.addView(center, adaptiveColumnParams(25f / 7f))
-
         val side = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             tag = "pinyin9-actions"
@@ -144,7 +143,33 @@ internal class Pinyin9KeyboardRenderer(
             },
             sideKeyParams(nineBodyHeightDp() / 4),
         )
-        container.addView(side, adaptiveColumnParams(1f))
+        if (splitLayout()) {
+            // Landscape split (Sogou's 左右分离): the digit grid under one thumb, the
+            // symbol and action columns under the other, a mirror key between them
+            // that swaps the sides.
+            val functions = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+            functions.addView(left, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
+            functions.addView(side, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
+            val gap = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = android.view.Gravity.CENTER
+                addView(
+                    createKey("⇄", true, null, ImeTypographyTokens.BODY_SP, onMirror).apply {
+                        tag = "key-mirror"
+                        contentDescription = "左右互换"
+                        markSideKey(this)
+                    },
+                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(keyRowHeightDp())),
+                )
+            }
+            val halves = if (mirrored()) listOf(center to 25f / 7f, gap to 0.7f, functions to 2f)
+            else listOf(functions to 2f, gap to 0.7f, center to 25f / 7f)
+            halves.forEach { (view, weight) -> container.addView(view, adaptiveColumnParams(weight)) }
+        } else {
+            container.addView(left, adaptiveColumnParams(1f))
+            container.addView(center, adaptiveColumnParams(25f / 7f))
+            container.addView(side, adaptiveColumnParams(1f))
+        }
 
         keyboardBody.addView(
             container,

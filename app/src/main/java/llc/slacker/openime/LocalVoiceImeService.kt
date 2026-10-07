@@ -50,7 +50,6 @@ import llc.slacker.openime.editor.InputMethodSubtypePolicy
 import llc.slacker.openime.editor.editorActionForEnter
 import llc.slacker.openime.editor.shouldClearCompositionForSelectionUpdate
 import llc.slacker.openime.floating.FloatingWindowController
-import llc.slacker.openime.floating.SideDockWindowController
 import llc.slacker.openime.core.LandscapeLayout
 import llc.slacker.openime.keyboard.EnglishShiftPolicy
 import llc.slacker.openime.keyboard.HardwareContext
@@ -126,14 +125,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             debugLog = { message ->
                 if (verboseLogging) Log.d(TAG, message)
             },
-        )
-    }
-    private val sideDock by lazy {
-        SideDockWindowController(
-            resources = resources,
-            mainHandler = mainHandler,
-            windowProvider = { getWindow().window },
-            keyboardHeightPx = { keyboardView?.measuredHeight?.takeIf { it > 0 } },
         )
     }
     /** The landscape setting floated the keyboard; a floating one the user chose is never touched. */
@@ -344,7 +335,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
 
     /**
-     * Landscape layout setting: floating (default), full width, or docked right.
+     * Landscape layout setting: floating (default), full width, or split halves.
      * Only the transitions the setting itself caused are undone: a keyboard the
      * user floated from the tools page stays floating in both orientations.
      */
@@ -362,17 +353,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             keyboardView?.setFloatingWindowMode(false)
             floatingWindow.restore()
         }
-        val wantSide = landscape && layout == LandscapeLayout.SIDE && !floatingWindow.enabled
-        // The framework resets the window layout each time the keyboard shows, so a
-        // docked side window is applied again every time, like the floating one.
-        if (wantSide) sideDock.enable() else if (sideDock.enabled) sideDock.restore()
-    }
-
-    override fun onWindowShown() {
-        super.onWindowShown()
-        // The framework lays the window out for a full-width dock while it shows;
-        // put the side width back once that is done.
-        if (sideDock.enabled) sideDock.enable()
     }
 
     override fun onLandscapeLayoutChanged(layout: LandscapeLayout) {
@@ -925,7 +905,6 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         // "not now", and floating by hand is the user's own choice.
         if (!floating && landscapeAutoFloating && isLandscape()) landscapeFloatingDeclined = true
         landscapeAutoFloating = false
-        if (floating && sideDock.enabled) sideDock.restore()
         keyboardView?.setFloatingWindowMode(floating)
         if (floating) floatingWindow.enable() else floatingWindow.restore()
     }
