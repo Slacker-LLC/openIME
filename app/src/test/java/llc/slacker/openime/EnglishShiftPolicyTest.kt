@@ -25,4 +25,28 @@ class EnglishShiftPolicyTest {
     fun passwordFieldsAlwaysStartLowercase() {
         assertEquals(ShiftState.LOWERCASE, EnglishShiftPolicy.initial(text or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS, true))
     }
+
+    @Test
+    fun aTapGivesOneCapitalAndAQuickSecondTapLocksCaps() {
+        assertEquals(ShiftState.SHIFT_ONCE, EnglishShiftPolicy.afterTap(ShiftState.LOWERCASE, null))
+        assertEquals(ShiftState.CAPS_LOCK, EnglishShiftPolicy.afterTap(ShiftState.SHIFT_ONCE, 150))
+        assertEquals(
+            ShiftState.CAPS_LOCK,
+            EnglishShiftPolicy.afterTap(ShiftState.SHIFT_ONCE, EnglishShiftPolicy.DOUBLE_TAP_MS),
+        )
+    }
+
+    @Test
+    fun aSlowSecondTapOrATapOnCapsLockTurnsShiftOff() {
+        assertEquals(ShiftState.LOWERCASE, EnglishShiftPolicy.afterTap(ShiftState.SHIFT_ONCE, 900))
+        assertEquals(ShiftState.LOWERCASE, EnglishShiftPolicy.afterTap(ShiftState.SHIFT_ONCE, null))
+        assertEquals(ShiftState.LOWERCASE, EnglishShiftPolicy.afterTap(ShiftState.CAPS_LOCK, 100))
+    }
+
+    @Test
+    fun aLongPressLocksCapsFromAnyStateAndReleasesTheLock() {
+        assertEquals(ShiftState.CAPS_LOCK, EnglishShiftPolicy.afterLongPress(ShiftState.LOWERCASE))
+        assertEquals(ShiftState.CAPS_LOCK, EnglishShiftPolicy.afterLongPress(ShiftState.SHIFT_ONCE))
+        assertEquals(ShiftState.LOWERCASE, EnglishShiftPolicy.afterLongPress(ShiftState.CAPS_LOCK))
+    }
 }

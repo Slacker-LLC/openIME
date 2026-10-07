@@ -50,6 +50,8 @@ import llc.slacker.openime.editor.InputMethodSubtypePolicy
 import llc.slacker.openime.editor.editorActionForEnter
 import llc.slacker.openime.editor.shouldClearCompositionForSelectionUpdate
 import llc.slacker.openime.floating.FloatingWindowController
+import llc.slacker.openime.floating.SideDockWindowController
+import llc.slacker.openime.core.LandscapeLayout
 import llc.slacker.openime.keyboard.EnglishShiftPolicy
 import llc.slacker.openime.keyboard.HardwareContext
 import llc.slacker.openime.keyboard.HardwareKey
@@ -126,6 +128,18 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             },
         )
     }
+    private val sideDock by lazy {
+        SideDockWindowController(
+            resources = resources,
+            mainHandler = mainHandler,
+            windowProvider = { getWindow().window },
+            keyboardHeightPx = { keyboardView?.measuredHeight?.takeIf { it > 0 } },
+        )
+    }
+    /** The landscape setting floated the keyboard; a floating one the user chose is never touched. */
+    private var landscapeAutoFloating = false
+    /** The user docked the keyboard during this landscape session; leave it docked until rotation. */
+    private var landscapeFloatingDeclined = false
     private var voiceComposing = false
     private var voiceAutoCommitOnFinal = true
     private val voiceCorrectionTracker by lazy {
@@ -322,7 +336,48 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         // Orientation changes affect keyboard geometry, not the user's chosen
         // window mode. A manually floating keyboard stays floating; a docked
         // keyboard stays docked.
+        applyLandscapeLayout()
         floatingWindow.onConfigurationChanged()
+    }
+
+    private fun isLandscape() =
+        resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
+    /**
+     * Landscape layout setting: floating (default), full width, or docked right.
+     * Only the transitions the setting itself caused are undone: a keyboard the
+     * user floated from the tools page stays floating in both orientations.
+     */
+    private fun applyLandscapeLayout() {
+        val landscape = isLandscape()
+        val layout = ImeSettingsRepository.loadLandscapeLayout(this)
+        if (!landscape) landscapeFloatingDeclined = false
+        val wantFloating = landscape && layout == LandscapeLayout.FLOATING && !landscapeFloatingDeclined
+        if (wantFloating && !floatingWindow.enabled) {
+            landscapeAutoFloating = true
+            keyboardView?.setFloatingWindowMode(true, compact = true)
+            floatingWindow.enable(resetPosition = true)
+        } else if (!wantFloating && landscapeAutoFloating) {
+            landscapeAutoFloating = false
+            keyboardView?.setFloatingWindowMode(false)
+            floatingWindow.restore()
+        }
+        val wantSide = landscape && layout == LandscapeLayout.SIDE && !floatingWindow.enabled
+        // The framework resets the window layout each time the keyboard shows, so a
+        // docked side window is applied again every time, like the floating one.
+        if (wantSide) sideDock.enable() else if (sideDock.enabled) sideDock.restore()
+    }
+
+    override fun onWindowShown() {
+        super.onWindowShown()
+        // The framework lays the window out for a full-width dock while it shows;
+        // put the side width back once that is done.
+        if (sideDock.enabled) sideDock.enable()
+    }
+
+    override fun onLandscapeLayoutChanged(layout: LandscapeLayout) {
+        landscapeFloatingDeclined = false
+        applyLandscapeLayout()
     }
 
     override fun onEvaluateInputViewShown(): Boolean {
@@ -503,8 +558,9 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     override fun onStartInputView(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(attribute, restarting)
         ensureInputViewAfterFinish()
+        applyLandscapeLayout()
         if (floatingWindow.enabled) {
-            keyboardView?.setFloatingWindowMode(true)
+            keyboardView?.setFloatingWindowMode(true, compact = landscapeAutoFloating)
             floatingWindow.reapply()
         } else {
             floatingWindow.restore()
@@ -865,6 +921,11 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     }
 
     override fun onFloatingKeyboardChanged(floating: Boolean) {
+        // A manual change replaces the automatic one: docking in landscape means
+        // "not now", and floating by hand is the user's own choice.
+        if (!floating && landscapeAutoFloating && isLandscape()) landscapeFloatingDeclined = true
+        landscapeAutoFloating = false
+        if (floating && sideDock.enabled) sideDock.restore()
         keyboardView?.setFloatingWindowMode(floating)
         if (floating) floatingWindow.enable() else floatingWindow.restore()
     }

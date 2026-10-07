@@ -57,6 +57,8 @@ internal object ImeGeometryTokens {
     const val STEP_MARK_SIZE_DP = 32
     const val HERO_MARK_SIZE_DP = 72
     const val COMPOSED_TOP_ZONE_HEIGHT_DP = 70
+    // Landscape: one strip a little taller than a key row, pinyin and candidates side by side.
+    const val LANDSCAPE_TOP_ZONE_HEIGHT_DP = 48
 }
 
 /** Shared spacing scale for every non-keyboard layout. */

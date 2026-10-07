@@ -32,7 +32,10 @@ class KeyboardLayoutMetricsTest {
     fun landscapeUsesCompactBaseHeight() {
         val metrics = KeyboardLayoutMetrics(landscape = true, fontScale = 1f)
         assertEquals(ImeGeometryTokens.LANDSCAPE_KEY_ROW_HEIGHT_DP, metrics.keyRowHeightDp)
-        assertTrue(metrics.imeHeightDp >= 256)
+        // The top strip is only a little taller than a key row.
+        assertEquals(ImeGeometryTokens.LANDSCAPE_TOP_ZONE_HEIGHT_DP, metrics.topZoneHeightDp)
+        assertTrue(metrics.topZoneHeightDp - metrics.keyRowHeightDp <= 10)
+        assertEquals(metrics.topZoneHeightDp + metrics.keyRowHeightDp * 4 + 16, metrics.imeHeightDp)
     }
 
     @Test

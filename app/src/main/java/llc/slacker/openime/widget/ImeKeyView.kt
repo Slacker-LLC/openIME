@@ -41,12 +41,16 @@ class ImeKeyView(
     var swipeUpEnabled: () -> Boolean = { true }
     private val swipeUp = SwipeUpDetector(thresholdPx = toPx(SWIPE_UP_THRESHOLD_DP).toFloat())
     private var swipeConsumed = false
+    // A long press already chose this gesture: a later upward move slides over the
+    // popup (or nothing) and must not also fire the swipe-up digit.
+    private var longPressed = false
     private var cancellingForSwipe = false
 
     /** True when the swipe logic consumed [event]; the normal touch path then must not see it. */
     private fun interceptSwipeUp(event: MotionEvent): Boolean {
         val action = onSwipeUp ?: return false
         if (cancellingForSwipe) return false
+        if (longPressed) return false
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 swipeConsumed = false
@@ -117,6 +121,7 @@ class ImeKeyView(
         if (interceptSwipeUp(event)) return true
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                longPressed = false
                 touchGeneration++
                 touchFeedbackPending = isEnabled
                 animate().cancel()
@@ -147,6 +152,12 @@ class ImeKeyView(
             val generation = touchGeneration
             post { if (generation == touchGeneration) touchFeedbackPending = false }
         }
+        return handled
+    }
+
+    override fun performLongClick(): Boolean {
+        val handled = super.performLongClick()
+        if (handled) longPressed = true
         return handled
     }
 

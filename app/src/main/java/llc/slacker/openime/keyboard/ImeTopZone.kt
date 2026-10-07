@@ -508,6 +508,50 @@ internal class ImeTopZone(
     }
 
     /** Floating (game) mode: a slimmer toolbar without text editing and undo. */
+    /**
+     * Landscape strip: the zone is one key row plus a little, and while composing
+     * the pinyin sits at the left of the candidates instead of above them.
+     */
+    fun setLandscapeStrip(on: Boolean) {
+        val height = toPx(
+            if (on) ImeGeometryTokens.LANDSCAPE_TOP_ZONE_HEIGHT_DP else ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP,
+        )
+        minimumHeight = height
+        toolbarRow.minimumHeight = minOf(height, toPx(ImeGeometryTokens.TOOLBAR_HEIGHT_DP))
+        (toolbarRow.layoutParams as? LinearLayout.LayoutParams)?.let {
+            if (it.height != height) { it.height = height; toolbarRow.layoutParams = it }
+        }
+        (composeZone.layoutParams as? LinearLayout.LayoutParams)?.let {
+            if (it.height != height) { it.height = height; composeZone.layoutParams = it }
+        }
+        composeZone.orientation = if (on) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+        composeZone.gravity = if (on) Gravity.CENTER_VERTICAL else Gravity.NO_GRAVITY
+        (composition.layoutParams as? LinearLayout.LayoutParams)?.let {
+            if (on) {
+                it.width = LinearLayout.LayoutParams.WRAP_CONTENT
+                it.height = LinearLayout.LayoutParams.MATCH_PARENT
+            } else {
+                it.width = LinearLayout.LayoutParams.MATCH_PARENT
+                it.height = toPx(22)
+            }
+            composition.layoutParams = it
+        }
+        composition.maxWidth = if (on) toPx(160) else Int.MAX_VALUE
+        composition.gravity = Gravity.CENTER_VERTICAL or Gravity.START
+        (candidateField.layoutParams as? LinearLayout.LayoutParams)?.let {
+            if (on) {
+                it.width = 0
+                it.weight = 1f
+                it.height = LinearLayout.LayoutParams.MATCH_PARENT
+            } else {
+                it.width = LinearLayout.LayoutParams.MATCH_PARENT
+                it.weight = 0f
+                it.height = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
+            }
+            candidateField.layoutParams = it
+        }
+    }
+
     fun setCompactToolbar(value: Boolean) {
         if (compact == value) return
         compact = value

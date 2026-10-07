@@ -4,7 +4,6 @@ import android.content.Context
 import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
-import llc.slacker.openime.R
 import llc.slacker.openime.core.ShiftState
 import llc.slacker.openime.theme.ImeTypographyTokens
 import llc.slacker.openime.widget.ImeKeyView
@@ -37,6 +36,7 @@ internal class Pinyin26KeyboardRenderer(
     private val hintsEnabled: () -> Boolean,
     private val swipeUpEnabled: () -> Boolean,
     private val onShift: () -> Unit,
+    private val onShiftLongPress: () -> Unit,
     private val onDigits: () -> Unit,
     private val onModeSwitch: () -> Unit,
     private val onSpace: () -> Unit,
@@ -131,16 +131,16 @@ internal class Pinyin26KeyboardRenderer(
         }
 
     private fun shiftKey(shiftState: ShiftState): ImeKeyView {
-        val iconRes = if (shiftState == ShiftState.CAPS_LOCK) {
-            R.drawable.ic_caps_lock
-        } else {
-            R.drawable.ic_shift
-        }
+        val iconRes = EnglishShiftPolicy.icon(shiftState)
         return createKey("", true, null, null, iconRes, onShift).apply {
             tag = when (shiftState) {
                 ShiftState.LOWERCASE -> "key-shift"
                 ShiftState.SHIFT_ONCE -> "key-shift-active"
                 ShiftState.CAPS_LOCK -> "key-shift-caps"
+            }
+            setOnLongClickListener {
+                onShiftLongPress()
+                true
             }
         }
     }

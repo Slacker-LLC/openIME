@@ -79,12 +79,16 @@ internal data class KeyboardLayoutMetrics(
     val doubleKeyHeightDp: Int =
         keyRowHeightDp * 2 + ImeGeometryTokens.KEY_ROW_GAP_DP
 
-    val topZoneHeightDp: Int = ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP
+    val topZoneHeightDp: Int = if (landscape) {
+        ImeGeometryTokens.LANDSCAPE_TOP_ZONE_HEIGHT_DP
+    } else {
+        ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP
+    }
 
     val imeHeightDp: Int = run {
         val derived = topZoneHeightDp +
             keyRowHeightDp * 4 + 16
-        val baseMinimum = if (landscape) 256 else 0
+        val baseMinimum = 0
         val scaledMinimum =
             (baseMinimum * heightPercent.coerceIn(80, 120) / 100f).toInt()
         maxOf(scaledMinimum, derived)

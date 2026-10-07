@@ -20,6 +20,7 @@ import android.widget.SeekBar
 import android.widget.TextView
 import llc.slacker.openime.ImeSettingsActivity
 import llc.slacker.openime.R
+import llc.slacker.openime.core.LandscapeLayout
 import llc.slacker.openime.data.HapticStyle
 import llc.slacker.openime.data.KeySoundStyle
 import llc.slacker.openime.theme.ImeAppearance
@@ -58,6 +59,7 @@ internal class SettingsPanelController(
     private val currentHaptic: () -> Boolean,
     private val currentHapticStrengthPercent: () -> Int,
     private val currentHapticStyle: () -> HapticStyle,
+    private val currentLandscapeLayout: () -> LandscapeLayout,
     private val currentKeySoundStyle: () -> KeySoundStyle,
     private val currentPopup: () -> Boolean,
     private val currentSwipeUpDigits: () -> Boolean,
@@ -73,6 +75,7 @@ internal class SettingsPanelController(
     private val onKeyboardHeightChanged: (Int) -> Unit,
     private val onHapticStrengthChanged: (Int) -> Unit,
     private val onHapticStyleChanged: (HapticStyle) -> Unit,
+    private val onLandscapeLayoutChanged: (LandscapeLayout) -> Unit,
     private val onKeySoundStyleChanged: (KeySoundStyle) -> Unit,
     private val onFloatingStyleChanged: (Int, Int) -> Unit,
     private val onShowFuzzySettings: () -> Unit,
@@ -174,6 +177,8 @@ internal class SettingsPanelController(
             segmentedRow("外观", R.drawable.ic_pref_appearance),
             sliderRow("键盘高度", R.drawable.ic_pref_height, 80, 120, currentKeyboardHeightPercent(), onChange = onKeyboardHeightChanged),
         )
+        content.addSection("横屏")
+        content.addCard(landscapeLayoutRow(R.drawable.ic_pref_width))
         content.addSection("浮动键盘")
         content.addCard(
             sliderRow("浮动宽度", R.drawable.ic_pref_width, 72, 100, currentFloatingWidthPercent()) {
@@ -232,6 +237,8 @@ internal class SettingsPanelController(
             soundStyleRow(0),
             hapticStyleRow(0),
         )
+        content.addSection("横屏")
+        content.addCard(landscapeLayoutRow(0))
         content.addSection("浮动键盘")
         content.addCard(
             sliderRow("浮动宽度", 0, 72, 100, currentFloatingWidthPercent(), shortLabel = "宽度") {
@@ -549,6 +556,11 @@ internal class SettingsPanelController(
     private fun soundStyleRow(iconRes: Int): View =
         choiceRow("音效", iconRes, KeySoundStyle.entries.map { it.label }, currentKeySoundStyle().label) { label ->
             onKeySoundStyleChanged(KeySoundStyle.entries.first { it.label == label })
+        }
+
+    private fun landscapeLayoutRow(iconRes: Int): View =
+        choiceRow("横屏布局", iconRes, LandscapeLayout.entries.map { it.label }, currentLandscapeLayout().label) { label ->
+            onLandscapeLayoutChanged(LandscapeLayout.entries.first { it.label == label })
         }
 
     private fun hapticStyleRow(iconRes: Int): View =

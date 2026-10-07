@@ -31,6 +31,7 @@ internal class KeyPopupController(
     private val statefulRounded: (normal: Int, pressed: Int, radius: Int) -> Drawable,
     private val contrastText: (background: Int) -> Int,
     private val feedback: () -> Unit,
+    private val hoverFeedback: () -> Unit,
     private val onSymbolSelected: (String) -> Unit,
 ) {
     private val previewPopup = TextView(host.context).apply {
@@ -44,6 +45,9 @@ internal class KeyPopupController(
     }
     private var popupView: View? = null
     private var keepAfterKeyUp = false
+    private var choiceAnchor: View? = null
+    private val choiceCells = mutableListOf<Pair<TextView, String>>()
+    private var hoveredCell: TextView? = null
 
     /** True while a key preview or a long-press choice popup is on screen. */
     val isShowing: Boolean get() = popupView != null
@@ -193,14 +197,28 @@ internal class KeyPopupController(
     fun showChoices(anchor: View, choices: List<String>) = showChoiceRows(anchor, listOf(choices))
 
     /** Long-press selector with one horizontal row per entry of [rows]. */
-    fun showChoiceRows(anchor: View, rows: List<List<String>>) {
-        if (rows.isEmpty() || rows.all { it.isEmpty() }) return
+    fun showChoiceRows(anchor: View, requestedRows: List<List<String>>) {
+        if (requestedRows.isEmpty() || requestedRows.all { it.isEmpty() }) return
         hide()
+        // The popup must sit above the key inside the IME window. A landscape
+        // keyboard has too little room for stacked rows, and a popup covering the
+        // key would put the pressed finger on a cell. Fall back to one row then,
+        // nearest letters first.
+        val anchorTop = IntArray(2).also { anchor.getLocationOnScreen(it) }[1] -
+            IntArray(2).also { host.getLocationOnScreen(it) }[1]
+        val needed = dp(48 * requestedRows.size + 10) + dp(ImeGeometryTokens.KEY_POPUP_VERTICAL_GAP_DP) + dp(4)
+        val rows = if (requestedRows.size > 1 && needed > anchorTop) {
+            listOf(requestedRows.reversed().flatten())
+        } else {
+            requestedRows
+        }
         keepAfterKeyUp = true
+        choiceAnchor = anchor
 
         val t = tokens()
         val column = LinearLayout(host.context).apply {
             orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
             setPadding(dp(5), dp(5), dp(5), dp(5))
             background = ImeDrawableFactory.rounded(
                 t.keyBackground,
@@ -220,6 +238,7 @@ internal class KeyPopupController(
             choices.forEach { symbol ->
                 row.addView(
                     TextView(host.context).apply {
+                        choiceCells += this to symbol
                         text = symbol
                         textSize = ImeTypographyTokens.BODY_SP
                         includeFontPadding = false
@@ -263,6 +282,48 @@ internal class KeyPopupController(
         animateIn(column, popupWidth, popupHeight)
     }
 
+    /**
+     * Slide-to-select for a choice popup. The finger that opened it is still
+     * down, so the host forwards its moves and its lift here. Moving over a cell
+     * highlights it; lifting over a cell types it. Lifting anywhere else leaves
+     * the popup open when the finger is back on its key (tap a cell instead) and
+     * closes it otherwise. Returns true when the lift typed a cell.
+     */
+    fun trackChoiceTouch(rawX: Float, rawY: Float, lifted: Boolean): Boolean {
+        if (choiceCells.isEmpty() || popupView == null) return false
+        // A cell drawn over the key itself is not a choice yet: the finger has not left the key.
+        val onAnchor = choiceAnchor?.let { containsRaw(it, rawX, rawY) } == true
+        val hit = if (onAnchor) null else choiceCells.firstOrNull { (cell, _) -> containsRaw(cell, rawX, rawY) }
+        if (!lifted) {
+            val cell = hit?.first
+            if (cell !== hoveredCell) {
+                hoveredCell?.isPressed = false
+                cell?.isPressed = true
+                hoveredCell = cell
+                if (cell != null) hoverFeedback()
+            }
+            return false
+        }
+        if (hit != null) {
+            hide()
+            feedback()
+            onSymbolSelected(hit.second)
+            return true
+        }
+        hoveredCell?.isPressed = false
+        hoveredCell = null
+        val anchor = choiceAnchor
+        if (anchor == null || !containsRaw(anchor, rawX, rawY)) hide()
+        return false
+    }
+
+    private fun containsRaw(view: View, rawX: Float, rawY: Float): Boolean {
+        val location = IntArray(2)
+        view.getLocationOnScreen(location)
+        return rawX >= location[0] && rawX < location[0] + view.width &&
+            rawY >= location[1] && rawY < location[1] + view.height
+    }
+
     fun hideIfOutside(x: Float, y: Float) {
         val popup = popupView ?: return
         if (x < popup.left || x >= popup.right || y < popup.top || y >= popup.bottom) {
@@ -291,6 +352,9 @@ internal class KeyPopupController(
         }
         popupView = null
         keepAfterKeyUp = false
+        choiceAnchor = null
+        choiceCells.clear()
+        hoveredCell = null
     }
 
     private companion object {

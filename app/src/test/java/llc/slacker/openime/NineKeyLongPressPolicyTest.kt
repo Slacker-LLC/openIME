@@ -7,13 +7,13 @@ import org.junit.Test
 
 class NineKeyLongPressPolicyTest {
     @Test
-    fun offersTheDigitAndBothCasesOfTheLetters() {
+    fun offersTheDigitAndBothCasesWithLowercaseNearestTheThumb() {
         assertEquals(
-            listOf(listOf("2", "a", "b", "c"), listOf("A", "B", "C")),
+            listOf(listOf("A", "B", "C"), listOf("2", "a", "b", "c")),
             NineKeyLongPressPolicy.choiceRows("2"),
         )
         assertEquals(
-            listOf(listOf("9", "w", "x", "y", "z"), listOf("W", "X", "Y", "Z")),
+            listOf(listOf("W", "X", "Y", "Z"), listOf("9", "w", "x", "y", "z")),
             NineKeyLongPressPolicy.choiceRows("9"),
         )
     }

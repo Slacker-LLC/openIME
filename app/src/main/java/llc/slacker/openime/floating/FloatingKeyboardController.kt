@@ -8,8 +8,6 @@ import android.os.Build
 import android.view.MotionEvent
 import android.view.View
 import android.widget.LinearLayout
-import llc.slacker.openime.theme.ImeDrawableFactory
-import llc.slacker.openime.theme.ImeGeometryTokens
 import llc.slacker.openime.theme.ImeTheme
 
 /**
@@ -75,17 +73,10 @@ internal class FloatingKeyboardController(
     fun applyTheme(tokens: ImeTheme.Tokens) {
         (handle as? DragHandleView)?.setDotColor(tokens.border)
         handle.setBackgroundColor(tokens.toolbarBackground)
-        mainDock.elevation = if (enabled) toPx(10).toFloat() else 0f
-        if (enabled) {
-            mainDock.background = ImeDrawableFactory.rounded(
-                tokens.keyboardBackground,
-                toPx(ImeGeometryTokens.CARD_RADIUS_DP),
-            )
-            mainDock.clipToOutline = true
-        } else {
-            mainDock.setBackgroundColor(tokens.keyboardBackground)
-            mainDock.clipToOutline = false
-        }
+        // The root view clips to the rounded card; the dock only supplies the fill.
+        mainDock.elevation = 0f
+        mainDock.setBackgroundColor(tokens.keyboardBackground)
+        mainDock.clipToOutline = false
     }
 
     private fun handleTouch(event: MotionEvent): Boolean {
