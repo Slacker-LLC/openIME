@@ -42,6 +42,7 @@ import llc.slacker.openime.data.KeySoundStyle
 import llc.slacker.openime.data.QuickPhrase
 import llc.slacker.openime.data.QuickPhraseRepository
 import llc.slacker.openime.editor.EditorInfoAdapter
+import llc.slacker.openime.editor.enterKeyFaceFor
 import llc.slacker.openime.editor.enterKeyPresentationFor
 import llc.slacker.openime.floating.FloatingKeyboardController
 import llc.slacker.openime.panel.ClipboardPanelController
@@ -1551,10 +1552,10 @@ open class ImeKeyboardView(
         val options = imeOptions ?: return
         val enter = findViewWithTag<ImeKeyView>("key-enter") ?: return
         val composing = composition.text?.isNotEmpty() == true
-        val label = if (composing) "确定" else if (mode == KeyboardMode.PINYIN_9 || mode == KeyboardMode.STROKE || mode == KeyboardMode.DIGITS) "↵" else enterKeyPresentationFor(options).label
-        enter.setMainText(label)
+        enter.setMainText(enterKeyFaceFor(options, composing))
         enter.applyMainTextScale(referenceScale)
-        enter.contentDescription = label
+        enter.contentDescription = if (composing) "确定" else enterKeyPresentationFor(options).label
+        themeApplier.apply(enter, currentThemeTokens())
     }
 
     private var inlineAutofillController: InlineAutofillController? = null
@@ -2007,7 +2008,7 @@ open class ImeKeyboardView(
         pinyin26Renderer.render(
             english = false,
             shiftState = shiftState,
-            enterLabel = enterKeyLabel(false),
+            enterLabel = enterKeyLabel(),
         )
     }
 
@@ -2015,7 +2016,7 @@ open class ImeKeyboardView(
         pinyin26Renderer.render(
             english = true,
             shiftState = shiftState,
-            enterLabel = enterKeyLabel(true),
+            enterLabel = enterKeyLabel(),
         )
     }
 
@@ -2024,15 +2025,15 @@ open class ImeKeyboardView(
      * correct on its first frame (V2 keeps an idempotent re-sync as a safety net).
      * Outside an InputMethodService host (settings/test) the legacy fallback is used.
      */
-    private fun enterKeyLabel(english: Boolean, fallback: String? = null): String {
+    /** One rule for every keyboard: 确定 composing, the action word for a real action, otherwise ↵. */
+    private fun enterKeyLabel(): String {
         val imeOptions = (context as? android.inputmethodservice.InputMethodService)
             ?.currentInputEditorInfo?.imeOptions
-        if (imeOptions != null) return enterKeyPresentationFor(imeOptions).label
-        return fallback ?: if (english) "Go" else "确定"
+        return enterKeyFaceFor(imeOptions, composition.text?.isNotEmpty() == true)
     }
 
     private fun renderPinyin9() {
-        pinyin9Renderer.render(enterLabel = if (composition.text?.isNotEmpty() == true) "确定" else "↵")
+        pinyin9Renderer.render(enterLabel = enterKeyLabel())
     }
 
     private fun requireNineKeySymbolRailController(): NineKeySymbolRailController {
@@ -2057,7 +2058,7 @@ open class ImeKeyboardView(
                 start()
             }
         }
-        strokeRenderer.render(enterLabel = if (composition.text?.isNotEmpty() == true) "确定" else "↵")
+        strokeRenderer.render(enterLabel = enterKeyLabel())
     }
 
     /**
@@ -2080,7 +2081,7 @@ open class ImeKeyboardView(
             ?.currentInputEditorInfo
         numericKeyboardRenderer.render(
             editorKind = EditorInfoAdapter.kind(info),
-            enterLabel = "↵",
+            enterLabel = enterKeyLabel(),
         )
     }
 

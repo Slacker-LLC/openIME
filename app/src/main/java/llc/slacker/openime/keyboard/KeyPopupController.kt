@@ -206,7 +206,7 @@ internal class KeyPopupController(
         // nearest letters first.
         val anchorTop = IntArray(2).also { anchor.getLocationOnScreen(it) }[1] -
             IntArray(2).also { host.getLocationOnScreen(it) }[1]
-        val needed = dp(48 * requestedRows.size + 10) + dp(ImeGeometryTokens.KEY_POPUP_VERTICAL_GAP_DP) + dp(4)
+        val needed = dp(CELL_HEIGHT_DP * requestedRows.size + 2 * POPUP_PAD_DP) + dp(ImeGeometryTokens.KEY_POPUP_VERTICAL_GAP_DP) + dp(4)
         val rows = if (requestedRows.size > 1 && needed > anchorTop) {
             listOf(requestedRows.reversed().flatten())
         } else {
@@ -219,7 +219,7 @@ internal class KeyPopupController(
         val column = LinearLayout(host.context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(5), dp(5), dp(5), dp(5))
+            setPadding(dp(POPUP_PAD_DP), dp(POPUP_PAD_DP), dp(POPUP_PAD_DP), dp(POPUP_PAD_DP))
             background = ImeDrawableFactory.rounded(
                 t.keyBackground,
                 dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
@@ -259,27 +259,25 @@ internal class KeyPopupController(
                             onSymbolSelected(symbol)
                         }
                     },
-                    LinearLayout.LayoutParams(
-                        dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-                        dp(ImeGeometryTokens.TOUCH_TARGET_DP),
-                    ),
+                    LinearLayout.LayoutParams(dp(CELL_WIDTH_DP), dp(CELL_HEIGHT_DP)),
                 )
             }
             column.addView(
                 row,
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
-                    dp(ImeGeometryTokens.TOUCH_TARGET_DP),
+                    dp(CELL_HEIGHT_DP),
                 ),
             )
         }
 
         val widest = rows.maxOf { it.size }
-        val popupWidth = dp(48 * widest + 10)
-        val popupHeight = dp(48 * rows.size + 10)
+        val popupWidth = dp(CELL_WIDTH_DP * widest + 2 * POPUP_PAD_DP)
+        val popupHeight = dp(CELL_HEIGHT_DP * rows.size + 2 * POPUP_PAD_DP)
         placeAbove(anchor, column, popupWidth, popupHeight)
         popupView = column
         animateIn(column, popupWidth, popupHeight)
+        scheduleAutoDismiss(OPEN_DISMISS_MS)
     }
 
     /**
@@ -313,7 +311,7 @@ internal class KeyPopupController(
         hoveredCell?.isPressed = false
         hoveredCell = null
         val anchor = choiceAnchor
-        if (anchor == null || !containsRaw(anchor, rawX, rawY)) hide()
+        if (anchor == null || !containsRaw(anchor, rawX, rawY)) hide() else scheduleAutoDismiss(LIFT_DISMISS_MS)
         return false
     }
 
@@ -341,7 +339,16 @@ internal class KeyPopupController(
         return true
     }
 
+    /** A popup nobody picks from closes by itself. */
+    private fun scheduleAutoDismiss(delayMs: Long) {
+        host.removeCallbacks(autoDismiss)
+        host.postDelayed(autoDismiss, delayMs)
+    }
+
+    private val autoDismiss = Runnable { if (choiceCells.isNotEmpty()) hide() }
+
     fun hide() {
+        host.removeCallbacks(autoDismiss)
         popupView?.let { popup ->
             popup.animate().cancel()
             if (popup === previewPopup) {
@@ -358,6 +365,12 @@ internal class KeyPopupController(
     }
 
     private companion object {
+        // Long-press cells and the key preview share one height (44 + 2 x 4 = 52).
+        const val CELL_WIDTH_DP = 40
+        const val CELL_HEIGHT_DP = 44
+        const val POPUP_PAD_DP = 4
+        const val OPEN_DISMISS_MS = 4000L
+        const val LIFT_DISMISS_MS = 1500L
         const val GESTURE_HINT_HEIGHT_DP = 36
         const val GESTURE_HINT_MIN_WIDTH_DP = 88
     }

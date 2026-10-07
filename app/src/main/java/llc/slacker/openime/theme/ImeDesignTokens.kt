@@ -43,7 +43,7 @@ internal object ImeGeometryTokens {
     const val KEY_GAP_DP = 6
     const val KEY_ROW_GAP_DP = KEY_GAP_DP
     const val KEY_SIDE_MARGIN_DP = 2
-    const val KEY_POPUP_HEIGHT_DP = 76
+    const val KEY_POPUP_HEIGHT_DP = 52
     const val KEY_POPUP_MIN_WIDTH_DP = 40
     const val KEY_POPUP_WIDTH_SCALE = 1.08f
     const val KEY_POPUP_VERTICAL_GAP_DP = 8
@@ -59,8 +59,8 @@ internal object ImeGeometryTokens {
     const val COMPOSED_TOP_ZONE_HEIGHT_DP = 60
     // Landscape: one strip a little taller than a key row, pinyin and candidates side by side.
     // Space under the bottom row (the keys sit 7dp higher than they used to).
-    const val KEYBOARD_TOP_PAD_DP = 6
-    const val KEYBOARD_BOTTOM_PAD_DP = 17
+    const val KEYBOARD_TOP_PAD_DP = 4
+    const val KEYBOARD_BOTTOM_PAD_DP = 19
     const val LANDSCAPE_TOP_ZONE_HEIGHT_DP = 48
 }
 

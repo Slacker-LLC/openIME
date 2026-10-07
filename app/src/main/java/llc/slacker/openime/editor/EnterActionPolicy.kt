@@ -30,6 +30,13 @@ internal fun enterKeyPresentationFor(imeOptions: Int): EnterKeyPresentation {
     }
 }
 
+/** The label drawn on the key: 确定 while composing, the action word when the editor asked for one, otherwise ↵. */
+internal fun enterKeyFaceFor(imeOptions: Int?, composing: Boolean): String {
+    if (composing) return "确定"
+    val presentation = imeOptions?.let(::enterKeyPresentationFor) ?: return "↵"
+    return if (presentation.editorAction != null) presentation.label else "↵"
+}
+
 /** Resolve an editor action for an Enter press, or null when a real Enter is required. */
 internal fun editorActionForEnter(imeOptions: Int): Int? =
     enterKeyPresentationFor(imeOptions).editorAction

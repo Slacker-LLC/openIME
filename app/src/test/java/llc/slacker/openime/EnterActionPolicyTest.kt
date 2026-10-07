@@ -2,6 +2,7 @@ package llc.slacker.openime
 
 import android.view.inputmethod.EditorInfo
 import llc.slacker.openime.editor.editorActionForEnter
+import llc.slacker.openime.editor.enterKeyFaceFor
 import llc.slacker.openime.editor.enterKeyPresentationFor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -55,5 +56,17 @@ class EnterActionPolicyTest {
             assertEquals("回车", presentation.label)
             assertNull(presentation.editorAction)
         }
+    }
+
+    @Test
+    fun theKeyFaceIsComposingOrActionOrReturnArrow() {
+        val send = EditorInfo.IME_ACTION_SEND
+        assertEquals("确定", enterKeyFaceFor(send, composing = true))
+        assertEquals("发送", enterKeyFaceFor(send, composing = false))
+        assertEquals("搜索", enterKeyFaceFor(EditorInfo.IME_ACTION_SEARCH, composing = false))
+        // No action, or a multi-line editor: a plain newline key, never a promise.
+        assertEquals("↵", enterKeyFaceFor(EditorInfo.IME_ACTION_NONE, composing = false))
+        assertEquals("↵", enterKeyFaceFor(EditorInfo.IME_ACTION_SEND or EditorInfo.IME_FLAG_NO_ENTER_ACTION, composing = false))
+        assertEquals("↵", enterKeyFaceFor(null, composing = false))
     }
 }
