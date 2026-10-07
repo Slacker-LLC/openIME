@@ -189,7 +189,9 @@ start_real
 mode PINYIN_26 || say 'WARN: PINYIN_26 not reached'
 for key in n i h a o; do tap "$key"; done
 tap key-backspace
-check '022 composition backspace -> niha' 'niha' "$(editor_text)"
+# Since 0.0.6 the pinyin pre-edit lives in the keyboard's own field, so the app editor stays empty
+# (uiautomator reports its hint) while composing and after a partial pick only the picked word is committed.
+check '022 composition backspace keeps the app editor empty' '输入拼音，或按住空格说话' "$(editor_text)"
 
 start_real
 mode PINYIN_26 || say 'WARN: PINYIN_26 not reached'
@@ -225,7 +227,7 @@ start_real
 mode PINYIN_9 || say 'WARN: PINYIN_9 not reached'
 for key in 6 4 4 2 6 6 2; do tap "$key"; done
 tap '候选:你'
-check "033 nine-key partial pick keeps the rest composing -> 你hao'ma" "你hao'ma" "$(editor_text)"
+check "033 nine-key partial pick commits only 你; hao'ma stays in the pre-edit" '你' "$(editor_text)"
 tap key-space
 check '034 nine-key rest then space -> 你好吗' '你好吗' "$(editor_text)"
 
@@ -241,7 +243,7 @@ start_real
 mode PINYIN_26 || say 'WARN: PINYIN_26 not reached'
 for key in n i h a o m a; do tap "$key"; done
 tap '候选:你'
-check '035 26-key partial pick keeps the rest composing -> 你haoma' '你haoma' "$(editor_text)"
+check '035 26-key partial pick commits only 你; haoma stays in the pre-edit' '你' "$(editor_text)"
 tap key-space
 check '036 26-key rest then space -> 你好吗' '你好吗' "$(editor_text)"
 

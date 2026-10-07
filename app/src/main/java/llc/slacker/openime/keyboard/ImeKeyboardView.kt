@@ -2109,6 +2109,7 @@ open class ImeKeyboardView(
                 MotionEvent.ACTION_UP -> keyPopupController.trackChoiceTouch(event.rawX, event.rawY, lifted = true)
             }
         }
+        trackShiftSlide(event)
         if (backspaceGestureController.active) {
             when (event.actionMasked) {
                 MotionEvent.ACTION_MOVE -> {
@@ -2928,6 +2929,63 @@ open class ImeKeyboardView(
     }
 
     private var lastShiftTapAt = 0L
+    private var shiftHeld = false
+    private var shiftSliding = false
+    private var shiftBeforeSlide = ShiftState.LOWERCASE
+
+    private fun shiftKeyView(): ImeKeyView? = findViewWithTag("key-shift")
+        ?: findViewWithTag("key-shift-active")
+        ?: findViewWithTag("key-shift-caps")
+
+    private fun rawContains(view: View, x: Float, y: Float): Boolean {
+        val at = IntArray(2)
+        view.getLocationOnScreen(at)
+        return x >= at[0] && x < at[0] + view.width && y >= at[1] && y < at[1] + view.height
+    }
+
+    /**
+     * Gboard's hold-Shift-and-slide: press Shift, slide onto a letter and lift to
+     * type that one capital; the Shift state goes back to what it was. Lifting
+     * anywhere else changes nothing.
+     */
+    private fun trackShiftSlide(event: MotionEvent) {
+        if (mode != KeyboardMode.ENGLISH_26) return
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                val shift = shiftKeyView()
+                shiftHeld = shift != null && rawContains(shift, event.rawX, event.rawY)
+                shiftSliding = false
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (!shiftHeld || shiftSliding) return
+                val shift = shiftKeyView() ?: return
+                if (!rawContains(shift, event.rawX, event.rawY)) {
+                    shiftSliding = true
+                    shiftBeforeSlide = shiftState
+                    if (shiftState == ShiftState.LOWERCASE) applyShift(ShiftState.SHIFT_ONCE)
+                    hapticFeedback()
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                val sliding = shiftSliding
+                shiftHeld = false
+                shiftSliding = false
+                if (!sliding) return
+                val letter = "qwertyuiopasdfghjklzxcvbnm".firstOrNull { ch ->
+                    findViewWithTag<ImeKeyView>("key:$ch")?.let { rawContains(it, event.rawX, event.rawY) } == true
+                }
+                if (letter != null && event.actionMasked == MotionEvent.ACTION_UP) {
+                    onKeyTapped(letter.toString())
+                    // One capital was typed: a lock stays, anything else ends lower case.
+                    applyShift(
+                        if (shiftBeforeSlide == ShiftState.CAPS_LOCK) ShiftState.CAPS_LOCK else ShiftState.LOWERCASE,
+                    )
+                } else {
+                    applyShift(shiftBeforeSlide)
+                }
+            }
+        }
+    }
 
     private fun cycleShift() {
         val now = android.os.SystemClock.uptimeMillis()
