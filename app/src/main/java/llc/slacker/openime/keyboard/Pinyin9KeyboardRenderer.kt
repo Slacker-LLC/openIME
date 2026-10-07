@@ -144,26 +144,26 @@ internal class Pinyin9KeyboardRenderer(
             sideKeyParams(nineBodyHeightDp() / 4),
         )
         if (splitLayout()) {
-            // Landscape split (Sogou's 左右分离): the digit grid under one thumb, the
-            // symbol and action columns under the other, a mirror key between them
-            // that swaps the sides.
-            val functions = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            functions.addView(left, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
-            functions.addView(side, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
+            // Landscape split (Sogou's 左右分离): a thumb's worth of nine-key on one side,
+            // a panel of common words on the other, and a mirror key between them.
+            val keys = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+            keys.addView(side, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
+            keys.addView(center, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 25f / 7f))
+            keys.addView(left, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
             val gap = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = android.view.Gravity.CENTER
                 addView(
-                    createKey("⇄", true, null, ImeTypographyTokens.BODY_SP, onMirror).apply {
+                    createKey("镜像", true, null, ImeTypographyTokens.BODY_SP, onMirror).apply {
                         tag = "key-mirror"
-                        contentDescription = "左右互换"
+                        contentDescription = "镜像，左右互换"
                         markSideKey(this)
                     },
                     LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(keyRowHeightDp())),
                 )
             }
-            val halves = if (mirrored()) listOf(center to 25f / 7f, gap to 0.7f, functions to 2f)
-            else listOf(functions to 2f, gap to 0.7f, center to 25f / 7f)
+            val halves = if (mirrored()) listOf(wordsPanel() to 4.8f, gap to 1.2f, keys to 5.57f)
+            else listOf(keys to 5.57f, gap to 1.2f, wordsPanel() to 4.8f)
             halves.forEach { (view, weight) -> container.addView(view, adaptiveColumnParams(weight)) }
         } else {
             container.addView(left, adaptiveColumnParams(1f))
@@ -178,6 +178,29 @@ internal class Pinyin9KeyboardRenderer(
                 toPx(nineBodyHeightDp()),
             ),
         )
+    }
+
+    /** Four rows of five frequent words; a tap types the word. */
+    private fun wordsPanel(): LinearLayout = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        tag = "split-words"
+        WORDS.forEach { rowWords ->
+            addView(
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    rowWords.forEach { word ->
+                        addView(
+                            createKey(word, false, null, ImeTypographyTokens.BODY_SP) { onCommitCharacter(word) }.apply {
+                                tag = "key-word:$word"
+                                markWhiteKey(this)
+                            },
+                            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f),
+                        )
+                    }
+                },
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f),
+            )
+        }
     }
 
     private fun buildNineGrid(): LinearLayout {
@@ -250,6 +273,12 @@ internal class Pinyin9KeyboardRenderer(
         )
 
     private companion object {
+        val WORDS = listOf(
+            listOf("的", "了", "我", "你", "是"),
+            listOf("吗", "好", "啊", "有", "吧"),
+            listOf("就", "在", "去", "没", "要"),
+            listOf("不", "都", "没有", "说", "这个"),
+        )
         val NINE_KEYS = listOf(
             listOf("1" to "@#", "2" to "ABC", "3" to "DEF"),
             listOf("4" to "GHI", "5" to "JKL", "6" to "MNO"),

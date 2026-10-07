@@ -596,7 +596,6 @@ open class ImeKeyboardView(
     }
     private var systemBottomInsetPx = 0
     private val maxContentWidthDp = 600
-    private val maxLandscapeContentWidthDp = 900
     // Portrait row height follows the available screen width. Landscape stays
     // compact; larger system fonts and the height preference grow the rows.
     private fun keyRowHeightDp(): Int = layoutMetrics.keyRowHeightDp
@@ -850,6 +849,7 @@ open class ImeKeyboardView(
             onModeSwitch = ::cycleMode,
             onSpace = listener::onSpace,
             onEnter = listener::onEnter,
+            onSymbols = { showPanel(Panel.SYMBOLS) },
             splitLayout = ::splitKeyboard,
         )
     }
@@ -1086,6 +1086,7 @@ open class ImeKeyboardView(
     private fun applyDynamicHeights() {
         if (standalonePanel) return
         if (::topZone.isInitialized) topZone.setLandscapeStrip(layoutMetrics.landscape)
+        syncSplitToggle()
         val totalPx = dp(imeHeightDp())
         val bodyPx = dp(keyboardBodyHeightDp())
         (layoutParams as? FrameLayout.LayoutParams)?.let {
@@ -1181,9 +1182,9 @@ open class ImeKeyboardView(
         val maxWidth = when {
             standalonePanel -> dp(maxContentWidthDp)
             // Landscape rows are short, so the width is what makes keys easy to hit.
-            // Like Gboard and the Chinese keyboards, fill the screen up to a tablet cap
-            // instead of shrinking the keys to the height-derived portrait width.
-            landscape -> (maxLandscapeContentWidthDp * resources.displayMetrics.density).toInt()
+            // Like Gboard and the Chinese keyboards, fill the whole width instead of
+            // shrinking the keys to the height-derived portrait width.
+            landscape -> measuredWidthPx
             else -> (minOf(maxContentWidthDp.toFloat(), 390f * referenceScale) * resources.displayMetrics.density).toInt()
         }
         contentInsetPx = maxOf(minimumInset, (measuredWidthPx - maxWidth) / 2)
@@ -1284,6 +1285,7 @@ open class ImeKeyboardView(
                 listener.onCandidateExpanded(open)
             },
             onUndo = { listener.onTextEdit("undo") },
+            onSplitToggle = ::toggleSplit,
             onAssociationDismiss = ::clearAssociationCandidates,
         )
         candidateBarController = CandidateBarController(
@@ -1713,6 +1715,21 @@ open class ImeKeyboardView(
         !standalonePanel && !floatingWindowMode &&
             appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE &&
             ImeSettingsRepository.loadLandscapeLayout(context) == LandscapeLayout.SPLIT
+
+    private fun toggleSplit() {
+        setLandscapeLayout(
+            if (splitKeyboard()) LandscapeLayout.FULL else LandscapeLayout.SPLIT,
+        )
+        syncSplitToggle()
+    }
+
+    /** The toolbar split button shows only on a docked landscape keyboard. */
+    private fun syncSplitToggle() {
+        if (!::topZone.isInitialized) return
+        val landscape = !standalonePanel && !floatingWindowMode &&
+            appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        topZone.setSplitToggle(landscape, splitKeyboard())
+    }
 
     private fun mirrorSplit() {
         ImeSettingsRepository.saveSplitMirrored(context, !ImeSettingsRepository.loadSplitMirrored(context))
@@ -3032,6 +3049,14 @@ open class ImeKeyboardView(
     private var shiftSliding = false
     private var shiftBeforeSlide = ShiftState.LOWERCASE
 
+    private fun forEachKeyWithTag(action: (String, ImeKeyView) -> Unit) {
+        fun walk(view: View) {
+            if (view is ImeKeyView) (view.tag as? String)?.let { action(it, view) }
+            if (view is ViewGroup) for (i in 0 until view.childCount) walk(view.getChildAt(i))
+        }
+        walk(this)
+    }
+
     private fun shiftKeyView(): ImeKeyView? = findViewWithTag("key-shift")
         ?: findViewWithTag("key-shift-active")
         ?: findViewWithTag("key-shift-caps")
@@ -3110,10 +3135,12 @@ open class ImeKeyboardView(
     private fun refreshEnglishShiftPresentation() {
         if (mode != KeyboardMode.ENGLISH_26) return
         val uppercase = shiftState != ShiftState.LOWERCASE
-        "qwertyuiopasdfghjklzxcvbnm".forEach { ch ->
-            findViewWithTag<ImeKeyView>("key:$ch")?.setMainText(
-                if (uppercase) ch.uppercaseChar().toString() else ch.toString(),
-            )
+        // The split layout repeats G and V on both halves, so set every key with the tag.
+        forEachKeyWithTag { tag, key ->
+            val ch = tag.removePrefix("key:").singleOrNull()
+            if (tag.startsWith("key:") && ch != null && ch in 'a'..'z') {
+                key.setMainText(if (uppercase) ch.uppercaseChar().toString() else ch.toString())
+            }
         }
         val shift = findViewWithTag<ImeKeyView>("key-shift")
             ?: findViewWithTag<ImeKeyView>("key-shift-active")

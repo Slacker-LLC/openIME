@@ -41,6 +41,7 @@ internal class Pinyin26KeyboardRenderer(
     private val onModeSwitch: () -> Unit,
     private val onSpace: () -> Unit,
     private val onEnter: () -> Unit,
+    private val onSymbols: () -> Unit = {},
     private val splitLayout: () -> Boolean = { false },
 ) {
     fun render(
@@ -109,44 +110,42 @@ internal class Pinyin26KeyboardRenderer(
     }
 
     /**
-     * Landscape split keyboard (Sogou's 左右分离): one half of the letters under each
-     * thumb with a gap between them, and the space bar running through the gap.
-     * Every half is five key-widths wide; short rows stretch their keys to fill it.
+     * Landscape split keyboard, as Sogou draws it: each half is a complete thumb
+     * keyboard, G and V sit on both sides so either thumb reaches them, and both
+     * halves carry their own space bar. The gap between them stays empty.
      */
     private fun renderSplit(english: Boolean, shiftState: ShiftState, enterLabel: String) {
         fun row(build: LinearLayout.() -> Unit) {
             keyboardBody.addView(rowHost().apply(build), rowParams())
         }
-        fun LinearLayout.letters(chars: String, weight: Float) {
-            chars.forEach { addView(letterKey(it, english, shiftState), flexKeyParams(weight)) }
+        fun LinearLayout.letters(chars: String) {
+            chars.forEach { addView(letterKey(it, english, shiftState), flexKeyParams(1f)) }
         }
         fun LinearLayout.gap() = addView(View(context), flexKeyParams(SPLIT_GAP))
+        fun fn(label: String, onTap: () -> Unit) =
+            createKey(label, true, null, ImeTypographyTokens.BODY_SP, 0, onTap)
 
-        row { letters("qwert", 1f); gap(); letters("yuiop", 1f) }
-        row { letters("asdfg", 1f); gap(); letters("hjkl", 1.25f) }
+        row { letters("qwert"); gap(); letters("yuiop") }
+        row { letters("asdfg"); gap(); letters("ghjkl") }
         row {
-            addView(shiftKey(shiftState), flexKeyParams(1f)); letters("zxcv", 1f)
+            addView(shiftKey(shiftState), flexKeyParams(1f)); letters("zxcv")
             gap()
-            letters("bnm", 1f); addView(createBackspaceKey(), flexKeyParams(2f))
+            letters("vbnm"); addView(createBackspaceKey(), flexKeyParams(1f))
         }
-
-        val bottom = rowHost()
-        bottom.addView(
-            createKey("123", true, null, ImeTypographyTokens.BODY_SP, 0, onDigits),
-            flexKeyParams(1.5f),
-        )
-        bottom.addView(punctuationKey(english), flexKeyParams(1.5f))
-        bottom.addView(createSpaceVoiceKey("空格", onSpace), flexKeyParams(SPLIT_GAP + 4f))
-        bottom.addView(
-            createKey("中/英", true, null, ImeTypographyTokens.BODY_SP, 0) { onModeSwitch() }
-                .apply { tag = "key:mode" },
-            flexKeyParams(1.5f),
-        )
-        bottom.addView(
-            createKey(enterLabel, true, null, ImeTypographyTokens.BODY_SP, 0, onEnter).apply { tag = "key-enter" },
-            flexKeyParams(1.5f),
-        )
-        keyboardBody.addView(bottom, rowParams())
+        row {
+            addView(fn("符") { onSymbols() }.apply { tag = "key-symbols" }, flexKeyParams(1f))
+            addView(fn("123", onDigits), flexKeyParams(1f))
+            addView(punctuationKey(english), flexKeyParams(1f))
+            addView(createSpaceVoiceKey("空格", onSpace), flexKeyParams(2f))
+            gap()
+            addView(createSpaceVoiceKey("空格", onSpace), flexKeyParams(2f))
+            addView(fn("。") { onCommitCharacter(if (english) "." else "。") }, flexKeyParams(1f))
+            addView(fn("中/英") { onModeSwitch() }.apply { tag = "key:mode" }, flexKeyParams(1f))
+            addView(
+                createKey(enterLabel, true, null, ImeTypographyTokens.BODY_SP, 0, onEnter).apply { tag = "key-enter" },
+                flexKeyParams(1f),
+            )
+        }
     }
 
     private fun punctuationKey(english: Boolean): ImeKeyView {
@@ -247,7 +246,7 @@ internal class Pinyin26KeyboardRenderer(
         )
 
     private companion object {
-        const val SPLIT_GAP = 3f
+        const val SPLIT_GAP = 3.5f
         val ROWS = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
     }
 }

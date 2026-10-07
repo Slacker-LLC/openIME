@@ -59,6 +59,7 @@ internal class ImeTopZone(
     onTools: () -> Unit,
     onExpandCandidates: () -> Unit,
     private val onUndo: () -> Unit,
+    private val onSplitToggle: () -> Unit = {},
     private val onAssociationDismiss: () -> Unit = {},
 ) : LinearLayout(context) {
     val toolbarRow = LinearLayout(context)
@@ -84,6 +85,9 @@ internal class ImeTopZone(
     private var toolbarMode = ToolbarMode.NORMAL
     private var associationsShown = false
     private var autofillShown = false
+    private lateinit var splitIcon: View
+    private var splitToggleShown = false
+    private var splitActive = false
     /** True while chips occupy the strip (system autofill or the toolbar suggestions). */
     val autofillChipsShown: Boolean get() = autofillShown
     /** Called when the user closes the chip strip with its back control. */
@@ -121,12 +125,13 @@ internal class ImeTopZone(
         val emojiIcon = toolbarIcon(R.drawable.ic_emoji, "表情", "toolbar", onEmoji)
         val textEditIcon = toolbarIcon(R.drawable.ic_text_cursor, "文本编辑", "toolbar", onTextEditor)
         val undoIcon = toolbarIcon(R.drawable.ic_undo, "撤销", "undo-toolbar") { onUndo() }
+        splitIcon = toolbarIcon(R.drawable.ic_keyboard_split, "左右分离键盘", "split-toggle") { onSplitToggle() }
         val toolsIcon = toolbarIcon(R.drawable.ic_grid, "更多", "toolbar", onTools)
         // Docked keeps the full toolbar. Floating (game) mode drops text editing
         // and undo and puts quick phrases one tap away.
         toolbarIcons = listOf(keyboardIcon, clipboardIcon, emojiIcon, textEditIcon, undoIcon, toolsIcon)
         compactToolbarIcons = listOf(keyboardIcon, phraseIcon, emojiIcon, toolsIcon)
-        (toolbarIcons + phraseIcon).distinct().forEach {
+        (toolbarIcons + phraseIcon + splitIcon).distinct().forEach {
             toolbarRow.addView(it, LinearLayout.LayoutParams(0, toPx(48), 1f))
         }
 
@@ -561,6 +566,15 @@ internal class ImeTopZone(
         }
     }
 
+    /** Landscape docked keyboards get Sogou's toolbar button that splits or rejoins the keyboard. */
+    fun setSplitToggle(visible: Boolean, active: Boolean) {
+        splitToggleShown = visible
+        splitActive = active
+        splitIcon.contentDescription = if (active) "恢复普通键盘" else "左右分离键盘"
+        splitIcon.alpha = if (active) 1f else 0.72f
+        refreshToolbar()
+    }
+
     fun setCompactToolbar(value: Boolean) {
         if (compact == value) return
         compact = value
@@ -575,6 +589,7 @@ internal class ImeTopZone(
         (toolbarIcons + compactToolbarIcons).distinct().forEach {
             it.visibility = if (normal && it in shown) View.VISIBLE else View.GONE
         }
+        splitIcon.visibility = if (normal && splitToggleShown) View.VISIBLE else View.GONE
         associationBack.visibility = if (association || autofill) View.VISIBLE else View.GONE
         associationScroll.visibility = if (association) View.VISIBLE else View.GONE
         autofillScroll.visibility = if (autofill) View.VISIBLE else View.GONE
