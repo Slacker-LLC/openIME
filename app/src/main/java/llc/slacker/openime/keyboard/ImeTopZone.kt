@@ -39,6 +39,10 @@ internal enum class ImeTopZoneState {
  * The host supplies data/actions. This view owns construction and visibility
  * of the toolbar, composition/candidate surface, and inline voice surface.
  */
+/** Composing strip: a short pinyin line over the candidate row, 60dp in all. */
+private const val COMPOSITION_LINE_DP = 18
+private const val CANDIDATE_ROW_DP = 42
+
 internal class ImeTopZone(
     context: Context,
     private val toPx: (Int) -> Int,
@@ -224,7 +228,7 @@ internal class ImeTopZone(
             background = null
             includeFontPadding = false
             setPadding(toPx(14), toPx(3), toPx(14), 0)
-            minimumHeight = toPx(22)
+            minimumHeight = toPx(COMPOSITION_LINE_DP)
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
@@ -239,7 +243,7 @@ internal class ImeTopZone(
             composition,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(22),
+                toPx(COMPOSITION_LINE_DP),
             ),
         )
 
@@ -259,7 +263,7 @@ internal class ImeTopZone(
                 candidateRow,
                 ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
-                    toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
+                    toPx(CANDIDATE_ROW_DP),
                 ),
             )
         }
@@ -270,7 +274,7 @@ internal class ImeTopZone(
         candidateField.addView(expandedCaption, LinearLayout.LayoutParams(0, toPx(48), 1f))
         candidateField.addView(
             candidateScroll,
-            LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f),
+            LinearLayout.LayoutParams(0, toPx(CANDIDATE_ROW_DP), 1f),
         )
 
         candidateEmojiButton.apply {
@@ -304,7 +308,7 @@ internal class ImeTopZone(
             candidateField,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
+                toPx(CANDIDATE_ROW_DP),
             ),
         )
         addView(
@@ -532,7 +536,7 @@ internal class ImeTopZone(
                 it.height = LinearLayout.LayoutParams.MATCH_PARENT
             } else {
                 it.width = LinearLayout.LayoutParams.MATCH_PARENT
-                it.height = toPx(22)
+                it.height = toPx(COMPOSITION_LINE_DP)
             }
             composition.layoutParams = it
         }
@@ -546,7 +550,7 @@ internal class ImeTopZone(
             } else {
                 it.width = LinearLayout.LayoutParams.MATCH_PARENT
                 it.weight = 0f
-                it.height = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
+                it.height = toPx(CANDIDATE_ROW_DP)
             }
             candidateField.layoutParams = it
         }

@@ -167,12 +167,16 @@ internal class Pinyin26KeyboardRenderer(
             if (secondary != null) {
                 setSecondaryVisible(true)
                 setSecondaryAlpha(1f)
-                setOnLongClickListener {
-                    onCommitCharacter(secondary)
-                    true
-                }
                 onSwipeUp = { onCommitCharacter(secondary) }
                 swipeUpEnabled = this@Pinyin26KeyboardRenderer.swipeUpEnabled
+            }
+            // Long press opens a popup (other case, digit or mark): slide to one and
+            // lift to type it, as the Sogou and iFlytek keyboards do.
+            setOnLongClickListener {
+                val upperShown = currentMainText.firstOrNull()?.isUpperCase() == true
+                val choices = LetterHintPolicy.longPressChoices(character, english, upperShown, hintsEnabled())
+                onShowChoicePopup(this, choices)
+                true
             }
         }
     }

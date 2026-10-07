@@ -56,8 +56,11 @@ internal object ImeGeometryTokens {
     // Same as a settings icon tile, so step text lines up with the rows below.
     const val STEP_MARK_SIZE_DP = 32
     const val HERO_MARK_SIZE_DP = 72
-    const val COMPOSED_TOP_ZONE_HEIGHT_DP = 70
+    const val COMPOSED_TOP_ZONE_HEIGHT_DP = 60
     // Landscape: one strip a little taller than a key row, pinyin and candidates side by side.
+    // Space under the bottom row (the keys sit 15dp higher than they used to).
+    const val KEYBOARD_TOP_PAD_DP = 6
+    const val KEYBOARD_BOTTOM_PAD_DP = 25
     const val LANDSCAPE_TOP_ZONE_HEIGHT_DP = 48
 }
 

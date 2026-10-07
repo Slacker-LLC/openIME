@@ -425,7 +425,7 @@ open class ImeKeyboardView(
         contrastText = ImeDrawableFactory::contrastText,
         feedback = ::feedback,
         hoverFeedback = ::hapticFeedback,
-        onSymbolSelected = listener::onCharacter,
+        onSymbolSelected = ::onPopupChoice,
     )
     private val nineKeySegmentRepairController = NineKeySegmentRepairController(
         context = context,
@@ -837,7 +837,7 @@ open class ImeKeyboardView(
         }
         keyboardBody.orientation = LinearLayout.VERTICAL
         keyboardBody.tag = "keyboard-body"
-        keyboardBody.setPadding(dp(0), dp(6), dp(0), dp(10))
+        keyboardBody.setPadding(dp(0), dp(ImeGeometryTokens.KEYBOARD_TOP_PAD_DP), dp(0), dp(ImeGeometryTokens.KEYBOARD_BOTTOM_PAD_DP))
         expandedPanel.orientation = LinearLayout.VERTICAL
         expandedPanel.tag = "panel-overlay"
         expandedPanel.visibility = View.GONE
@@ -1101,7 +1101,7 @@ open class ImeKeyboardView(
             // width before WindowManager applies the floating window bounds.
             // Keep the normal keyboard's content inset local to its window.
             contentInsetPx = dp(0)
-            keyboardBody.setPadding(contentInsetPx, dp(6), contentInsetPx, dp(10))
+            keyboardBody.setPadding(contentInsetPx, dp(ImeGeometryTokens.KEYBOARD_TOP_PAD_DP), contentInsetPx, dp(ImeGeometryTokens.KEYBOARD_BOTTOM_PAD_DP))
             keyboardBody.findViewWithTag<View>("key-row-secondary")?.let { row ->
                 // The portrait layout narrows this row to 90% of the full
                 // display for optical centering. A floating window can be
@@ -1135,9 +1135,9 @@ open class ImeKeyboardView(
         contentInsetPx = maxOf(minimumInset, (measuredWidthPx - maxWidth) / 2)
         keyboardBody.setPadding(
             contentInsetPx,
-            dp(6),
+            dp(ImeGeometryTokens.KEYBOARD_TOP_PAD_DP),
             contentInsetPx,
-            dp(10),
+            dp(ImeGeometryTokens.KEYBOARD_BOTTOM_PAD_DP),
         )
         keyboardBody.findViewWithTag<View>("key-row-secondary")?.let { row ->
             val rowWidth = ((measuredWidthPx - contentInsetPx * 2) * 0.9f).toInt()
@@ -1406,7 +1406,7 @@ open class ImeKeyboardView(
         if (!standalonePanel && panel == Panel.NONE) renderModeBody()
         if (enabled) {
             contentInsetPx = dp(0)
-            keyboardBody.setPadding(contentInsetPx, dp(6), contentInsetPx, dp(10))
+            keyboardBody.setPadding(contentInsetPx, dp(ImeGeometryTokens.KEYBOARD_TOP_PAD_DP), contentInsetPx, dp(ImeGeometryTokens.KEYBOARD_BOTTOM_PAD_DP))
             expandedPanel.setPadding(contentInsetPx, 0, contentInsetPx, 0)
             candidateOverlay.setPadding(contentInsetPx, 0, contentInsetPx, 0)
             topZone.setContentInset(contentInsetPx)
@@ -1918,9 +1918,9 @@ open class ImeKeyboardView(
         }
         keyboardBody.setPadding(
             contentInsetPx,
-            dp(6),
+            dp(ImeGeometryTokens.KEYBOARD_TOP_PAD_DP),
             contentInsetPx,
-            dp(10),
+            dp(ImeGeometryTokens.KEYBOARD_BOTTOM_PAD_DP),
         )
         val state = when {
             inlineVoicePresenter.active -> ImeTopZoneState.VOICE_INLINE
@@ -2406,6 +2406,18 @@ open class ImeKeyboardView(
 
     private fun requireCandidateProvider(): CandidateResolver = requireNotNull(candidateProvider) {
         "Candidate-producing keyboard modes require a CandidateResolver host"
+    }
+
+    /** A cell of a long-press popup. English letters join the word being typed; the rest commit at once. */
+    private fun onPopupChoice(text: String) {
+        val letter = text.singleOrNull()
+        if (mode == KeyboardMode.ENGLISH_26 && letter != null && letter.isLetter() && !insertIntoInlineEditor(text)) {
+            clearAssociationCandidates()
+            val (py, selection) = replaceCompositionSelection(text)
+            publishComposition(py, candidatesForComposition(py), selection)
+            return
+        }
+        if (!insertIntoInlineEditor(text)) listener.onCharacter(text)
     }
 
     private fun onKeyTapped(base: String) {

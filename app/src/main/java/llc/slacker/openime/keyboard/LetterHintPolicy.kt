@@ -30,4 +30,14 @@ internal object LetterHintPolicy {
     /** The hint of [letter] (lower case), or null for none. */
     fun hint(letter: Char, english: Boolean): String? =
         DIGITS[letter] ?: (if (english) ENGLISH_SYMBOLS else CHINESE_SYMBOLS)[letter]
+
+    /**
+     * What a long press on a letter key offers, in popup order: the letter in the
+     * other case, then the corner digit or symbol (Sogou's popup lists case, digit
+     * and mark). [shown] is the case the key currently prints.
+     */
+    fun longPressChoices(letter: Char, english: Boolean, upperShown: Boolean, hintsOn: Boolean): List<String> {
+        val other = if (upperShown) letter.toString() else letter.uppercaseChar().toString()
+        return listOfNotNull(other, if (hintsOn) hint(letter, english) else null)
+    }
 }

@@ -87,7 +87,7 @@ internal data class KeyboardLayoutMetrics(
 
     val imeHeightDp: Int = run {
         val derived = topZoneHeightDp +
-            keyRowHeightDp * 4 + 16
+            keyRowHeightDp * 4 + ImeGeometryTokens.KEYBOARD_TOP_PAD_DP + ImeGeometryTokens.KEYBOARD_BOTTOM_PAD_DP
         val baseMinimum = 0
         val scaledMinimum =
             (baseMinimum * heightPercent.coerceIn(80, 120) / 100f).toInt()
