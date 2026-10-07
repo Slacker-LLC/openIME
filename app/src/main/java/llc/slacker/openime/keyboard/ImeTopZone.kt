@@ -84,6 +84,10 @@ internal class ImeTopZone(
     private var toolbarMode = ToolbarMode.NORMAL
     private var associationsShown = false
     private var autofillShown = false
+    /** True while chips occupy the strip (system autofill or the toolbar suggestions). */
+    val autofillChipsShown: Boolean get() = autofillShown
+    /** Called when the user closes the chip strip with its back control. */
+    var onAutofillDismissed: (() -> Unit)? = null
 
     /** Chips from the system autofill service, hosted in a strip of their own. */
     private lateinit var autofillScroll: HorizontalScrollView
@@ -434,6 +438,7 @@ internal class ImeTopZone(
 
     /** Back control of the autofill strip: hide the chips until the next response. */
     private fun dismissAutofillChips() {
+        onAutofillDismissed?.invoke()
         autofillRow.removeAllViews()
         autofillShown = false
         toolbarMode = idleToolbarMode()

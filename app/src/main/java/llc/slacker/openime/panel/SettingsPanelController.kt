@@ -199,6 +199,11 @@ internal class SettingsPanelController(
             toggleRow("数字和符号提示", "字母键右上角显示数字和符号", R.drawable.ic_pref_hints),
             toggleRow("上滑输入数字", "按键上滑输入右上角的数字或符号", R.drawable.ic_pref_swipe_up),
         )
+        content.addSection("工具栏提示")
+        content.addCard(
+            toggleRow("复制内容提示", "刚复制的文字显示在工具栏，点一下输入", R.drawable.ic_pref_clipboard),
+            toggleRow("短信验证码", "最近 5 分钟的验证码显示在工具栏，需要短信权限", R.drawable.ic_pref_shield),
+        )
         content.addSection("智能输入")
         content.addCard(
             navigationRow("模糊音与智能纠错", "z/zh、c/ch、s/sh 等规则", R.drawable.ic_pref_fuzzy, onShowFuzzySettings),
@@ -251,6 +256,8 @@ internal class SettingsPanelController(
         content.addSection("输入")
         content.addCard(
             toggleRow("上滑输入数字", null, 0),
+            toggleRow("复制内容提示", null, 0),
+            toggleRow("短信验证码", null, 0),
             toggleRow("表情联想", null, 0),
             navigationRow("模糊音与智能纠错", null, 0, onShowFuzzySettings),
         )

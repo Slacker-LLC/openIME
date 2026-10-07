@@ -333,7 +333,56 @@ open class ImeKeyboardView(
     }
 
     /** Refresh data owned by auxiliary editor Activities when they return. */
+    private var dismissedSuggestion: String? = null
+    private var ownSuggestionsShown = false
+
+    /**
+     * Toolbar chips for a fresh text-message code and the text just copied. They
+     * share the strip system autofill suggestions use, which keeps priority.
+     */
+    internal fun refreshSuggestions() {
+        if (standalonePanel || !::topZone.isInitialized) return
+        // System autofill chips keep the strip; only this view's own chips are refreshed.
+        if (topZone.autofillChipsShown && !ownSuggestionsShown) return
+        val found = ToolbarSuggestions.collect(context, allowed = !passwordField, skipClip = dismissedSuggestion)
+        if (found.isEmpty()) {
+            if (ownSuggestionsShown) topZone.setAutofillChips(emptyList())
+            ownSuggestionsShown = false
+            return
+        }
+        val t = currentThemeTokens()
+        val chips = found.map { suggestion ->
+            TextView(context).apply {
+                text = suggestion.label
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                textSize = ImeTypographyTokens.BODY_SP
+                gravity = Gravity.CENTER_VERTICAL
+                setTextColor(t.keyText)
+                setPadding(dp(14), 0, dp(14), 0)
+                maxWidth = (resources.displayMetrics.widthPixels * 0.6f).toInt()
+                background = ImeDrawableFactory.rounded(t.lightKeyBackground, dp(ImeGeometryTokens.KEY_RADIUS_DP))
+                contentDescription = if (suggestion.kind == ToolbarSuggestion.Kind.SMS_CODE) {
+                    "验证码${suggestion.text}，点击输入"
+                } else {
+                    "刚复制的内容，点击输入"
+                }
+                setOnClickListener {
+                    feedback()
+                    if (!insertIntoInlineEditor(suggestion.text)) listener.onCharacter(suggestion.text)
+                    dismissedSuggestion = suggestion.text
+                    ownSuggestionsShown = false
+                    topZone.setAutofillChips(emptyList())
+                }
+            }
+        }
+        topZone.onAutofillDismissed = { dismissedSuggestion = found.lastOrNull { it.kind == ToolbarSuggestion.Kind.CLIPBOARD }?.text ?: dismissedSuggestion }
+        ownSuggestionsShown = true
+        topZone.setAutofillChips(chips, chipHeightPx = dp(36))
+    }
+
     internal fun refreshAuxiliaryContent() {
+        refreshSuggestions()
         when (panel) {
             Panel.CLIPBOARD -> renderClipboard(reusePanel = true)
             Panel.SYMBOLS -> panelRenderer.refreshCustomSymbols()
@@ -2331,6 +2380,8 @@ open class ImeKeyboardView(
         "模糊音纠错", "启用模糊音" -> fuzzyEnabled
         "按键气泡" -> popupEnabled
         "上滑输入数字" -> ImeSettingsRepository.loadSwipeUpDigits(context)
+        "复制内容提示" -> ImeSettingsRepository.loadClipboardChip(context)
+        "短信验证码" -> ImeSettingsRepository.loadSmsCodeChip(context)
         "数字和符号提示" -> ImeSettingsRepository.loadLetterHints(context)
         "表情联想" -> ImeSettingsRepository.loadEmojiAssociation(context)
         "语音去语气词" -> ImeSettingsRepository.loadVoiceStripFillers(context)
@@ -2358,6 +2409,23 @@ open class ImeKeyboardView(
             }
             // Read at gesture time, so it needs no listener round trip.
             "上滑输入数字" -> ImeSettingsRepository.saveSwipeUpDigits(context, enabled)
+            "复制内容提示" -> {
+                ImeSettingsRepository.saveClipboardChip(context, enabled)
+                refreshSuggestions()
+            }
+            "短信验证码" -> {
+                ImeSettingsRepository.saveSmsCodeChip(context, enabled)
+                if (enabled && context.checkSelfPermission(android.Manifest.permission.READ_SMS) !=
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
+                ) {
+                    // A keyboard cannot show the permission dialog; an invisible screen does.
+                    context.startActivity(
+                        android.content.Intent(context, llc.slacker.openime.SmsPermissionActivity::class.java)
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }
+                refreshSuggestions()
+            }
             "数字和符号提示" -> {
                 ImeSettingsRepository.saveLetterHints(context, enabled)
                 // Rebuilt when the keyboard is next shown (right away if it is).
