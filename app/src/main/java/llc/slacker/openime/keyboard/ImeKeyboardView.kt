@@ -27,6 +27,7 @@ import llc.slacker.openime.R
 import llc.slacker.openime.candidate.CandidatePipeline
 import llc.slacker.openime.candidate.CandidateResolver
 import llc.slacker.openime.candidate.NineKeyLocalDecoder
+import llc.slacker.openime.candidate.personalizedLearningAllowed
 import llc.slacker.openime.candidate.NineKeyPerformanceTrace
 import llc.slacker.openime.candidate.NineKeyReading
 import llc.slacker.openime.candidate.StrokeLexicon
@@ -334,6 +335,7 @@ open class ImeKeyboardView(
 
     /** Refresh data owned by auxiliary editor Activities when they return. */
     private var dismissedSuggestion: String? = null
+    private var dismissedSmsCode: String? = null
     private var ownSuggestionsShown = false
 
     /**
@@ -344,7 +346,7 @@ open class ImeKeyboardView(
         if (standalonePanel || !::topZone.isInitialized) return
         // System autofill chips keep the strip; only this view's own chips are refreshed.
         if (topZone.autofillChipsShown && !ownSuggestionsShown) return
-        val found = ToolbarSuggestions.collect(context, allowed = !passwordField, skipClip = dismissedSuggestion)
+        val found = ToolbarSuggestions.collect(context, allowed = personalizedLearningAllowed(passwordField, currentImeOptions()), skipClip = dismissedSuggestion, skipSms = dismissedSmsCode)
         if (found.isEmpty()) {
             if (ownSuggestionsShown) topZone.setAutofillChips(emptyList())
             ownSuggestionsShown = false
@@ -370,13 +372,17 @@ open class ImeKeyboardView(
                 setOnClickListener {
                     feedback()
                     if (!insertIntoInlineEditor(suggestion.text)) listener.onCharacter(suggestion.text)
-                    dismissedSuggestion = suggestion.text
+                    if (suggestion.kind == ToolbarSuggestion.Kind.SMS_CODE) dismissedSmsCode = suggestion.text
+                    else dismissedSuggestion = suggestion.text
                     ownSuggestionsShown = false
                     topZone.setAutofillChips(emptyList())
                 }
             }
         }
-        topZone.onAutofillDismissed = { dismissedSuggestion = found.lastOrNull { it.kind == ToolbarSuggestion.Kind.CLIPBOARD }?.text ?: dismissedSuggestion }
+        topZone.onAutofillDismissed = {
+            found.lastOrNull { it.kind == ToolbarSuggestion.Kind.CLIPBOARD }?.let { dismissedSuggestion = it.text }
+            found.firstOrNull { it.kind == ToolbarSuggestion.Kind.SMS_CODE }?.let { dismissedSmsCode = it.text }
+        }
         ownSuggestionsShown = true
         topZone.setAutofillChips(chips, chipHeightPx = dp(36))
     }
@@ -856,9 +862,9 @@ open class ImeKeyboardView(
 
     init {
         tag = "ime_root"
-        // Some IME windows inherit the host's disabled sound-effect flag.
-        // Keep the view channel enabled; the preference still gates feedback().
-        isSoundEffectsEnabled = true
+        // Keys play their sound through AudioManager (KeySounds), not the view channel,
+        // so the platform's own click sound stays off.
+        isSoundEffectsEnabled = false
         val rootHeight = if (standalonePanel) {
             FrameLayout.LayoutParams.MATCH_PARENT
         } else {
@@ -891,7 +897,7 @@ open class ImeKeyboardView(
         }
         keyboardBody.orientation = LinearLayout.VERTICAL
         keyboardBody.tag = "keyboard-body"
-        keyboardBody.setPadding(dp(0), dp(ImeGeometryTokens.KEYBOARD_TOP_PAD_DP), dp(0), dp(ImeGeometryTokens.KEYBOARD_BOTTOM_PAD_DP))
+        keyboardBody.setPadding(dp(0), dp(ImeGeometryTokens.KEYBOARD_TOP_PAD_DP), dp(0), dp(layoutMetrics.bottomPadDp))
         expandedPanel.orientation = LinearLayout.VERTICAL
         expandedPanel.tag = "panel-overlay"
         expandedPanel.visibility = View.GONE
@@ -990,6 +996,9 @@ open class ImeKeyboardView(
         appliedDensityDpi = newConfig.densityDpi
         layoutMetrics = buildLayoutMetrics()
         if (!geometryChanged) return
+        // The rows under an open panel are stale too (split layout, row heights):
+        // closing the panel must rebuild them.
+        renderedMode = null
         // Do not yank the user out of an open panel.
         applyDynamicHeights()
         if (standalonePanel) return
@@ -1025,8 +1034,17 @@ open class ImeKeyboardView(
         return spaceVoiceGestureController.trackingTouch || walk(this)
     }
 
+    /** The height this view wants as a window: rows plus the system-bar strip; valid before the first measure. */
+    internal fun desiredWindowHeightPx(): Int? =
+        if (standalonePanel) null else dp(imeHeightDp()) + navigationBottomInsetPx
+
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        // A view created while already in landscape never sees a configuration change.
+        if (::topZone.isInitialized && !standalonePanel) {
+            topZone.setLandscapeStrip(layoutMetrics.landscape)
+            syncSplitToggle()
+        }
         requestApplyInsets()
     }
 
@@ -1156,7 +1174,7 @@ open class ImeKeyboardView(
             // width before WindowManager applies the floating window bounds.
             // Keep the normal keyboard's content inset local to its window.
             contentInsetPx = dp(0)
-            keyboardBody.setPadding(contentInsetPx, dp(ImeGeometryTokens.KEYBOARD_TOP_PAD_DP), contentInsetPx, dp(ImeGeometryTokens.KEYBOARD_BOTTOM_PAD_DP))
+            keyboardBody.setPadding(contentInsetPx, dp(ImeGeometryTokens.KEYBOARD_TOP_PAD_DP), contentInsetPx, dp(layoutMetrics.bottomPadDp))
             keyboardBody.findViewWithTag<View>("key-row-secondary")?.let { row ->
                 // The portrait layout narrows this row to 90% of the full
                 // display for optical centering. A floating window can be
@@ -1192,7 +1210,7 @@ open class ImeKeyboardView(
             contentInsetPx,
             dp(ImeGeometryTokens.KEYBOARD_TOP_PAD_DP),
             contentInsetPx,
-            dp(ImeGeometryTokens.KEYBOARD_BOTTOM_PAD_DP),
+            dp(layoutMetrics.bottomPadDp),
         )
         keyboardBody.findViewWithTag<View>("key-row-secondary")?.let { row ->
             val rowWidth = ((measuredWidthPx - contentInsetPx * 2) * 0.9f).toInt()
@@ -1305,7 +1323,6 @@ open class ImeKeyboardView(
                     allowTwoLineLabel()
                     contentDescription = "候选:$candidate"
                     setOnLongClickListener {
-                        feedback()
                         listener.onCandidateLongPressed(candidate)
                         true
                     }
@@ -1462,7 +1479,7 @@ open class ImeKeyboardView(
         if (!standalonePanel && panel == Panel.NONE) renderModeBody()
         if (enabled) {
             contentInsetPx = dp(0)
-            keyboardBody.setPadding(contentInsetPx, dp(ImeGeometryTokens.KEYBOARD_TOP_PAD_DP), contentInsetPx, dp(ImeGeometryTokens.KEYBOARD_BOTTOM_PAD_DP))
+            keyboardBody.setPadding(contentInsetPx, dp(ImeGeometryTokens.KEYBOARD_TOP_PAD_DP), contentInsetPx, dp(layoutMetrics.bottomPadDp))
             expandedPanel.setPadding(contentInsetPx, 0, contentInsetPx, 0)
             candidateOverlay.setPadding(contentInsetPx, 0, contentInsetPx, 0)
             topZone.setContentInset(contentInsetPx)
@@ -1603,6 +1620,9 @@ open class ImeKeyboardView(
         syncEnterKeyPresentation(state.editorInfo?.imeOptions)
     }
 
+    private fun currentImeOptions(): Int? =
+        (context as? android.inputmethodservice.InputMethodService)?.currentInputEditorInfo?.imeOptions
+
     private fun syncEnterKeyPresentation(imeOptions: Int?) {
         val options = imeOptions ?: return
         val enter = findViewWithTag<ImeKeyView>("key-enter") ?: return
@@ -1623,6 +1643,11 @@ open class ImeKeyboardView(
         lateinit var controller: InlineAutofillController
         controller = InlineAutofillController(context, context.mainExecutor) { chips ->
             if (::topZone.isInitialized) {
+                // An empty response (the usual "nothing to fill") must not wipe this view's own chips.
+                if (chips.isEmpty() && ownSuggestionsShown) return@InlineAutofillController
+                // The system's chips replace this view's own; a later refresh must not touch them.
+                ownSuggestionsShown = false
+                topZone.onAutofillDismissed = null
                 topZone.setAutofillChips(chips, controller.chipSize.width, controller.chipSize.height)
             }
         }
@@ -2005,7 +2030,7 @@ open class ImeKeyboardView(
             contentInsetPx,
             dp(ImeGeometryTokens.KEYBOARD_TOP_PAD_DP),
             contentInsetPx,
-            dp(ImeGeometryTokens.KEYBOARD_BOTTOM_PAD_DP),
+            dp(layoutMetrics.bottomPadDp),
         )
         val state = when {
             inlineVoicePresenter.active -> ImeTopZoneState.VOICE_INLINE
@@ -2104,16 +2129,9 @@ open class ImeKeyboardView(
         )
     }
 
-    /**
-     * Resolve the Enter label from the bound editor at render time so the key is
-     * correct on its first frame (V2 keeps an idempotent re-sync as a safety net).
-     * Outside an InputMethodService host (settings/test) the legacy fallback is used.
-     */
     /** One rule for every keyboard: 确定 composing, the action word for a real action, otherwise ↵. */
     private fun enterKeyLabel(): String {
-        val imeOptions = (context as? android.inputmethodservice.InputMethodService)
-            ?.currentInputEditorInfo?.imeOptions
-        return enterKeyFaceFor(imeOptions, composition.text?.isNotEmpty() == true)
+        return enterKeyFaceFor(currentImeOptions(), composition.text?.isNotEmpty() == true)
     }
 
     private fun renderPinyin9() {
@@ -2185,6 +2203,7 @@ open class ImeKeyboardView(
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             keyPopupController.hideIfOutside(event.x, event.y)
+            silencePlatformFeedback(this)
         }
         val handled = super.dispatchTouchEvent(event)
         // Slide-to-select: the finger that opened a long-press popup picks from it.
@@ -2416,7 +2435,8 @@ open class ImeKeyboardView(
         "按键气泡" -> popupEnabled
         "上滑输入数字" -> ImeSettingsRepository.loadSwipeUpDigits(context)
         "复制内容提示" -> ImeSettingsRepository.loadClipboardChip(context)
-        "短信验证码" -> ImeSettingsRepository.loadSmsCodeChip(context)
+        "短信验证码" -> ImeSettingsRepository.loadSmsCodeChip(context) &&
+            context.checkSelfPermission(android.Manifest.permission.READ_SMS) == android.content.pm.PackageManager.PERMISSION_GRANTED
         "数字和符号提示" -> ImeSettingsRepository.loadLetterHints(context)
         "表情联想" -> ImeSettingsRepository.loadEmojiAssociation(context)
         "语音去语气词" -> ImeSettingsRepository.loadVoiceStripFillers(context)
@@ -2514,14 +2534,16 @@ open class ImeKeyboardView(
 
     /** A cell of a long-press popup. English letters join the word being typed; the rest commit at once. */
     private fun onPopupChoice(text: String) {
+        if (insertIntoInlineEditor(text)) return
         val letter = text.singleOrNull()
-        if (mode == KeyboardMode.ENGLISH_26 && letter != null && letter.isLetter() && !insertIntoInlineEditor(text)) {
+        if (mode == KeyboardMode.ENGLISH_26 && letter != null && letter.isLetter()) {
             clearAssociationCandidates()
             val (py, selection) = replaceCompositionSelection(text)
             publishComposition(py, candidatesForComposition(py), selection)
+            if (shiftState == ShiftState.SHIFT_ONCE) applyShift(ShiftState.LOWERCASE)
             return
         }
-        if (!insertIntoInlineEditor(text)) listener.onCharacter(text)
+        listener.onCharacter(text)
     }
 
     private fun onKeyTapped(base: String) {
@@ -3080,10 +3102,18 @@ open class ImeKeyboardView(
                 shiftHeld = shift != null && rawContains(shift, event.rawX, event.rawY)
                 shiftSliding = false
             }
+            // A second finger means the first one is typing, not sliding from Shift.
+            MotionEvent.ACTION_POINTER_DOWN -> if (!shiftSliding) shiftHeld = false
             MotionEvent.ACTION_MOVE -> {
                 if (!shiftHeld || shiftSliding) return
                 val shift = shiftKeyView() ?: return
-                if (!rawContains(shift, event.rawX, event.rawY)) {
+                // Beyond the touch slop, so Shift has already let go of the press (no click on lift).
+                val slop = android.view.ViewConfiguration.get(context).scaledTouchSlop
+                val x = event.rawX
+                val y = event.rawY
+                val outside = !rawContains(shift, x - slop, y) || !rawContains(shift, x + slop, y) ||
+                    !rawContains(shift, x, y - slop) || !rawContains(shift, x, y + slop)
+                if (outside) {
                     shiftSliding = true
                     shiftBeforeSlide = shiftState
                     if (shiftState == ShiftState.LOWERCASE) applyShift(ShiftState.SHIFT_ONCE)
@@ -3095,8 +3125,13 @@ open class ImeKeyboardView(
                 shiftHeld = false
                 shiftSliding = false
                 if (!sliding) return
-                val letter = "qwertyuiopasdfghjklzxcvbnm".firstOrNull { ch ->
-                    findViewWithTag<ImeKeyView>("key:$ch")?.let { rawContains(it, event.rawX, event.rawY) } == true
+                // The split layout repeats G and V, so look at every key carrying the tag.
+                var letter: Char? = null
+                forEachKeyWithTag { tag, key ->
+                    val ch = tag.removePrefix("key:").singleOrNull()
+                    if (letter == null && tag.startsWith("key:") && ch != null && ch in 'a'..'z' &&
+                        rawContains(key, event.rawX, event.rawY)
+                    ) letter = ch
                 }
                 if (letter != null && event.actionMasked == MotionEvent.ACTION_UP) {
                     onKeyTapped(letter.toString())
@@ -3177,6 +3212,18 @@ open class ImeKeyboardView(
         if (soundEnabled) keySounds.play()
     }
 
+    /**
+     * Every key plays its own haptic and click (feedback()). The platform adds a second
+     * click sound on performClick and a LONG_PRESS buzz on a handled long click, so each
+     * view under the keyboard opts out of both. The root keeps its haptic channel: the
+     * system-style haptic goes through it.
+     */
+    private fun silencePlatformFeedback(view: View) {
+        if (view.isSoundEffectsEnabled) view.isSoundEffectsEnabled = false
+        if (view !== this && view.isHapticFeedbackEnabled) view.isHapticFeedbackEnabled = false
+        if (view is ViewGroup) for (i in 0 until view.childCount) silencePlatformFeedback(view.getChildAt(i))
+    }
+
     /** Haptic-only confirmation (no key click sound), e.g. when voice arms. */
     private fun hapticFeedback() {
         // A gesture threshold gets the same crisp click; LONG_PRESS rings for too long.
@@ -3249,7 +3296,7 @@ open class ImeKeyboardView(
         isClickable = true
         isFocusable = true
         setOnTouchListener { _, event ->
-            if (event.actionMasked == MotionEvent.ACTION_DOWN && isEnabled) feedback()
+            if (event.actionMasked == MotionEvent.ACTION_DOWN && isEnabled && isClickable) feedback()
             false
         }
     }

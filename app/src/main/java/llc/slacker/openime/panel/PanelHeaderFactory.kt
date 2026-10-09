@@ -31,8 +31,8 @@ internal class PanelHeaderFactory(
                 context = context,
                 title = name,
                 backContentDescription = "返回$backTarget",
+                onPress = onFeedback,
             ) {
-                onFeedback()
                 onBack()
             }.apply {
                 tag = "panel-head"
@@ -63,10 +63,7 @@ internal class PanelHeaderFactory(
                         }
                         false
                     }
-                    setOnClickListener {
-                        onFeedback()
-                        onBack()
-                    }
+                    setOnClickListener { onBack() }
                 },
                 LinearLayout.LayoutParams(toPx(ImeGeometryTokens.TOUCH_TARGET_DP), toPx(ImeGeometryTokens.TOUCH_TARGET_DP)),
             )

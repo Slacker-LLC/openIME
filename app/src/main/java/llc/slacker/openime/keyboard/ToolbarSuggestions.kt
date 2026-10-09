@@ -19,10 +19,10 @@ internal object ToolbarSuggestions {
     private const val CLIP_MAX_CHARS = 200
 
     /** Both reads are best-effort and silent: a refused permission or empty clipboard gives no chip. */
-    fun collect(context: Context, allowed: Boolean, skipClip: String?): List<ToolbarSuggestion> {
+    fun collect(context: Context, allowed: Boolean, skipClip: String?, skipSms: String? = null): List<ToolbarSuggestion> {
         if (!allowed) return emptyList()
         val out = mutableListOf<ToolbarSuggestion>()
-        if (ImeSettingsRepository.loadSmsCodeChip(context)) smsCode(context)?.let {
+        if (ImeSettingsRepository.loadSmsCodeChip(context)) smsCode(context)?.takeIf { it != skipSms }?.let {
             out += ToolbarSuggestion(ToolbarSuggestion.Kind.SMS_CODE, "验证码 $it", it)
         }
         if (ImeSettingsRepository.loadClipboardChip(context)) freshClip(context)?.takeIf { it != skipClip }?.let {

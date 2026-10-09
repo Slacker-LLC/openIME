@@ -14,6 +14,8 @@ import llc.slacker.openime.data.ImeSettingsRepository
 class SmsPermissionActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Recreated while the dialog is open: the pending request still answers.
+        if (savedInstanceState != null) return
         if (checkSelfPermission(Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED) {
             finish()
             return

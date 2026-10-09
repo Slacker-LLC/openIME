@@ -457,7 +457,7 @@ internal class ImeTopZone(
     private var pressRawY = 0f
     private val longPressRunnable = Runnable {
         longPressArmed = true
-        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING)
     }
 
     /**
@@ -539,7 +539,7 @@ internal class ImeTopZone(
             if (it.height != height) { it.height = height; composeZone.layoutParams = it }
         }
         composeZone.orientation = if (on) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
-        composeZone.gravity = if (on) Gravity.CENTER_VERTICAL else Gravity.NO_GRAVITY
+        composeZone.gravity = Gravity.CENTER_VERTICAL
         (composition.layoutParams as? LinearLayout.LayoutParams)?.let {
             if (on) {
                 it.width = LinearLayout.LayoutParams.WRAP_CONTENT

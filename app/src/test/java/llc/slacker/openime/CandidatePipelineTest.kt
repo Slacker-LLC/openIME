@@ -175,6 +175,26 @@ class CandidatePipelineTest {
     }
 
     @Test
+    fun aSyllableThatAlsoSpellsAWordStaysInTheRail() {
+        // xian is also the key of 西安, liu of 浏览, pin of 拼音: they are still syllables.
+        mapOf("9426" to "xian", "548" to "liu", "746" to "pin").forEach { (digits, syllable) ->
+            val shown = pipeline.nineKeyReadingsFor(digits, null).map { it.display }
+            assertTrue("$syllable missing for $digits: $shown", syllable in shown)
+        }
+    }
+
+    @Test
+    fun aSyllableThatSpellsAllTheDigitsOutranksAShorterOne() {
+        assertEquals("xiang", pipeline.nineKeyReadingsFor("94264", null).first().display)
+    }
+
+    @Test
+    fun theRailOffersNoInterjectionsOrDuplicateSpellings() {
+        val shown = listOf("64", "64426", "583", "683").flatMap { pipeline.nineKeyReadingsFor(it, null) }.map { it.display }
+        assertTrue(shown.none { it in setOf("ng", "hm", "lue", "nue") })
+    }
+
+    @Test
     fun theSyllableOfTheShownPreviewLeads() {
         assertEquals("mi", pipeline.nineKeyReadingsFor("64426", "migao").first().display)
         assertEquals("ni", pipeline.nineKeyReadingsFor("64426", "nihao").first().display)

@@ -33,6 +33,9 @@
         <activity
             android:name=".SmsPermissionActivity"
             android:exported="false"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:noHistory="true"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <activity

@@ -118,6 +118,7 @@ class ImeKeyView(
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         if (touchLocked) return true
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) longPressed = false
         if (interceptSwipeUp(event)) return true
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {

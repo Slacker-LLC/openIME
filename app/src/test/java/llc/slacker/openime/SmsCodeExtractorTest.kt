@@ -19,6 +19,18 @@ class SmsCodeExtractorTest {
     }
 
     @Test
+    fun aCodeBeforeTheKeywordBeatsALaterNumber() {
+        assertEquals("1234", SmsCodeExtractor.extract("1234是验证码，订单号 56789012"))
+    }
+
+    @Test
+    fun datesAndPlainWordsAreNotCodes() {
+        assertNull(SmsCodeExtractor.extract("验证码有效期至20261009"))
+        assertEquals("123456", SmsCodeExtractor.extract("动态密码为123456"))
+        assertNull(SmsCodeExtractor.extract("hotpot 12345 ready"))
+    }
+
+    @Test
     fun messagesWithoutAKeywordOrCodeGiveNothing() {
         assertNull(SmsCodeExtractor.extract("您的快递 123456 已到达，请取件"))
         assertNull(SmsCodeExtractor.extract("验证码已发送，请查收"))

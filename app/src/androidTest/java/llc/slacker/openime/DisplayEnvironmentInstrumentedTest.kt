@@ -92,9 +92,8 @@ class DisplayEnvironmentInstrumentedTest {
 
     @Test
     fun landscapeContentBoxKeepsEveryRowInsideIt() {
-        // A landscape configuration makes the reference scale follow the height,
-        // so the content box (padding on both sides) is narrower than the window.
-        // Rows used to keep the width they were measured with before that padding
+        // Landscape fills the whole width (padding 0), like Gboard and the Chinese keyboards.
+        // Rows used to keep the width they were measured with before the padding
         // was applied: as wide as the window, clipped to the box.
         for (mode in listOf(KeyboardMode.PINYIN_26, KeyboardMode.ENGLISH_26, KeyboardMode.PINYIN_9, KeyboardMode.DIGITS)) {
             withKeyboard(
@@ -110,7 +109,7 @@ class DisplayEnvironmentInstrumentedTest {
                 val body = keyboard.findViewWithTag<ViewGroup>("keyboard-body")
                 assertNotNull("keyboard body", body)
                 val content = body.width - body.paddingLeft - body.paddingRight
-                assertTrue("$mode must be laid out in a clamped content box (padding ${body.paddingLeft})", body.paddingLeft > 0)
+                assertEquals("$mode landscape fills the full width", 0, body.paddingLeft)
                 for (index in 0 until body.childCount) {
                     val row = body.getChildAt(index)
                     assertTrue(

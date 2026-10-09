@@ -37,7 +37,7 @@ class KeyboardLayoutMetricsTest {
         assertEquals(ImeGeometryTokens.LANDSCAPE_TOP_ZONE_HEIGHT_DP, metrics.topZoneHeightDp)
         assertTrue(metrics.topZoneHeightDp - metrics.keyRowHeightDp <= 10)
         assertEquals(metrics.topZoneHeightDp + metrics.keyRowHeightDp * 4 +
-            ImeGeometryTokens.KEYBOARD_TOP_PAD_DP + ImeGeometryTokens.KEYBOARD_BOTTOM_PAD_DP,
+            ImeGeometryTokens.KEYBOARD_TOP_PAD_DP + ImeGeometryTokens.LANDSCAPE_BOTTOM_PAD_DP,
             metrics.imeHeightDp)
     }
 

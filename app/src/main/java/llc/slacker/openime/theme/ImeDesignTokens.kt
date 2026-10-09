@@ -61,6 +61,8 @@ internal object ImeGeometryTokens {
     // Space under the bottom row (the keys sit 7dp higher than they used to).
     const val KEYBOARD_TOP_PAD_DP = 4
     const val KEYBOARD_BOTTOM_PAD_DP = 19
+    // Landscape keys are short, so the gap under them shrinks (HeliBoard and fcitx5 use none).
+    const val LANDSCAPE_BOTTOM_PAD_DP = 6
     const val LANDSCAPE_TOP_ZONE_HEIGHT_DP = 48
 }
 

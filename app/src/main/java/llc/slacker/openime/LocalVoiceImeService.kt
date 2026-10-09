@@ -119,7 +119,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             resources = resources,
             mainHandler = mainHandler,
             windowProvider = { getWindow().window },
-            keyboardHeightPx = { keyboardView?.measuredHeight },
+            keyboardHeightPx = { keyboardView?.desiredWindowHeightPx() },
             floatingWidthPercent = { ImeSettingsRepository.loadFloatingWidthPercent(this) },
             floatingOpacityPercent = { ImeSettingsRepository.loadFloatingOpacityPercent(this) },
             debugLog = { message ->
@@ -903,7 +903,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     override fun onFloatingKeyboardChanged(floating: Boolean) {
         // A manual change replaces the automatic one: docking in landscape means
         // "not now", and floating by hand is the user's own choice.
-        if (!floating && landscapeAutoFloating && isLandscape()) landscapeFloatingDeclined = true
+        if (!floating && isLandscape()) landscapeFloatingDeclined = true
         landscapeAutoFloating = false
         keyboardView?.setFloatingWindowMode(floating)
         if (floating) floatingWindow.enable() else floatingWindow.restore()
@@ -1736,6 +1736,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         val reference = entry.nativeReference
         val remaining = partialRemainder(reference, mode)
         if (remaining != null) {
+            reference?.let { learnPartialPick(it, entry.text) }
             finishPartialCandidateCommit(entry.text, remaining)
             return
         }
@@ -1764,6 +1765,22 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         val normalized = RimeInputNormalizer.normalize(ref.input)
         if (ref.consumed >= normalized.length) return null
         return normalized.substring(ref.consumed).trim('\'').ifEmpty { null }
+    }
+
+    /**
+     * Teach librime the word the user tapped, and only that word: its own spelling is replayed
+     * as a separate selection, so the rest of the input (which nobody chose) is never learned.
+     * Stock Rime learns a run of picks the same way; without this a phrase chosen piece by piece
+     * never moves up, while a character typed alone does.
+     */
+    private fun learnPartialPick(reference: NativeCandidateReference, text: String) {
+        if (!rime.isReady || !allowsPersonalizedLearning()) return
+        val spelling = RimeInputNormalizer.normalize(reference.input)
+            .take(reference.consumed)
+            .trim('\'')
+        if (spelling.isEmpty()) return
+        val deferred = NativeCandidateReference.deferred(spelling, text)
+        rime.selectCandidate(deferred.input, deferred.nativeIndex, true)
     }
 
     private fun finishPartialCandidateCommit(committed: String, remaining: String) {

@@ -61,7 +61,7 @@ internal class TextEditorPanelController(
             createPanelButton(label, if (center) 14f else 24f, false).apply {
                 if (action != null) {
                     contentDescription = when (action) { "up" -> "上"; "down" -> "下"; "left" -> "左"; else -> "右" }
-                    setOnClickListener { onFeedback(); onTextEdit(action) }
+                    setOnClickListener { onTextEdit(action) }
                 } else {
                     tag = if (center) "textedit-center" else "textedit-spacer"
                     isClickable = false; isFocusable = false

@@ -376,6 +376,8 @@ object SetupUi {
         context: Context,
         title: String,
         backContentDescription: String = "返回",
+        /** When set, the keyboard's own feedback plays on touch-down instead of the system haptic. */
+        onPress: (() -> Unit)? = null,
         onBack: () -> Unit,
     ): LinearLayout =
         LinearLayout(context).apply {
@@ -412,8 +414,16 @@ object SetupUi {
                     } else {
                         background = null
                     }
+                    if (onPress != null) {
+                        isHapticFeedbackEnabled = false
+                        isSoundEffectsEnabled = false
+                        setOnTouchListener { _, event ->
+                            if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) onPress()
+                            false
+                        }
+                    }
                     setOnClickListener {
-                        performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                        if (onPress == null) performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                         onBack()
                     }
                 },

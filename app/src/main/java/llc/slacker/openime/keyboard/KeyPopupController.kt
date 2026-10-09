@@ -278,6 +278,8 @@ internal class KeyPopupController(
         popupView = column
         animateIn(column, popupWidth, popupHeight)
         scheduleAutoDismiss(OPEN_DISMISS_MS)
+        // The one buzz that says the long press worked (the platform's own is switched off).
+        hoverFeedback()
     }
 
     /**
@@ -298,13 +300,12 @@ internal class KeyPopupController(
                 hoveredCell?.isPressed = false
                 cell?.isPressed = true
                 hoveredCell = cell
-                if (cell != null) hoverFeedback()
             }
             return false
         }
         if (hit != null) {
+            // Silent, like the other open-source keyboards: the long press already buzzed once.
             hide()
-            feedback()
             onSymbolSelected(hit.second)
             return true
         }

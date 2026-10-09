@@ -407,8 +407,15 @@ internal class NineKeyLocalDecoder(
 
         // First syllables, each only if the rest can still be read.
         val firsts = LinkedHashMap<String, Int>()
-        paths.forEach { path -> firsts.putIfAbsent(path.syllables.first(), path.score) }
+        // Rank by the path's score per syllable: a plain sum let any two-syllable
+        // reading outrank a one-syllable one (xia before xiang, qi before qian).
+        paths.forEach { path ->
+            val first = path.syllables.first()
+            if (first !in RAIL_DUPLICATES) firsts.putIfAbsent(first, path.score / path.syllables.size)
+        }
         syllableOptions(bounded, preferred, limit * 2).forEach { syllable ->
+            if (syllable.length > 1 && syllable !in completeSyllables) return@forEach
+            if (syllable in RAIL_DUPLICATES) return@forEach
             val code = digitsForPinyin(syllable) ?: return@forEach
             if (code.length == bounded.length || canRead(bounded.substring(code.length))) {
                 firsts.putIfAbsent(syllable, Int.MIN_VALUE)
@@ -525,7 +532,7 @@ internal class NineKeyLocalDecoder(
         for (depth in 1..minOf(bounded.length, MAX_SYLLABLE_LENGTH)) {
             node = node.children[bounded[depth - 1]] ?: break
             node.exact.forEach { entry ->
-                if (!entry.phrase && entry.pinyin.length == depth && entry.pinyin.all { it in 'a'..'z' }) {
+                if (isSyllableEntry(entry) && entry.pinyin.length == depth) {
                     found += Option(entry.pinyin, depth, entryScore(entry))
                 }
             }
@@ -549,6 +556,8 @@ internal class NineKeyLocalDecoder(
             ImeData.keypad9Map[bounded]
                 .orEmpty()
                 .filter { it.length == 1 && it[0] in 'a'..'z' }
+                // A bare letter no syllable starts with (i, u, v) is a dead end.
+                .filter { letter -> completeSyllables.any { it.startsWith(letter) } }
                 .forEach { if (it !in ordered) ordered += it }
         }
         return ordered.take(limit)
@@ -568,22 +577,26 @@ internal class NineKeyLocalDecoder(
             merged.getOrPut(pinyin) { mutableListOf() }.addAll(values)
         }
 
-        return merged.mapNotNull { (pinyin, rawValues) ->
-            val digits = digitsForPinyin(pinyin) ?: return@mapNotNull null
+        return merged.flatMap { (pinyin, rawValues) ->
+            val digits = digitsForPinyin(pinyin) ?: return@flatMap emptyList<Entry>()
             val values = rawValues.distinct().take(MAX_CANDIDATES)
-            if (values.isEmpty()) return@mapNotNull null
-            val corpusWeight = values.maxOfOrNull { value ->
-                PinyinLexicon.weightFor(pinyin, value)
-            } ?: 0
-            Entry(
+            if (values.isEmpty()) return@flatMap emptyList<Entry>()
+            fun entryOf(list: List<String>, phrase: Boolean) = Entry(
                 pinyin = pinyin,
                 digits = digits,
-                candidates = values,
-                phrase = pinyin in ImeData.phraseDict || values.any { value ->
-                    value.codePointCount(0, value.length) > 1
-                },
-                weight = corpusWeight,
+                candidates = list,
+                phrase = phrase,
+                weight = list.maxOfOrNull { value -> PinyinLexicon.weightFor(pinyin, value) } ?: 0,
             )
+            val singles = values.filter { it.codePointCount(0, it.length) == 1 }
+            val multis = values.filter { it.codePointCount(0, it.length) > 1 }
+            if (singles.isNotEmpty() && multis.isNotEmpty()) {
+                // A syllable that is also a word's spelling (xian / 西安, liu / 浏览, pin / 拼音)
+                // is still a syllable: keep its characters apart from the words.
+                listOf(entryOf(singles, phrase = false), entryOf(multis, phrase = true))
+            } else {
+                listOf(entryOf(values, phrase = pinyin in ImeData.phraseDict || multis.isNotEmpty()))
+            }
         }
     }
 
@@ -733,6 +746,9 @@ internal class NineKeyLocalDecoder(
         private const val MAX_CANDIDATES = 96
         private const val PER_PATH_CANDIDATES = 24
         private const val PART_PENALTY = 55
+
+        /** Spellings of lve / nve that the legacy table also holds; the rail shows one of each. */
+        private val RAIL_DUPLICATES = setOf("lue", "nue")
 
         /** The letters printed on each nine-key digit. */
         private val KEY_LETTERS = mapOf(
