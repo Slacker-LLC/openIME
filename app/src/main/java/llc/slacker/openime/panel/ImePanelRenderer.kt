@@ -452,7 +452,6 @@ internal class ImePanelRenderer(
                 createPanelButton("管理自定义符号", ImeTypographyTokens.BODY_SP, true).apply {
                     contentDescription = "管理自定义符号"
                     setOnClickListener {
-                        onFeedback()
                         context.startActivity(
                             Intent(context, SymbolManagerActivity::class.java)
                                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),

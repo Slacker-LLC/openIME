@@ -330,7 +330,7 @@ def case_letter_hints(dev: Device, landscape: bool) -> list[str]:
                 problems.append(f"{mode}: {shown} hints shown while the setting is off")
             if not enabled:
                 continue
-            # Real gestures: swipe up and long press type the hint, a tap types the letter.
+            # Real gestures: swipe up types the hint, a long press only opens the popup, a tap types the letter.
             for letter in ("q", "s", "g", "z"):
                 key = key_node(nodes, letter)
                 if not key:
@@ -342,11 +342,13 @@ def case_letter_hints(dev: Device, landscape: bool) -> list[str]:
                 typed = field_text(dev)
                 if typed != before + hint:
                     problems.append(f"{mode}: swipe up on {letter} typed {typed[len(before):]!r}, expected {hint!r}")
+                # A long press now opens the choice popup (other case + hint); lifting on the key
+                # types nothing, and the popup closes by itself.
                 dev.shell("input", "swipe", str(key.cx), str(key.cy), str(key.cx), str(key.cy), "900")
-                time.sleep(1)
+                time.sleep(1.8)
                 held = field_text(dev)
-                if held != typed + hint:
-                    problems.append(f"{mode}: long press on {letter} typed {held[len(typed):]!r}, expected {hint!r}")
+                if held != typed:
+                    problems.append(f"{mode}: long press on {letter} typed {held[len(typed):]!r}, expected nothing")
             dev.shot(f"{mode}-hints-typed{'-landscape' if landscape else ''}")
     if len(space_tops) == 2 and abs(space_tops[True] - space_tops[False]) > 2:
         problems.append(f"the hints changed the keyboard layout (space at {space_tops[True]} vs {space_tops[False]})")

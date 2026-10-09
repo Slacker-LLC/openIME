@@ -83,7 +83,7 @@ internal class ImeThemeApplier(
                 (!function && DIGITS_ONLY.matches(label))
             )
         val primary = view.tag == "tab-active" ||
-            (view.tag == "key-enter" && (!side || label == "确定"))
+            (view.tag == "key-enter" && view.currentMainText != "↵")
 
         val color = when {
             primary -> t.primary

@@ -67,7 +67,7 @@ Write `NOT TESTED` for an item that you did not run. Never check an item in adva
 - [ ] Tools and all settings pages scroll, have no dead button, return correctly and show no old theme or corner-radius option.
 - [ ] The floating keyboard can move to the five positions and the edges, re-constrains after rotation and can dock again.
 - [ ] On Chinese and English 26-key, each letter key shows a number or symbol at the top right.
-  A swipe up and a long press enter the hint. A tap still enters the letter.
+  A swipe up enters the hint. A long press opens a popup with the other case and the hint: slide to a cell and release to enter it. A tap still enters the letter.
   Chinese mode enters full-width forms (！ ￥ ？ （ ） ： ；). English mode enters half-width forms.
   Landscape also works.
   When you turn off 数字和符号提示 ("Number and symbol hints"), the hints and the gestures disappear together, and the layout does not change.

@@ -222,7 +222,6 @@ internal class ClipboardPanelController(
                 tag = "clipboard-refresh"
                 contentDescription = "重新读取剪贴板"
                 setOnClickListener {
-                    onFeedback()
                     render(reusePanel = true)
                 }
             },

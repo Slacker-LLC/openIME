@@ -68,4 +68,11 @@ class LetterHintPolicyTest {
         assertTrue(LetterHintPolicy.hint('Q', false) == null)
         assertTrue(LetterHintPolicy.hint('1', false) == null)
     }
+
+    @Test
+    fun longPressOffersTheOtherCaseThenTheHint() {
+        assertEquals(listOf("A", "~"), LetterHintPolicy.longPressChoices('a', english = true, upperShown = false, hintsOn = true))
+        assertEquals(listOf("q", "1"), LetterHintPolicy.longPressChoices('q', english = false, upperShown = true, hintsOn = true))
+        assertEquals(listOf("S"), LetterHintPolicy.longPressChoices('s', english = true, upperShown = false, hintsOn = false))
+    }
 }

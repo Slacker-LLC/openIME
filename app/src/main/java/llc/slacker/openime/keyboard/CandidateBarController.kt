@@ -157,7 +157,7 @@ internal class CandidateBarController(
                     createItem(index, candidate),
                     LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.WRAP_CONTENT,
-                        toPx(42),
+                        toPx(41),
                     ).apply { marginEnd = toPx(4) },
                 )
             } else {
@@ -331,7 +331,7 @@ internal class CandidateBarController(
         LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            minimumHeight = toPx(42)
+            minimumHeight = toPx(41)
             isFocusable = true
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             isClickable = true

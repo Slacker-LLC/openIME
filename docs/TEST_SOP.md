@@ -234,7 +234,7 @@ Voice works in password fields, but it commits only the final text once.
 It shows no partial text, does no word or correction learning, and keeps no unnecessary PCM or temporary text.
 
 The key bubble must anchor to the current key.
-It is about 1 to 1.2 times the key width and 70 to 80 dp high, and it moves inward at the edges.
+It is about 1 to 1.2 times the key width and about 52 dp high, and it moves inward at the edges.
 The vibration fires once at the moment of the press, is light by default and respects the system haptic switch.
 Fast typing must not create a heavy continuous vibration.
 

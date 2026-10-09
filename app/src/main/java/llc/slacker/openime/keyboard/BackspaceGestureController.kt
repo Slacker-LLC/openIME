@@ -175,7 +175,7 @@ internal class BackspaceGestureController(
 
         when {
             clearAll -> {
-                onHapticFeedback()
+                // The arming tick already told the user; no second one on release.
                 onClearAll()
             }
             deleteOnce -> onDeleteOne()

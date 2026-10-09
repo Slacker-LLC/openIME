@@ -4,7 +4,6 @@ import android.content.Context
 import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
-import llc.slacker.openime.R
 import llc.slacker.openime.core.ShiftState
 import llc.slacker.openime.theme.ImeTypographyTokens
 import llc.slacker.openime.widget.ImeKeyView
@@ -37,16 +36,23 @@ internal class Pinyin26KeyboardRenderer(
     private val hintsEnabled: () -> Boolean,
     private val swipeUpEnabled: () -> Boolean,
     private val onShift: () -> Unit,
+    private val onShiftLongPress: () -> Unit,
     private val onDigits: () -> Unit,
     private val onModeSwitch: () -> Unit,
     private val onSpace: () -> Unit,
     private val onEnter: () -> Unit,
+    private val onSymbols: () -> Unit = {},
+    private val splitLayout: () -> Boolean = { false },
 ) {
     fun render(
         english: Boolean,
         shiftState: ShiftState,
         enterLabel: String,
     ) {
+        if (splitLayout()) {
+            renderSplit(english, shiftState, enterLabel)
+            return
+        }
         ROWS.forEachIndexed { rowIndex, rowText ->
             val row = rowHost().apply {
                 if (rowIndex == 1) tag = "key-row-secondary"
@@ -103,6 +109,45 @@ internal class Pinyin26KeyboardRenderer(
         keyboardBody.addView(bottom, rowParams())
     }
 
+    /**
+     * Landscape split keyboard, as Sogou draws it: each half is a complete thumb
+     * keyboard, G and V sit on both sides so either thumb reaches them, and both
+     * halves carry their own space bar. The gap between them stays empty.
+     */
+    private fun renderSplit(english: Boolean, shiftState: ShiftState, enterLabel: String) {
+        fun row(build: LinearLayout.() -> Unit) {
+            keyboardBody.addView(rowHost().apply(build), rowParams())
+        }
+        fun LinearLayout.letters(chars: String) {
+            chars.forEach { addView(letterKey(it, english, shiftState), flexKeyParams(1f)) }
+        }
+        fun LinearLayout.gap() = addView(View(context), flexKeyParams(SPLIT_GAP))
+        fun fn(label: String, onTap: () -> Unit) =
+            createKey(label, true, null, ImeTypographyTokens.BODY_SP, 0, onTap)
+
+        row { letters("qwert"); gap(); letters("yuiop") }
+        row { letters("asdfg"); gap(); letters("ghjkl") }
+        row {
+            addView(shiftKey(shiftState), flexKeyParams(1f)); letters("zxcv")
+            gap()
+            letters("vbnm"); addView(createBackspaceKey(), flexKeyParams(1f))
+        }
+        row {
+            addView(fn("符") { onSymbols() }.apply { tag = "key-symbols" }, flexKeyParams(1f))
+            addView(fn("123", onDigits), flexKeyParams(1f))
+            addView(punctuationKey(english), flexKeyParams(1f))
+            addView(createSpaceVoiceKey("空格", onSpace), flexKeyParams(2f))
+            gap()
+            addView(createSpaceVoiceKey("空格", onSpace), flexKeyParams(2f))
+            addView(fn("。") { onCommitCharacter(if (english) "." else "。") }, flexKeyParams(1f))
+            addView(fn("中/英") { onModeSwitch() }.apply { tag = "key:mode" }, flexKeyParams(1f))
+            addView(
+                createKey(enterLabel, true, null, ImeTypographyTokens.BODY_SP, 0, onEnter).apply { tag = "key-enter" },
+                flexKeyParams(1f),
+            )
+        }
+    }
+
     private fun punctuationKey(english: Boolean): ImeKeyView {
         val spec = PunctuationKeyPolicy.spec(english)
         // A character key, not a function key: only character keys carry corner hints.
@@ -131,16 +176,16 @@ internal class Pinyin26KeyboardRenderer(
         }
 
     private fun shiftKey(shiftState: ShiftState): ImeKeyView {
-        val iconRes = if (shiftState == ShiftState.CAPS_LOCK) {
-            R.drawable.ic_caps_lock
-        } else {
-            R.drawable.ic_shift
-        }
+        val iconRes = EnglishShiftPolicy.icon(shiftState)
         return createKey("", true, null, null, iconRes, onShift).apply {
             tag = when (shiftState) {
                 ShiftState.LOWERCASE -> "key-shift"
                 ShiftState.SHIFT_ONCE -> "key-shift-active"
                 ShiftState.CAPS_LOCK -> "key-shift-caps"
+            }
+            setOnLongClickListener {
+                onShiftLongPress()
+                true
             }
         }
     }
@@ -167,12 +212,16 @@ internal class Pinyin26KeyboardRenderer(
             if (secondary != null) {
                 setSecondaryVisible(true)
                 setSecondaryAlpha(1f)
-                setOnLongClickListener {
-                    onCommitCharacter(secondary)
-                    true
-                }
                 onSwipeUp = { onCommitCharacter(secondary) }
                 swipeUpEnabled = this@Pinyin26KeyboardRenderer.swipeUpEnabled
+            }
+            // Long press opens a popup (other case, digit or mark): slide to one and
+            // lift to type it, as the Sogou and iFlytek keyboards do.
+            setOnLongClickListener {
+                val upperShown = currentMainText.firstOrNull()?.isUpperCase() == true
+                val choices = LetterHintPolicy.longPressChoices(character, english, upperShown, hintsEnabled())
+                onShowChoicePopup(this, choices)
+                true
             }
         }
     }
@@ -197,6 +246,7 @@ internal class Pinyin26KeyboardRenderer(
         )
 
     private companion object {
+        const val SPLIT_GAP = 3.5f
         val ROWS = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
     }
 }

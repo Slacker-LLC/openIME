@@ -20,6 +20,7 @@ import android.widget.SeekBar
 import android.widget.TextView
 import llc.slacker.openime.ImeSettingsActivity
 import llc.slacker.openime.R
+import llc.slacker.openime.core.LandscapeLayout
 import llc.slacker.openime.data.HapticStyle
 import llc.slacker.openime.data.KeySoundStyle
 import llc.slacker.openime.theme.ImeAppearance
@@ -58,6 +59,7 @@ internal class SettingsPanelController(
     private val currentHaptic: () -> Boolean,
     private val currentHapticStrengthPercent: () -> Int,
     private val currentHapticStyle: () -> HapticStyle,
+    private val currentLandscapeLayout: () -> LandscapeLayout,
     private val currentKeySoundStyle: () -> KeySoundStyle,
     private val currentPopup: () -> Boolean,
     private val currentSwipeUpDigits: () -> Boolean,
@@ -73,6 +75,7 @@ internal class SettingsPanelController(
     private val onKeyboardHeightChanged: (Int) -> Unit,
     private val onHapticStrengthChanged: (Int) -> Unit,
     private val onHapticStyleChanged: (HapticStyle) -> Unit,
+    private val onLandscapeLayoutChanged: (LandscapeLayout) -> Unit,
     private val onKeySoundStyleChanged: (KeySoundStyle) -> Unit,
     private val onFloatingStyleChanged: (Int, Int) -> Unit,
     private val onShowFuzzySettings: () -> Unit,
@@ -174,6 +177,8 @@ internal class SettingsPanelController(
             segmentedRow("外观", R.drawable.ic_pref_appearance),
             sliderRow("键盘高度", R.drawable.ic_pref_height, 80, 120, currentKeyboardHeightPercent(), onChange = onKeyboardHeightChanged),
         )
+        content.addSection("横屏")
+        content.addCard(landscapeLayoutRow(R.drawable.ic_pref_width))
         content.addSection("浮动键盘")
         content.addCard(
             sliderRow("浮动宽度", R.drawable.ic_pref_width, 72, 100, currentFloatingWidthPercent()) {
@@ -193,6 +198,11 @@ internal class SettingsPanelController(
             toggleRow("按键气泡", "按下时显示字母预览", R.drawable.ic_pref_bubble),
             toggleRow("数字和符号提示", "字母键右上角显示数字和符号", R.drawable.ic_pref_hints),
             toggleRow("上滑输入数字", "按键上滑输入右上角的数字或符号", R.drawable.ic_pref_swipe_up),
+        )
+        content.addSection("工具栏提示")
+        content.addCard(
+            toggleRow("复制内容提示", "刚复制的文字显示在工具栏，点一下输入", R.drawable.ic_pref_clipboard),
+            toggleRow("短信验证码", "最近 5 分钟的验证码显示在工具栏，需要短信权限", R.drawable.ic_pref_shield),
         )
         content.addSection("智能输入")
         content.addCard(
@@ -232,6 +242,8 @@ internal class SettingsPanelController(
             soundStyleRow(0),
             hapticStyleRow(0),
         )
+        content.addSection("横屏")
+        content.addCard(landscapeLayoutRow(0))
         content.addSection("浮动键盘")
         content.addCard(
             sliderRow("浮动宽度", 0, 72, 100, currentFloatingWidthPercent(), shortLabel = "宽度") {
@@ -244,6 +256,8 @@ internal class SettingsPanelController(
         content.addSection("输入")
         content.addCard(
             toggleRow("上滑输入数字", null, 0),
+            toggleRow("复制内容提示", null, 0),
+            toggleRow("短信验证码", null, 0),
             toggleRow("表情联想", null, 0),
             navigationRow("模糊音与智能纠错", null, 0, onShowFuzzySettings),
         )
@@ -549,6 +563,11 @@ internal class SettingsPanelController(
     private fun soundStyleRow(iconRes: Int): View =
         choiceRow("音效", iconRes, KeySoundStyle.entries.map { it.label }, currentKeySoundStyle().label) { label ->
             onKeySoundStyleChanged(KeySoundStyle.entries.first { it.label == label })
+        }
+
+    private fun landscapeLayoutRow(iconRes: Int): View =
+        choiceRow("横屏布局", iconRes, LandscapeLayout.entries.map { it.label }, currentLandscapeLayout().label) { label ->
+            onLandscapeLayoutChanged(LandscapeLayout.entries.first { it.label == label })
         }
 
     private fun hapticStyleRow(iconRes: Int): View =

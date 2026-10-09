@@ -48,8 +48,8 @@ Other keyboards are closed source, so we used only their public help pages.
    If no word helps, openIME builds the preedit locally from the fewest full syllables, with an unfinished syllable at the end (`46` → `go`).
 7. **If a selected word covers only part of the input, openIME commits only that word.**
    The remaining input stays as preedit. This is the same for nine-key and 26-key.
-   openIME does no native learning for a partial selection,
-   because a whole-sentence commit would write phrases that the user never selected into the user dictionary.
+   openIME teaches the native engine only the word that the user tapped, by selecting it again with its own spelling.
+   It does not commit the whole input, because that would write phrases that the user never selected into the user dictionary.
 8. **Space commits the first candidate.**
    Enter (Confirm) commits the typed pinyin text. Rime, fcitx and Gboard pinyin work this way.
 

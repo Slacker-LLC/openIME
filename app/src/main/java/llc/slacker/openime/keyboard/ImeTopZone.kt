@@ -39,6 +39,10 @@ internal enum class ImeTopZoneState {
  * The host supplies data/actions. This view owns construction and visibility
  * of the toolbar, composition/candidate surface, and inline voice surface.
  */
+/** Composing strip: a short pinyin line over the candidate row, 60dp in all. */
+private const val COMPOSITION_LINE_DP = 18
+private const val CANDIDATE_ROW_DP = 42
+
 internal class ImeTopZone(
     context: Context,
     private val toPx: (Int) -> Int,
@@ -55,6 +59,7 @@ internal class ImeTopZone(
     onTools: () -> Unit,
     onExpandCandidates: () -> Unit,
     private val onUndo: () -> Unit,
+    private val onSplitToggle: () -> Unit = {},
     private val onAssociationDismiss: () -> Unit = {},
 ) : LinearLayout(context) {
     val toolbarRow = LinearLayout(context)
@@ -80,6 +85,13 @@ internal class ImeTopZone(
     private var toolbarMode = ToolbarMode.NORMAL
     private var associationsShown = false
     private var autofillShown = false
+    private lateinit var splitIcon: View
+    private var splitToggleShown = false
+    private var splitActive = false
+    /** True while chips occupy the strip (system autofill or the toolbar suggestions). */
+    val autofillChipsShown: Boolean get() = autofillShown
+    /** Called when the user closes the chip strip with its back control. */
+    var onAutofillDismissed: (() -> Unit)? = null
 
     /** Chips from the system autofill service, hosted in a strip of their own. */
     private lateinit var autofillScroll: HorizontalScrollView
@@ -113,12 +125,13 @@ internal class ImeTopZone(
         val emojiIcon = toolbarIcon(R.drawable.ic_emoji, "表情", "toolbar", onEmoji)
         val textEditIcon = toolbarIcon(R.drawable.ic_text_cursor, "文本编辑", "toolbar", onTextEditor)
         val undoIcon = toolbarIcon(R.drawable.ic_undo, "撤销", "undo-toolbar") { onUndo() }
+        splitIcon = toolbarIcon(R.drawable.ic_keyboard_split, "左右分离键盘", "split-toggle") { onSplitToggle() }
         val toolsIcon = toolbarIcon(R.drawable.ic_grid, "更多", "toolbar", onTools)
         // Docked keeps the full toolbar. Floating (game) mode drops text editing
         // and undo and puts quick phrases one tap away.
         toolbarIcons = listOf(keyboardIcon, clipboardIcon, emojiIcon, textEditIcon, undoIcon, toolsIcon)
         compactToolbarIcons = listOf(keyboardIcon, phraseIcon, emojiIcon, toolsIcon)
-        (toolbarIcons + phraseIcon).distinct().forEach {
+        (toolbarIcons + phraseIcon + splitIcon).distinct().forEach {
             toolbarRow.addView(it, LinearLayout.LayoutParams(0, toPx(48), 1f))
         }
 
@@ -224,7 +237,7 @@ internal class ImeTopZone(
             background = null
             includeFontPadding = false
             setPadding(toPx(14), toPx(3), toPx(14), 0)
-            minimumHeight = toPx(22)
+            minimumHeight = toPx(COMPOSITION_LINE_DP)
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
@@ -239,7 +252,7 @@ internal class ImeTopZone(
             composition,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(22),
+                toPx(COMPOSITION_LINE_DP),
             ),
         )
 
@@ -259,7 +272,7 @@ internal class ImeTopZone(
                 candidateRow,
                 ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
-                    toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
+                    toPx(CANDIDATE_ROW_DP),
                 ),
             )
         }
@@ -270,7 +283,7 @@ internal class ImeTopZone(
         candidateField.addView(expandedCaption, LinearLayout.LayoutParams(0, toPx(48), 1f))
         candidateField.addView(
             candidateScroll,
-            LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f),
+            LinearLayout.LayoutParams(0, toPx(CANDIDATE_ROW_DP), 1f),
         )
 
         candidateEmojiButton.apply {
@@ -304,7 +317,7 @@ internal class ImeTopZone(
             candidateField,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
+                toPx(CANDIDATE_ROW_DP),
             ),
         )
         addView(
@@ -430,6 +443,7 @@ internal class ImeTopZone(
 
     /** Back control of the autofill strip: hide the chips until the next response. */
     private fun dismissAutofillChips() {
+        onAutofillDismissed?.invoke()
         autofillRow.removeAllViews()
         autofillShown = false
         toolbarMode = idleToolbarMode()
@@ -443,7 +457,7 @@ internal class ImeTopZone(
     private var pressRawY = 0f
     private val longPressRunnable = Runnable {
         longPressArmed = true
-        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING)
     }
 
     /**
@@ -508,6 +522,59 @@ internal class ImeTopZone(
     }
 
     /** Floating (game) mode: a slimmer toolbar without text editing and undo. */
+    /**
+     * Landscape strip: the zone is one key row plus a little, and while composing
+     * the pinyin sits at the left of the candidates instead of above them.
+     */
+    fun setLandscapeStrip(on: Boolean) {
+        val height = toPx(
+            if (on) ImeGeometryTokens.LANDSCAPE_TOP_ZONE_HEIGHT_DP else ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP,
+        )
+        minimumHeight = height
+        toolbarRow.minimumHeight = minOf(height, toPx(ImeGeometryTokens.TOOLBAR_HEIGHT_DP))
+        (toolbarRow.layoutParams as? LinearLayout.LayoutParams)?.let {
+            if (it.height != height) { it.height = height; toolbarRow.layoutParams = it }
+        }
+        (composeZone.layoutParams as? LinearLayout.LayoutParams)?.let {
+            if (it.height != height) { it.height = height; composeZone.layoutParams = it }
+        }
+        composeZone.orientation = if (on) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+        composeZone.gravity = Gravity.CENTER_VERTICAL
+        (composition.layoutParams as? LinearLayout.LayoutParams)?.let {
+            if (on) {
+                it.width = LinearLayout.LayoutParams.WRAP_CONTENT
+                it.height = LinearLayout.LayoutParams.MATCH_PARENT
+            } else {
+                it.width = LinearLayout.LayoutParams.MATCH_PARENT
+                it.height = toPx(COMPOSITION_LINE_DP)
+            }
+            composition.layoutParams = it
+        }
+        composition.maxWidth = if (on) toPx(160) else Int.MAX_VALUE
+        composition.gravity = Gravity.CENTER_VERTICAL or Gravity.START
+        (candidateField.layoutParams as? LinearLayout.LayoutParams)?.let {
+            if (on) {
+                it.width = 0
+                it.weight = 1f
+                it.height = LinearLayout.LayoutParams.MATCH_PARENT
+            } else {
+                it.width = LinearLayout.LayoutParams.MATCH_PARENT
+                it.weight = 0f
+                it.height = toPx(CANDIDATE_ROW_DP)
+            }
+            candidateField.layoutParams = it
+        }
+    }
+
+    /** Landscape docked keyboards get Sogou's toolbar button that splits or rejoins the keyboard. */
+    fun setSplitToggle(visible: Boolean, active: Boolean) {
+        splitToggleShown = visible
+        splitActive = active
+        splitIcon.contentDescription = if (active) "恢复普通键盘" else "左右分离键盘"
+        splitIcon.alpha = if (active) 1f else 0.72f
+        refreshToolbar()
+    }
+
     fun setCompactToolbar(value: Boolean) {
         if (compact == value) return
         compact = value
@@ -522,6 +589,7 @@ internal class ImeTopZone(
         (toolbarIcons + compactToolbarIcons).distinct().forEach {
             it.visibility = if (normal && it in shown) View.VISIBLE else View.GONE
         }
+        splitIcon.visibility = if (normal && splitToggleShown) View.VISIBLE else View.GONE
         associationBack.visibility = if (association || autofill) View.VISIBLE else View.GONE
         associationScroll.visibility = if (association) View.VISIBLE else View.GONE
         autofillScroll.visibility = if (autofill) View.VISIBLE else View.GONE

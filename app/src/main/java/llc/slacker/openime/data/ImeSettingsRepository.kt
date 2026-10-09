@@ -3,6 +3,7 @@ package llc.slacker.openime.data
 import android.content.Context
 import llc.slacker.openime.core.FuzzyRule
 import llc.slacker.openime.core.KeyboardMode
+import llc.slacker.openime.core.LandscapeLayout
 import llc.slacker.openime.theme.ImeAppearance
 import llc.slacker.openime.theme.ImeTheme
 
@@ -29,6 +30,10 @@ object ImeSettingsRepository {
     private const val KEY_KEYBOARD_HEIGHT = "keyboard_height_percent"
     private const val KEY_FLOATING_WIDTH = "floating_width_percent"
     private const val KEY_FLOATING_OPACITY = "floating_opacity_percent"
+    private const val KEY_LANDSCAPE_LAYOUT = "landscape_layout"
+    private const val KEY_SPLIT_MIRRORED = "split_mirrored"
+    private const val KEY_SMS_CODE_CHIP = "sms_code_chip"
+    private const val KEY_CLIPBOARD_CHIP = "clipboard_chip"
 
     /**
      * The user's preferred Chinese layout (26-key vs 9-key). Only PINYIN_26 and
@@ -57,6 +62,37 @@ object ImeSettingsRepository {
     fun saveKeyboardHeightPercent(context: Context, percent: Int) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putInt(KEY_KEYBOARD_HEIGHT, percent.coerceIn(80, 120)).apply()
+    }
+
+    fun loadSplitMirrored(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_SPLIT_MIRRORED, false)
+
+    fun saveSplitMirrored(context: Context, mirrored: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_SPLIT_MIRRORED, mirrored).apply()
+    }
+
+    fun loadSmsCodeChip(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_SMS_CODE_CHIP, false)
+
+    fun saveSmsCodeChip(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_SMS_CODE_CHIP, enabled).apply()
+    }
+
+    fun loadClipboardChip(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_CLIPBOARD_CHIP, true)
+
+    fun saveClipboardChip(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_CLIPBOARD_CHIP, enabled).apply()
+    }
+
+    fun loadLandscapeLayout(context: Context): LandscapeLayout =
+        LandscapeLayout.fromKey(
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_LANDSCAPE_LAYOUT, null),
+        )
+
+    fun saveLandscapeLayout(context: Context, layout: LandscapeLayout) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY_LANDSCAPE_LAYOUT, layout.key).apply()
     }
 
     fun loadFloatingWidthPercent(context: Context): Int =

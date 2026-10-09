@@ -80,7 +80,7 @@ internal class VoicePanelView(
         addView(hero, LayoutParams(toPx(88), toPx(88)).apply { bottomMargin = toPx(14) })
         languageButton = createButton(LANGUAGES[0].first, ImeTypographyTokens.BODY_SP, true).apply {
             tag = "voice-language"
-            setOnClickListener { onFeedback(); languageIndex = 0; onLanguageChanged(languageIndex); updateLanguagePresentation(false) }
+            setOnClickListener { languageIndex = 0; onLanguageChanged(languageIndex); updateLanguagePresentation(false) }
         }
         val languageTrack = LinearLayout(context).apply {
             orientation = HORIZONTAL; tag = "segmented-track"; setPadding(toPx(2), toPx(2), toPx(2), toPx(2))

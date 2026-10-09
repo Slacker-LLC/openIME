@@ -168,19 +168,17 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
         }
 
         val result = linkedSetOf<String>()
+        // What was typed comes first; a fuzzy reading (si for shi) only follows it.
+        result.addAll(ImeData.phraseDict[py].orEmpty())
+        result.addAll(pinyinDict[py].orEmpty())
         if (fuzzy) {
             fuzzyVariants(py).forEach { variant ->
                 result.addAll(ImeData.phraseDict[variant].orEmpty())
             }
-        }
-        result.addAll(ImeData.phraseDict[py].orEmpty())
-
-        if (fuzzy) {
             fuzzyVariants(py).forEach { variant ->
                 result.addAll(pinyinDict[variant].orEmpty())
             }
         }
-        result.addAll(pinyinDict[py].orEmpty())
 
         // Compact phrase fallback used to scan every phrase on every key.
         // Jump to the sorted prefix interval, then restore source-map order so
@@ -188,13 +186,20 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
         phrasePrefixIndex.lookup(py).values.forEach { candidates ->
             result.addAll(candidates)
         }
+        // Syllables that continue the typed letters, most used first (an alphabetical
+        // walk ran out of room before shi, xiang, zhe, nei, dai).
         var prefixIndex = lowerBound(sortedPinyinKeys, py)
-        while (prefixIndex < sortedPinyinKeys.size) {
+        val continuations = ArrayList<Pair<Int, List<String>>>()
+        while (prefixIndex < sortedPinyinKeys.size && continuations.size < PREFIX_KEY_LIMIT) {
             val key = sortedPinyinKeys[prefixIndex]
             if (!key.startsWith(py)) break
-            result.addAll(pinyinDict[key].orEmpty().take(3))
-            if (result.size >= 96) break
+            val top = pinyinDict[key].orEmpty().take(3)
+            if (top.isNotEmpty()) continuations += (PinyinLexicon.weightFor(key, top.first())) to top
             prefixIndex++
+        }
+        // Stable sort: equal weights keep the alphabetical order.
+        continuations.sortedByDescending { it.first }.forEach { (_, chars) ->
+            if (result.size < 96) result.addAll(chars)
         }
 
         if (result.isEmpty() && py.length > 2) {
@@ -266,6 +271,12 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
         val key = parts.joinToString("|")
         val result = linkedSetOf<String>()
         result.addAll(ImeData.segmentedPhraseDict[key].orEmpty())
+        // A boundary inside a known word's spelling (xi'an, wo'lai) still finds the word.
+        val joined = parts.joinToString("")
+        result.addAll(ImeData.phraseDict[joined].orEmpty().filter { it.codePointCount(0, it.length) == parts.size })
+        phrasePrefixIndex.lookup(joined).values.forEach { words ->
+            result.addAll(words.filter { it.codePointCount(0, it.length) == parts.size })
+        }
 
         // The general fallback handles arbitrary boundaries even when a
         // phrase is not yet in the compact phrase table. Limit the product so
@@ -572,6 +583,7 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
     }
 
     internal companion object {
+        private const val PREFIX_KEY_LIMIT = 400
         const val MAX_NINE_KEY_DIGITS = 64
         private const val MAX_NINE_MATCHES = 12
         private const val MAX_LOCAL_RESOLVE_LENGTH = 32

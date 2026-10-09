@@ -43,7 +43,7 @@ internal object ImeGeometryTokens {
     const val KEY_GAP_DP = 6
     const val KEY_ROW_GAP_DP = KEY_GAP_DP
     const val KEY_SIDE_MARGIN_DP = 2
-    const val KEY_POPUP_HEIGHT_DP = 76
+    const val KEY_POPUP_HEIGHT_DP = 52
     const val KEY_POPUP_MIN_WIDTH_DP = 40
     const val KEY_POPUP_WIDTH_SCALE = 1.08f
     const val KEY_POPUP_VERTICAL_GAP_DP = 8
@@ -56,7 +56,14 @@ internal object ImeGeometryTokens {
     // Same as a settings icon tile, so step text lines up with the rows below.
     const val STEP_MARK_SIZE_DP = 32
     const val HERO_MARK_SIZE_DP = 72
-    const val COMPOSED_TOP_ZONE_HEIGHT_DP = 70
+    const val COMPOSED_TOP_ZONE_HEIGHT_DP = 60
+    // Landscape: one strip a little taller than a key row, pinyin and candidates side by side.
+    // Space under the bottom row (the keys sit 7dp higher than they used to).
+    const val KEYBOARD_TOP_PAD_DP = 4
+    const val KEYBOARD_BOTTOM_PAD_DP = 19
+    // Landscape keys are short, so the gap under them shrinks (HeliBoard and fcitx5 use none).
+    const val LANDSCAPE_BOTTOM_PAD_DP = 6
+    const val LANDSCAPE_TOP_ZONE_HEIGHT_DP = 48
 }
 
 /** Shared spacing scale for every non-keyboard layout. */

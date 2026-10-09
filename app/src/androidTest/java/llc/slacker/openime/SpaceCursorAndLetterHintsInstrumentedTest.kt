@@ -361,13 +361,25 @@ class SpaceCursorAndLetterHintsInstrumentedTest {
     }
 
     @Test
-    fun longPressTypesTheSameHint() = withKeyboard { harness, recorder, keyboard ->
+    fun longPressOffersTheHintInAPopup() = withKeyboard { harness, recorder, keyboard ->
         harness.awaitMain { keyboard.setMode(KeyboardMode.PINYIN_26); true }
-        listOf('w', 'd', 'k', 'v').forEach { letter ->
+        listOf('w' to "2", 'd' to "@", 'k' to "*", 'v' to "_").forEach { (letter, hint) ->
             val key = settled(harness, keyboard, "key:$letter")
             assertTrue(harness.awaitMain { key.performLongClick() })
+            // The popup lists the other case, then the hint; a tap on its cell types it.
+            assertTrue("popup cell $hint", harness.awaitMain { chooseFromPopup(keyboard, hint) })
         }
         assertEquals(listOf("2", "@", "*", "_"), recorder.characters.toList())
+    }
+
+    /** Taps the long-press popup cell showing [text]; false when no such cell is on screen. */
+    private fun chooseFromPopup(root: View, text: String): Boolean {
+        fun walk(view: View): android.widget.TextView? {
+            if (view is android.widget.TextView && view.text.toString() == text && view.hasOnClickListeners()) return view
+            if (view is android.view.ViewGroup) for (i in 0 until view.childCount) walk(view.getChildAt(i))?.let { return it }
+            return null
+        }
+        return walk(root)?.performClick() == true
     }
 
     @Test
@@ -386,6 +398,7 @@ class SpaceCursorAndLetterHintsInstrumentedTest {
         assertTrue("swipe is off: ${recorder.characters}", recorder.characters.isEmpty())
         harness.awaitMain { assertTrue("1" in texts(q)); true }
         assertTrue(harness.awaitMain { q.performLongClick() })
+        assertTrue("popup cell 1", harness.awaitMain { chooseFromPopup(keyboard, "1") })
         assertEquals("long press still works", listOf("1"), recorder.characters.toList())
     }
 

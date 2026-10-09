@@ -27,6 +27,7 @@ import llc.slacker.openime.R
 import llc.slacker.openime.candidate.CandidatePipeline
 import llc.slacker.openime.candidate.CandidateResolver
 import llc.slacker.openime.candidate.NineKeyLocalDecoder
+import llc.slacker.openime.candidate.personalizedLearningAllowed
 import llc.slacker.openime.candidate.NineKeyPerformanceTrace
 import llc.slacker.openime.candidate.NineKeyReading
 import llc.slacker.openime.candidate.StrokeLexicon
@@ -34,6 +35,7 @@ import llc.slacker.openime.core.FuzzyRule
 import llc.slacker.openime.core.ImeState
 import llc.slacker.openime.core.KeyboardMode
 import llc.slacker.openime.core.Panel
+import llc.slacker.openime.core.LandscapeLayout
 import llc.slacker.openime.core.ShiftState
 import llc.slacker.openime.data.HapticStyle
 import llc.slacker.openime.data.ImeSettingsRepository
@@ -41,6 +43,7 @@ import llc.slacker.openime.data.KeySoundStyle
 import llc.slacker.openime.data.QuickPhrase
 import llc.slacker.openime.data.QuickPhraseRepository
 import llc.slacker.openime.editor.EditorInfoAdapter
+import llc.slacker.openime.editor.enterKeyFaceFor
 import llc.slacker.openime.editor.enterKeyPresentationFor
 import llc.slacker.openime.floating.FloatingKeyboardController
 import llc.slacker.openime.panel.ClipboardPanelController
@@ -133,6 +136,7 @@ open class ImeKeyboardView(
         /** 震动手感 or 按键音效 changed; the new value is already saved. */
         fun onFeedbackStyleChanged() {}
         fun onFloatingStyleChanged(widthPercent: Int, opacityPercent: Int) {}
+        fun onLandscapeLayoutChanged(layout: LandscapeLayout) {}
         fun onOpenAbout() {}
         fun onOpenDataManagement() {}
     }
@@ -146,6 +150,7 @@ open class ImeKeyboardView(
     companion object {
         /** Scale differences below this are rounding noise, not a new geometry. */
         private const val SCALE_CHANGE_EPSILON = 0.01f
+        private const val FLOATING_NAV_STRIP_DP = 28
 
         /** How often a deferred row rebuild re-checks whether the press ended. */
         private const val ROW_REBUILD_POLL_MS = 40L
@@ -300,11 +305,13 @@ open class ImeKeyboardView(
     private var floatingOpacityPercent = ImeSettingsRepository.loadFloatingOpacityPercent(context)
     private var referenceScale = if (standalonePanel) 1f else ImeReferenceSizing.scale(context)
     private var floatingWindowMode = false
+    /** Floating that the landscape setting started: it keeps the compact landscape rows. */
+    private var floatingCompact = false
     private var layoutMetrics = buildLayoutMetrics()
     /** Landscape uses compact rows, except in floating mode, which keeps portrait size. */
     private fun buildLayoutMetrics() = KeyboardLayoutMetrics(
         landscape = appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE &&
-            !floatingWindowMode,
+            (!floatingWindowMode || floatingCompact),
         fontScale = appliedFontScale,
         heightPercent = keyboardHeightPercent,
         availableWidthDp = resources.configuration.screenWidthDp,
@@ -327,7 +334,61 @@ open class ImeKeyboardView(
     }
 
     /** Refresh data owned by auxiliary editor Activities when they return. */
+    private var dismissedSuggestion: String? = null
+    private var dismissedSmsCode: String? = null
+    private var ownSuggestionsShown = false
+
+    /**
+     * Toolbar chips for a fresh text-message code and the text just copied. They
+     * share the strip system autofill suggestions use, which keeps priority.
+     */
+    internal fun refreshSuggestions() {
+        if (standalonePanel || !::topZone.isInitialized) return
+        // System autofill chips keep the strip; only this view's own chips are refreshed.
+        if (topZone.autofillChipsShown && !ownSuggestionsShown) return
+        val found = ToolbarSuggestions.collect(context, allowed = personalizedLearningAllowed(passwordField, currentImeOptions()), skipClip = dismissedSuggestion, skipSms = dismissedSmsCode)
+        if (found.isEmpty()) {
+            if (ownSuggestionsShown) topZone.setAutofillChips(emptyList())
+            ownSuggestionsShown = false
+            return
+        }
+        val t = currentThemeTokens()
+        val chips = found.map { suggestion ->
+            TextView(context).apply {
+                text = suggestion.label
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                textSize = ImeTypographyTokens.BODY_SP
+                gravity = Gravity.CENTER_VERTICAL
+                setTextColor(t.keyText)
+                setPadding(dp(14), 0, dp(14), 0)
+                maxWidth = (resources.displayMetrics.widthPixels * 0.6f).toInt()
+                background = ImeDrawableFactory.rounded(t.lightKeyBackground, dp(ImeGeometryTokens.KEY_RADIUS_DP))
+                contentDescription = if (suggestion.kind == ToolbarSuggestion.Kind.SMS_CODE) {
+                    "验证码${suggestion.text}，点击输入"
+                } else {
+                    "刚复制的内容，点击输入"
+                }
+                setOnClickListener {
+                    feedback()
+                    if (!insertIntoInlineEditor(suggestion.text)) listener.onCharacter(suggestion.text)
+                    if (suggestion.kind == ToolbarSuggestion.Kind.SMS_CODE) dismissedSmsCode = suggestion.text
+                    else dismissedSuggestion = suggestion.text
+                    ownSuggestionsShown = false
+                    topZone.setAutofillChips(emptyList())
+                }
+            }
+        }
+        topZone.onAutofillDismissed = {
+            found.lastOrNull { it.kind == ToolbarSuggestion.Kind.CLIPBOARD }?.let { dismissedSuggestion = it.text }
+            found.firstOrNull { it.kind == ToolbarSuggestion.Kind.SMS_CODE }?.let { dismissedSmsCode = it.text }
+        }
+        ownSuggestionsShown = true
+        topZone.setAutofillChips(chips, chipHeightPx = dp(36))
+    }
+
     internal fun refreshAuxiliaryContent() {
+        refreshSuggestions()
         when (panel) {
             Panel.CLIPBOARD -> renderClipboard(reusePanel = true)
             Panel.SYMBOLS -> panelRenderer.refreshCustomSymbols()
@@ -419,7 +480,8 @@ open class ImeKeyboardView(
         statefulRounded = { normal, pressed, radius -> statefulRounded(normal, pressed, radius) },
         contrastText = ImeDrawableFactory::contrastText,
         feedback = ::feedback,
-        onSymbolSelected = listener::onCharacter,
+        hoverFeedback = ::hapticFeedback,
+        onSymbolSelected = ::onPopupChoice,
     )
     private val nineKeySegmentRepairController = NineKeySegmentRepairController(
         context = context,
@@ -466,6 +528,9 @@ open class ImeKeyboardView(
             onModeSwitch = ::cycleMode,
             onRetranslate = ::retype,
             onEnter = listener::onEnter,
+            splitLayout = ::splitKeyboard,
+            mirrored = { ImeSettingsRepository.loadSplitMirrored(context) },
+            onMirror = ::mirrorSplit,
         )
     }
     private val strokeRenderer: StrokeKeyboardRenderer by lazy {
@@ -676,6 +741,7 @@ open class ImeKeyboardView(
             currentHaptic = { hapticEnabled },
             currentHapticStrengthPercent = { keyHaptics.strengthPercent },
             currentHapticStyle = { keyHaptics.style },
+            currentLandscapeLayout = { ImeSettingsRepository.loadLandscapeLayout(context) },
             currentKeySoundStyle = { keySounds.style },
             currentPopup = { popupEnabled },
             currentSwipeUpDigits = { ImeSettingsRepository.loadSwipeUpDigits(context) },
@@ -693,6 +759,7 @@ open class ImeKeyboardView(
             onKeyboardHeightChanged = ::setKeyboardHeightPercent,
             onHapticStrengthChanged = ::setHapticStrengthPercent,
             onHapticStyleChanged = ::setHapticStyle,
+            onLandscapeLayoutChanged = ::setLandscapeLayout,
             onKeySoundStyleChanged = ::setKeySoundStyle,
             onFloatingStyleChanged = ::setFloatingStyle,
             onShowFuzzySettings = { showPanel(Panel.FUZZY_SETTINGS) },
@@ -783,18 +850,21 @@ open class ImeKeyboardView(
             hintsEnabled = { ImeSettingsRepository.loadLetterHints(context) },
             swipeUpEnabled = { ImeSettingsRepository.loadSwipeUpDigits(context) },
             onShift = ::cycleShift,
+            onShiftLongPress = ::lockShift,
             onDigits = { setMode(KeyboardMode.DIGITS) },
             onModeSwitch = ::cycleMode,
             onSpace = listener::onSpace,
             onEnter = listener::onEnter,
+            onSymbols = { showPanel(Panel.SYMBOLS) },
+            splitLayout = ::splitKeyboard,
         )
     }
 
     init {
         tag = "ime_root"
-        // Some IME windows inherit the host's disabled sound-effect flag.
-        // Keep the view channel enabled; the preference still gates feedback().
-        isSoundEffectsEnabled = true
+        // Keys play their sound through AudioManager (KeySounds), not the view channel,
+        // so the platform's own click sound stays off.
+        isSoundEffectsEnabled = false
         val rootHeight = if (standalonePanel) {
             FrameLayout.LayoutParams.MATCH_PARENT
         } else {
@@ -827,7 +897,7 @@ open class ImeKeyboardView(
         }
         keyboardBody.orientation = LinearLayout.VERTICAL
         keyboardBody.tag = "keyboard-body"
-        keyboardBody.setPadding(dp(0), dp(6), dp(0), dp(10))
+        keyboardBody.setPadding(dp(0), dp(ImeGeometryTokens.KEYBOARD_TOP_PAD_DP), dp(0), dp(layoutMetrics.bottomPadDp))
         expandedPanel.orientation = LinearLayout.VERTICAL
         expandedPanel.tag = "panel-overlay"
         expandedPanel.visibility = View.GONE
@@ -883,7 +953,7 @@ open class ImeKeyboardView(
                 @Suppress("DEPRECATION")
                 insets.systemWindowInsetBottom
             }.coerceAtMost(dp(32))
-            val next = if (floatingWindowMode) 0 else ImeBottomInsetPolicy.clampInset(systemBottomInsetPx, dp(32))
+            val next = bottomInsetFor(systemBottomInsetPx)
             if (next != navigationBottomInsetPx) {
                 navigationBottomInsetPx = next
                 applyDynamicHeights()
@@ -892,6 +962,16 @@ open class ImeKeyboardView(
             updateResponsiveGeometry(width)
             insets
         }
+    }
+
+    /**
+     * Docked, the keyboard sits above the system bar. A floating card gets a strip
+     * of its own for the back and keyboard-switch buttons the system draws inside
+     * the IME window, so they never cover the bottom row (Gboard does the same).
+     */
+    private fun bottomInsetFor(reportedPx: Int): Int {
+        val clamped = ImeBottomInsetPolicy.clampInset(reportedPx, dp(32))
+        return if (floatingWindowMode) maxOf(clamped, dp(FLOATING_NAV_STRIP_DP)) else clamped
     }
 
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
@@ -916,6 +996,9 @@ open class ImeKeyboardView(
         appliedDensityDpi = newConfig.densityDpi
         layoutMetrics = buildLayoutMetrics()
         if (!geometryChanged) return
+        // The rows under an open panel are stale too (split layout, row heights):
+        // closing the panel must rebuild them.
+        renderedMode = null
         // Do not yank the user out of an open panel.
         applyDynamicHeights()
         if (standalonePanel) return
@@ -951,8 +1034,17 @@ open class ImeKeyboardView(
         return spaceVoiceGestureController.trackingTouch || walk(this)
     }
 
+    /** The height this view wants as a window: rows plus the system-bar strip; valid before the first measure. */
+    internal fun desiredWindowHeightPx(): Int? =
+        if (standalonePanel) null else dp(imeHeightDp()) + navigationBottomInsetPx
+
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        // A view created while already in landscape never sees a configuration change.
+        if (::topZone.isInitialized && !standalonePanel) {
+            topZone.setLandscapeStrip(layoutMetrics.landscape)
+            syncSplitToggle()
+        }
         requestApplyInsets()
     }
 
@@ -1011,6 +1103,8 @@ open class ImeKeyboardView(
      */
     private fun applyDynamicHeights() {
         if (standalonePanel) return
+        if (::topZone.isInitialized) topZone.setLandscapeStrip(layoutMetrics.landscape)
+        syncSplitToggle()
         val totalPx = dp(imeHeightDp())
         val bodyPx = dp(keyboardBodyHeightDp())
         (layoutParams as? FrameLayout.LayoutParams)?.let {
@@ -1048,7 +1142,7 @@ open class ImeKeyboardView(
     private fun updateResponsiveGeometry(measuredWidthPx: Int) {
         if (measuredWidthPx <= 0) return
 
-        val nextScale = if (standalonePanel) 1f else ImeReferenceSizing.scale(context, measuredWidthPx, landscapeCompact = !floatingWindowMode)
+        val nextScale = if (standalonePanel) 1f else ImeReferenceSizing.scale(context, measuredWidthPx, landscapeCompact = !floatingWindowMode || floatingCompact)
         // Configuration.screenWidthDp is a whole number while the measured width
         // is not (411dp vs 411.43dp on a 1080px / 420dpi screen), so the two
         // scales differ by up to 1/390 for the same window. That rounding noise
@@ -1080,7 +1174,7 @@ open class ImeKeyboardView(
             // width before WindowManager applies the floating window bounds.
             // Keep the normal keyboard's content inset local to its window.
             contentInsetPx = dp(0)
-            keyboardBody.setPadding(contentInsetPx, dp(6), contentInsetPx, dp(10))
+            keyboardBody.setPadding(contentInsetPx, dp(ImeGeometryTokens.KEYBOARD_TOP_PAD_DP), contentInsetPx, dp(layoutMetrics.bottomPadDp))
             keyboardBody.findViewWithTag<View>("key-row-secondary")?.let { row ->
                 // The portrait layout narrows this row to 90% of the full
                 // display for optical centering. A floating window can be
@@ -1102,14 +1196,21 @@ open class ImeKeyboardView(
             return
         }
         val minimumInset = dp(0)
-        val maxWidth = if (standalonePanel) dp(maxContentWidthDp)
-            else (minOf(maxContentWidthDp.toFloat(), 390f * referenceScale) * resources.displayMetrics.density).toInt()
+        val landscape = appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        val maxWidth = when {
+            standalonePanel -> dp(maxContentWidthDp)
+            // Landscape rows are short, so the width is what makes keys easy to hit.
+            // Like Gboard and the Chinese keyboards, fill the whole width instead of
+            // shrinking the keys to the height-derived portrait width.
+            landscape -> measuredWidthPx
+            else -> (minOf(maxContentWidthDp.toFloat(), 390f * referenceScale) * resources.displayMetrics.density).toInt()
+        }
         contentInsetPx = maxOf(minimumInset, (measuredWidthPx - maxWidth) / 2)
         keyboardBody.setPadding(
             contentInsetPx,
-            dp(6),
+            dp(ImeGeometryTokens.KEYBOARD_TOP_PAD_DP),
             contentInsetPx,
-            dp(10),
+            dp(layoutMetrics.bottomPadDp),
         )
         keyboardBody.findViewWithTag<View>("key-row-secondary")?.let { row ->
             val rowWidth = ((measuredWidthPx - contentInsetPx * 2) * 0.9f).toInt()
@@ -1202,6 +1303,7 @@ open class ImeKeyboardView(
                 listener.onCandidateExpanded(open)
             },
             onUndo = { listener.onTextEdit("undo") },
+            onSplitToggle = ::toggleSplit,
             onAssociationDismiss = ::clearAssociationCandidates,
         )
         candidateBarController = CandidateBarController(
@@ -1221,7 +1323,6 @@ open class ImeKeyboardView(
                     allowTwoLineLabel()
                     contentDescription = "候选:$candidate"
                     setOnLongClickListener {
-                        feedback()
                         listener.onCandidateLongPressed(candidate)
                         true
                     }
@@ -1364,9 +1465,10 @@ open class ImeKeyboardView(
     }
 
     /** Keep content geometry local when the service changes the window bounds. */
-    fun setFloatingWindowMode(enabled: Boolean) {
+    fun setFloatingWindowMode(enabled: Boolean, compact: Boolean = false) {
         floatingWindowMode = enabled
-        navigationBottomInsetPx = if (enabled) 0 else ImeBottomInsetPolicy.clampInset(systemBottomInsetPx, dp(32))
+        floatingCompact = enabled && compact
+        navigationBottomInsetPx = bottomInsetFor(systemBottomInsetPx)
         floatingKeyboardController.setEnabled(enabled)
         topZone.setCompactToolbar(enabled)
         layoutMetrics = buildLayoutMetrics()
@@ -1377,7 +1479,7 @@ open class ImeKeyboardView(
         if (!standalonePanel && panel == Panel.NONE) renderModeBody()
         if (enabled) {
             contentInsetPx = dp(0)
-            keyboardBody.setPadding(contentInsetPx, dp(6), contentInsetPx, dp(10))
+            keyboardBody.setPadding(contentInsetPx, dp(ImeGeometryTokens.KEYBOARD_TOP_PAD_DP), contentInsetPx, dp(layoutMetrics.bottomPadDp))
             expandedPanel.setPadding(contentInsetPx, 0, contentInsetPx, 0)
             candidateOverlay.setPadding(contentInsetPx, 0, contentInsetPx, 0)
             topZone.setContentInset(contentInsetPx)
@@ -1385,7 +1487,7 @@ open class ImeKeyboardView(
             updateTopZone(composition.text?.isNotEmpty() == true)
             if (width > 0) updateResponsiveGeometry(width)
         }
-        floatingKeyboardController.applyTheme(currentThemeTokens())
+        applyTheme()
         requestLayout()
     }
 
@@ -1518,14 +1620,17 @@ open class ImeKeyboardView(
         syncEnterKeyPresentation(state.editorInfo?.imeOptions)
     }
 
+    private fun currentImeOptions(): Int? =
+        (context as? android.inputmethodservice.InputMethodService)?.currentInputEditorInfo?.imeOptions
+
     private fun syncEnterKeyPresentation(imeOptions: Int?) {
         val options = imeOptions ?: return
         val enter = findViewWithTag<ImeKeyView>("key-enter") ?: return
         val composing = composition.text?.isNotEmpty() == true
-        val label = if (composing) "确定" else if (mode == KeyboardMode.PINYIN_9 || mode == KeyboardMode.STROKE || mode == KeyboardMode.DIGITS) "↵" else enterKeyPresentationFor(options).label
-        enter.setMainText(label)
+        enter.setMainText(enterKeyFaceFor(options, composing))
         enter.applyMainTextScale(referenceScale)
-        enter.contentDescription = label
+        enter.contentDescription = if (composing) "确定" else enterKeyPresentationFor(options).label
+        themeApplier.apply(enter, currentThemeTokens())
     }
 
     private var inlineAutofillController: InlineAutofillController? = null
@@ -1538,6 +1643,11 @@ open class ImeKeyboardView(
         lateinit var controller: InlineAutofillController
         controller = InlineAutofillController(context, context.mainExecutor) { chips ->
             if (::topZone.isInitialized) {
+                // An empty response (the usual "nothing to fill") must not wipe this view's own chips.
+                if (chips.isEmpty() && ownSuggestionsShown) return@InlineAutofillController
+                // The system's chips replace this view's own; a later refresh must not touch them.
+                ownSuggestionsShown = false
+                topZone.onAutofillDismissed = null
                 topZone.setAutofillChips(chips, controller.chipSize.width, controller.chipSize.height)
             }
         }
@@ -1625,6 +1735,41 @@ open class ImeKeyboardView(
     }
 
     /** Save the 震动手感 choice and let it be felt once. */
+    /** Landscape split halves (Sogou's 左右分离), only for the docked full-width keyboard. */
+    private fun splitKeyboard(): Boolean =
+        !standalonePanel && !floatingWindowMode &&
+            appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE &&
+            ImeSettingsRepository.loadLandscapeLayout(context) == LandscapeLayout.SPLIT
+
+    private fun toggleSplit() {
+        setLandscapeLayout(
+            if (splitKeyboard()) LandscapeLayout.FULL else LandscapeLayout.SPLIT,
+        )
+        syncSplitToggle()
+    }
+
+    /** The toolbar split button shows only on a docked landscape keyboard. */
+    private fun syncSplitToggle() {
+        if (!::topZone.isInitialized) return
+        val landscape = !standalonePanel && !floatingWindowMode &&
+            appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        topZone.setSplitToggle(landscape, splitKeyboard())
+    }
+
+    private fun mirrorSplit() {
+        ImeSettingsRepository.saveSplitMirrored(context, !ImeSettingsRepository.loadSplitMirrored(context))
+        renderedMode = null
+        if (panel == Panel.NONE) renderModeBody()
+    }
+
+    private fun setLandscapeLayout(next: LandscapeLayout) {
+        if (ImeSettingsRepository.loadLandscapeLayout(context) == next) return
+        ImeSettingsRepository.saveLandscapeLayout(context, next)
+        listener.onLandscapeLayoutChanged(next)
+        renderedMode = null
+        if (panel == Panel.NONE && !standalonePanel) renderModeBody()
+    }
+
     private fun setHapticStyle(next: HapticStyle) {
         keyHaptics.style = next
         ImeSettingsRepository.saveHapticStyle(context, next.key)
@@ -1883,9 +2028,9 @@ open class ImeKeyboardView(
         }
         keyboardBody.setPadding(
             contentInsetPx,
-            dp(6),
+            dp(ImeGeometryTokens.KEYBOARD_TOP_PAD_DP),
             contentInsetPx,
-            dp(10),
+            dp(layoutMetrics.bottomPadDp),
         )
         val state = when {
             inlineVoicePresenter.active -> ImeTopZoneState.VOICE_INLINE
@@ -1972,7 +2117,7 @@ open class ImeKeyboardView(
         pinyin26Renderer.render(
             english = false,
             shiftState = shiftState,
-            enterLabel = enterKeyLabel(false),
+            enterLabel = enterKeyLabel(),
         )
     }
 
@@ -1980,24 +2125,17 @@ open class ImeKeyboardView(
         pinyin26Renderer.render(
             english = true,
             shiftState = shiftState,
-            enterLabel = enterKeyLabel(true),
+            enterLabel = enterKeyLabel(),
         )
     }
 
-    /**
-     * Resolve the Enter label from the bound editor at render time so the key is
-     * correct on its first frame (V2 keeps an idempotent re-sync as a safety net).
-     * Outside an InputMethodService host (settings/test) the legacy fallback is used.
-     */
-    private fun enterKeyLabel(english: Boolean, fallback: String? = null): String {
-        val imeOptions = (context as? android.inputmethodservice.InputMethodService)
-            ?.currentInputEditorInfo?.imeOptions
-        if (imeOptions != null) return enterKeyPresentationFor(imeOptions).label
-        return fallback ?: if (english) "Go" else "确定"
+    /** One rule for every keyboard: 确定 composing, the action word for a real action, otherwise ↵. */
+    private fun enterKeyLabel(): String {
+        return enterKeyFaceFor(currentImeOptions(), composition.text?.isNotEmpty() == true)
     }
 
     private fun renderPinyin9() {
-        pinyin9Renderer.render(enterLabel = if (composition.text?.isNotEmpty() == true) "确定" else "↵")
+        pinyin9Renderer.render(enterLabel = enterKeyLabel())
     }
 
     private fun requireNineKeySymbolRailController(): NineKeySymbolRailController {
@@ -2022,7 +2160,7 @@ open class ImeKeyboardView(
                 start()
             }
         }
-        strokeRenderer.render(enterLabel = if (composition.text?.isNotEmpty() == true) "确定" else "↵")
+        strokeRenderer.render(enterLabel = enterKeyLabel())
     }
 
     /**
@@ -2045,7 +2183,7 @@ open class ImeKeyboardView(
             ?.currentInputEditorInfo
         numericKeyboardRenderer.render(
             editorKind = EditorInfoAdapter.kind(info),
-            enterLabel = "↵",
+            enterLabel = enterKeyLabel(),
         )
     }
 
@@ -2065,8 +2203,17 @@ open class ImeKeyboardView(
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             keyPopupController.hideIfOutside(event.x, event.y)
+            silencePlatformFeedback(this)
         }
         val handled = super.dispatchTouchEvent(event)
+        // Slide-to-select: the finger that opened a long-press popup picks from it.
+        if (keyPopupController.isShowing) {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_MOVE -> keyPopupController.trackChoiceTouch(event.rawX, event.rawY, lifted = false)
+                MotionEvent.ACTION_UP -> keyPopupController.trackChoiceTouch(event.rawX, event.rawY, lifted = true)
+            }
+        }
+        trackShiftSlide(event)
         if (backspaceGestureController.active) {
             when (event.actionMasked) {
                 MotionEvent.ACTION_MOVE -> {
@@ -2287,6 +2434,9 @@ open class ImeKeyboardView(
         "模糊音纠错", "启用模糊音" -> fuzzyEnabled
         "按键气泡" -> popupEnabled
         "上滑输入数字" -> ImeSettingsRepository.loadSwipeUpDigits(context)
+        "复制内容提示" -> ImeSettingsRepository.loadClipboardChip(context)
+        "短信验证码" -> ImeSettingsRepository.loadSmsCodeChip(context) &&
+            context.checkSelfPermission(android.Manifest.permission.READ_SMS) == android.content.pm.PackageManager.PERMISSION_GRANTED
         "数字和符号提示" -> ImeSettingsRepository.loadLetterHints(context)
         "表情联想" -> ImeSettingsRepository.loadEmojiAssociation(context)
         "语音去语气词" -> ImeSettingsRepository.loadVoiceStripFillers(context)
@@ -2314,6 +2464,23 @@ open class ImeKeyboardView(
             }
             // Read at gesture time, so it needs no listener round trip.
             "上滑输入数字" -> ImeSettingsRepository.saveSwipeUpDigits(context, enabled)
+            "复制内容提示" -> {
+                ImeSettingsRepository.saveClipboardChip(context, enabled)
+                refreshSuggestions()
+            }
+            "短信验证码" -> {
+                ImeSettingsRepository.saveSmsCodeChip(context, enabled)
+                if (enabled && context.checkSelfPermission(android.Manifest.permission.READ_SMS) !=
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
+                ) {
+                    // A keyboard cannot show the permission dialog; an invisible screen does.
+                    context.startActivity(
+                        android.content.Intent(context, llc.slacker.openime.SmsPermissionActivity::class.java)
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }
+                refreshSuggestions()
+            }
             "数字和符号提示" -> {
                 ImeSettingsRepository.saveLetterHints(context, enabled)
                 // Rebuilt when the keyboard is next shown (right away if it is).
@@ -2363,6 +2530,20 @@ open class ImeKeyboardView(
 
     private fun requireCandidateProvider(): CandidateResolver = requireNotNull(candidateProvider) {
         "Candidate-producing keyboard modes require a CandidateResolver host"
+    }
+
+    /** A cell of a long-press popup. English letters join the word being typed; the rest commit at once. */
+    private fun onPopupChoice(text: String) {
+        if (insertIntoInlineEditor(text)) return
+        val letter = text.singleOrNull()
+        if (mode == KeyboardMode.ENGLISH_26 && letter != null && letter.isLetter()) {
+            clearAssociationCandidates()
+            val (py, selection) = replaceCompositionSelection(text)
+            publishComposition(py, candidatesForComposition(py), selection)
+            if (shiftState == ShiftState.SHIFT_ONCE) applyShift(ShiftState.LOWERCASE)
+            return
+        }
+        listener.onCharacter(text)
     }
 
     private fun onKeyTapped(base: String) {
@@ -2885,12 +3066,102 @@ open class ImeKeyboardView(
         return true
     }
 
-    private fun cycleShift() {
-        shiftState = when (shiftState) {
-            ShiftState.LOWERCASE -> ShiftState.SHIFT_ONCE
-            ShiftState.SHIFT_ONCE -> ShiftState.CAPS_LOCK
-            ShiftState.CAPS_LOCK -> ShiftState.LOWERCASE
+    private var lastShiftTapAt = 0L
+    private var shiftHeld = false
+    private var shiftSliding = false
+    private var shiftBeforeSlide = ShiftState.LOWERCASE
+
+    private fun forEachKeyWithTag(action: (String, ImeKeyView) -> Unit) {
+        fun walk(view: View) {
+            if (view is ImeKeyView) (view.tag as? String)?.let { action(it, view) }
+            if (view is ViewGroup) for (i in 0 until view.childCount) walk(view.getChildAt(i))
         }
+        walk(this)
+    }
+
+    private fun shiftKeyView(): ImeKeyView? = findViewWithTag("key-shift")
+        ?: findViewWithTag("key-shift-active")
+        ?: findViewWithTag("key-shift-caps")
+
+    private fun rawContains(view: View, x: Float, y: Float): Boolean {
+        val at = IntArray(2)
+        view.getLocationOnScreen(at)
+        return x >= at[0] && x < at[0] + view.width && y >= at[1] && y < at[1] + view.height
+    }
+
+    /**
+     * Gboard's hold-Shift-and-slide: press Shift, slide onto a letter and lift to
+     * type that one capital; the Shift state goes back to what it was. Lifting
+     * anywhere else changes nothing.
+     */
+    private fun trackShiftSlide(event: MotionEvent) {
+        if (mode != KeyboardMode.ENGLISH_26) return
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                val shift = shiftKeyView()
+                shiftHeld = shift != null && rawContains(shift, event.rawX, event.rawY)
+                shiftSliding = false
+            }
+            // A second finger means the first one is typing, not sliding from Shift.
+            MotionEvent.ACTION_POINTER_DOWN -> if (!shiftSliding) shiftHeld = false
+            MotionEvent.ACTION_MOVE -> {
+                if (!shiftHeld || shiftSliding) return
+                val shift = shiftKeyView() ?: return
+                // Beyond the touch slop, so Shift has already let go of the press (no click on lift).
+                val slop = android.view.ViewConfiguration.get(context).scaledTouchSlop
+                val x = event.rawX
+                val y = event.rawY
+                val outside = !rawContains(shift, x - slop, y) || !rawContains(shift, x + slop, y) ||
+                    !rawContains(shift, x, y - slop) || !rawContains(shift, x, y + slop)
+                if (outside) {
+                    shiftSliding = true
+                    shiftBeforeSlide = shiftState
+                    if (shiftState == ShiftState.LOWERCASE) applyShift(ShiftState.SHIFT_ONCE)
+                    hapticFeedback()
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                val sliding = shiftSliding
+                shiftHeld = false
+                shiftSliding = false
+                if (!sliding) return
+                // The split layout repeats G and V, so look at every key carrying the tag.
+                var letter: Char? = null
+                forEachKeyWithTag { tag, key ->
+                    val ch = tag.removePrefix("key:").singleOrNull()
+                    if (letter == null && tag.startsWith("key:") && ch != null && ch in 'a'..'z' &&
+                        rawContains(key, event.rawX, event.rawY)
+                    ) letter = ch
+                }
+                if (letter != null && event.actionMasked == MotionEvent.ACTION_UP) {
+                    onKeyTapped(letter.toString())
+                    // One capital was typed: a lock stays, anything else ends lower case.
+                    applyShift(
+                        if (shiftBeforeSlide == ShiftState.CAPS_LOCK) ShiftState.CAPS_LOCK else ShiftState.LOWERCASE,
+                    )
+                } else {
+                    applyShift(shiftBeforeSlide)
+                }
+            }
+        }
+    }
+
+    private fun cycleShift() {
+        val now = android.os.SystemClock.uptimeMillis()
+        val since = if (lastShiftTapAt == 0L) null else now - lastShiftTapAt
+        lastShiftTapAt = now
+        applyShift(EnglishShiftPolicy.afterTap(shiftState, since))
+    }
+
+    /** Long press on Shift: lock Caps (or release it) without a second tap. */
+    private fun lockShift() {
+        lastShiftTapAt = 0L
+        hapticFeedback()
+        applyShift(EnglishShiftPolicy.afterLongPress(shiftState))
+    }
+
+    private fun applyShift(next: ShiftState) {
+        shiftState = next
         listener.onShiftStateChanged(shiftState)
         refreshEnglishShiftPresentation()
     }
@@ -2899,10 +3170,12 @@ open class ImeKeyboardView(
     private fun refreshEnglishShiftPresentation() {
         if (mode != KeyboardMode.ENGLISH_26) return
         val uppercase = shiftState != ShiftState.LOWERCASE
-        "qwertyuiopasdfghjklzxcvbnm".forEach { ch ->
-            findViewWithTag<ImeKeyView>("key:$ch")?.setMainText(
-                if (uppercase) ch.uppercaseChar().toString() else ch.toString(),
-            )
+        // The split layout repeats G and V on both halves, so set every key with the tag.
+        forEachKeyWithTag { tag, key ->
+            val ch = tag.removePrefix("key:").singleOrNull()
+            if (tag.startsWith("key:") && ch != null && ch in 'a'..'z') {
+                key.setMainText(if (uppercase) ch.uppercaseChar().toString() else ch.toString())
+            }
         }
         val shift = findViewWithTag<ImeKeyView>("key-shift")
             ?: findViewWithTag<ImeKeyView>("key-shift-active")
@@ -2913,7 +3186,7 @@ open class ImeKeyboardView(
                 ShiftState.SHIFT_ONCE -> "key-shift-active"
                 ShiftState.CAPS_LOCK -> "key-shift-caps"
             }
-            setIcon(if (shiftState == ShiftState.CAPS_LOCK) R.drawable.ic_caps_lock else R.drawable.ic_shift)
+            setIcon(EnglishShiftPolicy.icon(shiftState))
             contentDescription = when (shiftState) {
                 ShiftState.LOWERCASE -> "大写"
                 ShiftState.SHIFT_ONCE -> "大写一次"
@@ -2937,6 +3210,18 @@ open class ImeKeyboardView(
     protected fun feedback() {
         if (hapticEnabled) keyHaptics.click(this)
         if (soundEnabled) keySounds.play()
+    }
+
+    /**
+     * Every key plays its own haptic and click (feedback()). The platform adds a second
+     * click sound on performClick and a LONG_PRESS buzz on a handled long click, so each
+     * view under the keyboard opts out of both. The root keeps its haptic channel: the
+     * system-style haptic goes through it.
+     */
+    private fun silencePlatformFeedback(view: View) {
+        if (view.isSoundEffectsEnabled) view.isSoundEffectsEnabled = false
+        if (view !== this && view.isHapticFeedbackEnabled) view.isHapticFeedbackEnabled = false
+        if (view is ViewGroup) for (i in 0 until view.childCount) silencePlatformFeedback(view.getChildAt(i))
     }
 
     /** Haptic-only confirmation (no key click sound), e.g. when voice arms. */
@@ -3011,7 +3296,7 @@ open class ImeKeyboardView(
         isClickable = true
         isFocusable = true
         setOnTouchListener { _, event ->
-            if (event.actionMasked == MotionEvent.ACTION_DOWN && isEnabled) feedback()
+            if (event.actionMasked == MotionEvent.ACTION_DOWN && isEnabled && isClickable) feedback()
             false
         }
     }
@@ -3085,7 +3370,20 @@ open class ImeKeyboardView(
 
     protected fun applyTheme() {
         val t = currentThemeTokens()
-        setBackgroundColor(t.keyboardBackground)
+        if (floatingWindowMode && !standalonePanel) {
+            // The window is transparent: the root is the card. Clipping to its rounded
+            // outline rounds the toolbar, the keys and every panel opened over them.
+            background = ImeDrawableFactory.rounded(
+                t.keyboardBackground,
+                dp(ImeGeometryTokens.CARD_RADIUS_DP),
+                ImeSurfacePolicy.divider(t),
+                dp(1).coerceAtLeast(1),
+            )
+            clipToOutline = true
+        } else {
+            setBackgroundColor(t.keyboardBackground)
+            clipToOutline = false
+        }
         mainDock.setBackgroundColor(t.keyboardBackground)
         keyboardBody.setBackgroundColor(t.keyboardBackground)
         topZone.setBackgroundColor(t.toolbarBackground)

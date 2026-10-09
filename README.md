@@ -70,7 +70,7 @@ The app has no `INTERNET` permission, so your text cannot leave the phone.
   The word list is in the APK.
 - **Autofill (Android 11 and later):** account names and codes from your password manager appear in the toolbar.
 - **Numbers and symbols:** each letter key shows a number or symbol.
-  Swipe up or press and hold to enter it.
+  Swipe up to enter it. Press and hold to open a popup, then slide to a cell and release.
 - **Display support:** portrait, landscape, tablets, foldables, dark theme and large font sizes.
   Raw key input fields (terminals, remote desktops, games) and physical keyboards also work.
   See [Compatibility](docs/COMPATIBILITY.md).
@@ -116,6 +116,7 @@ You can install a new release over an old one.
 - Voice audio stays in memory. openIME clears it when recognition ends, is canceled or fails.
 - In password fields, openIME does not compose pinyin, learn words, read the field text or write logs.
   Voice input inserts the final text only.
+- The optional SMS code chip is off by default. It asks for the read-SMS permission only when you turn it on, and reads only the last 5 minutes of messages on the device. The copied-text chip shows only text copied in the last 3 minutes. Neither chip shows in password fields or in fields that ask for no personalised learning.
 - Crash records contain the exception type and the stack trace. They never contain typed text.
 - Uninstall removes all data on the device, including learned words.
 
