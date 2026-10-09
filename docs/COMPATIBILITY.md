@@ -1,61 +1,111 @@
-# 输入环境兼容性
+# Compatibility
 
-键盘要在别人的应用里工作，所以「哪些环境、怎么处理、怎么验证」写在这里。改输入链路之前先看一遍。
+A keyboard must work inside other apps.
+This document lists each input environment, how openIME handles it and how we verify it.
+Read it before you change the input path.
 
-## 编辑器
+## Editors
 
-| 环境 | 处理 | 验证 |
+| Environment | Handling | Verification |
 |---|---|---|
-| 普通 / 多行 / 搜索 / 聊天（EditText、WebView、Compose） | 拼音预编辑 + 候选；回车按 IME action 或原始回车 | `core_regression.sh`、`ImeTestLabActivity` |
-| 自绘 / Compose / Web，没有「全选」也没有 ExtractedText | 清空 / 撤回改用光标前后文本，答案长度等于请求长度时拒绝删除 | `InputConnectionGatewayTest`，`CustomEditorTestActivity` |
-| 密码（含可见密码、网页密码、数字密码） | 不组合（字母逐个直接上屏）、不学习词库和纠错、不读取输入框正文；可以使用剪贴板历史；语音可用，只把最终结果一次性上屏（不显示中间结果） | `security_regression.ps1`；`VoiceFinalPolicyTest`、`ClipboardSensitivityPolicyTest` |
-| 数字 / 电话 / 日期时间 | 起始键盘为数字 | `EditorInfoAdapterTest` |
-| 邮箱 / URL | 起始键盘为英文 | `EditorInfoAdapterTest` |
-| TYPE_NULL（终端、游戏、远程桌面） | 起始英文；每个字母立即以真实按键事件送出；退格 / 前删用按键事件（它们的 InputConnection 多半是 dummy 模式的 BaseInputConnection，`deleteSurroundingText` 返回 true 却什么也没删） | `InputConnectionGatewayTest` |
-| 无个性化学习标志（隐身模式） | 不学习、不记录剪贴板 | `PersonalizedLearningPolicy` |
-| 一次提交几十万字（大段粘贴、长语音） | 分块提交，每块不超过 32000 个字符且不拆代理对，避免超过 Binder 单次事务上限 | `CrashResilienceTest` |
+| Normal, multiline, search and chat fields (EditText, WebView, Compose) | Pinyin composition and candidates. Enter uses the IME action or a raw Enter. | `core_regression.sh`, `ImeTestLabActivity` |
+| Custom-drawn, Compose or web fields with no select-all and no `ExtractedText` | Clear and restore use only the text before and after the cursor. The gateway refuses to delete when the returned length equals the requested length. | `InputConnectionGatewayTest`, `CustomEditorTestActivity` |
+| Password fields (visible, web and numeric passwords) | No composition: each letter goes in directly. No word or correction learning. openIME does not read the field text. Clipboard history works. Voice works and inserts the final text only. | `security_regression.ps1`, `VoiceFinalPolicyTest`, `ClipboardSensitivityPolicyTest` |
+| Number, phone, date and time fields | The start keyboard is digits. | `EditorInfoAdapterTest` |
+| Email and URL fields | The start keyboard is English. | `EditorInfoAdapterTest` |
+| `TYPE_NULL` (terminals, games, remote desktops) | The start keyboard is English. openIME sends each letter as a real key event. Delete uses key events, because the `InputConnection` of these apps is often a dummy that reports success and deletes nothing. | `InputConnectionGatewayTest` |
+| No personalized learning flag (incognito) | openIME does not learn words and does not record the clipboard. | `PersonalizedLearningPolicy` |
+| Very large commits (large paste, long voice text) | openIME commits in chunks of at most 32,000 characters. It never splits a surrogate pair. This keeps each Binder transaction below the size limit. | `CrashResilienceTest` |
 
-## 自动填充（Android 11+）
+## Autofill (Android 11 and later)
 
-`method.xml` 声明 `supportsInlineSuggestions`，键盘请求最多 5 个 48dp 高的条目并把系统渲染的条目放进工具栏位置。键盘只托管条目：
-填入的内容由系统直接写入输入框，键盘既拿不到也不读取，所以密码框里同样可以显示条目。条目响应可能先于键盘视图到达（新输入框刚获得焦点），
-服务会暂存最近一次响应，视图建好后再显示，而不是拒绝（拒绝会让系统退回下拉菜单）。离开输入框时清除。
-Android 11 以下和不支持内嵌建议的提供者仍使用系统的下拉菜单。
-验证：`InlineChipTrackerTest`；`scripts/beta3_e2e.py autofill`（debug 构建自带测试提供者 `TestAutofillService` 和 `AutofillTestActivity`）。
+`method.xml` declares `supportsInlineSuggestions`.
+The keyboard requests up to five entries that are 48 dp high.
+It shows the entries that the system renders in the toolbar area.
 
-## 物理键盘（平板、折叠屏键盘套、Chromebook、桌面模式、模拟器）
+The keyboard only hosts the entries.
+The system writes the filled text into the field.
+The keyboard cannot read it, so entries also work in password fields.
 
-中文 26 键模式下：字母组成拼音，空格选首选，1–9 选候选，回车保留已输入拼音，Esc 取消，`'` 分词，退格删拼音；
-`, . ? ! ; : ( )` 输出全角标点（数字后的 `, . :` 保持 ASCII，3.14 不会变成 3。14）；Ctrl / Alt / Meta 组合键、
-大写字母和其他按键原样交给应用（大写会先结束当前预编辑）。英文 / 九键 / 数字模式、密码框、TYPE_NULL 编辑器不接管。
-需要键盘面板可见（候选显示在面板上）。验证：`HardwareKeyPolicyTest`，`core_regression.sh` 040–043。
+A response can arrive before the keyboard view exists.
+The service keeps the latest response and shows it when the view is ready.
+It must not reject the response, because the system then falls back to the dropdown menu.
+The service clears the response when the user leaves the field.
 
-## 显示环境
+Android 10 and earlier, and providers without inline support, use the system dropdown menu.
 
-横屏（不进入全屏提取模式；默认浮动，可选整宽或左右分离）、字体 130% / 200%（按键标签最多放大到 1.3 倍，功能键标签自动缩小）、
-深色、小屏、窄屏、平板竖 / 横、折叠屏内屏。验证：`scripts/display_matrix_regression.py`（断言底部面板且每个键都在窗口内）、
-`DisplayEnvironmentInstrumentedTest`、`scripts/beta3_e2e.py`（横屏下空格滑动光标、字母键数字和符号、表情联想、语音处理、自动填充）。
+Verification: `InlineChipTrackerTest` and `scripts/beta3_e2e.py autofill`.
+The debug build includes a test provider (`TestAutofillService`) and `AutofillTestActivity`.
 
-## Android 版本
+## Physical keyboards
 
-`minSdk` 26；CI 在 API 26（minSdk）、29、31、34 上运行全部仪器测试，本地另在 API 36 上运行；发布前必须通过的是 API 29 和 31。
+Physical keyboards include tablets, foldable keyboard cases, Chromebooks, desktop mode and emulators.
+In 26-key Chinese mode:
 
-## 崩溃、卡死与冲突
+- Letters build pinyin.
+- Space selects the first candidate.
+- Keys 1 to 9 select a candidate.
+- Enter keeps the typed pinyin.
+- Esc cancels.
+- `'` splits a syllable. Backspace deletes pinyin.
+- `, . ? ! ; : ( )` produce full-width punctuation.
+  After a digit, `, . :` stay ASCII, so `3.14` does not change.
+- Ctrl, Alt and Meta combinations, capital letters and other keys go to the app unchanged.
+  A capital letter first ends the current composition.
 
-- 一次按键处理失败不会让键盘进程退出：记录（只含异常类型和代码位置，不含输入内容）、丢弃半成品预编辑、继续工作。
-  验证：`core_regression.sh` 038（调试命令 `fail-next` 注入一次失败）。
-- 崩溃历史：Java 崩溃、原生崩溃和 ANR（Android 11+ 的进程退出记录）。10 分钟内 3 次进入**安全模式**：
-  关闭 librime 和语音预加载，用内置词库继续输入，「设置 → 关于与数据 → 诊断」可复制诊断信息或退出安全模式。
-- librime 启动前写标记，通过健康检查后清除。留下标记且上个进程确实是原生崩溃时逐级处理：清理编译产物 →
-  把用户词库改名备份并重建 → 不再启动原生引擎。被用户或系统强停的启动不计为崩溃。
-- 语音输入静音媒体音量时，原音量同时写入磁盘并有两分钟看门狗；进程在录音中途死掉，下次启动恢复，音乐 / 视频不会一直没声。
-  验证：`VoiceMediaMuteRecoveryInstrumentedTest`。
-- 词库与九键解码器在后台线程构建，不再占用主线程（冷启动曾多占约 0.3 秒）。
-- 退格不再每次向应用发起三次同步 Binder 调用：编辑器已经报告光标是收起状态时，不再去问「选中了什么」。
-  应用卡住时，每次调用都会让键盘跟着等。
+openIME does not handle the physical keyboard in English, nine-key and digit modes, in password fields and in `TYPE_NULL` editors.
+The keyboard panel must be visible, because the candidates appear on the panel.
 
-## 尚未覆盖
+Verification: `HardwareKeyPolicyTest`, `core_regression.sh` cases 040 to 043.
 
-- 九键模式下的物理键盘（字母直接交给应用）；
-- 物理键盘用户隐藏键盘面板后的候选显示（需要独立的候选窗口）；
-- 真机上的 OEM 差异（小米、OPPO、三星）：目前只有模拟器与 CI 模拟器的结果。
+## Display environments
+
+openIME supports these environments:
+
+- landscape (never uses fullscreen extract mode; the default is a floating keyboard, with full width and split halves as options)
+- font scale 130% and 200% (key labels grow to at most 1.3 times, and function key labels shrink to fit)
+- dark theme
+- small and narrow screens
+- tablets in portrait and landscape
+- the inner screen of a foldable
+
+Verification:
+
+- `scripts/display_matrix_regression.py` checks for a bottom panel and for every key inside the window.
+- `DisplayEnvironmentInstrumentedTest`
+- `scripts/beta3_e2e.py`: cursor swipe in landscape, letter-key hints, emoji suggestions, voice processing and autofill
+
+## Android versions
+
+`minSdk` is 26.
+CI runs all instrumentation tests on API 26, 29, 31 and 34.
+Developers also run them on API 36 locally.
+A release needs a pass on API 29 and API 31.
+
+## Crashes, freezes and conflicts
+
+- One failed key handler does not stop the keyboard process.
+  openIME records the failure (only the exception type and the code location, never typed text), drops the unfinished composition and continues.
+  Verification: `core_regression.sh` case 038, with the debug command `fail-next`.
+- openIME keeps a crash history of Java crashes, native crashes and ANRs (from the Android 11 exit records).
+  Three crashes in 10 minutes start **safe mode**.
+  Safe mode turns off librime and voice preloading and types with the built-in lexicon.
+  设置 → 关于与数据 → 诊断 (Settings → About and data → Diagnostics) copies the diagnostics and leaves safe mode.
+- openIME writes a marker before it starts librime and clears it after the health check.
+  If the marker stays and the last process died from a native crash, openIME escalates in steps:
+  clean the compiled files, rename and rebuild the user dictionary, and then do not start the native engine again.
+  A start that the user or the system force-stopped does not count as a crash.
+- While voice input mutes media volume, openIME saves the old volume on disk and runs a two-minute watchdog.
+  If the process dies during recording, the next start restores the volume.
+  Verification: `VoiceMediaMuteRecoveryInstrumentedTest`.
+- The lexicon and the nine-key decoder are built on background threads.
+  Cold start uses about 0.3 s less main-thread time.
+- Backspace does not make three synchronous Binder calls each time.
+  When the editor reports a collapsed cursor, openIME does not ask for the selected text.
+  A frozen app would block every call.
+
+## Not covered
+
+- A physical keyboard in nine-key mode (letters go to the app).
+- Candidates when the user hides the keyboard panel on a physical keyboard. This needs a separate candidate window.
+- Vendor differences on real devices (Xiaomi, OPPO, Samsung). We have results only from emulators and CI emulators.

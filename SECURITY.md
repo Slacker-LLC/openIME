@@ -1,26 +1,38 @@
-# 安全问题报告
+# Security policy
 
-不要通过公开 Issue 报告可能泄露用户文字、剪贴板、密码、录音或模型文件的问题。
+Do not report a security problem in a public issue.
+This applies to any problem that can expose typed text, clipboard content, passwords, recordings or model files.
 
-## 如何报告
+## Report a problem
 
-请使用仓库的 **Security → Report a vulnerability**（私密漏洞报告）私下提交。如果该入口暂不可用，
-请先联系仓库维护者并提供最小复现信息，不要附带真实用户数据。报告中建议包含：
+Use **Security → Report a vulnerability** in this repository.
+This sends the report to the maintainers in private.
 
-- 受影响的版本或 commit、APK 变体和 Android 版本；
-- 复现步骤与影响范围；
-- 已脱敏的日志或截图；
-- 临时缓解方式（如果有）。
+If this option is not available, contact a maintainer.
+Send only the minimum information that is necessary to reproduce the problem.
+Do not send real user data.
 
-输入法相关报告请特别说明是否发生在密码编辑器、语音权限拒绝、跨应用编辑器切换、
-剪贴板或模型加载路径中。维护者会先确认问题，再决定修复、发布说明和披露时间；
-修复发布前请不要公开细节。
+Include these items in your report:
 
-## 受支持的版本
+- the affected version or commit, the APK type and the Android version
+- the steps to reproduce the problem and its effect
+- logs or screenshots with personal data removed
+- a workaround, if you know one
 
-| 版本 | 状态 |
+Tell us if the problem occurs in one of these cases:
+a password field, a denied voice permission, a switch between editors, the clipboard, or model loading.
+
+The maintainers first confirm the problem.
+They then decide the fix, the release notes and the date of disclosure.
+Do not publish details before the fix is released.
+
+## Supported versions
+
+| Version | Status |
 |---|---|
-| 最新的 1.x 正式版 | 接收安全修复，以 PATCH 版本发布并写入 CHANGELOG |
-| 更早的版本、Debug 签名的开发版 | 不再维护，请升级到最新正式版 |
+| The latest release (beta or stable) | Receives security fixes. We publish them as a new patch or beta version and list them in the change log. |
+| Older releases and debug builds | Not maintained. Update to the latest release. |
 
-发布 APK 的真伪可以用 `SHA256SUMS.txt` 和签名证书指纹核对，见 [docs/RELEASE.md](docs/RELEASE.md)。
+To verify an APK, compare its SHA-256 checksum with the release notes.
+Compare its signing certificate with [docs/release-cert.sha256](docs/release-cert.sha256).
+See the [release process](docs/RELEASE.md).

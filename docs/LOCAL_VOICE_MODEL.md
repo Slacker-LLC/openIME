@@ -1,33 +1,71 @@
-# 本地语音模型接入边界
+# Voice input
 
-这个输入法是独立 APK，包名为 `llc.slacker.openime`，语音链路不依赖
-`minis-for-android` 的类、进程、网络或数据。
+openIME recognizes speech on the device.
+The voice path does not use a network, and it does not depend on any other app.
 
-## 已落地的语音链路
+## How it works
 
-1. 空格短按保留原来的空格/候选上屏行为。
-2. 空格长按开始录音，松手结束当前语音段。
-3. `AudioRecord` 固定使用 `16000 Hz / mono / PCM16`，每个模型块为 20 ms、
-   320 samples、640 bytes。
-4. 采集线程和推理线程分离，PCM 只进入当前会话的有界内存环形缓冲区。
-5. partial 结果通过 `setComposingText()` 更新输入框，最终结果结束 composing；
-   语音会话结束后再调用标点模型，标点失败回退原始 ASR 文字。
-6. 会话结束、取消或失败时清空 PCM 缓冲区，不写文件、不建立录音历史、不上传
-   音频或文字。
-7. `onStartInputView()` 触发后台校验和预热；输入法隐藏后保留识别器 10 秒，期间
-   重新打开直接热复用，超时后调用 `OnlineRecognizer.release()`。
-8. 模型尚在预热时长按空格会先启动 `AudioRecord`，PCM 暂存在 30 秒有界环形缓冲区，
-   模型就绪后从开头消费，避免丢失首音。
+1. A short press on space types a space or selects the first candidate.
+2. A long press on space starts recording. The long-press time follows the Android touch-and-hold timeout.
+3. `AudioRecord` uses 16,000 Hz, mono, PCM16. Each model block is 20 ms: 320 samples or 640 bytes.
+4. Separate threads capture audio and run the model.
+   PCM data goes only into a bounded in-memory ring buffer for the current session.
+5. Partial results update the field through `setComposingText()`. The final result ends the composition.
+6. After the session ends, the punctuation model adds punctuation. If it fails, openIME keeps the raw text.
+7. When the session ends, is canceled or fails, openIME clears the PCM buffer.
+   It writes no audio or text to disk. It keeps no recording history and uploads nothing.
+8. `onStartInputView()` starts a background check and warm-up of the model.
+   After the keyboard hides, the recognizer stays loaded for 10 seconds.
+   If the keyboard opens again in that time, openIME reuses it. After that, it calls `OnlineRecognizer.release()`.
+9. If the user holds space while the model warms up, openIME starts `AudioRecord` first.
+   PCM waits in a 30-second bounded buffer, and the model reads it from the start when ready. No first syllable is lost.
 
-## APK 内置模型约定
+## Release behavior
 
-内置模型必须放在：
+When the user releases space, openIME stops the microphone at once.
+Stop does not cancel recognition.
+openIME waits for the capture thread to end, drains the PCM queue, and then runs the model tail, the punctuation and the commit.
+Only a cancel drops the audio.
 
-```text
-app/src/main/assets/models/voice/
-```
+The Streaming Paraformer in sherpa-onnx 1.13.6 needs two steps to decode the last frames.
+`inputFinished()` ends feature extraction.
+`stream.setOption("is_final", "1")` lets the last partial block enter the decoder.
+openIME also appends 300 ms of zero samples as a tail pad for the model.
+It does not read the microphone during this pad.
 
-其中 `manifest.json` 至少包含：
+If the PCM ring buffer overflows, openIME reports an error and removes the composition.
+It never commits a truncated result.
+After capture ends, openIME restores the media volume at once. Queued model work does not keep media muted.
+
+## Text processing
+
+- The punctuation model (CT-Transformer INT8) restores sentence breaks, commas and question marks.
+  It keeps punctuation that the user says aloud.
+- Structured fields keep their existing protection. openIME adds no sentence punctuation there.
+- Filler words such as "嗯" and "呃" can be removed.
+  Words such as "额度" and "金额" stay unchanged. A result that is only "嗯" stays as it is.
+- The option 标点用空格代替 ("Replace punctuation with spaces") acts on voice results only.
+  Commas, periods and question marks become one space. Final punctuation is removed.
+  Parentheses and values such as `3.5` or `a.b` stay unchanged. The default is off.
+- If the user deletes and corrects a voice result right away, openIME stores the pair in the private `VoiceCorrectionRepository`.
+  The next identical raw result uses the corrected text. All data stays on the device.
+
+## Password fields
+
+Voice input works in password fields.
+openIME shows no partial result and commits the final text once.
+It does not learn words or corrections from these fields.
+Logs never contain PCM data, transcripts or corrections.
+
+## Built-in models
+
+The models are in `app/src/main/assets/models/voice/`:
+
+- `bilingual-paraformer/`: encoder, decoder and tokens of `sherpa-onnx-streaming-paraformer-bilingual-zh-en` (INT8)
+- `punctuation/`: the CT-Transformer INT8 punctuation model
+- `manifest.json`: lists each file with its SHA-256 hash
+
+`manifest.json` contains these fields:
 
 ```json
 {
@@ -43,54 +81,42 @@ app/src/main/assets/models/voice/
 }
 ```
 
-`VoiceModelRepository` 会在后台加载前校验字段和 SHA-256。内置模型首次安装或
-版本/清单变化时执行完整哈希，成功后保存只读资源校验标记；同一版本后续只做快速
-清单检查，避免在键盘创建路径重复读取约 199 MB。内置模型是 APK 资源，
-不可删除；下载模型必须先校验、后台加载成功后才能切换，失败、损坏、超时或
-运行异常时回退内置模型。切换不能发生在正在录音的会话中。
+`VoiceModelRepository` checks the fields and the SHA-256 hashes in the background before it loads a model.
+On first install, or when the version or manifest changes, it hashes every file.
+It then saves a read-only marker.
+Later starts of the same version only do a quick manifest check.
+This avoids a repeated read of about 199 MB on the keyboard creation path.
 
-## Runtime 接入边界
+A built-in model is an APK resource. Users cannot delete it.
+A downloaded model must pass the same checks and load in the background before it can replace the built-in model.
+If a downloaded model fails, is corrupt, times out or crashes, openIME falls back to the built-in model.
+The model never changes during a recording.
 
-真正的 sherpa/ONNX arm64 runtime 通过 `StreamingEmbeddedVoiceModelRuntime` 接入：
+## Runtime
 
-- `start()` 创建一个新的 OnlineStream，不重新加载模型；
-- `preload()` 在专用线程创建并映射 `OnlineRecognizer`；
-- `release()` 在 10 秒冷却期结束后释放 native 识别器；
-- `acceptWaveform()` 只接收新增的 float PCM；
-- `inputFinished()` 结束当前流并返回原始 ASR 文字；
-- `punctuate()` 只在语音段结束时运行；
-- 模型加载和推理不能阻塞输入法主线程。
+`StreamingEmbeddedVoiceModelRuntime` connects the sherpa-onnx arm64 runtime:
 
-生产键盘通过服务级 `VoiceModelLifecycleManager` 调用语音后端，键盘 View 只渲染
-状态，不构造模型 Provider。`VoiceRecognitionBackendFactory` 不再回退到 Android/联网语音服务；本地模型未
-就绪时明确提示未就绪，避免把在线识别伪装成离线识别。
+- `start()` creates a new `OnlineStream`. It does not reload the model.
+- `preload()` creates and maps the `OnlineRecognizer` on a dedicated thread.
+- `release()` frees the native recognizer after the 10-second cooldown.
+- `acceptWaveform()` accepts only new float PCM data.
+- `inputFinished()` ends the stream and returns the raw text.
+- `punctuate()` runs once at the end of a voice segment.
+- Model loading and inference never block the main thread.
 
-## 当前交付状态
+The runtime uses `OnlineParaformerModelConfig`, `modelType="paraformer"` and `greedy_search`.
+Because Paraformer does not use transducer hotwords, openIME sends no hotwords to the stream.
 
-当前 APK 使用官方 `sherpa-onnx v1.13.6` native runtime 和
-`sherpa-onnx-streaming-paraformer-bilingual-zh-en` 的 INT8 encoder/decoder，
-模型路径为 `models/voice/bilingual-paraformer/`。运行时通过
-`OnlineParaformerModelConfig`、`modelType="paraformer"` 和
-`greedy_search` 按 16 kHz PCM 流式解码；键盘出现时异步预热，10 秒冷却期内
-中文或英文语音段复用同一个已加载识别器。结束语音段时追加 300 ms 静音尾垫，
-再调用 `inputFinished()`，与 sherpa-onnx 官方流式 Paraformer 示例一致。
-当前内置的是纯识别模型，`punctuate()` 保留独立标点扩展边界；没有标点模型时
-安全回退原始识别文字。
+The keyboard uses the service-level `VoiceModelLifecycleManager` for all voice work.
+The keyboard view only shows state. It does not build model providers.
+`VoiceRecognitionBackendFactory` never falls back to an Android or online speech service.
+If the local model is not ready, openIME says so.
+It does not present online recognition as offline recognition.
 
-模型包的每个文件都在 `manifest.json` 的 SHA-256 清单内，APK 启动时只选择校验
-通过的内置包。下载模型仍然必须走 `VoiceModelRepository` 的校验和原子切换，
-不能覆盖正在使用的内置模型。
+## Diagnostics and audio routes
 
-## 个性化与性能边界
-
-- Streaming Paraformer 不走 sherpa-onnx 的 transducer hotword graph，因此不再把
-  `VoiceHotwordProvider` 动态热词传给 native stream；本地 `VoiceCorrectionRepository`
-  的识别后纠正仍保留。
-- `VoiceHotwordProvider` 保留给将来的 transducer 模型，目前没有调用方。
-- 用户在语音上屏后立即删除并改正的文本会形成私有 `VoiceCorrectionRepository` 对；
-  后续相同 ASR 原结果先应用本地纠正，改正目标也会回流动态热词。
-- 密码框可以使用语音，但只在结束时一次性上屏最终结果，不显示中间结果，也不进入热词或纠错学习；日志不记录 PCM、转写、热词、纠错内容。
-- `VoicePerformanceTrace` 只记录模型准备、麦克风启动、首 PCM、首解码、首 partial、
-  首次上屏、final、标点、丢弃样本数和总耗时。`droppedPcmSamples > 0` 会标记 degraded。
-- `VoiceAudioRouteManager` 独立管理 Android 12+ 的 BLE/SCO/有线/USB 通信设备并在
-  会话后恢复；旧系统保持系统路由，避免强制 SCO 带来的首音延迟。
+- `VoicePerformanceTrace` records the timing of each step and the count of dropped samples.
+  If `droppedPcmSamples > 0`, it marks the session as degraded.
+- `VoiceAudioRouteManager` manages BLE, SCO, wired and USB communication devices on Android 12 and later.
+  It restores the route after the session.
+  Older systems keep the system route, to avoid the first-syllable delay of a forced SCO link.

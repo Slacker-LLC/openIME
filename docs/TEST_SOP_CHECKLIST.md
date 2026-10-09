@@ -1,85 +1,96 @@
-# openIME L2/L3 人工验收清单
+# L2 and L3 manual acceptance checklist
 
-本文件会被复制到每次 `.local/test-runs/.../manual-checklist.md`。只在实际执行并有证据后勾选，
-未执行项写 `NOT TESTED`，不得预先勾选。
+`scripts/test_sop.ps1` copies this file to `manual-checklist.md` in each `.local/test-runs/...` folder.
+Check an item only after you ran it and have evidence.
+Write `NOT TESTED` for an item that you did not run. Never check an item in advance.
 
-## 运行信息
+## Run information
 
-- [ ] 已填写 APK 版本、构建时间、Git 提交和测试应用。
-- [ ] 已确认录屏显示触摸位置，问题可用视频时间定位。
-- [ ] 已记录手机型号、Android、宽度/密度、主题、导航和字体比例。
+- [ ] I wrote the APK version, build time, Git commit and test apps.
+- [ ] The screen recording shows touch positions, so a problem can be found by video time.
+- [ ] I recorded the phone model, Android version, width and density, theme, navigation mode and font scale.
 
-## 尺寸与系统
+## Size and system
 
-- [ ] 320dp：26 键/九键/数字/面板无溢出。
-- [ ] 360dp：26 键/九键/数字/面板无溢出。
-- [ ] 390dp：设计基准仅作对照，无固定像素依赖。
-- [ ] 412dp：无裁切、空格居中、键盘高度稳定。
-- [ ] 432dp：无裁切、空格居中、键盘高度稳定。
-- [ ] 600dp：内容最大宽度 520～600dp 并居中。
-- [ ] 浅色、深色、跟随系统均检查。
-- [ ] 手势导航和三键导航均无遮挡。
-- [ ] 字体 100%、130%、150% 与放大显示均无裁切。
-- [ ] 横屏、竖屏、分屏、前后台、锁屏恢复均通过。
+- [ ] 320 dp: 26-key, nine-key, digits and panels do not overflow.
+- [ ] 360 dp: 26-key, nine-key, digits and panels do not overflow.
+- [ ] 390 dp: reference only. Nothing depends on fixed pixels.
+- [ ] 412 dp: nothing is cut off, space is centered, keyboard height is stable.
+- [ ] 432 dp: nothing is cut off, space is centered, keyboard height is stable.
+- [ ] 600 dp: content is 520 to 600 dp wide and centered.
+- [ ] Light, dark and follow-system themes are checked.
+- [ ] Gesture and three-button navigation do not cover the keyboard.
+- [ ] Font scale 100%, 130% and 150%, and large display size, do not cut off anything.
+- [ ] Landscape, portrait, split screen, background and foreground, and restore after lock screen pass.
 
-## 外部输入框
+## External input fields
 
-- [ ] 原生 Android EditText。
-- [ ] WebView 网页输入框。
-- [ ] 浏览器地址栏和搜索框。
-- [ ] 备忘录长文本。
-- [ ] 聊天输入框及“发送”。
-- [ ] 表单 Next/Done。
-- [ ] 已有 1 万字内容和选区替换。
+- [ ] Native Android EditText.
+- [ ] WebView input.
+- [ ] Browser address bar and search box.
+- [ ] Notes app with long text.
+- [ ] Chat input and "Send".
+- [ ] Form Next and Done.
+- [ ] Field with 10,000 characters, and selection replacement.
 
-## 核心手势与手感
+## Core gestures and feel
 
-- [ ] 删除键上滑未过阈值不清空。
-- [ ] 进入清空后红底白字，滑回/侧滑可取消，松手只执行一次。
-- [ ] 分词键长按在 `@/#/` 间滑动，滑出取消。
-- [ ] 长按空格约 150ms 启动语音，松手上屏，上滑取消无残留。
-- [ ] 左右边缘和底行按键气泡锚点正确、无越界。
-- [ ] 默认震动轻、按下即反馈、快速输入不堆积。
-- [ ] 空格横向滑动移动光标；滑动期间底行其他按键变灰且不响应，松手恢复；单击空格仍是空格；输入拼音时滑动移动拼音光标。
+- [ ] A swipe up on delete below the threshold does not clear.
+- [ ] After clear is armed, the bubble is white text on red. A move back or sideways cancels. A release runs once.
+- [ ] A long press on the split key slides between `@`, `#` and `/`. Sliding out cancels.
+- [ ] A long press of about 150 ms on space starts voice. A release commits. A swipe up cancels and leaves nothing behind.
+- [ ] Key bubbles at the left and right edges and in the bottom row are anchored correctly and stay inside the screen.
+- [ ] The default haptic is light, fires at press and does not pile up in fast typing.
+- [ ] A horizontal swipe on space moves the cursor.
+  During the swipe, the other keys in the bottom row turn grey and do not respond. They recover on release.
+  A tap on space still types a space.
+  While you type pinyin, the swipe moves the pinyin cursor.
 
-## 语音语料
+## Voice phrases
 
-- [ ] “你好，今天天气怎么样？”
-- [ ] “明天下午三点提醒我开会。”
-- [ ] “OpenIME is a Chinese and English input method.”
-- [ ] 中英混合句、连续 30 秒中文、连续 30 秒中英混合。
-- [ ] 环境噪音、静音、口述逗号/句号/问号/换行。
-- [ ] 断网可用、权限拒绝可恢复、密码框保护正确。
-- [ ] “嗯我觉得呃这个不错”去掉语气词；“额度”“金额”“呃逆”不受影响；只说“嗯”时原样保留。
-- [ ] 打开“标点用空格代替”：口述逗号/句号变成空格，结尾标点消失，3.5、a.b 不变。
+- [ ] "你好，今天天气怎么样？"
+- [ ] "明天下午三点提醒我开会。"
+- [ ] "OpenIME is a Chinese and English input method."
+- [ ] A mixed Chinese and English sentence, 30 seconds of Chinese, and 30 seconds of mixed Chinese and English.
+- [ ] Background noise, silence, and spoken comma, period, question mark and line break.
+- [ ] Works without a network. A denied permission is recoverable. Password fields are protected correctly.
+- [ ] In "嗯我觉得呃这个不错" the fillers are removed. "额度", "金额" and "呃逆" stay unchanged. A result that is only "嗯" stays unchanged.
+- [ ] With 标点用空格代替 ("Replace punctuation with spaces") on, a spoken comma or period becomes a space and the final punctuation disappears. `3.5` and `a.b` stay unchanged.
 
-## 面板与浮动键盘
+## Panels and floating keyboard
 
-- [ ] 模式循环 50 次，无闪白、跳高、旧布局或状态随机丢失。
-- [ ] Emoji 分类真实筛选、可滚动、末行不拉伸、无空资源。
-- [ ] 符号分类真实筛选，侧边符号选择/取消/排序/持久化通过。
-- [ ] 剪贴板短/长/多行/URL/Emoji/敏感内容插入、固定、删除和恢复通过。
-- [ ] 常用语分类及模板增删改、插入、重启和升级保留通过。
-- [ ] 工具与全部设置页面可滚动、无死按钮、返回正确、无旧主题/圆角选项。
-- [ ] 浮动键盘可拖到五个位置和边缘，横竖屏后重新约束且可恢复停靠。
-- [ ] 中文/英文 26 键每个字母键右上角有数字或符号提示；上滑直接输入提示、长按弹出选择面板（另一种大小写 + 提示，按住滑到目标松手输入）、点按仍输入字母；中文模式输入全角（！ ￥ ？ （ ） ： ；）、英文模式半角；横屏同样可用；关闭“数字和符号提示”后提示和手势一起消失，布局不变。
-- [ ] 选“开心”后联想栏最前面是 😊 😄 😁；关闭“表情联想”后不再出现；密码框不出现。
-- [ ] 自动填充（Android 11+）：登录框里条带显示账号，点一下填入并回到工具栏；“‹”收起条带；普通输入框不出现；横屏同样可用。
+- [ ] 50 mode cycles show no white flash, height jump, old layout or random state loss.
+- [ ] Emoji categories really filter and scroll. The last row does not stretch. No resource is empty.
+- [ ] Symbol categories really filter. Side symbols support select, cancel, sort and persistence.
+- [ ] Clipboard: short, long, multiline, URL, emoji and sensitive items can be inserted, pinned, deleted and restored.
+- [ ] Quick phrases: categories and templates can be added, edited, deleted and inserted. They stay after a restart and an upgrade.
+- [ ] Tools and all settings pages scroll, have no dead button, return correctly and show no old theme or corner-radius option.
+- [ ] The floating keyboard can move to the five positions and the edges, re-constrains after rotation and can dock again.
+- [ ] On Chinese and English 26-key, each letter key shows a number or symbol at the top right.
+  A swipe up enters the hint. A long press opens a popup with the other case and the hint: slide to a cell and release to enter it. A tap still enters the letter.
+  Chinese mode enters full-width forms (！ ￥ ？ （ ） ： ；). English mode enters half-width forms.
+  Landscape also works.
+  When you turn off 数字和符号提示 ("Number and symbol hints"), the hints and the gestures disappear together, and the layout does not change.
+- [ ] After you select 开心 ("happy"), the suggestion bar starts with 😊 😄 😁.
+  After you turn off 表情联想 ("Emoji suggestions"), they no longer appear. They do not appear in password fields.
+- [ ] Autofill (Android 11 and later): in a login field the strip shows the account.
+  A tap fills it and the toolbar returns. The "‹" button collapses the strip.
+  Normal fields show no strip. Landscape also works.
 
-## 发布稳定性
+## Release stability
 
-- [ ] 26 键/九键各 1,000 次，0 丢失、0 重复、0 乱序。
-- [ ] 候选 500 次、模式 200 次、5,000 字、前后台 100 次、旋转 50 次。
-- [ ] 连续使用 30 分钟，0 崩溃、0 ANR。
-- [ ] CPU、PSS、帧率、发热和语音模型首次/再次加载时间已记录。
-- [ ] P0=0、P1=0；保留的 P2 已写入发布说明。
+- [ ] 1,000 taps each on 26-key and nine-key: 0 lost, 0 repeated, 0 reordered.
+- [ ] 500 candidate actions, 200 mode switches, 5,000 characters, 100 background and foreground switches and 50 rotations.
+- [ ] 30 minutes of continuous use: 0 crashes, 0 ANRs.
+- [ ] CPU, PSS, frame rate, heat and the first and second load time of the voice model are recorded.
+- [ ] P0 = 0 and P1 = 0. The remaining P2 items are in the release notes.
 
-## 证据备注
+## Evidence notes
 
 ```text
-录屏文件：
-问题时间点：
-截图文件：
-测试应用：
-NOT TESTED 项及原因：
+Recording files:
+Problem time points:
+Screenshot files:
+Test apps:
+NOT TESTED items and reasons:
 ```

@@ -1,37 +1,60 @@
-# 测试脚本
+# Scripts
 
-所有脚本都从仓库根目录解析 APK 和包名。它们不会依赖固定屏幕坐标；需要设备的
-脚本必须显式传入 `-Serial`，或者设置 `ANDROID_SERIAL`。
+Every script finds the APK and the package name from the repository root.
+No script uses fixed screen coordinates.
+A script that needs a device requires `-Serial` or the environment variable `ANDROID_SERIAL`.
 
-## 发布与仓库管理
+## Release and repository scripts
 
-这些脚本不需要设备：
+These scripts need no device:
 
 ```bash
-python3 scripts/release_check.py check          # VERSION 与 CHANGELOG.md 一致（CI 也会运行）
+python3 scripts/release_check.py check             # VERSION agrees with CHANGELOG.md (CI runs it)
 python3 -m unittest discover -s scripts -p 'test_*.py'
-python3 scripts/build_rime_prebuilt.py --out <dir>  # 在电脑上预编译 Rime 词库（Gradle 的 prebuildRimeData 会自动运行）
-bash scripts/release_build.sh                   # 构建并校验已签名的 arm64 release（需要签名环境变量，见 docs/RELEASE.md）
-bash scripts/setup_release_signing.sh           # 一次性：生成发布密钥并写入 Actions secrets
-bash scripts/apply_repo_settings.sh --dry-run   # 查看将要应用的仓库规则（见 docs/REPOSITORY.md）
+python3 scripts/build_rime_prebuilt.py --out <dir> # precompile the Rime dictionaries (the Gradle task prebuildRimeData runs it)
+bash scripts/release_build.sh                      # build and verify a signed arm64 release (needs the signing variables, see docs/RELEASE.md)
+bash scripts/setup_release_signing.sh              # one time: create the release key and write the Actions secrets
+bash scripts/apply_repo_settings.sh --dry-run      # show the repository rules that would be applied (see docs/REPOSITORY.md)
+bash scripts/verify_linux.sh                       # unit tests, lint, debug APK, test APK
+bash scripts/fetch_rime_deps.sh                    # fetch the pinned librime dependencies
 ```
 
-## 显示环境矩阵
+## Display matrix
 
-需要一台装了 debug 版 openIME 并已设为默认输入法的设备或模拟器；脚本会改动并还原旋转、字体、
-分辨率和深色模式：
+You need a device or an emulator with the debug build of openIME as the default keyboard.
+The script changes and restores rotation, font scale, resolution and dark mode:
 
 ```bash
-python3 scripts/display_matrix_regression.py --serial <serial> [用例名 ...]
+python3 scripts/display_matrix_regression.py --serial <serial> [case ...]
 ```
 
-## 常用命令
+## Device tests
 
 ```powershell
 .\scripts\test_sop.ps1 -Level L0 -Serial <serial>
 .\scripts\test_sop.ps1 -Level L1 -Serial <serial>
 .\scripts\test_sop.ps1 -Level L2 -Serial <serial> -FreshInstall
 .\scripts\test_sop.ps1 -Level L3 -Serial <serial> -FreshInstall
+```
+
+`test_sop.ps1` is the official entry point.
+It stops at the first failure.
+It writes step logs, before and after screenshots, UI trees, short screen recordings, logcat, meminfo, gfxinfo, APK hashes and device metadata to `.local/test-runs/`.
+L2 and L3 also copy the manual checklist.
+While the checklist is not complete, mark the run "automated pass". Never mark it "release pass".
+
+To list the steps of a level without a device:
+
+```powershell
+.\scripts\test_sop.ps1 -Level L3 -ListOnly
+```
+
+`-FreshInstall` uninstalls openIME and deletes its local data.
+Use it only on a device that you may reset.
+
+Individual scripts:
+
+```powershell
 .\scripts\build_ascii.ps1
 .\scripts\core_regression.ps1 -Serial <serial>
 .\scripts\nine_key_regression.ps1 -Serial <serial>
@@ -40,61 +63,48 @@ python3 scripts/display_matrix_regression.py --serial <serial> [用例名 ...]
 .\scripts\voice_correction_regression.ps1 -Serial <serial>
 .\scripts\typing_engine_regression.ps1 -Serial <serial>
 .\scripts\extended_regression.ps1 -Serial <serial>
+.\scripts\field_matrix_regression.ps1 -Serial <serial>
 .\scripts\panel_data_regression.ps1 -Serial <serial>
 .\scripts\lifecycle_regression.ps1 -Serial <serial>
 .\scripts\visual_check.ps1 -Serial <serial>
+.\scripts\visual_matrix_regression.ps1 -Serial <serial>
 .\scripts\perf_baseline.ps1 -Serial <serial>
 .\scripts\stress_baseline.ps1 -Serial <serial>
 .\scripts\upgrade_regression.ps1 -Serial <serial>
+.\scripts\security_regression.ps1 -Serial <serial>
 ```
 
-`test_sop.ps1` 是正式统一入口：失败即停，并把步骤日志、前后截图、UI 树、短录屏、
-logcat、meminfo、gfxinfo、APK 哈希和设备元数据写入 `.local/test-runs/`。L2/L3 同时复制
-人工验收清单，清单未完成时只能标记“自动化通过”，不能标记发布通过。
+| Script | What it checks |
+|---|---|
+| `typing_engine_regression.ps1` | Full pinyin, explicit word splitting, long sentences, extended-word candidates, composition clearing after a selection, and backspace on the target text. It finds targets by candidate text and debug state. |
+| `clear_delete_voice_regression.ps1` | Three rounds of: type, swipe-up clear, clear a pinyin preedit, delete one character at a time, long-press voice callbacks, final-only callbacks and delete after voice. It checks the editor, the composition and the voice state at each step. |
+| `voice_lifecycle_regression.ps1` | Typing stays responsive during model warm-up, hot reuse within 10 seconds, release after the timeout and background reload after reopening. |
+| `voice_correction_regression.ps1` | After the user deletes and corrects a voice result, the next identical raw result uses the local correction pair. |
+| `panel_data_regression.ps1` | System clipboard read and insert, and quick phrases: add, save, use, edit, delete. It creates only test phrases with unique numbers and deletes them when the test passes. Use an emulator or a dedicated test device. |
+| `field_matrix_regression.ps1` | The default keyboard mode and key commit paths in the debug field lab: normal, multiline, password, number, phone, email, URL, search, chat, form, 10,000-character and selection-replacement fields. |
+| `security_regression.ps1` | The permission surface, password composition, and leaks into logcat and private app files. |
 
-查看某一级将执行哪些脚本而不连接设备：
+## Rebuild the fast pinyin lexicon
 
-```powershell
-.\scripts\test_sop.ps1 -Level L3 -ListOnly
-```
-
-`-FreshInstall` 会卸载 openIME 并清除它的本地数据，只能用于允许重置的测试设备。
-
-`typing_engine_regression.ps1` 覆盖全拼、显式分词、连续长句、扩展词候选、选词后
-composition 清空及随后回删目标文本。它使用候选文本和调试状态定位，不依赖屏幕坐标。
-
-`clear_delete_voice_regression.ps1` 连续执行 3 轮输入、删除键上滑清空、拼音预编辑清空、
-逐字删除、长按空格语音回调、final-only 回调和语音后再次删除，并逐步核对编辑器、composition 与语音状态。
-
-`voice_lifecycle_regression.ps1` 验证模型预热期间打字仍可响应、10 秒内热复用、超时释放
-和重新打开后的后台重载。`voice_correction_regression.ps1` 验证语音结果被用户紧接着
-删除和改正后，下一次相同 ASR 原结果会应用完全本地的纠正对。
-
-`panel_data_regression.ps1` 验证系统剪贴板读取/插入与常用语新增、保存、使用、编辑、删除。
-它只创建带唯一编号的测试短语并在通过后删除；建议在模拟器或专用测试设备上执行。
-
-`field_matrix_regression.ps1` 驱动 debug-only 输入框实验室，检查普通、多行、密码、数字、
-电话、邮箱、URL、搜索、聊天、表单、1 万字和选区替换输入框的默认键盘模式与关键提交链路。
-`security_regression.ps1` 检查权限面、密码 composition、logcat 和应用私有文件泄漏。
-
-更新内置 Rime Ice 词典后，可重新生成首次部署期间使用的高频词库：
+After you update the built-in Rime Ice dictionaries, regenerate the frequent-word lexicon that is used during the first deployment:
 
 ```powershell
 .\scripts\generate_fast_pinyin_lexicon.ps1
 ```
 
-生成脚本会按固定词频、长度和排序规则写入
-`app/src/main/assets/pinyin_phrases.tsv`；该文件需要与来源词典一并提交。
+The script writes `app/src/main/assets/pinyin_phrases.tsv` with fixed rules for frequency, length and order.
+Commit this file together with the source dictionaries.
 
-## 设备选择
+## Device selection
 
-设备脚本的优先级为：命令行 `-Serial`、环境变量 `ANDROID_SERIAL`、当前唯一已连接
-的 adb 设备。如果连接了多个设备且没有明确指定 Serial，脚本会直接失败，避免把
-测试输入发送到错误的手机。
+A device script chooses the device in this order:
+the `-Serial` argument, the environment variable `ANDROID_SERIAL`, and the only connected adb device.
+If several devices are connected and no serial is given, the script fails.
+This stops test input from going to the wrong phone.
 
-## 输出
+## Output
 
-- 构建脚本将 APK 复制到被忽略的 `artifacts/openIME-1.0-debug.apk`。
-- 性能、压力和升级脚本写入 `docs/perf/`、`docs/stress/` 和 `docs/upgrade/`。
-- 视觉脚本写入 `docs/visual/check/`；这些本地截图默认由 `.gitignore` 排除。
-- 正式 SOP 证据写入 `.local/test-runs/`，其中设备序列号只保存哈希前缀。
+- Build scripts copy the APK to `artifacts/openIME-1.0-debug.apk`. Git ignores this folder.
+- Performance, stress and upgrade scripts write to `docs/perf/`, `docs/stress/` and `docs/upgrade/`.
+- Visual scripts write to `docs/visual/check/`. `.gitignore` excludes these local screenshots.
+- Official SOP evidence goes to `.local/test-runs/`. It stores only a hash prefix of the device serial.

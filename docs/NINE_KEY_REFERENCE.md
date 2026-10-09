@@ -1,60 +1,83 @@
-# 九键输入：参考实现与 openIME 的取舍
+# Nine-key input design
 
-这份文档记录「商业 / 开源输入法的九键到底怎么做」的调研结论，以及 openIME 据此做的决定。
-改九键、左栏、删除手势之前先读这里，避免回到「一个个补丁」的状态。
+This document records how other input methods build a nine-key keyboard and what openIME decided.
+Read it before you change the nine-key keyboard, the syllable column or the delete gesture.
 
-## 调研来源
+## Sources
 
-| 来源 | 性质 | 采用的结论 |
-| -- | -- | -- |
-| [rime-t9-shiyin](https://github.com/Koishi-Neko/rime-t9-shiyin)（对标百度输入法小米版） | 开源，附引擎层实测报告 | 左栏逐音节选择：数字串 → 合法首音节（且剩余数字仍可切分）；点选只锁定、不上屏；点完继续给下一位；全程「零上屏」；候选条只留词；删除键上滑清空 |
-| Trime 九键 / 仓输入法九键指南 | 开源 | 字母精确匹配、数字模糊匹配；`1` 键分词；锁定 / 解锁 / 撤销 |
-| [百度输入法九键说明](https://jingyan.baidu.com/article/19020a0a7ee4ab529c284246.html) | 官方使用说明 | 拼音键左侧是精确拼音；可上下滑动拼音列表更改拼音组成；按 1 手动分词 |
-| [搜狗输入法帮助](https://shouji.sogou.com/wap/feedback/faqdetail?id=2004148&click_fr=3&platform=Android) | 官方帮助 | 直接上滑删除键清空、直接下滑撤回；多次清空只保留最后一次 |
-| iOS 九宫格（「简体拼音十键」） | 系统输入法 | 拼音编码区 + 文字候选区分开；放弃单独的分词键 |
-| 《openIME 界面重构稿》设计稿 | 本项目设计依据 | 输入中左栏是整块面板，选中项为强调色胶囊（版式沿用；每项的内容改为一个字的拼音，见下）；联想态为「‹ 词 … ∨」 |
+| Source | Type | What openIME takes from it |
+|---|---|---|
+| [rime-t9-shiyin](https://github.com/Koishi-Neko/rime-t9-shiyin) | Open source, with an engine report | The left column lists valid first syllables of the digit string. A tap locks the syllable and does not commit. The candidate bar shows only words. Swipe up on delete clears the text. |
+| Trime and the Cangshu nine-key guide | Open source | Letters match exactly and digits match fuzzily. Key `1` splits words. Lock, unlock and undo. |
+| [Baidu Input nine-key help](https://jingyan.baidu.com/article/19020a0a7ee4ab529c284246.html) | Official help | The left of the keys shows exact pinyin. You can scroll the list to change the pinyin. Key `1` splits words. |
+| [Sogou Input help](https://shouji.sogou.com/wap/feedback/faqdetail?id=2004148&click_fr=3&platform=Android) | Official help | Swipe up on delete clears. Repeated clears keep only the last one. |
+| iOS nine-grid keyboard | System keyboard | The pinyin code area and the text candidate area are separate. There is no separate split key. |
 
-（豆包输入法、搜狗、微信键盘等闭源产品没有可读的实现，只能依据其公开使用说明。）
+Other keyboards are closed source, so we used only their public help pages.
 
-## 行为约定（openIME 的实现）
+## Behavior in openIME
 
-1. **一个字一个拼音：左栏每项是下一个字的一个音节**（`ni`、`mi`），点选即锁定，所见即所锁；锁定后列表移到下一个字
-   （百度输入法、rime-t9-shiyin 的做法，也是九键「先选拼音再选字」的通行流程）。用户不用为整句选拼音，
-   整词的读法在预编辑里看，要换字就从候选里选。不提供会让剩余数字无法拼读的选项；孤立的 `a/o/e`、无元音的 `ng/m`
-   不当读法。早先按设计稿列整条读法（`ni'hao`），与「一个字一个拼音」冲突，已改掉。
-   只有声母的项（单按 6 时的 `m`、`n`）点了同样锁定：候选按这个字母筛选（`m` → 没、么、们）。
-2. **锁定的音节发给 Rime 时保持字母**（`xiong'486`）。luna_pinyin 方案同时接受字母和 2–9 数字，
-   所以 zhong / xiong 这类同数字的读法不会被重新混在一起，候选与所选读法一致。
-3. **锁定的音节在继续打字时保持锁定**（用边界封住），退格先解锁最近锁定的音节 / 分词边界。
-4. **预编辑里的音节边界一律是撇号**（`ni'hao`）。用户锁定的前缀以视图记录的为准，
-   不能从文本里的空格 / 撇号反推（解码器自己也会插分隔，反推会把「猜测」当成「用户的决定」）。
-5. **数字刚好拼得出的词排在预测之前。** 输入 `9426`（xian）时 Rime 可能先给 `自从`（zi'cong 的预测）；
-   我们按读法是否恰好耗尽已输入数字分组，组内保持 Rime 顺序，不丢任何候选。
-6. **预编辑跟随首选词的读法**（`我想吃饭` → `wo'xiang'chi'fan`），而不是本地解码器独立的猜测。
-   首选词只覆盖前半段时，按它的字取到覆盖不了为止（每个字依次试全拼、截断的读音、声母：`669` → 模型 → `mo'x`），
-   剩下的数字再拼成字母。**预编辑任何时候都只有字母，不出现数字**：没有词可依时，本地按「最少的完整音节、
-   末尾允许未打完的音节开头」拼出（`46` → `go`）。
-7. **选词只覆盖一部分输入时，只上屏该词，剩余输入继续作为预编辑**（九键 / 26 键一致）。
-   部分选词只学习用户点的那个词：用它自己的拼写单独选一次让 Rime 记住，剩余输入不会被学习
-   （Rime 的整句提交会把没选过的短语写进用户词库）。这样分段选词的词组也能因常用而前移。
-8. **空格提交首选词；回车（确定）提交已输入的拼音原文**（Rime / fcitx / Gboard 拼音的约定）。
+1. **One syllable for one character.**
+   Each item in the left column is one syllable for the next character (`ni`, `mi`).
+   A tap locks it. Then the list moves to the next character.
+   The user does not choose pinyin for a whole sentence.
+   The preedit shows the reading of the whole word. To change a character, pick it from the candidates.
+   The list never offers a syllable that leaves the remaining digits unreadable.
+   A lone `a`, `o` or `e`, and a bare `ng` or `m` without a vowel, are not readings.
+   An item with only an initial (for example `m` or `n` after you press `6`) also locks.
+   The candidates then filter by that letter (`m` → 没, 么, 们).
+2. **Locked syllables go to Rime as letters** (`xiong'486`).
+   The luna_pinyin schema accepts letters and the digits 2 to 9.
+   Readings such as zhong and xiong that share digits stay separate, and the candidates match the chosen reading.
+3. **A locked syllable stays locked while the user types on.**
+   A boundary seals it.
+   Backspace first unlocks the latest locked syllable or split boundary.
+4. **Syllable boundaries in the preedit are always apostrophes** (`ni'hao`).
+   The locked prefix comes from the view record.
+   Do not infer it from spaces or apostrophes in the text, because the decoder also inserts separators.
+5. **Words that match the digits exactly come before predictions.**
+   For `9426` (xian), Rime can put 自从 (a prediction of zi'cong) first.
+   openIME groups candidates by whether the reading uses up exactly the typed digits.
+   The Rime order stays inside each group. No candidate is lost.
+6. **The preedit follows the reading of the first candidate.**
+   For 我想吃饭, it shows `wo'xiang'chi'fan`.
+   If the first candidate covers only the first part, openIME takes characters until the candidate cannot cover more.
+   For each character it tries the full pinyin, a cut syllable and the initial. Example: `669` → 模型 → `mo'x`.
+   It spells the remaining digits as letters.
+   **The preedit never shows digits.**
+   If no word helps, openIME builds the preedit locally from the fewest full syllables, with an unfinished syllable at the end (`46` → `go`).
+7. **If a selected word covers only part of the input, openIME commits only that word.**
+   The remaining input stays as preedit. This is the same for nine-key and 26-key.
+   openIME teaches the native engine only the word that the user tapped, by selecting it again with its own spelling.
+   It does not commit the whole input, because that would write phrases that the user never selected into the user dictionary.
+8. **Space commits the first candidate.**
+   Enter (Confirm) commits the typed pinyin text. Rime, fcitx and Gboard pinyin work this way.
 
-## 删除键手势
+## Delete key gesture
 
-- 上滑 ≥ 32dp 清空；松手瞬间的坐标也算最后一次移动。清空是最终操作，不提供下滑撤回（产品决定）。
-- 反馈只有一个气泡组件：未到位时深色「上滑清空」，到位后变红「松手清空」，
-  放在键的侧边而不是上方（拇指会挡住上方）。
-- 「清空全部」不能只依赖编辑器的全选动作：自绘 / Compose / Web 输入框通常既没有全选也没有完整的
-  ExtractedText。网关因此有第三条路径：只用光标前后文本，抓取全部内容、循环删除直到编辑器报告为空，
-  中途失败则把已删内容放回。答案长度等于请求长度时可能只是窗口，一律拒绝删除。
-- 调试用 `CustomEditorTestActivity` 复现这类编辑器（修复前手势触发但文字纹丝不动，且无提示）。
+- Swipe up 32 dp or more to clear. The final touch position counts as the last move.
+  Clear is final. There is no swipe-down undo. This is a product decision.
+- One bubble gives the feedback.
+  Before the threshold it is dark and says "swipe up to clear" (上滑清空).
+  After the threshold it turns red and says "release to clear" (松手清空).
+  It sits beside the key, because the thumb covers the area above the key.
+- "Clear all" cannot depend on the select-all action of the editor.
+  Custom-drawn, Compose and web fields often have no select-all and no full `ExtractedText`.
+  The gateway therefore has a third path.
+  It uses only the text before and after the cursor, reads all of it and deletes in a loop until the editor reports empty.
+  If a step fails, it puts the deleted text back.
+  If the returned length equals the requested length, the result can be only a window. The gateway then refuses to delete.
+- The debug `CustomEditorTestActivity` reproduces such editors.
+  Before the fix, the gesture fired and the text stayed with no message.
 
-## 验证
+## Verification
 
 ```bash
-bash scripts/core_regression.sh emulator-5554          # 26 键 / 九键 / 回车 / 部分选词
+bash scripts/core_regression.sh emulator-5554   # 26-key, nine-key, Enter, partial selection
 ./gradlew :app:testDebugUnitTest --tests '*CandidatePipeline*' --tests '*InputConnectionGateway*'
 ```
 
-手机与模拟器的差异（密度、系统手势、默认输入法）会影响手势与布局；真机验证时，调试构建会把手势事件写到
-`OpenIme` 日志标签（`bs begin / clearArmed / finish`，被系统取消时有 `touch CANCEL`）。
+Density, system gestures and the default keyboard differ between phones and emulators.
+Both can change gestures and layout.
+On a real device, the debug build writes gesture events to the `OpenIme` log tag
+(`bs begin`, `clearArmed`, `finish`, and `touch CANCEL` if the system cancels the touch).

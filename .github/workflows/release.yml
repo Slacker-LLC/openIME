@@ -45,44 +45,15 @@ jobs:
           lfs: true
           fetch-depth: 0
 
-      - name: Release tag is on main and its CI passed
+      - name: Release tag is on main
         if: github.ref_type == 'tag'
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           git fetch --no-tags origin main
           if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
             echo "::error::$GITHUB_REF_NAME must point at a commit on main"
             exit 1
           fi
-
-          required=("Build and verify" "Compatibility API 29" "Compatibility API 31")
-          deadline=$((SECONDS + 2400))
-          while true; do
-            runs="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" --jq '.check_runs')"
-            waiting=0
-            for name in "${required[@]}"; do
-              latest="$(jq -c --arg n "$name" '[.[] | select(.name == $n)] | sort_by(.started_at) | last // {}' <<<"$runs")"
-              conclusion="$(jq -r '.conclusion // "pending"' <<<"$latest")"
-              case "$conclusion" in
-                success) ;;
-                pending) waiting=1 ;;
-                *)
-                  echo "::error::CI check '$name' ended as '$conclusion' for $GITHUB_SHA"
-                  exit 1
-                  ;;
-              esac
-            done
-            [[ "$waiting" -eq 0 ]] && break
-            if (( SECONDS >= deadline )); then
-              echo "::error::CI for $GITHUB_SHA did not finish within 40 minutes"
-              exit 1
-            fi
-            echo "Waiting for CI on $GITHUB_SHA ..."
-            sleep 30
-          done
-          echo "CI passed for $GITHUB_SHA"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v6
@@ -120,6 +91,47 @@ jobs:
       - name: Ensure Gradle wrapper is executable
         shell: bash
         run: chmod +x gradlew
+
+      # Compile everything and lint the release variant while main's CI is still
+      # running. Unsigned, and before any secret is read; the signed build after
+      # the CI gate only packages and signs.
+      - name: Build and lint the release variant ahead of the CI gate
+        shell: bash
+        run: ./gradlew :app:lintRelease :app:assembleRelease --no-daemon --console=plain
+
+      - name: CI passed for the release commit
+        if: github.ref_type == 'tag'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The unit tests ran in "Build and verify"; the release build below does not repeat them.
+          required=("Build and verify" "Compatibility API 29" "Compatibility API 31")
+          deadline=$((SECONDS + 2400))
+          while true; do
+            runs="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" --jq '.check_runs')"
+            waiting=0
+            for name in "${required[@]}"; do
+              latest="$(jq -c --arg n "$name" '[.[] | select(.name == $n)] | sort_by(.started_at) | last // {}' <<<"$runs")"
+              conclusion="$(jq -r '.conclusion // "pending"' <<<"$latest")"
+              case "$conclusion" in
+                success) ;;
+                pending) waiting=1 ;;
+                *)
+                  echo "::error::CI check '$name' ended as '$conclusion' for $GITHUB_SHA"
+                  exit 1
+                  ;;
+              esac
+            done
+            [[ "$waiting" -eq 0 ]] && break
+            if (( SECONDS >= deadline )); then
+              echo "::error::CI for $GITHUB_SHA did not finish within 40 minutes"
+              exit 1
+            fi
+            echo "Waiting for CI on $GITHUB_SHA ..."
+            sleep 30
+          done
+          echo "CI passed for $GITHUB_SHA"
 
       # Only this step ever reads the signing secrets, and only for tags. Pull
       # requests and manual runs sign with a key that exists for this job alone.
@@ -173,9 +185,13 @@ jobs:
             echo "OPENIME_REHEARSAL=1"
           } >> "$GITHUB_ENV"
 
-      - name: Test, lint, build and verify the release APK
+      - name: Sign and verify the release APK
         id: release
         shell: bash
+        env:
+          # Unit tests passed in CI on this commit, lintRelease ran above.
+          OPENIME_SKIP_TESTS: '1'
+          OPENIME_SKIP_LINT: '1'
         run: bash scripts/release_build.sh
 
       - name: Summary

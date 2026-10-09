@@ -1,149 +1,195 @@
-# 发布与版本管理
+# Release process
 
-仓库里的所有版本信息只有一个来源：根目录 `VERSION`。发布是一次可重复的流水线：
-发布 PR → 合并到 `main` → 在合并提交上打标签 → 工作流构建、校验、发布。
-仓库规则（分支保护、标签保护、合并方式）见 [REPOSITORY.md](REPOSITORY.md)。
+The file `VERSION` in the repository root is the single source of the version.
+A release is a repeatable pipeline:
+release PR → merge to `main` → tag the merge commit → the workflow builds, checks and publishes.
 
-## 版本号
+Branch protection, tag protection and merge rules are in [REPOSITORY.md](REPOSITORY.md).
 
-- 语义化版本：稳定版 `MAJOR.MINOR.PATCH`，测试版 `MAJOR.MINOR.PATCH-beta.N`（`N` 从 1 起）。
-  不使用 `-rc`、`-alpha` 等其他后缀。项目目前处于 `0.0.x` 测试阶段；`1.0.0` 只在功能和稳定性
-  都达到可以让用户日常依赖时才发布。
-- `VERSION` 是一行文本（例如 `0.0.1-beta.1`）。`app/build.gradle.kts` 读取它：
-  `versionName = VERSION`，`versionCode = (MAJOR × 10000 + MINOR × 100 + PATCH) × 100 + 阶段`，
-  阶段对测试版是 `N`，对稳定版是 `99`（`0.0.1-beta.1` → `101`，`0.0.1` → `199`，`1.0.0` → `1000099`）。
-  要求 `MINOR`、`PATCH` 不超过 99，`N` 不超过 98，`MAJOR` 不超过 2000，且不能是 `0.0.0`。
-  这样 `versionCode` 不会被忘记升级，同一个 `X.Y.Z` 的稳定版永远高于它的测试版。
-- `scripts/release_check.py` 用同一公式检查仓库，并用 `aapt2` 校验构建出的 APK 里的
-  包名、`versionName`、`versionCode`；PR 的 CI 和发布工作流都会运行它。
-- 测试版以 GitHub **pre-release** 发布，不标记为 latest，发布说明顶部有 Beta 提示。
-  标签是 `vX.Y.Z-beta.N`，发布时由流水线按标签自动识别。
-- 注意：Android 不允许 `versionCode` 变小的覆盖安装。一旦公开发布过某个版本，后续版本必须更大。
+## Version numbers
 
-什么时候升哪一位：
+- The project uses semantic versions.
+  A stable version is `MAJOR.MINOR.PATCH`. A beta version is `MAJOR.MINOR.PATCH-beta.N`, and `N` starts at 1.
+  No other suffix (`-rc`, `-alpha`) is allowed.
+  The project is in the `0.0.x` beta phase.
+  We release `1.0.0` only when features and stability are good enough for daily use.
+- `VERSION` is one line of text, for example `0.0.1-beta.1`.
+  `app/build.gradle.kts` reads it:
+  `versionName = VERSION` and `versionCode = (MAJOR × 10000 + MINOR × 100 + PATCH) × 100 + stage`.
+  The stage is `N` for a beta and `99` for a stable version.
+  Examples: `0.0.1-beta.1` → `101`, `0.0.1` → `199`, `1.0.0` → `1000099`.
+  Limits: `MINOR` and `PATCH` up to 99, `N` up to 98, `MAJOR` up to 2000. `0.0.0` is not allowed.
+  With this rule, `versionCode` cannot be forgotten, and a stable version is always higher than its betas.
+- `scripts/release_check.py` checks the repository with the same formula.
+  It also uses `aapt2` to check the package name, `versionName` and `versionCode` in the built APK.
+  The PR CI and the release workflow both run it.
+- A beta release is a GitHub **pre-release**. It is not marked as latest. The release notes start with a beta notice.
+  The tag is `vX.Y.Z-beta.N`. The pipeline detects the beta from the tag.
+- Android does not install an APK with a lower `versionCode` over a higher one.
+  After a version is public, each later version must be higher.
 
-| 升级 | 条件 |
+When to increase each part:
+
+| Part | Condition |
 |---|---|
-| MAJOR | 用户数据格式不兼容或需要用户手动迁移；`minSdk` 提高；包名或签名变化 |
-| MINOR | 新功能、新面板或键盘；词库、语音模型、第三方 runtime 的版本变化（需重新核对许可证） |
-| PATCH | 缺陷修复、性能、文案、依赖的安全更新 |
-| `-beta.N` | 同一个 `X.Y.Z` 的第 N 个测试快照，修复后递增 N；正式确认后去掉后缀发布 |
+| MAJOR | User data format is incompatible or needs manual migration. `minSdk` increases. The package name or signing key changes. |
+| MINOR | New feature, new panel or keyboard. A new version of the dictionary, the voice model or a third-party runtime (check the license again). |
+| PATCH | Bug fix, performance, text, security update of a dependency. |
+| `-beta.N` | The N-th test snapshot of the same `X.Y.Z`. Increase `N` after each fix. Remove the suffix for the stable release. |
 
-Rime 词典在打包时由 `prebuildRimeData`（`scripts/build_rime_prebuilt.py`）预编译，APK 只带编译好的
-二进制词库，并附带这份数据的内容哈希（`rime-data.revision`）。升级后只有哈希变了才从 APK 重新拷贝词库、
-清掉旧的编译产物（用户词库在独立目录，不受影响）；词库没变的升级直接沿用手机上已有的那份。手机上不再编译。
+The Rime dictionaries are precompiled at build time by `prebuildRimeData` (`scripts/build_rime_prebuilt.py`).
+The APK contains only the compiled binary dictionaries and a content hash (`rime-data.revision`).
+After an upgrade, the app copies the dictionaries from the APK and deletes the old compiled files only if the hash changed.
+The user dictionary is in a separate directory and is not affected.
+If the dictionaries did not change, the upgrade reuses the files on the phone.
+The phone never compiles dictionaries.
 
-只维护最新的一条 MINOR 版本线；安全修复以 PATCH 版本发布。
+We maintain only the newest MINOR line. Security fixes ship as PATCH versions.
 
-## CHANGELOG
+## Change log
 
-[CHANGELOG.md](../CHANGELOG.md) 遵循 Keep a Changelog：
+[CHANGELOG.md](../CHANGELOG.md) follows Keep a Changelog.
 
-- 日常 PR 把用户可见的改动写进 `## [Unreleased]`，**不改 `VERSION`**。
-- 最新的 `## [版本] - YYYY-MM-DD` 小节必须正好等于 `VERSION`，写法上不允许空小节、
-  版本或日期倒序。`release_check.py check` 在 CI 里强制这些规则，所以版本号与
-  变更记录只能一起变化。
-- 这一小节的正文就是 GitHub Release 的发布说明，请按用户能读懂的方式写。
-- 已撤回的版本在标题后加 ` [YANKED]`，并发布更高的版本（测试版递增 `N`）。
+- A normal PR adds user-visible changes to `## [Unreleased]`. It does **not** change `VERSION`.
+- The newest section `## [version] - YYYY-MM-DD` must equal `VERSION`.
+  Empty sections and versions or dates in the wrong order are not allowed.
+  `release_check.py check` enforces this in CI, so the version and the change log change together.
+- The body of this section is the GitHub release note. Write it so that users can understand it.
+- For a withdrawn version, add ` [YANKED]` after the heading and publish a higher version (a beta increases `N`).
 
-## 发布产物
+## Release assets
 
-只生成 `arm64-v8a` 的正式 APK：
+The pipeline builds only an `arm64-v8a` release APK:
 
 ```text
 openIME-v{VERSION}-arm64-release.apk
 ```
 
-GitHub Release 只附这一个 APK。它的 SHA-256 和签名证书指纹写在发布说明正文里；第三方许可证随 APK 打包（`assets/licenses/`），清单见仓库的 `THIRD_PARTY_NOTICES.md`。流水线内部仍生成 `SHA256SUMS.txt` 用于自检，但不上传。
-Debug 构建保留 `arm64-v8a + x86_64`，只用于真机和模拟器回归，不发布。
+The GitHub release has only this APK.
+The release notes show its SHA-256 and the fingerprint of the signing certificate.
+The third-party licenses are in the APK (`assets/licenses/`).
+The release notes link to `THIRD_PARTY_NOTICES.md`.
+The pipeline also creates `SHA256SUMS.txt` for its own check but does not upload it.
 
-## 签名密钥
+Debug builds keep `arm64-v8a` and `x86_64`.
+They are for regression on devices and emulators and are never released.
 
-密钥是应用的永久身份：Android 只在新 APK 与已安装版本由同一把密钥签名时才允许覆盖安装，
-密钥丢了就只能让所有用户卸载重装。keystore 不进入仓库、Issue、PR、Actions artifact 或 Release，
-也不要从 Debug keystore 发布。
+## Signing key
 
-一次性初始化（在你信任的机器上运行，不要让别人代跑）：
+The key is the permanent identity of the app.
+Android installs an update over an installed app only if the same key signed both.
+If you lose the key, all users must uninstall and install again.
+
+Never put the keystore in the repository, an issue, a PR, an Actions artifact or a release.
+Never publish with the debug keystore.
+
+Run the one-time setup on a machine that you trust. Do not let another person run it for you:
 
 ```bash
 bash scripts/setup_release_signing.sh
 ```
 
-脚本会：生成 4096 位 RSA keystore（默认放在 `~/.openime-release/`）、随机口令、
-并把 `release.yml` 读取的四个 Actions secrets 写进仓库：
+The script does these steps:
 
-- `OPENIME_KEYSTORE_B64`：keystore 的 Base64。
-- `OPENIME_KEYSTORE_PASSWORD`、`OPENIME_KEY_ALIAS`、`OPENIME_KEY_PASSWORD`。
+1. It creates a 4096-bit RSA keystore (default location `~/.openime-release/`) with random passwords.
+2. It writes the four Actions secrets that `release.yml` reads:
+   - `OPENIME_KEYSTORE_B64`: the keystore in Base64
+   - `OPENIME_KEYSTORE_PASSWORD`, `OPENIME_KEY_ALIAS`, `OPENIME_KEY_PASSWORD`
 
-口令不会打印。运行后**立刻备份** `~/.openime-release/`：离线加密副本加密码管理器，
-`credentials.txt` 里是明文口令，放进密码管理器后不要留在普通云盘。
+The script does not print the passwords.
+After it runs, **back up** `~/.openime-release/` at once.
+Keep an encrypted offline copy and a copy in a password manager.
+`credentials.txt` contains the passwords in plain text.
+Move it into the password manager and do not leave it on a normal cloud drive.
 
-首次发布后，把证书 SHA-256 写入 [`release-cert.sha256`](release-cert.sha256)（发布说明里就有）。
-之后每次发布都会比对它：签名证书对不上就直接失败，避免换了密钥却没发现。
+After the first release, write the certificate SHA-256 to [`release-cert.sha256`](release-cert.sha256).
+The release notes show it.
+Each later release compares against this file and fails if the certificate does not match.
+This stops an unnoticed key change.
 
-本地也可以用自己的 keystore 构建 release：设置同名环境变量（`OPENIME_KEYSTORE_PATH` 指向文件，
-不用 Base64），运行 `scripts/release_build.sh`。
+You can also build a release locally with your own keystore.
+Set the same environment variables (`OPENIME_KEYSTORE_PATH` is the file path, not Base64) and run `scripts/release_build.sh`.
 
-## 发布步骤
+## Release steps
 
-1. `main` 上最近一次 CI 全绿（包括 API 29 / 31 兼容测试）。
-2. 发布 PR：把 `[Unreleased]` 整理成 `## [版本] - YYYY-MM-DD`，同时修改 `VERSION`。
-   本地先运行：
+1. Make sure that the latest CI run on `main` passes, including the API 29 and API 31 compatibility tests.
+2. Open a release PR.
+   Move `[Unreleased]` to `## [version] - YYYY-MM-DD` and change `VERSION`.
+   Run this command locally first:
 
    ```bash
    python3 scripts/release_check.py check
    ```
 
-   这个 PR 改到了发布相关文件，CI 会自动用一次性密钥完整演练一遍发布流水线（见下）。
-3. 合并后，在 `main` 的合并提交上打带注释的标签并推送：
+   This PR changes release files, so CI runs the whole release pipeline as a rehearsal with a one-time key (see below).
+3. After the merge, create an annotated tag on the merge commit on `main` and push it:
 
    ```bash
    git switch main && git pull
-   git tag -a vX.Y.Z -m "openIME X.Y.Z"   # 测试版：vX.Y.Z-beta.N
+   git tag -a vX.Y.Z -m "openIME X.Y.Z"   # beta: vX.Y.Z-beta.N
    git push origin vX.Y.Z
    ```
 
-   标签只有管理员能创建，创建后不能被移动或删除（见 REPOSITORY.md）。
-4. `.github/workflows/release.yml` 自动执行：
-   - 标签格式、`VERSION`、`CHANGELOG.md` 三者一致；标签在 `main` 上，且该提交的 CI 已通过；
-   - 单元测试、`lintRelease`、`assembleRelease`；
-   - APK 签名校验（不能是 Debug 证书）、只含 `arm64-v8a`、APK 内版本与 `VERSION` 一致、
-     签名证书与 `release-cert.sha256` 一致；
-   - 生成 SHA-256 和发布说明（测试版带 Beta 提示）；
-   - 另一个只有写权限、不接触密钥的 job 先建**草稿** Release，确认三个附件齐全后才公开（测试版标为 pre-release，不是 latest）。
-5. 发布后核对：下载 APK，`sha256sum` 与发布说明里的值对比，`apksigner verify --print-certs`，
-   在真机上安装、启用、试打。
+   Only an administrator can create tags. Nobody can move or delete a tag after creation (see REPOSITORY.md).
+4. `.github/workflows/release.yml` runs these steps:
+   - It checks that the tag is on `main`.
+   - It does not wait for CI. It builds with the unsigned configuration and runs `lintRelease` at the same time as the `main` CI. It reads no secrets.
+   - It waits for the CI checks of the commit: Build and verify, Compatibility API 29 and Compatibility API 31.
+     CI already ran the unit tests, so the workflow does not repeat them.
+   - It checks that the tag format, `VERSION` and `CHANGELOG.md` agree.
+     Then it runs `assembleRelease` with the real key. Only packaging and signing remain.
+   - It verifies the APK: the signature is not the debug certificate, only `arm64-v8a` is present,
+     the version inside the APK equals `VERSION`, and the certificate equals `release-cert.sha256`.
+   - It creates the SHA-256 and the release notes (a beta gets a beta notice).
+   - A second job has write permission and no access to the key. It creates a **draft** release, checks that the APK is attached, and only then publishes it.
+     A beta is a pre-release and not the latest release.
+5. After the release, download the APK and compare `sha256sum` with the release notes.
+   Run `apksigner verify --print-certs`.
+   Install the APK on a real phone, enable it and type.
 
-### 演练
+### Rehearsal
 
-`Android Release` 工作流在两种情况下用一把只存在于该次运行的一次性密钥完整执行同一套构建和校验，
-但不发布任何东西：手动触发（Actions → Android Release → Run workflow），以及 PR 改动了
-`release.yml`、`release_build.sh`、`release_check.py`、`VERSION`、`CHANGELOG.md` 或 `app/build.gradle.kts`。
-所以发布流水线在真正发布之前就已经跑过。本地同样可以演练：
+The `Android Release` workflow runs the same build and checks, with a one-time key that exists only for that run.
+It publishes nothing.
+It runs in two cases:
+
+- A manual start (Actions → Android Release → Run workflow).
+- A PR changes `release.yml`, `release_build.sh`, `release_check.py`, `VERSION`, `CHANGELOG.md` or `app/build.gradle.kts`.
+
+So the pipeline runs before the real release.
+You can also rehearse locally. You need the four environment variables from above:
 
 ```bash
-OPENIME_REHEARSAL=1 OPENIME_SKIP_TESTS=1 scripts/release_build.sh   # 需要上面的四个环境变量
+OPENIME_REHEARSAL=1 OPENIME_SKIP_TESTS=1 scripts/release_build.sh
 ```
 
-### 失败与回滚
+### Failure and rollback
 
-- 发布工作流在发布前失败：修复后通过 PR 合并，管理员删除远端标签再重新打在新的提交上
-  （`git push origin :refs/tags/vX.Y.Z`）；如果留下了草稿 Release，先把它删掉。
-- 已公开的版本发现问题：Android 不允许降级，不要删除或改写标签。在 CHANGELOG 里给该版本标
-  `[YANKED]`，把 Release 改成 pre-release 并写明原因，然后发布更高的 PATCH 版本。
-- 密钥泄露：立即停止发布，在 Settings 里删除 secrets，更换密钥会让所有现有用户必须卸载重装，
-  需要先在发布说明里写清楚迁移步骤（导出用户数据 → 卸载 → 安装 → 导入）。
+- **The workflow fails before publishing.**
+  Fix the problem through a PR.
+  An administrator deletes the remote tag (`git push origin :refs/tags/vX.Y.Z`) and tags again on the new commit.
+  If a draft release remains, delete it first.
+- **A published version has a problem.**
+  Android does not allow a downgrade, so do not delete or rewrite the tag.
+  Mark the version `[YANKED]` in the change log.
+  Change the release to a pre-release and write the reason.
+  Then publish a higher PATCH version.
+- **The key leaks.**
+  Stop releasing at once and delete the secrets in Settings.
+  A new key forces all users to uninstall and install again.
+  Before that, write the migration steps in the release notes: export user data, uninstall, install, import.
 
-## 发布前检查
+## Checks before a release
 
-- `AndroidManifest.xml` 不含 `INTERNET` 权限。
-- `android:allowBackup="false"` 保持不变。
-- `THIRD_PARTY_NOTICES.md` 与 `app/src/main/assets/licenses/` 同步。
-- 语音模型、词库或第三方 runtime 版本变化时重新核对对应许可证（见 [LICENSING.md](LICENSING.md)）。
-- 主项目许可证：`LICENSE`（GPL-3.0-only），说明见 LICENSING.md。
+- `AndroidManifest.xml` has no `INTERNET` permission.
+- `android:allowBackup="false"` is unchanged.
+- `THIRD_PARTY_NOTICES.md` and `app/src/main/assets/licenses/` agree.
+- If the voice model, the dictionary or a third-party runtime changed, check its license again. See [LICENSING.md](LICENSING.md).
+- The main license is `LICENSE` (GPL-3.0-only).
 
-## 社交预览
+## Social preview
 
-仓库内提供 `docs/images/social-preview.png`（1280×640），由 `scripts/generate_brand_assets.py` 生成。
-GitHub 的 Social preview 不是源码文件配置项，需要仓库管理员在 **Settings → General → Social preview**
-上传该 PNG；这一步不能通过提交代码完成。
+The repository has `docs/images/social-preview.png` (1280 × 640). `scripts/generate_brand_assets.py` creates it.
+The GitHub social preview is a setting, not a source file.
+A repository administrator must upload the PNG in **Settings → General → Social preview**.
+A commit cannot do this.

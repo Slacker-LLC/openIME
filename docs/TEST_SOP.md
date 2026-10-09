@@ -1,18 +1,20 @@
-# openIME 全量测试 SOP
+# Full test procedure (SOP)
 
-本 SOP 是 openIME 的固定版本门禁。目标不是“发现一个 Bug 测一个 Bug”，而是每个版本
-按相同级别执行、失败即停，并自动保存可复查的日志、截图、UI 树、录屏和性能数据。
+This procedure is the fixed gate for each version.
+Its goal is not to find and test one bug at a time.
+For each version, run the same levels and stop at the first failure.
+Save logs, screenshots, UI trees, recordings and performance data, so that others can review them.
 
-## 1. 分级与命令
+## 1. Levels and commands
 
-| 级别 | 触发时机 | 目标耗时 | 自动化范围 |
+| Level | When | Target time | Automated scope |
 |---|---|---:|---|
-| L0 构建门禁 | 每次编译 | 5～10 分钟 | 构建、单元测试、安装、26 键、拼音九键、数字、基本删除 |
-| L1 核心回归 | 每次功能修改 | 30～45 分钟 | L0、完整拼音引擎、输入框矩阵、候选、面板、生命周期、当前窗口视觉 |
-| L2 完整回归 | 推送手机或 GitHub 前 | 2～4 小时 | L1、lint、升级、性能及人工设备/应用/尺寸矩阵 |
-| L3 发布验收 | 正式发布 APK | 半天以上 | L2、隐私、权限、压力、多设备和 30 分钟稳定性 |
+| L0 Build gate | Each build | 5 to 10 minutes | Build, unit tests, install, 26-key, nine-key pinyin, digits, basic delete |
+| L1 Core regression | Each feature change | 30 to 45 minutes | L0, full pinyin engine, field matrix, candidates, panels, lifecycle, visuals of the current window |
+| L2 Full regression | Before you push to a phone or GitHub | 2 to 4 hours | L1, lint, upgrade, performance, and the manual device, app and size matrix |
+| L3 Release acceptance | Before a release APK | Half a day or more | L2, privacy, permissions, stress, several devices and 30 minutes of stability |
 
-统一入口：
+Single entry point:
 
 ```powershell
 .\scripts\test_sop.ps1 -Level L0 -Serial <serial>
@@ -21,83 +23,111 @@
 .\scripts\test_sop.ps1 -Level L3 -Serial <serial> -FreshInstall
 ```
 
-只查看将执行的步骤，不连接设备：
+To see the steps without a device:
 
 ```powershell
 .\scripts\test_sop.ps1 -Level L3 -ListOnly
 ```
 
-`-FreshInstall` 会卸载现有 openIME 并清除它的设置、词频、剪贴板和常用语数据，只能在
-允许清空数据的测试设备上使用。升级保留测试不等同于全新安装测试，两项都要留下证据。
+`-FreshInstall` uninstalls openIME and deletes its settings, word frequencies, clipboard and quick phrases.
+Use it only on a test device that you may reset.
+An upgrade-keeps-data test does not replace a fresh-install test. Keep evidence for both.
 
-## 2. 失败即停
+## 2. Stop at the first failure
 
-出现以下任一现象，当前级别立即失败，不继续执行后续步骤：
+The level fails at once, and the next steps do not run, if any of these occurs:
 
-- 无法输入、九键直接输出数字、拼音或候选异常消失。
-- 删除错误对象、上滑清空误触、文字丢失/重复/乱序。
-- 闪退、ANR、黑屏、输入法进程死亡。
-- UI 溢出窗口、最后一列被裁切、关键按钮无法点击。
-- 自动断言失败或证据采集发现无效 PNG/缺失测试宿主。
+- You cannot type, the nine-key keyboard outputs digits directly, or pinyin or candidates disappear.
+- Delete removes the wrong object, a swipe-up clear fires by mistake, or text is lost, repeated or reordered.
+- A crash, an ANR, a black screen or a death of the input method process.
+- The UI overflows the window, the last column is cut off or a key button cannot be tapped.
+- An automatic assertion fails, or evidence collection finds an invalid PNG or a missing test host.
 
-修复后从失败级别的第一步重新执行，不能只补跑失败用例后宣称整级通过。
+After a fix, run the failed level again from its first step.
+Do not run only the failed case and then claim that the whole level passed.
 
-## 3. 证据目录
+## 3. Evidence folder
 
-统一入口将证据写入被 Git 忽略的目录：
+The single entry point writes evidence to a folder that Git ignores:
 
 ```text
-.local/test-runs/<时间>-<级别>-<设备序列号哈希>/
+.local/test-runs/<time>-<level>-<device serial hash>/
 ├── metadata.json
 ├── summary.json
 ├── summary.md
 ├── manual-checklist.md
-├── steps/          每个脚本的完整输出
-├── screenshots/    每步前后 PNG
-├── ui/             每步前后 uiautomator XML
-├── video/          每步最长 180 秒录屏片段
-└── system/         logcat、错误、meminfo、gfxinfo、input_method
+├── steps/          full output of each script
+├── screenshots/    PNG before and after each step
+├── ui/             uiautomator XML before and after each step
+├── video/          screen recording of each step, at most 180 seconds
+└── system/         logcat, errors, meminfo, gfxinfo, input_method
 ```
 
-元数据记录 Git 提交、工作区脏文件数、APK SHA-256/大小/时间、手机型号、Android、
-显示尺寸/密度、字体比例、导航模式、主题和当前输入法。原始设备序列号不写入证据，
-只保存 12 位 SHA-256 前缀。
+The metadata records these items:
 
-Android `screenrecord` 单段最长 180 秒。自动步骤按步骤分段录制；超过 3 分钟的人工
-语音、滚动和稳定性测试必须手动连续分段，并在 `manual-checklist.md` 写明文件名和时间点。
+- the Git commit and the number of dirty files
+- the APK SHA-256, size and time
+- the phone model and the Android version
+- the display size and density, the font scale, the navigation mode and the theme
+- the current input method
+The evidence never contains the raw device serial. It keeps only the first 12 characters of its SHA-256.
 
-## 4. 测试环境矩阵
+`screenrecord` records at most 180 seconds in one segment.
+Automatic steps record one segment per step.
+For a manual test of voice, scrolling or stability that is longer than 3 minutes, record in consecutive segments by hand.
+Write the file names and the time points in `manual-checklist.md`.
 
-L2 至少覆盖 320、360、390、412、432、600dp。390×296 仅是设计基准，不是固定像素。
-每个宽度必须检查动态列宽/间距、空格居中、600dp 最大内容宽度、稳定键高、WindowInsets、
-最后一列与最后一行不裁切。
+## 4. Test environment matrix
 
-系统组合至少包含：
+L2 covers at least the widths 320, 360, 390, 412, 432 and 600 dp.
+390 × 296 is only the design reference. It is not a fixed pixel size.
+At each width, check:
 
-- 浅色、深色、跟随系统。
-- 手势导航、三键导航。
-- 字体 100%、130%、150%，默认和放大显示。
-- 横屏、竖屏、分屏、前后台、锁屏恢复、进程被杀后恢复。
+- dynamic column width and spacing
+- the space key is centered
+- the maximum content width of 600 dp
+- stable key height
+- `WindowInsets`
+- the last column and the last row are not cut off
 
-显示环境矩阵由脚本自动检查，不要手工代替：
+The system combinations include at least:
+
+- light, dark and follow-system themes
+- gesture navigation and three-button navigation
+- font scale 100%, 130% and 150%, with default and large display size
+- landscape, portrait, split screen, background and foreground, restore after lock screen, restore after the process is killed
+
+The script checks the display matrix. Do not replace it with manual checks:
 
 ```bash
 python3 scripts/display_matrix_regression.py --serial <serial>
 ```
 
-它在竖屏、横屏、字体 130% / 200%、深色、小屏、窄屏、平板（竖 / 横）、折叠屏内屏之间切换，
-断言键盘是底部面板（不是全屏提取模式），且每个按键和工具栏按钮都有尺寸、都在窗口内，
-并保存每个环境的截图供人工复核；运行结束会还原所有系统设置。
+The script switches between these environments:
+portrait, landscape, font scale 130% and 200%, dark theme, small screen, narrow screen, tablet (portrait and landscape) and the inner screen of a foldable.
 
-debug APK 提供 `ImeTestLabActivity`，包含普通、多行、密码、数字、电话、邮箱、URL、
-搜索、聊天发送、Next/Done、已有 1 万字和预选文字替换输入框。release APK 不包含或导出
-任何测试 Activity/Receiver。
+In each environment it asserts two things.
+The keyboard is a bottom panel, not fullscreen extract mode.
+Every key and toolbar button has a size and is inside the window.
 
-外部应用至少覆盖原生 EditText、WebView、浏览器地址栏、备忘录、聊天和搜索输入框。
+It saves a screenshot of each environment for review.
+At the end it restores all system settings.
 
-## 5. L0 固定冒烟
+The debug APK has `ImeTestLabActivity`.
+It has these fields:
 
-每个 APK 固定输入：
+- normal, multiline and password
+- number, phone, email and URL
+- search, chat send, Next and Done
+- a field with 10,000 characters
+- a field with preselected text to replace
+The release APK contains and exports no test activity or receiver.
+
+External apps include at least a native EditText, a WebView, a browser address bar, a notes app, a chat input and a search field.
+
+## 5. L0 fixed smoke test
+
+For each APK, type these inputs:
 
 ```text
 nihao
@@ -107,126 +137,222 @@ OpenIME
 ，。！？@#/
 ```
 
-随后验证：`你好` 候选、拼音九键 `64426→你好`、删除一个拼音、提交后删除一个汉字、
-上滑清空取消/确认、Emoji/符号/剪贴板/常用语可打开，以及长按空格语音上滑取消。
-脚本未覆盖的真实手势列入同一次运行的人工清单，未勾选时不得标记 L2/L3 发布通过。
+Then check these items:
 
-## 6. 中文 26 键
+- The candidate `你好` appears.
+- Nine-key input `64426` gives `你好`.
+- Delete removes one pinyin letter.
+- After a commit, delete removes one Chinese character.
+- A swipe-up clear can be canceled and can be confirmed.
+- The emoji, symbol, clipboard and quick phrase panels open.
+- A long press on space starts voice, and a swipe up cancels it.
 
-| 类别 | 输入 | 必须可达候选/结果 |
+Add the real gestures that no script covers to the manual checklist of the same run.
+Do not mark L2 or L3 as a release pass while an item is unchecked.
+
+## 6. Chinese 26-key
+
+| Category | Input | Required candidate or result |
 |---|---|---|
-| 全拼 | `nihao` | 你好 |
-| 全拼 | `woxiangchifan` | 我想吃饭 |
-| 全拼 | `jintiantianqibucuo` | 今天天气不错 |
-| 全拼 | `zhonghuarenmingongheguo` | 中华人民共和国 |
-| 全拼 | `changancheng` | 长安城 |
-| 分词 | `xian` | 先，且西安可达 |
-| 分词 | `xi'an` | 西安 |
-| 分词 | `changan` / `chang'an` | 长安相关结果 |
-| 简拼 | `zg` / `bj` / `wms` / `jttq` | 对应词语可达；全拼仍优先 |
-| 混合 | `woxhcs` | 无结果时不吞原始可编辑拼音 |
+| Full pinyin | `nihao` | 你好 |
+| Full pinyin | `woxiangchifan` | 我想吃饭 |
+| Full pinyin | `jintiantianqibucuo` | 今天天气不错 |
+| Full pinyin | `zhonghuarenmingongheguo` | 中华人民共和国 |
+| Full pinyin | `changancheng` | 长安城 |
+| Word split | `xian` | 先, and 西安 is reachable |
+| Word split | `xi'an` | 西安 |
+| Word split | `changan` or `chang'an` | Results for 长安 |
+| Abbreviation | `zg`, `bj`, `wms`, `jttq` | The matching words are reachable. Full pinyin stays first. |
+| Mixed | `woxhcs` | With no result, the editable pinyin stays |
 
-每个按键后预编辑和候选都要更新；不能显示内部数字/序号。拼音光标需要支持中间删除、
-插入、移动到开头继续编辑，长拼音横向滚动但不能改变键盘高度。
+After each key, the preedit and the candidates must update. They must never show internal digits or numbers.
+The pinyin cursor must allow delete and insert in the middle and a move to the start.
+Long pinyin scrolls horizontally and must not change the keyboard height.
 
-长文本分别以慢速、正常、快速输入 10、20、50 字以上，并覆盖中途选词、删除修正、
-应用切换。要求 0 丢键、0 重复、0 乱序，已选文字与剩余 composition 一致。
+Type long text at slow, normal and fast speed, with 10, 20 and more than 50 characters.
+Include a selection in the middle, delete corrections and app switches.
+The requirement is 0 lost keys, 0 repeated keys and 0 reordered keys.
+The committed text must match the remaining composition.
 
-## 7. 拼音九键（P0）
+## 7. Nine-key pinyin (P0)
 
-- 只提供拼音九键，不提供英文九键，不显示独立 `0` 键，空格居中。
-- 单击九键只更新拼音路径和候选，不能直接向正文提交数字；数字仅可长按输入。
-- 固定序列：`64426→你好`、`94664486→中国`、`9694264244326→我想吃饭`、
-  `9426→先/西安`、`94 + 分词 + 26→西安`。
-- 删除优先处理九键 composition；选词后清空输入法状态。
-- 对 10、20、50 次快速点击分别执行正常、快速、极快节奏，点击计数完全一致，震动不堆积。
+- Only the pinyin nine-key exists. There is no English nine-key and no separate `0` key. The space key is centered.
+- A tap on a nine-key only updates the pinyin path and the candidates. It never commits a digit to the text. Only a long press enters a digit.
+- Fixed sequences:
+  - `64426` → 你好
+  - `94664486` → 中国
+  - `9694264244326` → 我想吃饭
+  - `9426` → 先 or 西安
+  - `94` + split key + `26` → 西安
+- Delete removes the nine-key composition first. After a selection, the input method state is empty.
+- Do 10, 20 and 50 fast taps at normal, fast and very fast speed. The tap count must match exactly, and vibrations must not pile up.
 
-## 8. 候选、删除和清空
+## 8. Candidates, delete and clear
 
-候选栏覆盖 0、1、3～5、超过一屏、超长、中英文混合及快速更新状态。验证第一/中间/
-最后项点击、横向滑动、展开、纵向滚动、部分选词和用户词频提升。最后一项不得拉伸铺满。
+The candidate bar must work with 0, 1, 3 to 5, more than one screen, very long, mixed Chinese and English, and fast updating states.
+Check these actions:
 
-删除顺序固定为：composition → 候选状态 → 目标编辑器文本。Emoji 必须按完整字素删除，
-长按松手立即停止，空状态继续删除不能崩溃。
+- a tap on the first item, a middle item and the last item
+- horizontal scroll, expand and vertical scroll
+- partial selection
+- the frequency boost of user words
+The last item must not stretch to fill the row.
 
-上滑清空必须满足：上滑 ≥ 32dp 才进入（未到位是深色「上滑清空」提示，进入后变红色「松手清空」）；
-进入时轻反馈；滑回/侧滑取消；松手才执行一次；清空后正文、拼音、候选一致，不出现撤回提示或「已清空 · 撤销」。
-清空必须在没有「全选」也没有完整 ExtractedText 的输入框（自绘 / Compose / Web，可用调试
-`CustomEditorTestActivity` 复现）里同样生效。
+The delete order is fixed: composition, then candidate state, then text in the target editor.
+Emoji must delete as complete grapheme clusters.
+A long press stops at once on release.
+Delete on an empty state must not crash.
 
-## 9. 空格、语音、气泡和震动
+Swipe-up clear must meet these rules:
 
-唯一语音入口是长按空格约 150ms。短按只输入空格或提交首选。长按过程中立即录音并显示
-状态、波形和实时文本；松手停止并上屏；上滑进入取消，松手丢弃。
+- It starts only at 32 dp or more of upward move.
+  Before that, a dark bubble says 上滑清空 ("swipe up to clear"). After that, a red bubble says 松手清空 ("release to clear").
+- It gives light feedback on start.
+- A move back or sideways cancels it.
+- It runs once on release.
+- After the clear, the text, the pinyin and the candidates agree. No undo bar and no "cleared · undo" text appears.
+- It must work in fields that have no select-all and no full `ExtractedText` (custom-drawn, Compose and web).
+  Use the debug `CustomEditorTestActivity` to reproduce them.
 
-固定语料包含中文问句、提醒句、英文句、中英混合、连续 30 秒、环境噪音、静音和口述标点。
-离线必须可用，权限拒绝可恢复，密码框可用语音，但只在结束时一次性上屏最终结果（不显示中间结果、不进入热词与纠错学习），不保留无必要 PCM/临时文本。
+## 9. Space, voice, bubbles and haptics
 
-按键气泡必须锚定当前键，宽约 1～1.2 倍键宽、高约 52dp，边缘自动内收。震动在按下
-瞬间仅触发一次，默认轻，尊重系统触觉开关，快速打字不形成沉重连续震动。
+The only voice entry point is a long press on space of about 150 ms.
+A short press types a space or commits the first candidate.
+During a long press, recording starts at once and the status, the waveform and the live text appear.
+Release stops and commits. A swipe up arms the cancel, and a release discards the audio.
 
-## 10. 模式、浮动键盘和面板
+The fixed test phrases include these items:
 
-连续切换 50 次：26 键 → 拼音九键 → 数字 → 符号 → Emoji → 工具 → 26 键。动画期间
-可返回，不闪白/黑屏/旧布局，键盘总高度稳定。工具页有键盘切换入口，不保留重复工具入口
-和“游戏键盘”旧名称。
+- a Chinese question and a reminder sentence
+- an English sentence and mixed Chinese and English
+- 30 seconds of continuous speech
+- background noise and silence
+- spoken punctuation
+Voice must work offline.
+A denied permission must be recoverable.
+Voice works in password fields, but it commits only the final text once.
+It shows no partial text, does no word or correction learning, and keeps no unnecessary PCM or temporary text.
 
-浮动键盘需要在整个可用窗口移动，覆盖五个角和中央；不能拖丢、遮挡系统手势或误触按键；
-横竖屏、应用切换和锁屏后位置可恢复并重新约束。
+The key bubble must anchor to the current key.
+It is about 1 to 1.2 times the key width and about 52 dp high, and it moves inward at the edges.
+The vibration fires once at the moment of the press, is light by default and respects the system haptic switch.
+Fast typing must not create a heavy continuous vibration.
 
-## 11. Emoji、符号、剪贴板和常用语
+## 10. Modes, floating keyboard and panels
 
-- Emoji 使用 Microsoft Fluent Emoji 黄豆脸集合，目标约 160 项；分类必须改变真实数据，
-  最后一行不拉伸，无空方框、重复或图片/Unicode 不一致。
-- 符号覆盖约 300～500 项中文、英文、数学、序号、单位、货币、箭头、括号和特殊符号；
-  分类可滚动并真实筛选。侧边符号支持单击、长按同类、滑动选择/取消、分组、自定义和排序持久化。
-- 剪贴板覆盖短/长/多行/URL/中英/Emoji/重复/空白/敏感内容；点击原样插入，固定、删除、清空、
-  滚动和重启恢复正确，密码场景允许查看并粘贴用户主动放入的剪贴板内容，但不允许复制密码正文出去。
-- 常用语支持分类新增/改名/删除及模板新增/编辑/删除/多行/Emoji；点击当前光标插入，重启和
-  升级后保留，空值、重名和超长内容有明确处理。
+Cycle 50 times: 26-key → nine-key pinyin → digits → symbols → emoji → tools → 26-key.
+You must be able to go back during the animation.
+There must be no white or black flash and no old layout. The total keyboard height must stay stable.
+The tool page has an entry to switch keyboards.
+It has no duplicate tool entry and no old "game keyboard" name.
 
-## 12. 设置、自适应和视觉
+The floating keyboard must move over the whole usable window, including the five corners and the center.
+It must not get lost, block system gestures or cause false key presses.
+Its position must restore and re-constrain after rotation, app switch and lock screen.
 
-逐级打开全部设置。外观只提供浅色、深色、跟随系统；不提供按键皮肤和单手模式；模糊音位于独立页面；
-设置可滚动、无死按钮、返回层级正确并持久化。取消的皮肤、圆角、单手模式和旧主题选项不得残留。
+## 11. Emoji, symbols, clipboard and quick phrases
 
-每个目标宽度固定采集：空键盘、1 字母、长拼音、候选超屏、26 键、九键、数字、符号、
-Emoji、剪贴板、常用语、工具、设置、语音、清空、气泡和浮动键盘。检查溢出、遮挡、重叠、
-裁切、图标中心、行高、中间行异常放大、最后一行拉伸、键盘高度跳变和主题对比度。
+- **Emoji.**
+  Emoji use the Microsoft Fluent Emoji set.
+  A category must change the real data.
+  The last row does not stretch.
+  There is no empty box, no duplicate, and no mismatch between image and Unicode.
+- **Symbols.**
+  Symbols cover Chinese, English, math, serial numbers, units, currency, arrows, brackets and special symbols.
+  Categories scroll and really filter.
+  The side symbols support tap, long press for the same group, swipe to choose or cancel, groups, custom symbols and persistent sorting.
+- **Clipboard.**
+  Test short, long, multiline, URL, mixed Chinese and English, emoji, duplicate, blank and sensitive items.
+  A tap inserts the text unchanged.
+  Pin, delete, clear, scroll and restore after restart must be correct.
+  In a password scene, the user may view and paste the clipboard content that the user put there. openIME must not copy the password text out.
+- **Quick phrases.**
+  Test add, rename and delete of categories, and add, edit and delete of templates, with multiline text and emoji.
+  A tap inserts at the cursor.
+  Phrases stay after a restart and an upgrade.
+  Empty, duplicate and very long values have a clear result.
 
-## 13. 性能、压力、异常和隐私
+## 12. Settings, adaptation and visuals
 
-| 指标 | 目标 |
+Open all settings level by level.
+Appearance has only light, dark and follow system.
+There are no key skins and no one-hand mode.
+Fuzzy pinyin is on its own page.
+Settings scroll, have no dead button, return to the right level and persist.
+The removed skin, corner radius, one-hand mode and old theme options must not remain.
+
+At each target width, capture these screens:
+
+- empty keyboard, 1 letter, long pinyin, and candidates beyond one screen
+- 26-key, nine-key and digits
+- symbols, emoji, clipboard and quick phrases
+- tools and settings
+- voice, clear, bubble and floating keyboard
+
+Check each screen for these problems:
+overflow, covering, overlap, cutting, icon centering, row height, an enlarged middle row, a stretched last row, jumps in keyboard height and theme contrast.
+
+## 13. Performance, stress, failures and privacy
+
+| Metric | Target |
 |---|---:|
-| 按下视觉反馈 P95 | ≤ 50ms |
-| 拼音/候选刷新 P95 | ≤ 100ms |
-| 热启动显示键盘 P95 | ≤ 150ms |
-| 页面动画 | 约 120～200ms |
-| 语音录音反馈 | ≤ 200ms |
-| 语音松手到上屏 | 尽量 ≤ 800ms |
-| 快速点击丢失/重复/乱序 | 0 |
-| 崩溃/ANR | 0 |
+| Press visual feedback P95 | ≤ 50 ms |
+| Pinyin and candidate refresh P95 | ≤ 100 ms |
+| Show keyboard on warm start P95 | ≤ 150 ms |
+| Page animation | About 120 to 200 ms |
+| Voice recording feedback | ≤ 200 ms |
+| Voice release to commit | ≤ 800 ms if possible |
+| Lost, repeated or reordered fast taps | 0 |
+| Crashes and ANRs | 0 |
 
-L3 压力至少覆盖 26 键/九键各 1,000 次、删除 30 秒、候选 500 次、模式 200 次、面板滚动
-5 分钟、5,000 字、前后台 100 次和旋转 50 次，并检查 CPU、PSS、发热、模型加载及低内存恢复。
+L3 stress covers at least these items:
 
-异常测试主动制造权限撤销、模型缺失/损坏、进程被杀、空候选/超时、超长剪贴板、锁屏、
-切应用、旋转、切键盘/主题、断网和低存储。失败不能破坏正文或把旧 composition 带到新应用。
+- 1,000 taps each on 26-key and nine-key
+- 30 seconds of delete
+- 500 candidate actions
+- 200 mode switches
+- 5 minutes of panel scrolling
+- 5,000 characters
+- 100 background and foreground switches
+- 50 rotations
 
-隐私门禁：打字和本地语音离线可用；密码不学习、不入日志；崩溃日志不包含用户正文；取消
-语音清理临时状态；剪贴板/常用语只在私有目录；无无关权限；模型有完整性检查且加载失败
-不影响普通打字。
+Check CPU, PSS, heat, model loading and recovery from low memory.
 
-## 14. 发布条件
+Failure tests create these conditions on purpose:
 
-- P0 阻断和 P1 严重问题均为 0。
-- 核心输入用例 100% 通过。
-- 快速按键 0 丢失、0 重复、0 乱序。
-- 所有目标宽度 0 溢出。
-- 连续使用 30 分钟 0 崩溃、0 ANR。
-- L2/L3 的 `manual-checklist.md` 全部完成；未完成项必须标记 `NOT TESTED`，不能写 `PASS`。
-- P2 仅可保留不影响打字的已知问题，并在发布说明中明确记录。
+- a revoked permission
+- a missing or corrupt model
+- a process kill
+- empty candidates or a timeout
+- a very long clipboard
+- lock screen, app switch, rotation, and keyboard or theme switch
+- no network and low storage
 
-核心自动化不得使用 `adb shell input text` 证明键盘正常。允许使用真实触摸/UI 自动化，或通过
-debug-only Receiver 向生产按键处理入口注入语义按键事件；后者仍使用真实 InputMethodService
-和 InputConnection，不得用假输入框替代系统链路。
+A failure must never damage the text or carry an old composition into a new app.
+
+Privacy gate:
+
+- Typing and local voice work offline.
+- Passwords are not learned and not logged.
+- Crash logs do not contain user text.
+- A canceled voice session clears its temporary state.
+- The clipboard and quick phrases are only in the private directory.
+- The app has no unrelated permission.
+- The models have an integrity check, and a failed model load does not affect normal typing.
+
+## 14. Release conditions
+
+- P0 blockers and P1 severe problems are 0.
+- 100% of core input cases pass.
+- Fast taps: 0 lost, 0 repeated, 0 reordered.
+- 0 overflow at all target widths.
+- 30 minutes of continuous use: 0 crashes, 0 ANRs.
+- `manual-checklist.md` of L2 and L3 is complete.
+  Mark an item that you did not run as `NOT TESTED`. Never write `PASS` for it.
+- Keep only P2 problems that do not affect typing, and list them in the release notes.
+
+Do not use `adb shell input text` to prove that the keyboard works.
+You may use real touch or UI automation.
+You may also use the debug-only receiver to inject semantic key events into the production key handler.
+That method still uses the real `InputMethodService` and `InputConnection`.
+Never replace the system path with a fake input field.
