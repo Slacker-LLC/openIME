@@ -198,7 +198,7 @@ try:
             command('clear-swipe'); command('mode:PINYIN_9')
             capture(stem + '-nine-idle', ('key-9:9',))
             command('mode:ENGLISH_26'); capture(stem + '-english26', ('key:q',))
-            for label,target,required in [('工具','tools',('tool:设置',)),('切换键盘','keyboard-select',('keyboard-choice-selected',)),('符号','symbols',('symbol-categories',)),('表情','emoji',('emoji-cell',)),('文本编辑','text-editor',('textedit-cross',)),('剪贴板','clipboard',('clip-card',)),('语音输入','voice',('voice-mic',)),('设置','preferences',('settings-slider:键盘高度',))]:
+            for label,target,required in [('工具','tools',('tool:设置',)),('切换键盘','keyboard-select',('keyboard-choice-selected',)),('符号','symbols',('symbol-categories',)),('表情','emoji',('emoji-cell',)),('文本编辑','text-editor',('textedit-cross',)),('剪贴板','clipboard',('clip-card',)),('语音输入','voice',('voice-mic',)),('设置','preferences',('settings-slider:竖屏键盘高度',))]:
                 if label == '工具':
                     command('mode:PINYIN_9'); tap('更多'); capture(stem + '-' + target, required)
                 else: panel(label,stem + '-' + target,required)
@@ -234,7 +234,7 @@ try:
             ('表情','emoji',('emoji-cell',)),
             ('文本编辑','text-editor',('textedit-cross', 'textedit-action:paste')),
             ('剪贴板','clipboard',('segmented-track',)),
-            ('设置','preferences',('segmented-track-tall', 'settings-slider:键盘高度')),
+            ('设置','preferences',('segmented-track-tall', 'settings-slider:竖屏键盘高度')),
         ]:
             panel(label, stem + '-' + target, required)
         launch()

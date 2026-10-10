@@ -50,6 +50,7 @@ internal data class ArchiveSettings(
     val railSymbols: List<String>? = null,
     /** Keys of the 模糊音 pairs switched on; null in backups made before the switches. */
     val fuzzyRules: List<String>? = null,
+    val landscapeKeyboardHeightPercent: Int = keyboardHeightPercent,
 )
 
 internal data class RimeUserDictionaryArchive(
@@ -190,6 +191,7 @@ internal object UserDataArchiveCodec {
             .put("swipe_up_digits", value.swipeUpDigits)
             .put("preferred_chinese_mode", value.preferredChineseMode)
             .put("keyboard_height_percent", value.keyboardHeightPercent)
+            .put("landscape_keyboard_height_percent", value.landscapeKeyboardHeightPercent)
             .put("floating_width_percent", value.floatingWidthPercent)
             .put("floating_opacity_percent", value.floatingOpacityPercent)
             .put("letter_hints", value.letterHints)
@@ -217,6 +219,10 @@ internal object UserDataArchiveCodec {
             ),
             keyboardHeightPercent =
                 value.optInt("keyboard_height_percent", 100).coerceIn(80, 120),
+            landscapeKeyboardHeightPercent = value.optInt(
+                "landscape_keyboard_height_percent",
+                value.optInt("keyboard_height_percent", 100),
+            ).coerceIn(80, 120),
             floatingWidthPercent =
                 value.optInt("floating_width_percent", 88).coerceIn(72, 96),
             floatingOpacityPercent =
@@ -353,6 +359,8 @@ internal object UserDataRepository {
                     ImeSettingsRepository.loadPreferredChineseMode(context).name,
                 keyboardHeightPercent =
                     ImeSettingsRepository.loadKeyboardHeightPercent(context),
+                landscapeKeyboardHeightPercent =
+                    ImeSettingsRepository.loadKeyboardHeightPercent(context, landscape = true),
                 floatingWidthPercent =
                     ImeSettingsRepository.loadFloatingWidthPercent(context),
                 floatingOpacityPercent =
@@ -447,6 +455,11 @@ internal object UserDataRepository {
         ImeSettingsRepository.saveKeyboardHeightPercent(
             context,
             value.keyboardHeightPercent,
+        )
+        ImeSettingsRepository.saveKeyboardHeightPercent(
+            context,
+            value.landscapeKeyboardHeightPercent,
+            landscape = true,
         )
         ImeSettingsRepository.saveFloatingWidthPercent(
             context,

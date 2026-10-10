@@ -62,7 +62,7 @@ Verification: `HardwareKeyPolicyTest`, `core_regression.sh` cases 040 to 043.
 
 openIME supports these environments:
 
-- landscape (never uses fullscreen extract mode; the default is a floating keyboard, with full width and split halves as options)
+- landscape (never uses fullscreen extract mode; the default keeps the docked keyboard full width, with floating and split layouts as options; keyboard height is adjustable independently from portrait and shared by all three landscape layouts)
 - font scale 130% and 200% (key labels grow to at most 1.3 times, and function key labels shrink to fit)
 - dark theme
 - small and narrow screens

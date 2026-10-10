@@ -300,7 +300,10 @@ open class ImeKeyboardView(
     private var appliedScreenWidthDp = resources.configuration.screenWidthDp
     private var appliedFontScale = resources.configuration.fontScale
     private var appliedDensityDpi = resources.displayMetrics.densityDpi
-    private var keyboardHeightPercent = ImeSettingsRepository.loadKeyboardHeightPercent(context)
+    private var keyboardHeightPercent = ImeSettingsRepository.loadKeyboardHeightPercent(
+        context,
+        landscape = appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE,
+    )
     private var floatingWidthPercent = ImeSettingsRepository.loadFloatingWidthPercent(context)
     private var floatingOpacityPercent = ImeSettingsRepository.loadFloatingOpacityPercent(context)
     private var referenceScale = if (standalonePanel) 1f else ImeReferenceSizing.scale(context)
@@ -748,6 +751,13 @@ open class ImeKeyboardView(
             currentExtraToggle = ::onState,
             currentFuzzy = { fuzzyEnabled },
             currentKeyboardHeightPercent = { keyboardHeightPercent },
+            currentKeyboardHeightLabel = {
+                if (appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) {
+                    "横屏键盘高度"
+                } else {
+                    "竖屏键盘高度"
+                }
+            },
             currentFloatingWidthPercent = { floatingWidthPercent },
             currentFloatingOpacityPercent = { floatingOpacityPercent },
             onThemeSelected = ::setTheme,
@@ -994,6 +1004,10 @@ open class ImeKeyboardView(
         appliedOrientation = newConfig.orientation
         appliedFontScale = newConfig.fontScale
         appliedDensityDpi = newConfig.densityDpi
+        keyboardHeightPercent = ImeSettingsRepository.loadKeyboardHeightPercent(
+            context,
+            landscape = appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE,
+        )
         layoutMetrics = buildLayoutMetrics()
         if (!geometryChanged) return
         // The rows under an open panel are stale too (split layout, row heights):
@@ -1790,7 +1804,11 @@ open class ImeKeyboardView(
         val bounded = percent.coerceIn(80, 120)
         if (keyboardHeightPercent == bounded) return
         keyboardHeightPercent = bounded
-        ImeSettingsRepository.saveKeyboardHeightPercent(context, bounded)
+        ImeSettingsRepository.saveKeyboardHeightPercent(
+            context,
+            bounded,
+            landscape = appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE,
+        )
         listener.onKeyboardHeightChanged(bounded)
         renderedMode = null
         layoutMetrics = buildLayoutMetrics()
@@ -1819,7 +1837,10 @@ open class ImeKeyboardView(
         popup: Boolean,
         fuzzy: Boolean,
     ) {
-        val persistedHeight = ImeSettingsRepository.loadKeyboardHeightPercent(context)
+        val persistedHeight = ImeSettingsRepository.loadKeyboardHeightPercent(
+            context,
+            landscape = appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE,
+        )
         val persistedFloatingWidth = ImeSettingsRepository.loadFloatingWidthPercent(context)
         val persistedFloatingOpacity = ImeSettingsRepository.loadFloatingOpacityPercent(context)
         val floatingStyleChanged =
