@@ -67,6 +67,7 @@ internal class SettingsPanelController(
     private val currentExtraToggle: (String) -> Boolean,
     private val currentFuzzy: () -> Boolean,
     private val currentKeyboardHeightPercent: () -> Int,
+    private val currentKeyboardHeightLabel: () -> String,
     private val currentFloatingWidthPercent: () -> Int,
     private val currentFloatingOpacityPercent: () -> Int,
     private val onThemeSelected: (ImeTheme) -> Unit,
@@ -175,7 +176,7 @@ internal class SettingsPanelController(
         content.addSection("外观", first = true)
         content.addCard(
             segmentedRow("外观", R.drawable.ic_pref_appearance),
-            sliderRow("键盘高度", R.drawable.ic_pref_height, 80, 120, currentKeyboardHeightPercent(), onChange = onKeyboardHeightChanged),
+            sliderRow(currentKeyboardHeightLabel(), R.drawable.ic_pref_height, 80, 120, currentKeyboardHeightPercent(), onChange = onKeyboardHeightChanged),
         )
         content.addSection("横屏")
         content.addCard(landscapeLayoutRow(R.drawable.ic_pref_width))
@@ -233,7 +234,7 @@ internal class SettingsPanelController(
         )
         content.addCard(
             segmentedRow("外观", iconRes = 0),
-            sliderRow("键盘高度", 0, 80, 120, currentKeyboardHeightPercent(), onChange = onKeyboardHeightChanged),
+            sliderRow(currentKeyboardHeightLabel(), 0, 80, 120, currentKeyboardHeightPercent(), onChange = onKeyboardHeightChanged),
             sliderRow("震动强度", 0, 10, 100, currentHapticStrengthPercent(), onChange = onHapticStrengthChanged),
             topMarginDp = ImeSpacingTokens.MD_DP,
         )

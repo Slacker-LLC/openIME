@@ -214,7 +214,11 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
         refreshLiveIme()
     }
     override fun onKeyboardHeightChanged(percent: Int) {
-        ImeSettingsRepository.saveKeyboardHeightPercent(this, percent)
+        ImeSettingsRepository.saveKeyboardHeightPercent(
+            this,
+            percent,
+            landscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE,
+        )
         refreshLiveIme()
     }
     override fun onFloatingStyleChanged(widthPercent: Int, opacityPercent: Int) {

@@ -28,6 +28,7 @@ object ImeSettingsRepository {
     private const val KEY_VOICE_PUNCTUATION_AS_SPACE = "voice_punctuation_as_space"
     private const val KEY_PREFERRED_CHINESE_MODE = "preferred_chinese_mode"
     private const val KEY_KEYBOARD_HEIGHT = "keyboard_height_percent"
+    private const val KEY_LANDSCAPE_KEYBOARD_HEIGHT = "landscape_keyboard_height_percent"
     private const val KEY_FLOATING_WIDTH = "floating_width_percent"
     private const val KEY_FLOATING_OPACITY = "floating_opacity_percent"
     private const val KEY_LANDSCAPE_LAYOUT = "landscape_layout"
@@ -54,14 +55,26 @@ object ImeSettingsRepository {
             .edit().putString(KEY_PREFERRED_CHINESE_MODE, mode.name).apply()
     }
 
-    fun loadKeyboardHeightPercent(context: Context): Int =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getInt(KEY_KEYBOARD_HEIGHT, 100)
-            .coerceIn(80, 120)
+    fun loadKeyboardHeightPercent(context: Context, landscape: Boolean = false): Int {
+        val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val stored = if (landscape && preferences.contains(KEY_LANDSCAPE_KEYBOARD_HEIGHT)) {
+            preferences.getInt(KEY_LANDSCAPE_KEYBOARD_HEIGHT, 100)
+        } else {
+            // Existing height preferences seed landscape until a user changes
+            // its independent value, preserving the current appearance on upgrade.
+            preferences.getInt(KEY_KEYBOARD_HEIGHT, 100)
+        }
+        return stored.coerceIn(80, 120)
+    }
 
-    fun saveKeyboardHeightPercent(context: Context, percent: Int) {
+    fun saveKeyboardHeightPercent(context: Context, percent: Int, landscape: Boolean = false) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putInt(KEY_KEYBOARD_HEIGHT, percent.coerceIn(80, 120)).apply()
+            .edit()
+            .putInt(
+                if (landscape) KEY_LANDSCAPE_KEYBOARD_HEIGHT else KEY_KEYBOARD_HEIGHT,
+                percent.coerceIn(80, 120),
+            )
+            .apply()
     }
 
     fun loadSplitMirrored(context: Context): Boolean =

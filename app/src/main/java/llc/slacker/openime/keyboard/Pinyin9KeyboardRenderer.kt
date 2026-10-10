@@ -83,20 +83,13 @@ internal class Pinyin9KeyboardRenderer(
                 toPx(nineGridHeightDp()),
             ),
         )
-        val centerBottom = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-        }
+        val centerBottom = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         val weights = ProductionKeyPolicy.nineKeyBottomRowWeights()
         centerBottom.addView(
-            createKey("123", true, null, ImeTypographyTokens.BODY_SP, onDigits).apply {
-                markSideKey(this)
-            },
+            createKey("123", true, null, ImeTypographyTokens.BODY_SP, onDigits).apply { markSideKey(this) },
             flexKeyParams(weights.side),
         )
-        centerBottom.addView(
-            createSpaceVoiceKey("空格", onSpace),
-            flexKeyParams(weights.space),
-        )
+        centerBottom.addView(createSpaceVoiceKey("空格", onSpace), flexKeyParams(weights.space))
         centerBottom.addView(
             createKey("中/英", true, null, ImeTypographyTokens.BODY_SP, onModeSwitch).apply {
                 tag = "key:mode"
@@ -115,12 +108,8 @@ internal class Pinyin9KeyboardRenderer(
             orientation = LinearLayout.VERTICAL
             tag = "pinyin9-actions"
         }
-        // 删除 · 重输 · 0 · 确定, one key row each: 0 has its own key, as on a
-        // phone keypad, instead of only a swipe-up on 1.
-        side.addView(
-            createBackspaceKey().apply { markSideKey(this) },
-            sideKeyParams(nineBodyHeightDp() / 4),
-        )
+        // Keep the zero key separate from retype and enter, as on the phone keypad.
+        side.addView(createBackspaceKey().apply { markSideKey(this) }, sideKeyParams(nineBodyHeightDp() / 4))
         side.addView(
             createKey("重输", true, null, ImeTypographyTokens.BODY_SP, onRetranslate).apply {
                 tag = "key-retype"
@@ -144,27 +133,25 @@ internal class Pinyin9KeyboardRenderer(
             sideKeyParams(nineBodyHeightDp() / 4),
         )
         if (splitLayout()) {
-            // Landscape split (Sogou's 左右分离): a thumb's worth of nine-key on one side,
-            // a panel of common words on the other, and a mirror key between them.
-            val keys = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            keys.addView(side, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
-            keys.addView(center, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 25f / 7f))
-            keys.addView(left, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
-            val gap = LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = android.view.Gravity.CENTER
-                addView(
-                    createKey("镜像", true, null, ImeTypographyTokens.BODY_SP, onMirror).apply {
-                        tag = "key-mirror"
-                        contentDescription = "镜像，左右互换"
-                        markSideKey(this)
-                    },
-                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(keyRowHeightDp())),
-                )
+            // Keep all Chinese keys in their familiar three-by-three order.
+            // The other hand gets direct numbers and the existing symbol rail.
+            val numbers = buildNumberPad()
+            val numberHand = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                tag = "pinyin9-number-hand"
+                addView(left, adaptiveColumnParams(1f))
+                addView(numbers, adaptiveColumnParams(3f))
             }
-            val halves = if (mirrored()) listOf(wordsPanel() to 4.8f, gap to 1.2f, keys to 5.57f)
-            else listOf(keys to 5.57f, gap to 1.2f, wordsPanel() to 4.8f)
-            halves.forEach { (view, weight) -> container.addView(view, adaptiveColumnParams(weight)) }
+            val chineseHand = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                tag = "pinyin9-chinese-hand"
+                addView(center, adaptiveColumnParams(3f))
+                addView(side, adaptiveColumnParams(1f))
+            }
+            val hands = if (mirrored()) listOf(chineseHand, numberHand) else listOf(numberHand, chineseHand)
+            container.addView(hands[0], adaptiveColumnParams(1f))
+            container.addView(View(context), LinearLayout.LayoutParams(toPx(24), toPx(nineBodyHeightDp())))
+            container.addView(hands[1], adaptiveColumnParams(1f))
         } else {
             container.addView(left, adaptiveColumnParams(1f))
             container.addView(center, adaptiveColumnParams(25f / 7f))
@@ -180,67 +167,11 @@ internal class Pinyin9KeyboardRenderer(
         )
     }
 
-    /** Four rows of five frequent words; a tap types the word. */
-    private fun wordsPanel(): LinearLayout = LinearLayout(context).apply {
-        orientation = LinearLayout.VERTICAL
-        tag = "split-words"
-        WORDS.forEach { rowWords ->
-            addView(
-                LinearLayout(context).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    rowWords.forEach { word ->
-                        addView(
-                            createKey(word, false, null, ImeTypographyTokens.BODY_SP) { onCommitCharacter(word) }.apply {
-                                tag = "key-word:$word"
-                                markWhiteKey(this)
-                            },
-                            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f),
-                        )
-                    }
-                },
-                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f),
-            )
-        }
-    }
-
     private fun buildNineGrid(): LinearLayout {
         val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        NINE_KEYS.forEachIndexed { rowIndex, rowDefinition ->
+        NINE_KEYS.forEach { rowDefinition ->
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            rowDefinition.forEach { (digit, subLabel) ->
-                val segmentation = digit == "1"
-                val key = createKey(
-                    if (segmentation) "分词" else subLabel,
-                    false,
-                    digit,
-                    if (segmentation) ImeTypographyTokens.BODY_SP else ImeTypographyTokens.CANDIDATE_SP,
-                ) {
-                    if (segmentation) onPinyinSegment() else onNineKey(digit)
-                }.apply {
-                    tag = "key-9:$digit"
-                    contentDescription = if (segmentation) "1，分词" else digit
-                    markWhiteKey(this)
-                    if (segmentation) {
-                        setOnLongClickListener {
-                            onShowChoicePopup(this, listOf("@", "#", "/"))
-                            true
-                        }
-                    } else {
-                        val rows = NineKeyLongPressPolicy.choiceRows(digit)
-                        if (rows.isNotEmpty()) {
-                            setOnLongClickListener {
-                                onShowChoiceRows(this, rows)
-                                true
-                            }
-                        }
-                    }
-                    // Swipe up types the digit without waiting for a long press.
-                    onSwipeUp = { onCommitCharacter(digit) }
-                    swipeUpEnabled = this@Pinyin9KeyboardRenderer.swipeUpEnabled
-                }
-                onDigitKeyCreated(digit, key)
-                row.addView(key, flexKeyParams())
-            }
+            rowDefinition.forEach { (digit, _) -> row.addView(createNineDigitKey(digit), flexKeyParams()) }
             grid.addView(
                 row,
                 LinearLayout.LayoutParams(
@@ -250,6 +181,79 @@ internal class Pinyin9KeyboardRenderer(
             )
         }
         return grid
+    }
+
+    private fun buildNumberPad(): LinearLayout = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        (1..9).chunked(3).forEach { digits ->
+            addView(
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    digits.forEach { digit ->
+                        addView(createKey(digit.toString(), false, null, ImeTypographyTokens.KEY_LETTER_SP) {
+                            onCommitCharacter(digit.toString())
+                        }.apply {
+                            tag = "key-split-number:$digit"
+                            contentDescription = "数字 $digit"
+                            markWhiteKey(this)
+                        }, flexKeyParams())
+                    }
+                },
+                sideKeyParams(keyRowHeightDp()),
+            )
+        }
+        addView(
+            LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(createKey("，", true, null, ImeTypographyTokens.BODY_SP) {
+                    onCommitCharacter("，")
+                }.apply { tag = "key-punctuation"; markSideKey(this) }, flexKeyParams())
+                addView(createKey("0", false, null, ImeTypographyTokens.KEY_LETTER_SP) {
+                    onCommitCharacter("0")
+                }.apply { tag = "key-split-number:0"; markWhiteKey(this) }, flexKeyParams())
+                addView(createKey("互换", true, null, ImeTypographyTokens.BODY_SP, onMirror).apply {
+                    tag = "key-mirror"
+                    contentDescription = "左右互换"
+                    markSideKey(this)
+                }, flexKeyParams())
+            },
+            sideKeyParams(keyRowHeightDp()),
+        )
+    }
+
+    private fun createNineDigitKey(digit: String): ImeKeyView {
+        val segmentation = digit == "1"
+        val labels = NINE_KEYS.flatten().first { it.first == digit }.second
+        val key = createKey(
+            if (segmentation) "分词" else labels,
+            false,
+            digit,
+            if (segmentation) ImeTypographyTokens.BODY_SP else ImeTypographyTokens.CANDIDATE_SP,
+        ) {
+            if (segmentation) onPinyinSegment() else onNineKey(digit)
+        }.apply {
+            tag = "key-9:$digit"
+            contentDescription = if (segmentation) "1，分词" else digit
+            markWhiteKey(this)
+            if (segmentation) {
+                setOnLongClickListener {
+                    onShowChoicePopup(this, listOf("@", "#", "/"))
+                    true
+                }
+            } else {
+                val rows = NineKeyLongPressPolicy.choiceRows(digit)
+                if (rows.isNotEmpty()) {
+                    setOnLongClickListener {
+                        onShowChoiceRows(this, rows)
+                        true
+                    }
+                }
+            }
+            onSwipeUp = { onCommitCharacter(digit) }
+            swipeUpEnabled = this@Pinyin9KeyboardRenderer.swipeUpEnabled
+        }
+        onDigitKeyCreated(digit, key)
+        return key
     }
 
     private fun flexKeyParams(weight: Float = 1f) =
@@ -273,12 +277,6 @@ internal class Pinyin9KeyboardRenderer(
         )
 
     private companion object {
-        val WORDS = listOf(
-            listOf("的", "了", "我", "你", "是"),
-            listOf("吗", "好", "啊", "有", "吧"),
-            listOf("就", "在", "去", "没", "要"),
-            listOf("不", "都", "没有", "说", "这个"),
-        )
         val NINE_KEYS = listOf(
             listOf("1" to "@#", "2" to "ABC", "3" to "DEF"),
             listOf("4" to "GHI", "5" to "JKL", "6" to "MNO"),

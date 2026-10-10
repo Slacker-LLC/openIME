@@ -47,7 +47,7 @@ internal object ImeGeometryTokens {
     const val KEY_POPUP_MIN_WIDTH_DP = 40
     const val KEY_POPUP_WIDTH_SCALE = 1.08f
     const val KEY_POPUP_VERTICAL_GAP_DP = 8
-    const val LANDSCAPE_KEY_ROW_HEIGHT_DP = 40
+    const val LANDSCAPE_KEY_ROW_HEIGHT_DP = 48
     // The toolbar itself is compact; the top zone still reserves the larger
     // composed height so typing never moves the keyboard window.
     const val TOOLBAR_HEIGHT_DP = TOUCH_TARGET_DP
@@ -57,13 +57,13 @@ internal object ImeGeometryTokens {
     const val STEP_MARK_SIZE_DP = 32
     const val HERO_MARK_SIZE_DP = 72
     const val COMPOSED_TOP_ZONE_HEIGHT_DP = 60
-    // Landscape: one strip a little taller than a key row, pinyin and candidates side by side.
+    // Landscape: keep the same composing/candidate hierarchy, compact enough to leave room for the editor.
     // Space under the bottom row (the keys sit 7dp higher than they used to).
     const val KEYBOARD_TOP_PAD_DP = 4
     const val KEYBOARD_BOTTOM_PAD_DP = 19
     // Landscape keys are short, so the gap under them shrinks (HeliBoard and fcitx5 use none).
     const val LANDSCAPE_BOTTOM_PAD_DP = 6
-    const val LANDSCAPE_TOP_ZONE_HEIGHT_DP = 48
+    const val LANDSCAPE_TOP_ZONE_HEIGHT_DP = 54
 }
 
 /** Shared spacing scale for every non-keyboard layout. */

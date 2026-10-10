@@ -449,7 +449,7 @@ class AuditInteractionInstrumentedTest {
         harness.awaitMain {
             keyboard.showPanel(Panel.SETTINGS)
             val settings = keyboard.findViewWithTag<ViewGroup>("settings-panel")
-            listOf("键盘高度", "浮动宽度", "浮动透明度").forEach { label ->
+            listOf("竖屏键盘高度", "浮动宽度", "浮动透明度").forEach { label ->
                 val slider = settings.findViewWithTag<View>("settings-slider:$label")
                 assertTrue("$label must keep a 48dp touch target", slider.minimumHeight >= keyboard.resources.displayMetrics.density * 48f)
                 assertTrue("$label must expose its current value", slider.contentDescription.toString().contains(label))

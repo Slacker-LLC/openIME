@@ -335,7 +335,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
 
     /**
-     * Landscape layout setting: floating (default), full width, or split halves.
+     * Landscape layout setting: full width (default), floating, or split halves.
      * Only the transitions the setting itself caused are undone: a keyboard the
      * user floated from the tools page stays floating in both orientations.
      */
