@@ -154,6 +154,8 @@ open class ImeKeyboardView(
     /** Visual class marker for the gray side/action column in nine-key layouts. */
     private val MARK_SIDE_KEY = 0x1F000002
     private val MARK_FUNCTION_KEY = 0x1F000003
+    /** Visual class marker for a key the reference draws on its theme colour. */
+    private val MARK_ACCENT_KEY = 0x1F000004
 
     companion object {
         /** Scale differences below this are rounding noise, not a new geometry. */
@@ -563,6 +565,9 @@ open class ImeKeyboardView(
             isWhiteKey = { key ->
                 key.getTag(MARK_WHITE_KEY) == true
             },
+            isAccentKey = { key ->
+                key.getTag(MARK_ACCENT_KEY) == true
+            },
         )
     }
     private val keyPopupController = KeyPopupController(
@@ -689,6 +694,7 @@ open class ImeKeyboardView(
             },
             markSideKey = { key -> key.setTag(MARK_SIDE_KEY, true) },
             markWhiteKey = { key -> key.setTag(MARK_WHITE_KEY, true) },
+            markAccentKey = { key -> key.setTag(MARK_ACCENT_KEY, true) },
             onCommitCharacter = ::commitKeyboardCharacter,
             onFeedback = ::feedback,
             onShowSymbols = { showPanel(Panel.SYMBOLS) },

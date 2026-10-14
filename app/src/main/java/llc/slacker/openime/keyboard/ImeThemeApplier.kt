@@ -36,6 +36,7 @@ internal class ImeThemeApplier(
     private val isSideKey: (ImeKeyView) -> Boolean,
     private val isFunctionKey: (ImeKeyView) -> Boolean,
     private val isWhiteKey: (ImeKeyView) -> Boolean,
+    private val isAccentKey: (ImeKeyView) -> Boolean,
 ) {
     fun apply(view: View, tokens: ImeTheme.Tokens) {
         when (view) {
@@ -93,7 +94,13 @@ internal class ImeThemeApplier(
             isWhiteKey(view) ||
                 (!function && DIGITS_ONLY.matches(label))
             )
+        // A key the reference draws on its theme colour: the send key once the
+        // field asks for an action (`cls_button_enter`'s `actionbkcolor`,
+        // style.xml:810-815) and the number page's return key
+        // (`cls_button_back_26key` over `cls_button_back`, style.xml:857-858,
+        // :838-843, whose `cls_bk_theme_circle` is the theme colour, :282-286).
         val primary = view.tag == "tab-active" ||
+            isAccentKey(view) ||
             (view.tag == "key-enter" && view.currentMainText != "↵")
 
         val color = when {

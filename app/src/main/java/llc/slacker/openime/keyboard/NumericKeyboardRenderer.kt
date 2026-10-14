@@ -38,6 +38,7 @@ internal class NumericKeyboardRenderer(
     private val createSpaceVoiceKey: (label: String, onTap: () -> Unit) -> ImeKeyView,
     private val markSideKey: (ImeKeyView) -> Unit,
     private val markWhiteKey: (ImeKeyView) -> Unit,
+    private val markAccentKey: (ImeKeyView) -> Unit,
     private val onCommitCharacter: (String) -> Unit,
     private val onFeedback: () -> Unit,
     private val onShowSymbols: () -> Unit,
@@ -87,10 +88,15 @@ internal class NumericKeyboardRenderer(
                 toPx(keyRowHeightDp() * NumberPadPolicy.RAIL_ROWS),
             ),
         )
+        // The reference draws this key on its theme colour, not on gray
+        // (`cls_button_back_26key` over `cls_button_back`, style.xml:857-858,
+        // :838-843, and `cls_bk_theme_circle` there is `theme_color`,
+        // :282-286). Its label is our own text: the skin's key carries a glyph
+        // from its icon font (a private-use glyph), which this build has no face for.
         left.addView(
             createKey("返回", true, ImeTypographyTokens.BODY_SP, onReturnToText).apply {
                 tag = "key:mode"
-                markSideKey(this)
+                markAccentKey(this)
             },
             columnCellParams(keyRowHeightDp() * NumberPadPolicy.BACK_ROWS),
         )
