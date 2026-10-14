@@ -518,7 +518,7 @@ internal class CandidateBarController(
         val palette = tokens()
         word.setTextColor(
             if (index == 0) {
-                ImeSurfacePolicy.selectedText(palette)
+                ImeSurfacePolicy.firstCandidateText(palette)
             } else {
                 palette.candidateText
             },

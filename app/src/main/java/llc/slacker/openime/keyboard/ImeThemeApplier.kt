@@ -726,9 +726,11 @@ internal class ImeThemeApplier(
                 view.typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
             }
             tag == "segment-option-tall" -> { view.setTextColor(t.keySecondaryText); view.background = null }
-            // The tile's name takes `keybutton_text_3` (50% black, or 50% white
-            // in the dark skin, values/colors.xml:15) and white on the chosen
-            // tile (`setting_button_selectedtext`).
+            // The tile's name is the reference's dimmed one — `keybutton_text_3`,
+            // 50% black or 50% white (`values/colors.xml:15`,
+            // `values/dark_colors.xml:14`) — drawn in our palette's own secondary
+            // role, which keeps the 4.5:1 our text roles are held to, and white
+            // on the chosen tile (`setting_button_selectedtext`).
             tag == "tool-label" -> view.setTextColor(t.keySecondaryText)
             tag == "tool-label-selected" -> view.setTextColor(ImeDrawableFactory.contrastText(t.primary))
             tag == "fuzzy-rules" -> view.background = ImeDrawableFactory.rounded(t.toolCardBackground, toPx(16))

@@ -574,6 +574,16 @@ internal object ImeSurfacePolicy {
         )
 
     /**
+     * The first candidate's own colour. The light skin gives it an accent blue
+     * (`first_cand_text_color`, `values/colors.xml:4`), but the dark skin's
+     * entry for the same name is white at 95% — exactly `canditem_text`
+     * (`values/dark_colors.xml:4`, `:75`) — so there the first candidate is set
+     * apart by its weight alone, not by a tint.
+     */
+    fun firstCandidateText(tokens: ImeTheme.Tokens): Int =
+        if (isDark(tokens)) tokens.candidateText else selectedText(tokens)
+
+    /**
      * The line between the composing strip and the keys. The reference does not
      * stroke it with a key colour: `cls_candidate_split` is filled with
      * `@color/canditem_split` (`style.xml:504-506`), which is black at 12% on the
