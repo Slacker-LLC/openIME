@@ -158,7 +158,7 @@ internal class NumericKeyboardRenderer(
 
     /** A digit cell: the reference draws every digit on a white key (`cls_keyboard_number9_button`). */
     private fun digitKey(digit: String, value: String = digit, tag: String = "key:$digit"): ImeKeyView =
-        createKey(digit, false, ImeTypographyTokens.SYMBOL_SP) { onCommitCharacter(value) }.apply {
+        createKey(digit, false, ImeTypographyTokens.KEY_NUMBER_SP) { onCommitCharacter(value) }.apply {
             this.tag = tag
             markWhiteKey(this)
         }

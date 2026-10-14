@@ -139,11 +139,12 @@ internal class StrokeKeyboardRenderer(
     /** One cell of the grid: a stroke, 通配, or a mark the cell commits itself. */
     private fun strokeCellKey(cell: StrokeGridPolicy.Cell): ImeKeyView {
         val stroke = cell.stroke
+        val textSize = strokeTextSize(cell)
         val key = if (stroke != null) {
-            createKey(cell.label, false, cell.corner, ImeTypographyTokens.SYMBOL_SP) { onStroke(stroke) }
+            createKey(cell.label, false, cell.corner, textSize) { onStroke(stroke) }
         } else {
             val commit = cell.commit.orEmpty()
-            createKey(cell.label, false, cell.corner, ImeTypographyTokens.SYMBOL_SP) { onCommitCharacter(commit) }
+            createKey(cell.label, false, cell.corner, textSize) { onCommitCharacter(commit) }
         }
         return key.apply {
             tag = cell.tag
@@ -168,6 +169,16 @@ internal class StrokeKeyboardRenderer(
         }
     }
 
+    /** The reference's 笔画 faces: one per kind of cell (`style.xml:9-13`). */
+    private fun strokeTextSize(cell: StrokeGridPolicy.Cell): Float = when {
+        // `key_stroke_wildcard`, 44 units — the same 44 its function keys use.
+        cell.label == WILDCARD_LABEL -> ImeTypographyTokens.BODY_SP
+        // `key_stroke_at_symbol` / `key_stroke_punctuation`, both 54.
+        cell.commit != null -> STROKE_MARK_SP
+        // The five strokes themselves: `key_stroke`, 60 units.
+        else -> STROKE_SP
+    }
+
     private fun keyParams(heightDp: Int, weight: Float = 1f) =
         LinearLayout.LayoutParams(0, toPx(heightDp), weight)
 
@@ -180,5 +191,11 @@ internal class StrokeKeyboardRenderer(
     private companion object {
         const val WILDCARD_LABEL = "通配"
         const val AT_SYMBOL_TAG = "key-stroke:at"
+
+        /** `key_stroke`, 60 units over the reference's step of 3. */
+        const val STROKE_SP = 20f
+
+        /** `key_stroke_at_symbol` and `key_stroke_punctuation`, both 54 units. */
+        const val STROKE_MARK_SP = 18f
     }
 }

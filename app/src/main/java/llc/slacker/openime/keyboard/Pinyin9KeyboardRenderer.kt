@@ -183,7 +183,7 @@ internal class Pinyin9KeyboardRenderer(
                 LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
                     digits.forEach { digit ->
-                        addView(createKey(digit.toString(), false, null, ImeTypographyTokens.KEY_LETTER_SP) {
+                        addView(createKey(digit.toString(), false, null, ImeTypographyTokens.KEY_NUMBER_SP) {
                             onCommitCharacter(digit.toString())
                         }.apply {
                             tag = "key-split-number:$digit"
@@ -201,7 +201,7 @@ internal class Pinyin9KeyboardRenderer(
                 addView(createKey("，", true, null, ImeTypographyTokens.BODY_SP) {
                     onCommitCharacter("，")
                 }.apply { tag = "key-punctuation"; markSideKey(this) }, flexKeyParams())
-                addView(createKey("0", false, null, ImeTypographyTokens.KEY_LETTER_SP) {
+                addView(createKey("0", false, null, ImeTypographyTokens.KEY_NUMBER_SP) {
                     onCommitCharacter("0")
                 }.apply { tag = "key-split-number:0"; markWhiteKey(this) }, flexKeyParams())
                 addView(createKey("互换", true, null, ImeTypographyTokens.BODY_SP, onMirror).apply {
@@ -225,7 +225,10 @@ internal class Pinyin9KeyboardRenderer(
             labels,
             false,
             digit,
-            ImeTypographyTokens.CANDIDATE_SP,
+            // The reference gives the `@#` key its own, larger face
+            // (`key_letter9_at_symbol`, 54 units) and the letters
+            // `key_letter9`, 48 (`input_kbd_pinyin9.xml:23-28`, 32).
+            if (atSymbol) NINE_KEY_SYMBOL_SP else ImeTypographyTokens.NINE_KEY_LETTER_SP,
         ) {
             onNineKey(digit)
         }.apply {
@@ -274,6 +277,9 @@ internal class Pinyin9KeyboardRenderer(
         )
 
     private companion object {
+        /** The `@#` key's own face: `key_letter9_at_symbol`, 54 units. */
+        const val NINE_KEY_SYMBOL_SP = 18f
+
         val NINE_KEYS = listOf(
             listOf("1" to "@#", "2" to "ABC", "3" to "DEF"),
             listOf("4" to "GHI", "5" to "JKL", "6" to "MNO"),

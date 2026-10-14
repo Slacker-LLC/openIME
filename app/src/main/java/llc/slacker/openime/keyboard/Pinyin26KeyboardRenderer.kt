@@ -249,7 +249,14 @@ internal class Pinyin26KeyboardRenderer(
         }
         // The corner hint is a digit or symbol; swipe up or long press types it.
         val secondary = if (hintsEnabled()) LetterHintPolicy.hint(character, english) else null
-        return createKey(main, false, secondary, ImeTypographyTokens.KEY_LETTER_COMPACT_SP, 0) {
+        // English wears its own face while it is lowercase; the shift turns the
+        // key into the pinyin one, as the reference's two fonts do.
+        val textSize = if (english && shiftState == ShiftState.LOWERCASE) {
+            ImeTypographyTokens.KEY_LETTER_ENGLISH_SP
+        } else {
+            ImeTypographyTokens.KEY_LETTER_COMPACT_SP
+        }
+        return createKey(main, false, secondary, textSize, 0) {
             onLetter(base)
         }.apply {
             tag = "key:$base"

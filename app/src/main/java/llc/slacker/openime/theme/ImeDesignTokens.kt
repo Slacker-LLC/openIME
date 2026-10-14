@@ -93,6 +93,12 @@ internal object ImeGeometryTokens {
      * (`style.xml:1128-1133`).
      */
     const val KEY_POPUP_RADIUS_DP = 8
+    /**
+     * The tip that shows the pressed key enlarged is a class of its own, and
+     * rounder: `cls_touch_tip_button` rounds at 12 with its own small shadow
+     * (`style.xml:1168-1173`).
+     */
+    const val TOUCH_TIP_RADIUS_DP = 12
     const val KEY_POPUP_MIN_WIDTH_DP = 40
     const val KEY_POPUP_WIDTH_SCALE = 1.08f
     const val KEY_POPUP_VERTICAL_GAP_DP = 8
@@ -147,12 +153,32 @@ internal object ImeTypographyTokens {
 
     /** The open Pinyin string above the candidates (`comp_font` size 40). */
     const val COMPOSITION_SP = 13f
+
+    /** The pressed key shown enlarged: `key_touch_tip`, 87 units (`style.xml:129`). */
+    const val TOUCH_TIP_SP = 29f
+
+    /** One choice inside the long-press bubble: `fi_fusiyin_bubble_button`, 60 units. */
+    const val POPUP_ITEM_SP = 20f
     const val TITLE_SP = 16f
     const val CANDIDATE_SP = 18f
     const val GLYPH_SP = 20f
     const val KEY_LETTER_SP = 21f
     /** Letters on the 26-key surface, one step below [KEY_LETTER_SP]. */
     const val KEY_LETTER_COMPACT_SP = 19f
+
+    /**
+     * English letters on the 26-key surface keep a face of their own: the
+     * reference sets `key_letter_english` (60 units) on the lowercase rows and
+     * the pinyin face `key_letter` (57) on the shifted ones
+     * (`input_kbd_english26.xml:51`).
+     */
+    const val KEY_LETTER_ENGLISH_SP = 20f
+
+    /** Nine-key letters: `key_letter9`, 48 units over the reference's step of 3. */
+    const val NINE_KEY_LETTER_SP = 16f
+
+    /** Every digit the reference draws, nine-key or numeric: `key_number9`, 54 units. */
+    const val KEY_NUMBER_SP = 18f
     const val SYMBOL_SP = 24f
     const val DISPLAY_SP = 28f
 

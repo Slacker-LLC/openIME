@@ -171,15 +171,18 @@ internal class KeyPopupController(
         val popupHeight = dp(ImeGeometryTokens.KEY_POPUP_HEIGHT_DP)
         previewPopup.apply {
             this.text = text
+            // The reference's tip is one size (`key_touch_tip`); a whole
+            // function-key label in the same box would run out of the tip, so
+            // only the character keys take it.
             textSize = if (text.length > 1) {
                 ImeTypographyTokens.BODY_SP
             } else {
-                ImeTypographyTokens.DISPLAY_SP
+                ImeTypographyTokens.TOUCH_TIP_SP
             }
             setTextColor(t.keyText)
             background = ImeDrawableFactory.rounded(
                 ImeSurfacePolicy.keyPopupBackground(t),
-                dp(ImeGeometryTokens.KEY_POPUP_RADIUS_DP),
+                dp(ImeGeometryTokens.TOUCH_TIP_RADIUS_DP),
             )
         }
 
@@ -236,7 +239,7 @@ internal class KeyPopupController(
                     TextView(host.context).apply {
                         choiceCells += this to symbol
                         text = symbol
-                        textSize = ImeTypographyTokens.BODY_SP
+                        textSize = ImeTypographyTokens.POPUP_ITEM_SP
                         includeFontPadding = false
                         gravity = Gravity.CENTER
                         setTextColor(t.keyText)
@@ -248,7 +251,10 @@ internal class KeyPopupController(
                         isClickable = true
                         isFocusable = true
                         contentDescription = "输入$symbol"
-                        setPadding(dp(11), 0, dp(11), 0)
+                        // One character per cell (the reference's bubble lists a
+                        // key's variants): the padding leaves room for the
+                        // 60-unit face inside the 40dp cell.
+                        setPadding(dp(9), 0, dp(9), 0)
                         setOnClickListener {
                             hide()
                             feedback()
