@@ -167,6 +167,16 @@ internal class ImeThemeApplier(
                     toPx(ImeGeometryTokens.KEY_RADIUS_DP),
                 )
             }
+            // A symbol-history cell carries the candidate cell's own pressed
+            // fill, rounded to the 6 units the reference gives it
+            // (`cls_history_symbollist_button`, style.xml:1061-1070).
+            "recent-symbol-cell" -> {
+                view.background = statefulRounded(
+                    Color.TRANSPARENT,
+                    ImeSurfacePolicy.pressedSurface(t.candidateBackground, t),
+                    toPx(RecentSymbolStripPolicy.CELL_RADIUS_DP),
+                )
+            }
             // Rows sit inside a card that clips to its corners, so the pressed
             // fill is square and the card supplies the rounding.
             "setting-row" -> if (view.isClickable) {
@@ -415,6 +425,10 @@ internal class ImeThemeApplier(
                 view.setTextColor(t.keyText)
 
             tag == "candidate-word" ->
+                view.setTextColor(t.candidateText)
+
+            // 历史符号列表按钮 takes the candidate text colour (style.xml:1063).
+            tag == "recent-symbol-label" ->
                 view.setTextColor(t.candidateText)
 
             tag == "candidate-filter-chip" -> {
@@ -724,7 +738,8 @@ internal class ImeThemeApplier(
             "row-hairline" -> view.setBackgroundColor(ImeSurfacePolicy.hairline(t))
             // `cls_candidate_split` is filled with @color/canditem_split
             // (style.xml:504-506), the colour the candidate row's hairlines use.
-            "candidate-strip-split" -> view.setBackgroundColor(ImeSurfacePolicy.divider(t))
+            "candidate-strip-split", "recent-symbol-split" ->
+                view.setBackgroundColor(ImeSurfacePolicy.divider(t))
         }
     }
 

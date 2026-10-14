@@ -114,10 +114,24 @@ internal class ImeTopZone(
     private lateinit var autofillScroll: HorizontalScrollView
     private val autofillRow = LinearLayout(context)
 
-    /** What the toolbar row shows; icons, autofill chips and associations are exclusive. */
-    private enum class ToolbarMode { NORMAL, AUTOFILL, ASSOCIATION }
+    /**
+     * The symbol history the symbol board shows in the toolbar
+     * (`input_toolbar_quickinput.xml:4-18`, see [RecentSymbolStripPolicy]).
+     */
+    private val recentSymbolStrip = LinearLayout(context)
+    private val recentSymbolRow = LinearLayout(context)
+    private lateinit var recentSymbolClose: ImageView
+    private var recentSymbolsShown = false
+
+    /**
+     * What the toolbar row shows; icons, autofill chips, associations and the
+     * symbol history are exclusive. The history takes the row while the symbol
+     * board is open, as the reference's own symbol toolbar does.
+     */
+    private enum class ToolbarMode { NORMAL, AUTOFILL, ASSOCIATION, RECENT_SYMBOLS }
 
     private fun idleToolbarMode(): ToolbarMode = when {
+        recentSymbolsShown -> ToolbarMode.RECENT_SYMBOLS
         associationsShown -> ToolbarMode.ASSOCIATION
         autofillShown -> ToolbarMode.AUTOFILL
         else -> ToolbarMode.NORMAL
@@ -258,6 +272,7 @@ internal class ImeTopZone(
         // of the strip empty: `btn_hide` stays its own button on the right
         // (`input_toolbar_idle.xml:41-43`, `cls_toolbar_idle_button` width 40,
         // `style.xml:237-248`).
+        buildRecentSymbolStrip()
         keyboardHide = toolbarIcon(R.drawable.ic_chevron_down, "收起键盘", "keyboard-hide", onHideKeyboard)
         toolbarRow.addView(
             keyboardHide,
@@ -531,6 +546,157 @@ internal class ImeTopZone(
         refreshToolbar()
     }
 
+    /**
+     * Lays out the symbol history as the reference's symbol toolbar does: a
+     * 4-unit lead inset, the scrolling list of the symbols the user has typed,
+     * the same hairline split its candidate strip uses, a 3-unit gap, the close
+     * key and a 4-unit tail (`input_toolbar_quickinput.xml:4-18`). The close key
+     * keeps our 48dp touch target where the reference's box is 40 units.
+     */
+    private fun buildRecentSymbolStrip() {
+        recentSymbolStrip.apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            tag = "recent-symbol-strip"
+            visibility = View.GONE
+        }
+        recentSymbolStrip.addView(
+            View(context).apply { tag = "recent-symbol-lead" },
+            LinearLayout.LayoutParams(
+                toPx(RecentSymbolStripPolicy.LEAD_UNITS),
+                LinearLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
+        recentSymbolRow.apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            tag = "recent-symbol-row"
+        }
+        recentSymbolStrip.addView(
+            HorizontalScrollView(context).apply {
+                tag = "recent-symbol-scroll"
+                isHorizontalScrollBarEnabled = false
+                overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+                addView(
+                    recentSymbolRow,
+                    ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
+                    ),
+                )
+            },
+            LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f),
+        )
+        recentSymbolStrip.addView(
+            View(context).apply { tag = "recent-symbol-split" },
+            LinearLayout.LayoutParams(toPx(1).coerceAtLeast(1), LinearLayout.LayoutParams.MATCH_PARENT),
+        )
+        recentSymbolStrip.addView(
+            View(context).apply { tag = "recent-symbol-gap" },
+            LinearLayout.LayoutParams(
+                toPx(RecentSymbolStripPolicy.GAP_UNITS),
+                LinearLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
+        recentSymbolClose = ImageView(context).apply {
+            tag = "recent-symbol-close"
+            setImageResource(R.drawable.ic_close)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            contentDescription = "关闭最近符号"
+            setPadding(toPx(7), 0, toPx(7), 0)
+            isClickable = true
+            isFocusable = true
+        }
+        recentSymbolStrip.addView(recentSymbolClose, touchTargetParams())
+        recentSymbolStrip.addView(
+            View(context).apply { tag = "recent-symbol-tail" },
+            LinearLayout.LayoutParams(
+                toPx(RecentSymbolStripPolicy.TAIL_UNITS),
+                LinearLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
+        toolbarRow.addView(recentSymbolStrip, LinearLayout.LayoutParams(0, toPx(48)))
+    }
+
+    /**
+     * Shows [symbols] — the symbols the user has typed, most recent first — in
+     * the toolbar row, or the normal toolbar when there are none. [onClose]
+     * ends the strip's own visit: the board stays open.
+     */
+    fun showRecentSymbols(
+        symbols: List<String>,
+        onPick: (String) -> Unit,
+        onClose: () -> Unit,
+    ) {
+        recentSymbolRow.removeAllViews()
+        symbols.forEachIndexed { index, symbol ->
+            recentSymbolRow.addView(
+                recentSymbolCell(symbol, onPick),
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                ).apply {
+                    if (index < symbols.lastIndex) {
+                        marginEnd = toPx(RecentSymbolStripPolicy.CELL_GAP_UNITS)
+                    }
+                },
+            )
+        }
+        recentSymbolClose.setOnClickListener {
+            onFeedback()
+            onClose()
+        }
+        recentSymbolsShown = symbols.isNotEmpty()
+        toolbarMode = idleToolbarMode()
+        refreshToolbar()
+    }
+
+    /** Takes the symbol history out of the toolbar row (panel closed, or its close key tapped). */
+    fun hideRecentSymbols() {
+        if (!recentSymbolsShown) return
+        recentSymbolsShown = false
+        toolbarMode = idleToolbarMode()
+        refreshToolbar()
+    }
+
+    /** One history cell: the reference's 36-unit box over candidate-sized text. */
+    private fun recentSymbolCell(symbol: String, onPick: (String) -> Unit): View =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            tag = "recent-symbol-cell"
+            isClickable = true
+            isFocusable = true
+            minimumWidth = toPx(RecentSymbolStripPolicy.CELL_UNITS)
+            contentDescription = "最近符号:$symbol"
+            addView(
+                TextView(context).apply {
+                    text = symbol
+                    textSize = ImeTypographyTokens.CANDIDATE_SP
+                    maxLines = 1
+                    ellipsize = TextUtils.TruncateAt.END
+                    includeFontPadding = false
+                    tag = "recent-symbol-label"
+                    isClickable = false
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                    setPadding(
+                        toPx(RecentSymbolStripPolicy.CELL_PAD_DP),
+                        0,
+                        toPx(RecentSymbolStripPolicy.CELL_PAD_DP),
+                        0,
+                    )
+                },
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+            setOnClickListener {
+                onFeedback()
+                onPick(symbol)
+            }
+        }
+
     private var longPressDrag: LongPressDragTarget? = null
     /** 停靠键盘的高度调节只允许在顶栏范围起手，避免抢候选/输入区的长按。 */
     private var longPressToolbarOnly = false
@@ -679,6 +845,7 @@ internal class ImeTopZone(
         val normal = toolbarMode == ToolbarMode.NORMAL
         val association = toolbarMode == ToolbarMode.ASSOCIATION
         val autofill = toolbarMode == ToolbarMode.AUTOFILL
+        val recent = toolbarMode == ToolbarMode.RECENT_SYMBOLS
         val shown = if (compact) compactToolbarIcons else toolbarIcons
         (toolbarIcons + compactToolbarIcons).distinct().forEach {
             it.visibility = if (normal && it in shown) View.VISIBLE else View.GONE
@@ -687,14 +854,21 @@ internal class ImeTopZone(
         associationBack.visibility = if (association || autofill) View.VISIBLE else View.GONE
         associationScroll.visibility = if (association) View.VISIBLE else View.GONE
         autofillScroll.visibility = if (autofill) View.VISIBLE else View.GONE
+        recentSymbolStrip.visibility = if (recent) View.VISIBLE else View.GONE
         keyboardHide.visibility = View.VISIBLE
         // The icons keep the reference's own width and their own row takes the
-        // slack; a suggestion strip or the autofill chips take it instead.
+        // slack; a suggestion strip, the autofill chips or the symbol history
+        // take it instead.
         (toolbarIconScroll.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
             val flexible = normal
             params.width = 0
             params.weight = if (flexible) 1f else 0f
             toolbarIconScroll.layoutParams = params
+        }
+        (recentSymbolStrip.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+            params.width = 0
+            params.weight = if (recent) 1f else 0f
+            recentSymbolStrip.layoutParams = params
         }
     }
 

@@ -47,6 +47,7 @@ import llc.slacker.openime.data.ImeSettingsRepository
 import llc.slacker.openime.data.KeySoundStyle
 import llc.slacker.openime.data.QuickPhrase
 import llc.slacker.openime.data.QuickPhraseRepository
+import llc.slacker.openime.data.SymbolRecentRepository
 import llc.slacker.openime.editor.EditorInfoAdapter
 import llc.slacker.openime.editor.enterKeyFaceFor
 import llc.slacker.openime.editor.enterKeyPresentationFor
@@ -338,6 +339,8 @@ open class ImeKeyboardView(
     private var lastTextMode = KeyboardMode.PINYIN_26
     private var preferredChineseMode = ImeSettingsRepository.loadPreferredChineseMode(context)
     protected var panel = Panel.NONE
+    /** True once the symbol board's history strip was closed; the next visit shows it again. */
+    private var recentSymbolStripDismissed = false
     // Nested panel flows must be reversible. For example, Settings -> Fuzzy
     // settings should return to Settings instead of unexpectedly closing all
     // the way back to the keyboard.
@@ -2471,6 +2474,8 @@ open class ImeKeyboardView(
         expandedPanel.visibility = View.VISIBLE
         candidateBarController.resetExpandedState()
         voicePanelController.detachView()
+        // Each visit to the symbol board starts with its history strip again.
+        if (panel == Panel.SYMBOLS) recentSymbolStripDismissed = false
         when (panel) {
             Panel.TOOLS -> panelRenderer.renderTools()
             Panel.KEYBOARD_SELECT -> panelRenderer.renderKeyboardSelect()
@@ -2484,9 +2489,39 @@ open class ImeKeyboardView(
             Panel.FUZZY_SETTINGS -> settingsPanelController.renderFuzzySettings()
             else -> closePanelToKeyboard()
         }
+        syncRecentSymbolStrip(panel)
         applyTheme()
         onViewHierarchyRebuilt()
         focusPanelEntryPoint()
+    }
+
+    /**
+     * The symbol board lists the symbols the user has typed in its toolbar
+     * (`input_toolbar_quickinput.xml:4-18`); every other surface gets the plain
+     * toolbar back.
+     */
+    private fun syncRecentSymbolStrip(panel: Panel) {
+        if (panel != Panel.SYMBOLS) {
+            topZone.hideRecentSymbols()
+            return
+        }
+        if (recentSymbolStripDismissed) {
+            topZone.hideRecentSymbols()
+            return
+        }
+        // The tap commits through the same path the board's own cells use, and
+        // that path records the symbol, so the strip re-reads the list after it.
+        topZone.showRecentSymbols(
+            symbols = SymbolRecentRepository.load(context),
+            onPick = { symbol ->
+                listener.onSymbolSelected(symbol)
+                if (panel == Panel.SYMBOLS) syncRecentSymbolStrip(Panel.SYMBOLS)
+            },
+            onClose = {
+                recentSymbolStripDismissed = true
+                topZone.hideRecentSymbols()
+            },
+        )
     }
 
     /** Keep hardware-keyboard focus inside the newly visible panel. */

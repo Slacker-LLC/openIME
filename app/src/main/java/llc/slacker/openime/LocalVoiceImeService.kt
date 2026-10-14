@@ -46,6 +46,7 @@ import llc.slacker.openime.data.ImeSettingsRepository
 import llc.slacker.openime.data.PersonalizationRepository
 import llc.slacker.openime.data.QuickPhraseRepository
 import llc.slacker.openime.data.RimeUserDictionaryArchive
+import llc.slacker.openime.data.SymbolRecentRepository
 import llc.slacker.openime.data.UserPhraseRepository
 import llc.slacker.openime.editor.EditorInfoAdapter
 import llc.slacker.openime.editor.InputConnectionGateway
@@ -1400,6 +1401,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         prepareForManualInput()
         commitPendingComposition()
         keyboardView?.clearAssociationCandidates()
+        SymbolRecentRepository.record(this, symbol)
         gateway.commitText(symbol)
     }
 
