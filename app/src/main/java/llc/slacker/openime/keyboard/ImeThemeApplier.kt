@@ -595,7 +595,11 @@ internal class ImeThemeApplier(
                 toPx(ImeGeometryTokens.PILL_RADIUS_DP),
             )
 
-            tag == "voice-face" -> (view as? VoiceFaceView)?.applyTokens(t)
+            // Both characters, the one in the panel and the one on the inline zone:
+            // a theme change has to reach the smaller one too, which no session
+            // message is scheduled to repaint on its own.
+            tag == "voice-face" || tag == "voice-inline-face" ->
+                (view as? VoiceFaceView)?.applyTokens(t)
 
             view.parent is LinearLayout &&
                 (
