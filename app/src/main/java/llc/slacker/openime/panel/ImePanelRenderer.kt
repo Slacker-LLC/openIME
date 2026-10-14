@@ -57,6 +57,7 @@ internal class ImePanelRenderer(
         onTap: () -> Unit,
     ) -> ImeKeyView,
     private val createPanelButton: (String, Float, Boolean) -> TextView,
+    private val createBackspaceKey: () -> ImeKeyView,
     private val createTitle: (String, Boolean) -> TextView,
     private val createEmojiCell: (String) -> View,
     private val gridCellParams: (Int, Int, Int) -> LinearLayout.LayoutParams,
@@ -565,20 +566,49 @@ internal class ImePanelRenderer(
             ),
         )
 
-        // The reference keeps this page's category strip in its bottom row,
-        // beside the return key (`input_kbd_symbol.xml:44-47`, weight 85 against
-        // the key's 13.1, `cls_symbol_tab_container`, `style.xml:707-710`).
-        body.addView(
+        // The reference keeps this page's category strip and its two function
+        // keys in its bottom rows: 123 and 退格 close the symbol row
+        // (`input_kbd_symbol.xml:31-41`, weight 15 against the cells' 70) and the
+        // strip shares the next one with the return key
+        // (`input_kbd_symbol.xml:44-47`, weight 85 against 13.1,
+        // `cls_symbol_tab_container`, `style.xml:707-710`). Our cells are five to
+        // a row, so both keys take the ends of the strip's own row.
+        val stripRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            tag = "symbol-strip-row"
+        }
+        stripRow.addView(
+            createKey("123", true, ImeTypographyTokens.BODY_SP) {
+                onModeSelected(KeyboardMode.DIGITS)
+            }.apply { contentDescription = "数字键盘" },
+            LinearLayout.LayoutParams(
+                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
+                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
+            ),
+        )
+        stripRow.addView(
             panelChipScroll(SymbolCatalog.CATEGORIES, symbolCategory, { category ->
                 if (category != symbolCategory) {
                     symbolCategory = category
                     renderSymbolContent(body, notifyRebuilt = true)
                 }
             }, heightDp = 32),
+            LinearLayout.LayoutParams(0, toPx(32), 1f),
+        )
+        stripRow.addView(
+            createBackspaceKey(),
+            LinearLayout.LayoutParams(
+                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
+                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
+            ),
+        )
+        body.addView(
+            stripRow,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(32),
-            ).apply { bottomMargin = toPx(6) },
+                toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
+            ),
         )
         applyTheme()
         if (notifyRebuilt) onHierarchyRebuilt()

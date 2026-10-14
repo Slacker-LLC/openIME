@@ -691,6 +691,7 @@ open class ImeKeyboardView(
                 )
             },
             createPanelButton = ::button,
+            createBackspaceKey = ::backspaceKey,
             createTitle = ::title,
             createEmojiCell = emojiCellFactory::create,
             gridCellParams = ::gridCellParams,
