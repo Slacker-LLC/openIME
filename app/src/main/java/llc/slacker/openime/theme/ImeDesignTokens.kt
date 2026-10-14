@@ -33,7 +33,16 @@ internal object ImeGeometryTokens {
 
     /** Portrait key row height on the reference design's 390-unit canvas. */
     const val KEY_ROW_HEIGHT_DP = 54
-    const val KEY_RADIUS_DP = 8
+
+    /**
+     * A key cap's corner radius. Every key class in the reference asks for the
+     * same round: `cls_bk_white_circle` and `cls_bk_gray_circle` both set
+     * `bkround="6"` (`style.xml:224-227`, `:276-281`), the symbol and history
+     * cells round at 6 (`style.xml:1065`, `:1082`, `:1111`), the three back keys
+     * spell out 6 as well (`style.xml:848`, `:854`, `:858`), and so does the
+     * long-press bubble's own button (`style.xml:1137`).
+     */
+    const val KEY_RADIUS_DP = 6
     const val CONTROL_RADIUS_DP = 12
     const val CARD_RADIUS_DP = 16
     const val BADGE_RADIUS_DP = 8
@@ -78,6 +87,12 @@ internal object ImeGeometryTokens {
     const val NINE_KEY_MARGIN_Y_DP = 2.75f
     const val KEY_INNER_MARGIN_DP = 8f
     const val KEY_POPUP_HEIGHT_DP = 52
+    /**
+     * The long-press bubble is rounder than a key and carries no edge of its
+     * own: `cls_fusiyin_bubble_container` rounds at 8 and sets only a shadow
+     * (`style.xml:1128-1133`).
+     */
+    const val KEY_POPUP_RADIUS_DP = 8
     const val KEY_POPUP_MIN_WIDTH_DP = 40
     const val KEY_POPUP_WIDTH_SCALE = 1.08f
     const val KEY_POPUP_VERTICAL_GAP_DP = 8
@@ -388,6 +403,16 @@ internal object ImeSurfacePolicy {
             tipBackground(tokens),
             if (isDark(tokens)) 0.17f else 0.14f,
         )
+
+    /**
+     * The long-press bubble's fill, `fusiyin_bubble_container_bk`: an opaque
+     * white on the light skin and an opaque gray (96,96,96) on the dark one —
+     * not the keyboard's translucent white, which would let the key behind the
+     * bubble show through the letter on it (`values/colors.xml:172`,
+     * `values/dark_colors.xml:162`).
+     */
+    fun keyPopupBackground(tokens: ImeTheme.Tokens): Int =
+        if (isDark(tokens)) Color.parseColor("#606060") else Color.WHITE
 
     /** Inset separator between rows of one grouped card. */
     fun hairline(tokens: ImeTheme.Tokens): Int =

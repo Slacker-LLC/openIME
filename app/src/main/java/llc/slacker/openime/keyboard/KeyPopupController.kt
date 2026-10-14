@@ -178,10 +178,8 @@ internal class KeyPopupController(
             }
             setTextColor(t.keyText)
             background = ImeDrawableFactory.rounded(
-                t.keyBackground,
-                dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                ImeSurfacePolicy.divider(t),
-                dp(1).coerceAtLeast(1),
+                ImeSurfacePolicy.keyPopupBackground(t),
+                dp(ImeGeometryTokens.KEY_POPUP_RADIUS_DP),
             )
         }
 
@@ -221,10 +219,8 @@ internal class KeyPopupController(
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(dp(POPUP_PAD_DP), dp(POPUP_PAD_DP), dp(POPUP_PAD_DP), dp(POPUP_PAD_DP))
             background = ImeDrawableFactory.rounded(
-                t.keyBackground,
-                dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                ImeSurfacePolicy.divider(t),
-                dp(1).coerceAtLeast(1),
+                ImeSurfacePolicy.keyPopupBackground(t),
+                dp(ImeGeometryTokens.KEY_POPUP_RADIUS_DP),
             )
             elevation = dp(2).toFloat()
             contentDescription = "长按符号选择"
