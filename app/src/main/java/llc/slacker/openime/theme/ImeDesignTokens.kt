@@ -407,6 +407,21 @@ internal object ImeSurfacePolicy {
             tokens.lightKeyBackground
         }
 
+    /**
+     * The corner glyph on a key — `keybutton_text_2`, black at 40% on the light
+     * skin and white at 40% on the dark one (`cls_keybutton_fusiyin`,
+     * `style.xml:207-212`; `values/colors.xml:14`, `values/dark_colors.xml:13`).
+     */
+    fun keyHint(tokens: ImeTheme.Tokens): Int = ImeDrawableFactory.withAlpha(tokens.keyText, 102)
+
+    /**
+     * An idle-toolbar icon is half of the key text colour, never the key text
+     * itself: `toolbar_idle_button_text` is a mid gray on the light skin and
+     * half white on the dark one (`cls_toolbar_idle_button`,
+     * `style.xml:237-248`, `values/colors.xml:30`, `values/dark_colors.xml:28`).
+     */
+    fun toolbarIcon(tokens: ImeTheme.Tokens): Int = ImeDrawableFactory.withAlpha(tokens.keyText, 128)
+
     fun keyShadow(tokens: ImeTheme.Tokens): Int =
         if (isDark(tokens)) Color.parseColor("#66000000") else Color.parseColor("#4D000000")
 
@@ -557,6 +572,16 @@ internal object ImeSurfacePolicy {
             tokens.border,
             if (isDark(tokens)) 150 else 180,
         )
+
+    /**
+     * The line between the composing strip and the keys. The reference does not
+     * stroke it with a key colour: `cls_candidate_split` is filled with
+     * `@color/canditem_split` (`style.xml:504-506`), which is black at 12% on the
+     * light skin (`values/colors.xml:83`) and white at 16% on the dark one
+     * (`values/dark_colors.xml:81`), so it reads as a gap in the surface.
+     */
+    fun candidateSplit(tokens: ImeTheme.Tokens): Int =
+        if (isDark(tokens)) Color.parseColor("#29FFFFFF") else Color.parseColor("#1F000000")
 }
 
 /** Shared WCAG contrast decisions for every native surface. */

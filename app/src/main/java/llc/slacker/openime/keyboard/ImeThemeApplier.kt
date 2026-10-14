@@ -149,8 +149,10 @@ internal class ImeThemeApplier(
                 // label goes dark for as long as it is held.
                 view.setLabelColors(onPrimary, ImeDrawableFactory.contrastText(pressedColor))
             }
+            // The corner glyph on any of these keys is the key hint colour
+            // (`keybutton_text_2`), never the key text colour.
             white ->
-                view.setColors(t.lightKeyText, t.keySecondaryText, t.lightKeyText)
+                view.setColors(t.lightKeyText, ImeSurfacePolicy.keyHint(t), t.lightKeyText)
             side ->
                 view.setColors(t.sideKeyText, t.sideKeyText, t.sideKeyText)
             function ->
@@ -160,7 +162,7 @@ internal class ImeThemeApplier(
                     t.functionKeyText,
                 )
             else ->
-                view.setColors(t.keyText, t.keySecondaryText, t.keyText)
+                view.setColors(t.keyText, ImeSurfacePolicy.keyHint(t), t.keyText)
         }
     }
 
@@ -446,7 +448,8 @@ internal class ImeThemeApplier(
                 view.imageTintList = ColorStateList.valueOf(ImeSurfacePolicy.iconTint(t))
                 view.background = null
             }
-            view.tag == "undo-toolbar" -> view.imageTintList = ColorStateList.valueOf(t.keySecondaryText)
+            view.tag == "undo-toolbar" -> view.imageTintList =
+                ColorStateList.valueOf(ImeSurfacePolicy.toolbarIcon(t))
             // The quick-input row's glyph takes `keybutton_text_2`
             // (`fi_toolbar_tip_superscript` glyphs, `input_toolbar_quickinput.xml:44-46`).
             view.tag == "suggestion-icon" -> {
@@ -461,11 +464,33 @@ internal class ImeThemeApplier(
                     toPx(ImeGeometryTokens.PILL_RADIUS_DP),
                 )
             }
+            // The strips' own controls — the association back control and the
+            // quick-input close key — are the reference's transparent toolbar
+            // pills: `cls_btn_morecand_back` and `cls_history_close_button` both
+            // extend `cls_bk_toolbar_button`, whose only face is the press tint
+            // (`canditem_pushedbk`) under a `keybutton_text` glyph
+            // (style.xml:231-235, `:519-525`, `:1055-1059`).
+            view.tag == "association-back" || view.tag == "autofill-close" -> {
+                view.imageTintList = ColorStateList.valueOf(t.keyText)
+                view.background = statefulRounded(
+                    Color.TRANSPARENT,
+                    ImeSurfacePolicy.candidatePressed(t),
+                    toPx(ImeGeometryTokens.PILL_RADIUS_DP),
+                )
+            }
+            // The idle toolbar's own keys, the icon strip included: each is the
+            // reference's 40-unit pill with the toolbar's icon colour.
             (
-                view.parent is LinearLayout &&
-                    (view.parent as LinearLayout).tag == "toolbar-row"
+                (view.parent as? View)?.tag == "toolbar-row" ||
+                    (view.parent as? View)?.tag == "toolbar-icon-strip"
                 ) || hasAncestorTag(view, "tools-panel") -> {
-                view.imageTintList = ColorStateList.valueOf(if (hasAncestorTag(view, "tools-panel")) ImeSurfacePolicy.selectedText(t) else t.keyText)
+                view.imageTintList = ColorStateList.valueOf(
+                    if (hasAncestorTag(view, "tools-panel")) {
+                        ImeSurfacePolicy.selectedText(t)
+                    } else {
+                        ImeSurfacePolicy.toolbarIcon(t)
+                    },
+                )
                 if (view.isClickable) {
                     // Every idle-toolbar key wears its own pill face at rest
                     // (`cls_toolbar_idle_button`: `bkcolor="@color/toolbar_idle_button_bk"`,
@@ -873,9 +898,10 @@ internal class ImeThemeApplier(
                 view.setBackgroundColor(ImeDrawableFactory.withAlpha(t.border, if (ImeSurfacePolicy.isDark(t)) 150 else 48))
             "row-hairline" -> view.setBackgroundColor(ImeSurfacePolicy.hairline(t))
             // `cls_candidate_split` is filled with @color/canditem_split
-            // (style.xml:504-506), the colour the candidate row's hairlines use.
+            // (style.xml:504-506), a black 12% / white 16% line rather than a
+            // key-coloured stroke.
             "candidate-strip-split", "recent-symbol-split" ->
-                view.setBackgroundColor(ImeSurfacePolicy.divider(t))
+                view.setBackgroundColor(ImeSurfacePolicy.candidateSplit(t))
         }
     }
 
