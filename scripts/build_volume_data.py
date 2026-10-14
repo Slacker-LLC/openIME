@@ -14,6 +14,7 @@ Files written (tab separated, no header):
   four.tsv           word, pinyin            500 four-character words (many are idioms)
   sentences.tsv      sentence, pinyin        100 Chinese sentences of 15+ characters
   wubi.tsv           word, code              500 words with their wubi86 code
+  chars-wubi.tsv     char, code              500 single characters with their wubi86 code
   chars.tsv          char, pinyin           1000 single characters by frequency
   english.tsv        word                    1000 English completion words by rank
   en-sentences.tsv   sentence                100 English sentences of 15+ characters
@@ -221,6 +222,14 @@ def main() -> int:
         "".join(f"{word}\t{code}\n" for word, code, _ in wubi_sample), encoding="utf-8",
     )
 
+    # Single characters by their own wubi86 code, so the character coverage
+    # also reaches the wubi keyboard.
+    wubi_chars = [entry for entry in wubi if len(entry[0]) == 1 and 1 <= len(entry[1]) <= 4]
+    wubi_chars_sample = spread(sorted(wubi_chars, key=lambda item: -item[2]), 500, 7)
+    (args.out / "chars-wubi.tsv").write_text(
+        "".join(f"{char}\t{code}\n" for char, code, _ in wubi_chars_sample), encoding="utf-8",
+    )
+
     chars = spread(sorted(chars_8105, key=lambda item: -item[2])[:3000], 1000, 4)
     (args.out / "chars.tsv").write_text(
         "".join(f"{char}\t{pinyin}\n" for char, pinyin, _ in chars), encoding="utf-8",
@@ -242,7 +251,7 @@ def main() -> int:
         "".join(f"{sentence}\n" for sentence in en_sentences), encoding="utf-8",
     )
 
-    for name in ("words", "four", "sentences", "wubi", "chars", "english", "en-sentences"):
+    for name in ("words", "four", "sentences", "wubi", "chars", "chars-wubi", "english", "en-sentences"):
         path = args.out / f"{name}.tsv"
         print(f"{name}: {len(path.read_text(encoding='utf-8').splitlines())} lines")
     return 0

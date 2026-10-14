@@ -8,6 +8,8 @@ input list:
   random     2000 random key taps, mixed with space and backspace: the keyboard
              must stay alive and never leave a stuck composition;
   words      1000 dictionary words (word + reading from the bundled tables);
+  chars      1000 single characters by frequency, so every common character is
+             typed at least once;
   sentences  100 sentences of 15+ characters typed as one continuous reading;
   four       500 four-character words (the dictionaries' idioms included).
 
@@ -16,12 +18,15 @@ user types it. Batches of words are checked in one read; a batch that does not
 match is re-typed word by word to name the words that were wrong.
 
 Read the numbers as: how often the first candidate the space bar commits is the
-word that was typed (words/four), and how much of a whole sentence conversion
-survives (sentences, exact match and per-character accuracy).
+word that was typed (words/chars/four), and how much of a whole sentence
+conversion survives (sentences, exact match and per-character accuracy). A miss
+is not always a defect: the word list is spread over the whole dictionary, so it
+carries tail vocabulary that the engine's own lexicon may not have.
 
     python3 scripts/build_volume_data.py          # once, fills build/volume-data
     python3 scripts/typing_volume_e2e.py [--serial SERIAL] [--out DIR]
-                                         [--keyboard PINYIN_26 ...] [--quick]
+                                         [--keyboard PINYIN_26 ...]
+                                         [--phases chars ...] [--quick]
 
 Needs a debug build installed (the E2E receiver and the lab activity); it
 selects openIME as the default input method and rotates nothing.
@@ -52,11 +57,11 @@ CIRCLED_KEYS = "qwrtyuiopsdfghjklzxcvbnm"
 
 # The volume of each phase, per keyboard.
 PLAN = {
-    "PINYIN_26": {"random": 2000, "words": 1000, "sentences": 100, "four": 500},
-    "PINYIN_9": {"random": 2000, "words": 1000, "sentences": 100, "four": 500},
-    "DOUBLE_PINYIN": {"random": 2000, "words": 1000, "sentences": 100, "four": 500},
-    "WUBI": {"random": 2000, "words": 500, "sentences": 0, "four": 0},
-    "STROKE": {"random": 2000, "words": 1000, "sentences": 100, "four": 500},
+    "PINYIN_26": {"random": 2000, "words": 1000, "chars": 1000, "sentences": 100, "four": 500},
+    "PINYIN_9": {"random": 2000, "words": 1000, "chars": 1000, "sentences": 100, "four": 500},
+    "DOUBLE_PINYIN": {"random": 2000, "words": 1000, "chars": 1000, "sentences": 100, "four": 500},
+    "WUBI": {"random": 2000, "words": 500, "chars": 500, "sentences": 0, "four": 0},
+    "STROKE": {"random": 2000, "words": 1000, "chars": 1000, "sentences": 100, "four": 500},
     "ENGLISH_26": {"random": 2000, "words": 1000, "sentences": 100, "four": 0},
     "DIGITS": {"random": 2000, "words": 40},
 }
@@ -423,29 +428,35 @@ def phase_digits(dev, keyboard: Keyboard, rows: list[tuple[str, str, str | None]
     }
 
 
-def run_keyboard(dev, stress, name: str, plan: dict, out: Path) -> dict:
+def run_keyboard(dev, stress, name: str, plan: dict, out: Path, phases: list[str] | None = None) -> dict:
     print(f"== {name} ==", flush=True)
     report: dict[str, object] = {"keyboard": name, "plan": plan}
+
+    def enabled(label: str) -> bool:
+        return phases is None or label in phases
+
     stress.show_keyboard(dev)
     stress.set_mode(dev, name)
     time.sleep(0.6)
     keyboard = Keyboard(name, dev, Keys(dev))
 
-    if plan.get("random"):
+    if plan.get("random") and enabled("random"):
         phase_random(dev, keyboard, plan["random"], report)
         stress.set_mode(dev, name)
         keyboard.keys.refresh()
         print(f"  {name}/random: {report['random']}", flush=True)
 
     if name == "DIGITS":
-        phase_digits(dev, keyboard, [], report, plan.get("words", 40))
+        if enabled("words"):
+            phase_digits(dev, keyboard, [], report, plan.get("words", 40))
     elif name == "ENGLISH_26":
         words = [(line[0], line[0], None) for line in read_tsv(DATA / "english.tsv")][: plan["words"]]
-        phase_rows(dev, keyboard, words, lambda row: row[0] + " ", report, "words", settle=0.3)
+        if enabled("words"):
+            phase_rows(dev, keyboard, words, lambda row: row[0] + " ", report, "words", settle=0.3)
         sentences = [[line[0]] for line in read_tsv(DATA / "en-sentences.tsv")]
         exact = 0
         misses = []
-        for (sentence,) in sentences[: plan["sentences"]]:
+        for (sentence,) in sentences[: plan["sentences"]] if enabled("sentences") else []:
             keyboard.keys.refresh()
             dev.command("clear-swipe")
             time.sleep(0.2)
@@ -464,7 +475,11 @@ def run_keyboard(dev, stress, name: str, plan: dict, out: Path) -> dict:
         }
     elif name == "WUBI":
         rows = [(word, "", code) for word, code in read_tsv(DATA / "wubi.tsv")][: plan["words"]]
-        phase_rows(dev, keyboard, rows, lambda row: row[0], report, "words", settle=0.3)
+        if enabled("words"):
+            phase_rows(dev, keyboard, rows, lambda row: row[0], report, "words", settle=0.3)
+        if plan.get("chars") and enabled("chars"):
+            chars = [(char, "", code) for char, code in read_tsv(DATA / "chars-wubi.tsv")][: plan["chars"]]
+            phase_rows(dev, keyboard, chars, lambda row: row[0], report, "chars", settle=0.3)
     elif name == "STROKE":
         # Stroke input has no reading: every character carries its own stroke
         # keys and its own committing space, so the sentences and the
@@ -473,19 +488,27 @@ def run_keyboard(dev, stress, name: str, plan: dict, out: Path) -> dict:
             return all(char in keyboard.strokes for char in text)
 
         words = [(word, "", None) for word, _ in read_tsv(DATA / "words.tsv") if ready(word)][: plan["words"]]
-        phase_rows(dev, keyboard, words, lambda row: row[0], report, "words", settle=0.25)
-        if plan.get("sentences"):
+        if enabled("words"):
+            phase_rows(dev, keyboard, words, lambda row: row[0], report, "words", settle=0.25)
+        if plan.get("chars") and enabled("chars"):
+            chars = [(char, "", None) for char, _ in read_tsv(DATA / "chars.tsv") if ready(char)][: plan["chars"]]
+            phase_rows(dev, keyboard, chars, lambda row: row[0], report, "chars", settle=0.25)
+        if plan.get("sentences") and enabled("sentences"):
             sentences = [(text, "", None) for text, _ in read_tsv(DATA / "sentences.tsv") if ready(text)]
             phase_rows(dev, keyboard, sentences, lambda row: row[0], report, "sentences", batch=5, settle=0.25)
-        if plan.get("four"):
+        if plan.get("four") and enabled("four"):
             four = [(word, "", None) for word, _ in read_tsv(DATA / "four.tsv") if ready(word)][: plan["four"]]
             phase_rows(dev, keyboard, four, lambda row: row[0], report, "four", settle=0.25)
     else:
         words = [(word, pinyin, None) for word, pinyin in read_tsv(DATA / "words.tsv")][: plan["words"]]
-        phase_rows(dev, keyboard, words, lambda row: row[0], report, "words")
-        if plan.get("sentences"):
+        if enabled("words"):
+            phase_rows(dev, keyboard, words, lambda row: row[0], report, "words")
+        if plan.get("chars") and enabled("chars"):
+            chars = [(char, pinyin, None) for char, pinyin in read_tsv(DATA / "chars.tsv")][: plan["chars"]]
+            phase_rows(dev, keyboard, chars, lambda row: row[0], report, "chars")
+        if plan.get("sentences") and enabled("sentences"):
             phase_sentences(dev, keyboard, read_tsv(DATA / "sentences.tsv"), report, plan["sentences"])
-        if plan.get("four"):
+        if plan.get("four") and enabled("four"):
             four = [(word, pinyin, None) for word, pinyin in read_tsv(DATA / "four.tsv")][: plan["four"]]
             phase_rows(dev, keyboard, four, lambda row: row[0], report, "four")
 
@@ -498,6 +521,8 @@ def main() -> int:
     parser.add_argument("--serial")
     parser.add_argument("--out", type=Path, default=ROOT / "build" / "typing-volume")
     parser.add_argument("--keyboard", action="append", default=None)
+    parser.add_argument("--phases", action="append", default=None,
+                        help="run only these phases (random, words, chars, sentences, four)")
     parser.add_argument("--quick", action="store_true", help="small counts, to check the harness itself")
     args = parser.parse_args()
 
@@ -516,7 +541,7 @@ def main() -> int:
         plan = plan_all[name]
         started = time.time()
         pid_before = dev.pid(stress.PKG)
-        summary[name] = run_keyboard(dev, stress, name, plan, args.out)
+        summary[name] = run_keyboard(dev, stress, name, plan, args.out, args.phases)
         summary[name]["seconds"] = round(time.time() - started)
         summary[name]["process_kept"] = dev.pid(stress.PKG) == pid_before
         crashes = dev.run("logcat", "-b", "crash", "-d")
@@ -528,7 +553,7 @@ def main() -> int:
 
     for name, report in summary.items():
         parts = []
-        for label in ("words", "four", "sentences"):
+        for label in ("words", "chars", "four", "sentences"):
             if label in report:
                 entry = report[label]
                 rate = entry.get("rate", entry.get("exact_rate"))
