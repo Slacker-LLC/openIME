@@ -105,15 +105,25 @@ internal class ImeThemeApplier(
         }
         val pressedColor = when {
             primary -> ImeSurfacePolicy.primaryPressed(t)
-            side -> ImeSurfacePolicy.pressedSurface(t.sideKeyBackground, t)
-            function -> ImeSurfacePolicy.pressedSurface(t.functionKeyBackground, t)
-            else -> ImeSurfacePolicy.pressedSurface(color, t)
+            // The reference's two key fills trade places on press: a white key
+            // takes the gray fill (`keybutton_pushed_bk`, `values/colors.xml:21`,
+            // is `keybutton_func_bk`, `:20`) and a gray key takes the white one
+            // (`keybutton_func_pushed_bk`, `:22`, is `keybutton_bk`, `:19`). The
+            // dark skin swaps the same pair over its translucent fills
+            // (`values/dark_colors.xml:18-22`).
+            side || function -> t.lightKeyBackground
+            else -> t.functionKeyBackground
         }
 
         view.applyMainTextScale(keyMainTextScale())
         val keyRadius = toPx(ImeGeometryTokens.KEY_RADIUS_DP)
         val keyFace = statefulRounded(color, pressedColor, keyRadius)
-        val keyCap = ImeDrawableFactory.keyCap(keyFace, pressedColor, keyRadius, toPx(1))
+        val keyCap = ImeDrawableFactory.keyCap(
+            keyFace,
+            ImeSurfacePolicy.keyShadow(t),
+            keyRadius,
+            toPx(1),
+        )
         // The cap is painted inside the cell by the key's own margins, as the
         // reference's key classes set them (2.25 × 4.75 on the 26-key board,
         // 2.5 × 2.75 on the nine-key family, 8 on a big side key's inner side).

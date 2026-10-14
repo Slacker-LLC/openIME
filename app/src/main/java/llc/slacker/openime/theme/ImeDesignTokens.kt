@@ -330,6 +330,16 @@ internal object ImeSurfacePolicy {
             if (isDark(tokens)) 0.12f else 0.08f,
         )
 
+    /**
+     * The 1-unit line a key cap sits on: every key class in the reference sets
+     * `shadow_y_offset="1"` with `keybutton_white_shadow` or
+     * `keybutton_gray_shadow` — black at 30% on the light skin, black at 40% on
+     * the dark one (`style.xml:224-227`, `:276-281`;
+     * `values/colors.xml:27-28`, `values/dark_colors.xml:23-24`).
+     */
+    fun keyShadow(tokens: ImeTheme.Tokens): Int =
+        if (isDark(tokens)) Color.parseColor("#66000000") else Color.parseColor("#4D000000")
+
     fun primaryPressed(tokens: ImeTheme.Tokens): Int =
         adjustHslLightness(
             tokens.primary,
