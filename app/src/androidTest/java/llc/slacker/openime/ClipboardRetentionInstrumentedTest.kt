@@ -2,12 +2,15 @@ package llc.slacker.openime
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ComponentName
 import android.content.Context
 import android.os.PersistableBundle
+import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.BaseInputConnection
 import android.widget.TextView
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import llc.slacker.openime.core.KeyboardMode
 import llc.slacker.openime.core.Panel
@@ -24,6 +27,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -72,8 +76,29 @@ class ClipboardRetentionInstrumentedTest {
         }
     }
 
+    /**
+     * The two "stale queued capture" tests below assert that nothing was
+     * written to the history. When this app is the user's active input method,
+     * its own service is bound in this process and its clipboard listener
+     * captures every copy — including the fixture these tests copy — by design
+     * (that is the history feature). The queued panel load is then
+     * indistinguishable from the listener, so those two tests need an
+     * emulator whose active IME is not this app; the harness runs them on CI,
+     * where the system IME is active.
+     */
+    private fun assumeNoClipboardListenerOfThisApp() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val stored = Settings.Secure.getString(context.contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)
+        val active = stored?.let(ComponentName::unflattenFromString)
+        Assume.assumeFalse(
+            "this app is the active IME (${active?.flattenToShortString()}), so its own clipboard listener captures the fixture",
+            active == ComponentName(context, LocalVoiceImeService::class.java),
+        )
+    }
+
     @Test
     fun leavingClipboardBeforePostedLoadDoesNotCaptureStaleClip() {
+        assumeNoClipboardListenerOfThisApp()
         lateinit var keyboard: ImeKeyboardView
         harness.awaitMain { activity ->
             ClipboardHistoryRepository.clearAll(activity)
@@ -118,6 +143,7 @@ class ClipboardRetentionInstrumentedTest {
 
     @Test
     fun closingClipboardBeforePostedLoadDoesNotCaptureStaleClip() {
+        assumeNoClipboardListenerOfThisApp()
         lateinit var keyboard: ImeKeyboardView
         harness.awaitMain { activity ->
             ClipboardHistoryRepository.clearAll(activity)
