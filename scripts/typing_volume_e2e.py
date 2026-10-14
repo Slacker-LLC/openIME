@@ -84,14 +84,28 @@ def read_tsv(path: Path) -> list[list[str]]:
 class Keys:
     """Screen positions of one keyboard, and batched real taps on them."""
 
-    def __init__(self, dev, refresh=True):
+    def __init__(self, dev, refresh=True, on_lost=None):
         self.dev = dev
         self.positions: dict[str, tuple[int, int]] = {}
+        # Called when the input view is gone: another app can come to the front
+        # in the middle of a long run and take the keyboard with it.
+        self.on_lost = on_lost
+        self._recovering = False
         if refresh:
             self.refresh()
 
     def refresh(self) -> None:
-        self.dev.refresh_bounds()
+        try:
+            self.dev.refresh_bounds()
+        except RuntimeError:
+            if self.on_lost is None or self._recovering:
+                raise
+            self._recovering = True
+            try:
+                self.on_lost()
+                self.dev.refresh_bounds()
+            finally:
+                self._recovering = False
         self.positions = {tag: (int(x), int(y)) for tag, _, x, y in self.dev.bounds}
 
     def has(self, tag: str) -> bool:
@@ -435,10 +449,28 @@ def run_keyboard(dev, stress, name: str, plan: dict, out: Path, phases: list[str
     def enabled(label: str) -> bool:
         return phases is None or label in phases
 
+    def recover() -> None:
+        """A long run outlives foreground changes: wake the screen and put the
+        field back in front."""
+        for attempt in range(5):
+            try:
+                print(f"  {name}: keyboard lost, bringing it back ({attempt + 1})", flush=True)
+                dev.shell("input", "keyevent", "KEYCODE_WAKEUP")
+                dev.shell("wm", "dismiss-keyguard")
+                time.sleep(0.5)
+                stress.show_keyboard(dev)
+                stress.set_mode(dev, name)
+                time.sleep(1.0)
+                return
+            except RuntimeError:
+                time.sleep(3)
+        raise RuntimeError(f"{name}: the keyboard did not come back")
+
     stress.show_keyboard(dev)
     stress.set_mode(dev, name)
     time.sleep(0.6)
-    keyboard = Keyboard(name, dev, Keys(dev))
+    keyboard = Keyboard(name, dev, Keys(dev, on_lost=recover))
+    keyboard.keys.refresh()
 
     if plan.get("random") and enabled("random"):
         phase_random(dev, keyboard, plan["random"], report)
