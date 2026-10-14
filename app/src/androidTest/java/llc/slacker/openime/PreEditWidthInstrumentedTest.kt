@@ -18,7 +18,7 @@ import java.lang.reflect.Proxy
 
 /**
  * The pre-edit keeps the reference's own half of the page
- * (`maxwidth="halfMaxWidth"`, `input_toolbar_typing.xml:7`) and scrolls inside
+ * (`maxwidth="halfMaxWidth"`, `input_toolbar_typing.xml:6`) and scrolls inside
  * it rather than running the full width of the candidate row.
  */
 @RunWith(AndroidJUnit4::class)

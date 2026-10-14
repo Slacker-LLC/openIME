@@ -9,7 +9,7 @@ class ToolbarTipPolicyTest {
     /**
      * The banner's own fractions of the row width: the container padding
      * (`cls_toolbar_tip_adaptive`, `style.xml:442`), the lead space
-     * (`style.xml:1278`) and the label's own inset (`style.xml:1265`).
+     * (`style.xml:1277`) and the label's own inset (`style.xml:1265`).
      */
     @Test
     fun theBannerKeepsTheReferencesOwnRuler() {

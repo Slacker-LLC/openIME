@@ -21,7 +21,7 @@ import java.lang.reflect.Proxy
 
 /**
  * The clipboard and message suggestions the app builds for itself wear the
- * reference's quick-input rows (`input_toolbar_quickinput.xml:23-46`): flat
+ * reference's quick-input rows (`input_toolbar_quickinput.xml:20-51`): flat
  * text at the candidate font with the glyph that says where it came from, and
  * the reference's own close key at the row's end.
  */

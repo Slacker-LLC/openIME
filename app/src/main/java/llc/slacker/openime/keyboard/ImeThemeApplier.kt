@@ -204,7 +204,7 @@ internal class ImeThemeApplier(
                 )
             }
             // The close key keeps the reference's square of the pill's height
-            // (`width="match_height"`, style.xml:1306-1307) and its own
+            // (`width="match_height"`, style.xml:1307) and its own
             // translucent faces (`toolbar_tip_close_button_bk`, colors.xml:163).
             "toolbar-tip-close" -> {
                 view.background = paintedSquareWithinTarget(
@@ -419,7 +419,7 @@ internal class ImeThemeApplier(
             }
             view.tag == "undo-toolbar" -> view.imageTintList = ColorStateList.valueOf(t.keySecondaryText)
             // The quick-input row's glyph takes `keybutton_text_2`
-            // (`fi_toolbar_tip_superscript` glyphs, `input_toolbar_quickinput.xml:44`).
+            // (`fi_toolbar_tip_superscript` glyphs, `input_toolbar_quickinput.xml:44-46`).
             view.tag == "suggestion-icon" -> {
                 view.imageTintList = ColorStateList.valueOf(t.keySecondaryText)
                 view.background = null
@@ -499,7 +499,7 @@ internal class ImeThemeApplier(
 
             // Our own quick-input rows read at the candidate font in
             // `canditem_text`, the colour the reference gives the quick-input
-            // text (`input_toolbar_quickinput.xml:40`).
+            // text (`input_toolbar_quickinput.xml:41-43`).
             tag == "suggestion-text" ->
                 view.setTextColor(t.candidateText)
 

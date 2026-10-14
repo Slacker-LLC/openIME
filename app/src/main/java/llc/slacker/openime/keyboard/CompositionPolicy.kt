@@ -8,12 +8,12 @@ package llc.slacker.openime.keyboard
 internal object CompositionPolicy {
     /**
      * `maxwidth="halfMaxWidth"` on the composition's wrapper, the block that
-     * holds the two labels (`input_toolbar_typing.xml:7`; the row leaves the
+     * holds the two labels (`input_toolbar_typing.xml:6`; the row leaves the
      * other half to an empty control, line 18).
      */
     const val MAX_WIDTH_FRACTION = 0.5f
 
-    /** The block's own left inset, `padding="5,0,0,0"` (`input_toolbar_typing.xml:7`). */
+    /** The block's own left inset, `padding="5,0,0,0"` (`input_toolbar_typing.xml:6`). */
     const val LEAD_UNITS = 5
 
     fun maxWidthPx(zoneWidth: Int): Int = (zoneWidth * MAX_WIDTH_FRACTION).toInt()

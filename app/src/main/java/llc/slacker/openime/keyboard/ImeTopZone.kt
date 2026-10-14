@@ -128,7 +128,7 @@ internal class ImeTopZone(
 
     /**
      * The tip banner the reference shows in the toolbar row while the floating
-     * keyboard is up (`input_toolbar_tip.xml:43-50`, see [ToolbarTipPolicy]).
+     * keyboard is up (`input_toolbar_tip.xml:44-49`, see [ToolbarTipPolicy]).
      */
     private val tipStrip = LinearLayout(context)
     private val tipLead = View(context)
@@ -286,7 +286,7 @@ internal class ImeTopZone(
         )
         // Our own quick-input rows end with the reference's own close key
         // (`btn_quickinput_close` over `cls_history_close_button`, the 40-unit box
-        // the symbol history's close uses; `input_toolbar_quickinput.xml:45-46` for
+        // the symbol history's close uses; `input_toolbar_quickinput.xml:48-49` for
         // the clipboard row, `:31-32` for the message row). The system's autofill
         // chips keep the strip's back control instead.
         autofillClose = ImageView(context).apply {
@@ -710,7 +710,7 @@ internal class ImeTopZone(
     /**
      * Lays out the reference's tip banner: one pill across the toolbar row, a
      * lead space, the label at the left of the rest and a round close key
-     * (`input_toolbar_tip.xml:43-50`, `style.xml:442`, `:1265-1313`). The strip
+     * (`input_toolbar_tip.xml:44-49`, `style.xml:442`, `:1267-1270`, `:1307-1313`). The strip
      * is the row's full 48 units and the pill is painted inside it, as
      * [ToolbarTipPolicy.PILL_UNITS] describes.
      */
@@ -805,7 +805,7 @@ internal class ImeTopZone(
 
     /**
      * The pre-edit's own cap: half the page (`maxwidth="halfMaxWidth"` on the
-     * composition's wrapper, `input_toolbar_typing.xml:7`). The row above the
+     * composition's wrapper, `input_toolbar_typing.xml:6`). The row above the
      * candidates gives the other half back to the surface beside it, and a long
      * string scrolls inside the cap the way the reference's own block does
      * (`sliderenable="true"` on `cls_comp_container`, `style.xml:575-577`).

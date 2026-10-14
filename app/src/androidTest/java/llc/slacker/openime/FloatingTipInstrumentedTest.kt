@@ -15,7 +15,7 @@ import java.lang.reflect.Proxy
 
 /**
  * The floating keyboard meets the user with the reference's tip banner in the
- * toolbar row (`input_toolbar_tip.xml:43-50`), whose exit is our own handle tap
+ * toolbar row (`input_toolbar_tip.xml:44-49`), whose exit is our own handle tap
  * rather than the reference's drag to the bottom edge.
  */
 @RunWith(AndroidJUnit4::class)

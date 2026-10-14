@@ -8,7 +8,7 @@ class CompositionPolicyTest {
     /**
      * The pre-edit block is at most half the page: `maxwidth="halfMaxWidth"` on
      * the composition's wrapper, whose sibling control takes the other half
-     * (`input_toolbar_typing.xml:7,18`).
+     * (`input_toolbar_typing.xml:6,18`).
      */
     @Test
     fun thePreEditKeepsHalfThePage() {

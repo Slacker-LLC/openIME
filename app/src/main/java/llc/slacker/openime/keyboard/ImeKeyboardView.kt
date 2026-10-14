@@ -162,7 +162,7 @@ open class ImeKeyboardView(
 
         /**
          * The floating tip's own wording. The reference's tip asks for a drag to
-         * the bottom edge (`input_toolbar_tip.xml:48`); our floating keyboard
+         * the bottom edge (`input_toolbar_tip.xml:47`); our floating keyboard
          * docks again on a tap of its handle, so the tip says that instead.
          */
         private const val FLOATING_TIP_TEXT = "轻点顶部把手可恢复默认键盘"
@@ -387,9 +387,9 @@ open class ImeKeyboardView(
         val chips = found.map { suggestion ->
             // The reference's own quick-input rows are flat: the text at the
             // candidate font, then the glyph that names where it came from
-            // (`input_toolbar_quickinput.xml:39-45` for the clipboard row, whose
+            // (`input_toolbar_quickinput.xml:41-46` for the clipboard row, whose
             // `quickinput_clipboard_icon1` follows `btn_quickinput_clipboard`;
-            // `:23-28` for the message row).
+            // `:24-29` for the message row).
             val sms = suggestion.kind == ToolbarSuggestion.Kind.SMS_CODE
             val row = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -1582,7 +1582,7 @@ open class ImeKeyboardView(
         floatingKeyboardController.setEnabled(enabled)
         topZone.setCompactToolbar(enabled)
         // The reference meets the floating keyboard with a tip in the toolbar row
-        // (`input_toolbar_tip.xml:43-50`); ours names our own way back, a tap on
+        // (`input_toolbar_tip.xml:44-49`); ours names our own way back, a tap on
         // the handle. Its close key settles the tip for this stay afloat.
         if (enabled) {
             if (!wasFloating) floatingTipDismissed = false
