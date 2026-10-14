@@ -1392,6 +1392,10 @@ open class ImeKeyboardView(
             onFeedback = ::feedback,
             onCandidateSelected = listener::onCandidateSelected,
             onCandidateLongPressed = listener::onCandidateLongPressed,
+            // The expanded page carries its own backspace: it deletes one letter
+            // of the open composition and the page stays open on the shorter
+            // candidate list.
+            onExpandedBackspace = ::performBackspaceOnce,
         )
         mainDock.addView(
             topZone,

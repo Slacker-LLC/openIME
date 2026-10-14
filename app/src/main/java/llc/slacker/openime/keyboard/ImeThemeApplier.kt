@@ -69,10 +69,20 @@ internal class ImeThemeApplier(
 
     private fun applyKey(view: ImeKeyView, t: ImeTheme.Tokens) {
         if (view.tag == "candidate-grid" || view.tag == "candidate-grid-first") {
-            val selected = view.tag == "candidate-grid-first"
-            val fill = if (selected) ImeSurfacePolicy.selectedSurface(t) else t.expandedBackground
-            view.background = ImeDrawableFactory.rounded(fill, 0, ImeSurfacePolicy.divider(t), toPx(1).coerceAtLeast(1))
-            view.setColors(if (selected) t.primary else t.keyText)
+            // One item class in the reference (`cls_morecands_button`,
+            // style.xml:1141-1149): every cell is a flat label with a hairline
+            // edge on the list's own background, so no cell carries the accent
+            // tile here.
+            val edge = ImeDrawableFactory.rounded(
+                Color.TRANSPARENT,
+                0,
+                ImeSurfacePolicy.divider(t),
+                toPx(1).coerceAtLeast(1),
+            )
+            view.background = LayerDrawable(
+                arrayOf(edge, statefulRounded(Color.TRANSPARENT, ImeSurfacePolicy.pressedSurface(t.candidateBackground, t), 0)),
+            )
+            view.setColors(t.keyText)
             return
         }
         val side = isSideKey(view)
@@ -129,6 +139,11 @@ internal class ImeThemeApplier(
 
     private fun applyLinearLayout(view: LinearLayout, t: ImeTheme.Tokens) {
         when (view.tag) {
+            // The option group 全部 / 单字 sits on (`cls_morecand_filter_containder`,
+            // style.xml:1157-1159: a 20-unit pill in the darker neutral).
+            "candidate-filter-container" ->
+                view.background = ImeDrawableFactory.rounded(t.candidateBackground, toPx(20))
+
             "app-setting-key" -> {
                 val radius = toPx(ImeGeometryTokens.KEY_RADIUS_DP)
                 view.background = ImeDrawableFactory.keyCap(
@@ -245,6 +260,7 @@ internal class ImeThemeApplier(
 
     private fun applyImageView(view: ImageView, t: ImeTheme.Tokens) {
         val iconSize = when {
+            view.tag == "candidate-expanded-backspace" -> 24
             view.tag == "candidate-emoji" || view.tag == "candidate-expand" -> 20
             view.tag == "key-panel-back" -> 24
             view.tag?.toString()?.startsWith("clip-pin:") == true || view.tag?.toString()?.startsWith("phrase-") == true -> 18
@@ -293,6 +309,17 @@ internal class ImeThemeApplier(
                     Color.TRANSPARENT,
                     ImeSurfacePolicy.pressedSurface(t.candidateBackground, t),
                     toPx(ImeGeometryTokens.KEY_RADIUS_DP),
+                )
+            }
+            view.tag == "candidate-expanded-backspace" -> {
+                // The reference's corner key (`cls_button_backspace` as the
+                // expanded page uses it, input_more_cand.xml:22-26): a function
+                // key that rounds only the list's bottom-right corner.
+                view.imageTintList = ColorStateList.valueOf(t.functionKeyText)
+                view.background = ImeDrawableFactory.statefulCorners(
+                    normal = t.functionKeyBackground,
+                    pressed = ImeSurfacePolicy.pressedSurface(t.functionKeyBackground, t),
+                    bottomRightPx = toPx(11).toFloat(),
                 )
             }
             // Row icons are decoration, so they stay neutral; the accent is
@@ -382,6 +409,24 @@ internal class ImeThemeApplier(
 
             tag == "candidate-word" ->
                 view.setTextColor(t.candidateText)
+
+            tag == "candidate-filter-chip" -> {
+                // 全部 / 单字: the chosen one is the raised surface with plain
+                // text, the other a dimmed label on the group's own background
+                // (`cls_filter_button`, style.xml:773-780).
+                val selected = view.isSelected
+                view.setTextColor(if (selected) t.keyText else t.textSecondary)
+                view.typeface = if (selected) {
+                    android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+                } else {
+                    android.graphics.Typeface.DEFAULT
+                }
+                view.background = statefulRounded(
+                    if (selected) t.keyBackground else Color.TRANSPARENT,
+                    ImeSurfacePolicy.pressedSurface(t.candidateBackground, t),
+                    toPx(20),
+                )
+            }
 
             tag == "panel-note" ||
                 tag == "setting-sub" ||
@@ -607,6 +652,16 @@ internal class ImeThemeApplier(
 
     private fun applyFrameLayout(view: FrameLayout, t: ImeTheme.Tokens) {
         when (view.tag) {
+            // The expanded page's list card (`cls_morecand_bk`, style.xml:1162-1166):
+            // one rounded surface for the whole grid, an 11 radius and a 2 edge.
+            "candidate-expanded-card" ->
+                view.background = ImeDrawableFactory.rounded(
+                    t.keyBackground,
+                    toPx(11),
+                    ImeSurfacePolicy.divider(t),
+                    toPx(2).coerceAtLeast(1),
+                )
+
             "emoji-cell" -> {
                 view.background = statefulRounded(
                     Color.TRANSPARENT,

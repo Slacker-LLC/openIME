@@ -42,6 +42,49 @@ internal object ImeDrawableFactory {
         strokeColor?.let { setStroke(strokeWidthPx, it) }
     }
 
+    /**
+     * A rectangle whose corners carry different radii: the reference rounds
+     * only the corner a key sits in, so the expanded page's backspace carries
+     * the list's own 11 at its bottom-right corner (`input_more_cand.xml:22-26`).
+     */
+    fun roundedCorners(
+        color: Int,
+        topLeftPx: Float = 0f,
+        topRightPx: Float = 0f,
+        bottomRightPx: Float = 0f,
+        bottomLeftPx: Float = 0f,
+        strokeColor: Int? = null,
+        strokeWidthPx: Int = 1,
+    ): GradientDrawable = GradientDrawable().apply {
+        shape = GradientDrawable.RECTANGLE
+        setColor(color)
+        cornerRadii = floatArrayOf(
+            topLeftPx, topLeftPx,
+            topRightPx, topRightPx,
+            bottomRightPx, bottomRightPx,
+            bottomLeftPx, bottomLeftPx,
+        )
+        strokeColor?.let { setStroke(strokeWidthPx, it) }
+    }
+
+    fun statefulCorners(
+        normal: Int,
+        pressed: Int,
+        topLeftPx: Float = 0f,
+        topRightPx: Float = 0f,
+        bottomRightPx: Float = 0f,
+        bottomLeftPx: Float = 0f,
+    ): StateListDrawable = StateListDrawable().apply {
+        addState(
+            intArrayOf(android.R.attr.state_pressed),
+            roundedCorners(pressed, topLeftPx, topRightPx, bottomRightPx, bottomLeftPx),
+        )
+        addState(
+            intArrayOf(),
+            roundedCorners(normal, topLeftPx, topRightPx, bottomRightPx, bottomLeftPx),
+        )
+    }
+
     fun statefulRounded(
         normal: Int,
         pressed: Int,
