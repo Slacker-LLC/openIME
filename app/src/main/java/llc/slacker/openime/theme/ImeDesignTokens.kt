@@ -62,6 +62,21 @@ internal object ImeGeometryTokens {
     const val KEY_GAP_DP = 6
     const val KEY_ROW_GAP_DP = KEY_GAP_DP
     const val KEY_SIDE_MARGIN_DP = 2
+
+    /**
+     * The reference paints every key cap inside its cell with that key class's
+     * own margins: the 26-key board's keys keep 2.25 units sideways and 4.75 up
+     * and down (`cls_keyboard_button_margin`, `style.xml:289-290`), the nine-key
+     * family — nine-key, stroke and the number page — 2.5 and 2.75
+     * (`cls_keyboard9_button_margin`, `style.xml:373-374`). The 26-key board's
+     * two big side keys clear the letter column by 8 units on their inner side
+     * (`cls_button_left_big`, `cls_button_right_big`, `style.xml:907-912`).
+     */
+    const val KEY_MARGIN_X_DP = 2.25f
+    const val KEY_MARGIN_Y_DP = 4.75f
+    const val NINE_KEY_MARGIN_X_DP = 2.5f
+    const val NINE_KEY_MARGIN_Y_DP = 2.75f
+    const val KEY_INNER_MARGIN_DP = 8f
     const val KEY_POPUP_HEIGHT_DP = 52
     const val KEY_POPUP_MIN_WIDTH_DP = 40
     const val KEY_POPUP_WIDTH_SCALE = 1.08f

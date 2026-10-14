@@ -304,6 +304,10 @@ open class ImeKeyboardView(
     // removeAllViews()+rebuild when focus moves between fields without a layout
     // change.
     private var renderedMode: KeyboardMode? = null
+    // The key margins the keys being built wear, set per board family when a
+    // body or a panel is rendered (see renderModeBody / renderPanel).
+    private var keyMarginX = ImeGeometryTokens.KEY_MARGIN_X_DP
+    private var keyMarginY = ImeGeometryTokens.KEY_MARGIN_Y_DP
     // Android drops a gesture the moment its view leaves the hierarchy, so a row
     // rebuild that lands while a key is held swallows that press (the space tap,
     // a letter, the backspace repeat). Remember the request and replay it once
@@ -2271,6 +2275,16 @@ open class ImeKeyboardView(
         candidateOverlay.visibility = View.GONE
         candidateBarController.resetExpandedState()
         candidateBarController.syncExpandControl(currentCandidates.isNotEmpty())
+        // Each board paints its key caps with its own family's margins: the
+        // nine-key family — nine-key, stroke and the number page — keeps the
+        // tighter 2.5 × 2.75 (`cls_keyboard9_button_margin`, `style.xml:373-374`),
+        // the 26-key boards 2.25 × 4.75 (`cls_keyboard_button_margin`,
+        // `style.xml:289-290`, see ImeGeometryTokens).
+        val nineKeyFamily = mode == KeyboardMode.PINYIN_9 ||
+            mode == KeyboardMode.STROKE ||
+            mode == KeyboardMode.DIGITS
+        keyMarginX = if (nineKeyFamily) ImeGeometryTokens.NINE_KEY_MARGIN_X_DP else ImeGeometryTokens.KEY_MARGIN_X_DP
+        keyMarginY = if (nineKeyFamily) ImeGeometryTokens.NINE_KEY_MARGIN_Y_DP else ImeGeometryTokens.KEY_MARGIN_Y_DP
         when (mode) {
             KeyboardMode.PINYIN_26 -> renderPinyin26()
             KeyboardMode.ENGLISH_26 -> renderEnglish26()
@@ -2563,6 +2577,10 @@ open class ImeKeyboardView(
         expandedPanel.visibility = View.VISIBLE
         candidateBarController.resetExpandedState()
         voicePanelController.detachView()
+        // A panel's keys are the reference's own 26-key key whatever board it
+        // was opened from (`cls_symbol_keyboard_button`, `style.xml:1332`).
+        keyMarginX = ImeGeometryTokens.KEY_MARGIN_X_DP
+        keyMarginY = ImeGeometryTokens.KEY_MARGIN_Y_DP
         // Each visit to the symbol board starts with its history strip again.
         if (panel == Panel.SYMBOLS) recentSymbolStripDismissed = false
         when (panel) {
@@ -3530,6 +3548,7 @@ open class ImeKeyboardView(
         ).apply {
             tag = "key:$text"
             setTag(MARK_FUNCTION_KEY, func)
+            setReferenceMargins(keyMarginX, keyMarginY, keyMarginX, keyMarginY)
             contentDescription = if (text.isNotEmpty()) text else if (iconRes != 0) "功能键" else " "
             if (!func && secondary != null && !showSecondaryHints) setSecondaryVisible(false)
             minimumHeight = dp(ImeGeometryTokens.TOUCH_TARGET_DP)

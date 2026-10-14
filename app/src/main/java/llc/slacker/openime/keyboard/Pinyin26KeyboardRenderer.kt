@@ -5,6 +5,7 @@ import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
 import llc.slacker.openime.core.ShiftState
+import llc.slacker.openime.theme.ImeGeometryTokens
 import llc.slacker.openime.theme.ImeTypographyTokens
 import llc.slacker.openime.widget.ImeKeyView
 
@@ -77,7 +78,17 @@ internal class Pinyin26KeyboardRenderer(
             }
 
             if (rowIndex == 2) {
-                row.addView(createBackspaceKey(), flexKeyParams(EDGE_KEY_WEIGHT))
+                // The right big key clears the letter column by 8 units on its
+                // inner side (`cls_button_right_big`, `style.xml:911-912`).
+                row.addView(
+                    createBackspaceKey().apply {
+                        setReferenceMargins(
+                            left = ImeGeometryTokens.KEY_INNER_MARGIN_DP,
+                            right = ImeGeometryTokens.KEY_MARGIN_X_DP,
+                        )
+                    },
+                    flexKeyParams(EDGE_KEY_WEIGHT),
+                )
             }
             keyboardBody.addView(row, rowParams())
         }
@@ -205,6 +216,12 @@ internal class Pinyin26KeyboardRenderer(
     private fun shiftKey(shiftState: ShiftState): ImeKeyView {
         val iconRes = EnglishShiftPolicy.icon(shiftState)
         return createKey("", true, null, null, iconRes, onShift).apply {
+            // The reference's left big key clears the letter column by 8 units
+            // on its inner side (`cls_button_left_big`, `style.xml:907-908`).
+            setReferenceMargins(
+                left = ImeGeometryTokens.KEY_MARGIN_X_DP,
+                right = ImeGeometryTokens.KEY_INNER_MARGIN_DP,
+            )
             tag = when (shiftState) {
                 ShiftState.LOWERCASE -> "key-shift"
                 ShiftState.SHIFT_ONCE -> "key-shift-active"

@@ -114,8 +114,18 @@ internal class ImeThemeApplier(
         val keyRadius = toPx(ImeGeometryTokens.KEY_RADIUS_DP)
         val keyFace = statefulRounded(color, pressedColor, keyRadius)
         val keyCap = ImeDrawableFactory.keyCap(keyFace, pressedColor, keyRadius, toPx(1))
-        val halfGap = toPx(ImeGeometryTokens.KEY_GAP_DP) / 2
-        view.background = InsetDrawable(keyCap, halfGap, halfGap, halfGap, halfGap)
+        // The cap is painted inside the cell by the key's own margins, as the
+        // reference's key classes set them (2.25 × 4.75 on the 26-key board,
+        // 2.5 × 2.75 on the nine-key family, 8 on a big side key's inner side).
+        val unit = view.resources.displayMetrics.density * referenceScale()
+        fun cap(dp: Float): Int = Math.round(dp * unit)
+        view.background = InsetDrawable(
+            keyCap,
+            cap(view.marginLeftDp),
+            cap(view.marginTopDp),
+            cap(view.marginRightDp),
+            cap(view.marginBottomDp),
+        )
         view.elevation = 0f
 
         when {

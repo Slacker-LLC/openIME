@@ -14,6 +14,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
 import llc.slacker.openime.R
+import llc.slacker.openime.theme.ImeGeometryTokens
 import llc.slacker.openime.theme.ImeTypographyTokens
 
 /**
@@ -106,6 +107,35 @@ class ImeKeyView(
     private var touchGeneration = 0L
     private val baseMainTextSize = mainTextSize
     private var fitMain = fitMainText
+
+    /**
+     * The key's own margins in reference units: the cap is painted inside the
+     * cell by this much, as the reference's key classes give every key its own
+     * margin (`cls_keyboard_button_margin`, `style.xml:289-290`;
+     * `cls_keyboard9_button_margin`, `style.xml:373-374`). The theme applier
+     * reads them; a board sets its family's values on the keys it builds.
+     */
+    var marginLeftDp = ImeGeometryTokens.KEY_MARGIN_X_DP
+        private set
+    var marginTopDp = ImeGeometryTokens.KEY_MARGIN_Y_DP
+        private set
+    var marginRightDp = ImeGeometryTokens.KEY_MARGIN_X_DP
+        private set
+    var marginBottomDp = ImeGeometryTokens.KEY_MARGIN_Y_DP
+        private set
+
+    /** Sets the margins a board family paints its keys with. */
+    fun setReferenceMargins(
+        left: Float = marginLeftDp,
+        top: Float = marginTopDp,
+        right: Float = marginRightDp,
+        bottom: Float = marginBottomDp,
+    ) {
+        marginLeftDp = left
+        marginTopDp = top
+        marginRightDp = right
+        marginBottomDp = bottom
+    }
 
     /**
      * Key labels follow the system font size only up to [MAX_LABEL_FONT_SCALE].
