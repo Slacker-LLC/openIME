@@ -1685,6 +1685,10 @@ open class ImeKeyboardView(
     private fun currentImeOptions(): Int? =
         (context as? android.inputmethodservice.InputMethodService)?.currentInputEditorInfo?.imeOptions
 
+    /** The editor the keys are being drawn for; null outside a real input session. */
+    private fun currentEditorInfo(): android.view.inputmethod.EditorInfo? =
+        (context as? android.inputmethodservice.InputMethodService)?.currentInputEditorInfo
+
     private fun syncEnterKeyPresentation(imeOptions: Int?) {
         val options = imeOptions ?: return
         val enter = findViewWithTag<ImeKeyView>("key-enter") ?: return
@@ -2263,6 +2267,8 @@ open class ImeKeyboardView(
             onChooseReading = ::chooseNineKeyReading,
             fixedPrefix = ::nineKeyFixedPrefix,
             onEditSymbols = ::openRailSymbolEditor,
+            // An address or e-mail field gets the skin's URL rail.
+            fieldKind = { EditorInfoAdapter.kind(currentEditorInfo()) },
         ).also { nineKeySymbolRailController = it }
     }
 

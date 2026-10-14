@@ -118,4 +118,11 @@ object EditorInfoAdapter {
     fun allowCandidates(kind: EditorKind): Boolean = kind != EditorKind.PASSWORD
 
     fun isPassword(kind: EditorKind): Boolean = kind == EditorKind.PASSWORD
+
+    /**
+     * Address and e-mail fields get the skin's URL rail instead of the
+     * punctuation rail. The reference nine-key layout carries the same list in
+     * its `uri_filter_list` attribute (skin/default/layout/input_kbd_pinyin9.xml).
+     */
+    fun usesUriRail(kind: EditorKind): Boolean = kind == EditorKind.URL || kind == EditorKind.EMAIL
 }

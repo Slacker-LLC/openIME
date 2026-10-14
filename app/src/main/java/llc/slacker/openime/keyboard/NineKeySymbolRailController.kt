@@ -15,12 +15,14 @@ import llc.slacker.openime.candidate.CandidatePipeline
 import llc.slacker.openime.candidate.CandidateResolver
 import llc.slacker.openime.candidate.NineKeyReading
 import llc.slacker.openime.data.RailSymbolRepository
+import llc.slacker.openime.editor.EditorInfoAdapter
 
 /**
  * Owns the Chinese 9-key side rail.
  *
  * With no composition it behaves as the normal vertically scrollable symbol
- * rail. During composition, the same rail
+ * rail, or as the URL rail in an address or e-mail field (the reference skin's
+ * `uri_filter_list`). During composition, the same rail
  * becomes a directly selectable Pinyin list. This mirrors mature 9-key IMEs:
  * the user sees all useful spellings at once instead of cycling one hidden
  * option through a single button.
@@ -36,6 +38,7 @@ internal class NineKeySymbolRailController(
     private val onChooseReading: (NineKeyReading) -> Unit,
     private val fixedPrefix: () -> String,
     private val onEditSymbols: () -> Unit,
+    private val fieldKind: () -> EditorInfoAdapter.EditorKind = { EditorInfoAdapter.EditorKind.TEXT },
 ) {
     private enum class RailMode { SYMBOLS, PINYIN }
 
@@ -73,14 +76,19 @@ internal class NineKeySymbolRailController(
             context = context,
             railTag = NINE_RAIL_TAG,
             contentTag = NINE_CONTENT_TAG,
-            contentDescription = "九键拼音筛选或常用符号，上下滑动查看更多",
-            symbols = commonSymbols(),
+            contentDescription = if (EditorInfoAdapter.usesUriRail(fieldKind())) {
+                "九键网址符号，上下滑动查看更多"
+            } else {
+                "九键拼音筛选或常用符号，上下滑动查看更多"
+            },
+            symbols = railSymbols(),
             cellHeightDp = symbolCellHeightDp(),
             toPx = toPx,
             tagPrefix = "punct:",
             onCommit = onCommit,
             onFeedback = onFeedback,
-            onAdd = onEditSymbols,
+            // The URL list belongs to the field, so it cannot be edited.
+            onAdd = if (EditorInfoAdapter.usesUriRail(fieldKind())) null else onEditSymbols,
         ).also {
             rail = it
             railMode = RailMode.SYMBOLS
@@ -161,15 +169,17 @@ internal class NineKeySymbolRailController(
         val scroll = rail ?: return
         if (railMode == RailMode.SYMBOLS && !force) return
 
+        val uri = EditorInfoAdapter.usesUriRail(fieldKind())
         SymbolRailRenderer.populate(
             scroll = scroll,
-            symbols = commonSymbols(),
+            symbols = railSymbols(),
             cellHeightDp = symbolCellHeightDp(),
             toPx = toPx,
             tagPrefix = "punct:",
             onCommit = onCommit,
             onFeedback = onFeedback,
-            onAdd = onEditSymbols,
+            // The URL list belongs to the field, so it cannot be edited.
+            onAdd = if (uri) null else onEditSymbols,
         )
         railMode = RailMode.SYMBOLS
         renderedChoices = emptyList()
@@ -178,7 +188,8 @@ internal class NineKeySymbolRailController(
         renderedDigits = null
         (scroll.getChildAt(0) as? LinearLayout)?.tag = NINE_CONTENT_TAG
         if (scroll.scrollY != 0) scroll.post { scroll.scrollTo(0, 0) }
-        scroll.contentDescription = "九键常用符号，上下滑动查看更多"
+        scroll.contentDescription =
+            if (uri) "九键网址符号，上下滑动查看更多" else "九键常用符号，上下滑动查看更多"
         onRailChanged(scroll)
     }
 
@@ -266,6 +277,13 @@ internal class NineKeySymbolRailController(
 
     /** The user's rail (ten common marks until edited), then ＋ to edit it. */
     private fun commonSymbols(): List<String> = RailSymbolRepository.load(context)
+
+    /**
+     * The rail's symbols for this field: the fixed URL list in an address or
+     * e-mail field, the user's own marks everywhere else.
+     */
+    private fun railSymbols(): List<String> =
+        if (EditorInfoAdapter.usesUriRail(fieldKind())) RailSymbolRepository.URI else commonSymbols()
 
     private companion object {
         const val NINE_RAIL_TAG = "nine-punct-stack"
