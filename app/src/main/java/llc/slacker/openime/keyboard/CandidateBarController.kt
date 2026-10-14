@@ -363,21 +363,30 @@ internal class CandidateBarController(
         val word = item.getChildAt(0) as TextView
         if (word.text.toString() != candidate) word.text = candidate
         word.tag = if (index == 0) "candidate-first" else "candidate-word"
-        word.typeface = if (index == 0) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+        // The first candidate is the same size in the accent colour one weight
+        // heavier, with no tile behind it: the reference's own first-item class
+        // (skin-full/assets/skin/default/style.xml:551-554) names
+        // first_cand_font (weight 500 against 400, style.xml:83,98) and
+        // first_cand_text_color (rgba(79,132,255,1), values/colors.xml:4).
+        word.typeface = if (index == 0) MEDIUM_WEIGHT else Typeface.DEFAULT
 
         val palette = tokens()
-        val normalBackground =
-            if (index == 0) palette.keyBackground else Color.TRANSPARENT
+        val pressedSurface =
+            if (index == 0) {
+                ImeSurfacePolicy.selectedSurface(palette)
+            } else {
+                palette.candidateBackground
+            }
         word.setTextColor(
-            palette.candidateText,
+            if (index == 0) {
+                ImeSurfacePolicy.selectedText(palette)
+            } else {
+                palette.candidateText
+            },
         )
         item.background = statefulBackground(
-            normalBackground,
-            if (index == 0) {
-                ImeSurfacePolicy.pressedSurface(normalBackground, palette)
-            } else {
-                ImeSurfacePolicy.pressedSurface(palette.candidateBackground, palette)
-            },
+            Color.TRANSPARENT,
+            ImeSurfacePolicy.pressedSurface(pressedSurface, palette),
             toPx(ImeGeometryTokens.KEY_RADIUS_DP),
         )
         item.setOnTouchListener { _, event ->
@@ -414,6 +423,8 @@ internal class CandidateBarController(
     }
 
     private companion object {
+        /** The reference's 500 weight: one step above the regular candidate. */
+        val MEDIUM_WEIGHT: Typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         const val STRIP_LIMIT = 24
         const val CANDIDATE_EXPAND_SWIPE_DP = 36
         const val SCROLL_SETTLE_WINDOW_MS = 96L
