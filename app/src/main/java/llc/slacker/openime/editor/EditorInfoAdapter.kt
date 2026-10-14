@@ -120,9 +120,13 @@ object EditorInfoAdapter {
     fun isPassword(kind: EditorKind): Boolean = kind == EditorKind.PASSWORD
 
     /**
-     * Address and e-mail fields get the skin's URL rail instead of the
-     * punctuation rail. The reference nine-key layout carries the same list in
-     * its `uri_filter_list` attribute (skin/default/layout/input_kbd_pinyin9.xml).
+     * Address and e-mail fields are the fields the reference adapts to: its
+     * nine-key rail switches to a fixed URL list (`uri_filter_list`,
+     * skin/default/layout/input_kbd_pinyin9.xml) and the 26-key comma and period
+     * keys take their `uri_adapter_symbol` marks (skin/default/layout/input_kbd_pinyin26.xml).
      */
-    fun usesUriRail(kind: EditorKind): Boolean = kind == EditorKind.URL || kind == EditorKind.EMAIL
+    fun isUriField(kind: EditorKind): Boolean = kind == EditorKind.URL || kind == EditorKind.EMAIL
+
+    /** Address and e-mail fields get the skin's URL rail instead of the punctuation rail. */
+    fun usesUriRail(kind: EditorKind): Boolean = isUriField(kind)
 }

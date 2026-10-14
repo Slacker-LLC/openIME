@@ -539,7 +539,6 @@ open class ImeKeyboardView(
             markWhiteKey = { key -> key.setTag(MARK_WHITE_KEY, true) },
             onDigitKeyCreated = nineKeySegmentRepairController::bindDigitKey,
             onNineKey = ::onNineKey,
-            onPinyinSegment = ::onPinyinSegment,
             onShowChoicePopup = ::showChoicePopup,
             onShowChoiceRows = ::showChoiceRows,
             swipeUpEnabled = { ImeSettingsRepository.loadSwipeUpDigits(context) },
@@ -891,6 +890,7 @@ open class ImeKeyboardView(
             onEnter = listener::onEnter,
             onSymbols = { showPanel(Panel.SYMBOLS) },
             splitLayout = ::splitKeyboard,
+            uriField = { EditorInfoAdapter.isUriField(EditorInfoAdapter.kind(currentEditorInfo())) },
         )
     }
 

@@ -43,6 +43,7 @@ internal class Pinyin26KeyboardRenderer(
     private val onEnter: () -> Unit,
     private val onSymbols: () -> Unit = {},
     private val splitLayout: () -> Boolean = { false },
+    private val uriField: () -> Boolean = { false },
 ) {
     fun render(
         english: Boolean,
@@ -82,18 +83,23 @@ internal class Pinyin26KeyboardRenderer(
         }
 
         val weights = ProductionKeyPolicy.twentySixKeyBottomRowWeights(landscape)
+        val punctuation = PunctuationKeyPolicy.spec(english, uriField())
 
         val bottom = rowHost()
         bottom.addView(
             createKey("123", true, null, ImeTypographyTokens.BODY_SP, 0, onDigits),
             flexKeyParams(weights.leftOuter),
         )
-        // ，。 sits left of space and 中/英 right of it, next to the enter key.
-        bottom.addView(punctuationKey(english), flexKeyParams(weights.leftInner))
+        // The merged ，。 key sits left of the space bar, 中/英 right of it.
+        bottom.addView(punctuationKey(punctuation), flexKeyParams(weights.merged))
+        // The reference's two symbol keys bookend the space bar: ，and 。in
+        // Chinese, , and . in English, the address marks in a URL field.
+        bottom.addView(symbolKey("key-symbol-comma", punctuation.comma), flexKeyParams(weights.symbol))
         bottom.addView(
             createSpaceVoiceKey("空格", onSpace),
             flexKeyParams(weights.space),
         )
+        bottom.addView(symbolKey("key-symbol-period", punctuation.period), flexKeyParams(weights.symbol))
         bottom.addView(
             createKey(
                 "中/英",
@@ -139,7 +145,7 @@ internal class Pinyin26KeyboardRenderer(
         row {
             addView(fn("符") { onSymbols() }.apply { tag = "key-symbols" }, flexKeyParams(1f))
             addView(fn("123", onDigits), flexKeyParams(1f))
-            addView(punctuationKey(english), flexKeyParams(1f))
+            addView(punctuationKey(PunctuationKeyPolicy.spec(english, uriField())), flexKeyParams(1f))
             addView(createSpaceVoiceKey("空格", onSpace), flexKeyParams(2f))
             gap()
             addView(createSpaceVoiceKey("空格", onSpace), flexKeyParams(2f))
@@ -152,33 +158,43 @@ internal class Pinyin26KeyboardRenderer(
         }
     }
 
-    private fun punctuationKey(english: Boolean): ImeKeyView {
-        val spec = PunctuationKeyPolicy.spec(english)
+    private fun punctuationKey(spec: PunctuationKeyPolicy.Spec): ImeKeyView {
         // A character key, not a function key: only character keys carry corner hints.
-        return createKey(spec.comma, false, spec.period, ImeTypographyTokens.KEY_LETTER_COMPACT_SP, 0) {
-            onCommitCharacter(spec.comma)
+        return createKey(spec.merged, false, spec.mergedCorner, ImeTypographyTokens.KEY_LETTER_COMPACT_SP, 0) {
+            onCommitCharacter(spec.merged)
         }.apply {
             tag = "key-punctuation"
-            contentDescription = "${spec.comma}，上滑或长按输入${spec.period}"
+            contentDescription = "${spec.merged}，上滑或长按输入${spec.mergedCorner}"
             setSecondaryVisible(true)
             setSecondaryAlpha(1f)
-            // Up swipes the period, as the reference keyboard does.
-            onSwipeUp = { onCommitCharacter(spec.period) }
+            // Up swipes the corner mark, as the reference keyboard does.
+            onSwipeUp = { onCommitCharacter(spec.mergedCorner) }
             setOnLongClickListener {
-                onCommitCharacter(spec.period)
+                onCommitCharacter(spec.mergedCorner)
                 true
             }
         }
     }
 
+    /**
+     * One of the reference's two symbol keys beside the space bar
+     * (`input_kbd_pinyin26.xml:153,156`). It carries no corner mark and no
+     * bubble: the key is its own character.
+     */
+    private fun symbolKey(tag: String, text: String): ImeKeyView =
+        createKey(text, false, null, ImeTypographyTokens.KEY_LETTER_COMPACT_SP, 0) {
+            onCommitCharacter(text)
+        }.apply {
+            this.tag = tag
+            contentDescription = text
+        }
+
     private fun segmentKey(): ImeKeyView =
-        createKey("分词", true, "@#/", ImeTypographyTokens.BODY_SP, 0, onPinyinSegment).apply {
+        createKey("分词", true, null, ImeTypographyTokens.BODY_SP, 0, onPinyinSegment).apply {
+            // `cls_button_shift` draws the label alone: the reference's 分词 key
+            // carries no corner mark and no bubble (`style.xml:915-920`).
             tag = "key-segment"
-            contentDescription = "分词，长按输入@井号或斜杠"
-            setOnLongClickListener {
-                onShowChoicePopup(this, listOf("@", "#", "/"))
-                true
-            }
+            contentDescription = "分词"
         }
 
     private fun shiftKey(shiftState: ShiftState): ImeKeyView {

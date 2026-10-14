@@ -919,7 +919,8 @@ class AuditInteractionInstrumentedTest {
     @Test
     fun modeSwitchDismissesLongPressChoicePopup() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
-            // 1 is the nine-key segmentation key; its long press offers @ # /.
+            // The nine-key 1 cell is the @# key: its long press offers the
+            // reference's own symbol list.
             keyboard.setMode(KeyboardMode.PINYIN_9, notifyListener = false)
             val segment = keyboard.findViewWithTag<View>("key-9:1")
             val baseline = keyboard.childCount

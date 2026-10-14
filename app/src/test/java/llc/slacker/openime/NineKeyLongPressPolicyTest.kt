@@ -33,4 +33,13 @@ class NineKeyLongPressPolicyTest {
             assertTrue(NineKeyLongPressPolicy.choiceRows(it).isEmpty())
         }
     }
+
+    @Test
+    fun theAtSymbolKeyOffersTheReferenceBubble() {
+        // input_kbd_pinyin9.xml:26-27: the @# key's seven symbols, in order.
+        assertEquals(
+            listOf("/", "-", "_", "1", "@", "#", "."),
+            NineKeyLongPressPolicy.AT_SYMBOL_CHOICES,
+        )
+    }
 }

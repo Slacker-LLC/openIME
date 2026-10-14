@@ -35,7 +35,6 @@ internal class Pinyin9KeyboardRenderer(
     private val markWhiteKey: (ImeKeyView) -> Unit,
     private val onDigitKeyCreated: (String, ImeKeyView) -> Unit,
     private val onNineKey: (String) -> Unit,
-    private val onPinyinSegment: () -> Unit,
     private val onShowChoicePopup: (View, List<String>) -> Unit,
     private val onShowChoiceRows: (View, List<List<String>>) -> Unit,
     private val swipeUpEnabled: () -> Boolean,
@@ -216,22 +215,26 @@ internal class Pinyin9KeyboardRenderer(
     }
 
     private fun createNineDigitKey(digit: String): ImeKeyView {
-        val segmentation = digit == "1"
+        // The 1 cell is the reference's `@#` key: the label names the symbols it
+        // offers, and the corner shows the digit a tap and an up swipe type
+        // (`input_kbd_pinyin9.xml:23-28`). The board has no 分词 key: that key
+        // exists on the 26-key row alone.
+        val atSymbol = digit == "1"
         val labels = NINE_KEYS.flatten().first { it.first == digit }.second
         val key = createKey(
-            if (segmentation) "分词" else labels,
+            labels,
             false,
             digit,
-            if (segmentation) ImeTypographyTokens.BODY_SP else ImeTypographyTokens.CANDIDATE_SP,
+            ImeTypographyTokens.CANDIDATE_SP,
         ) {
-            if (segmentation) onPinyinSegment() else onNineKey(digit)
+            onNineKey(digit)
         }.apply {
             tag = "key-9:$digit"
-            contentDescription = if (segmentation) "1，分词" else digit
+            contentDescription = if (atSymbol) "@#，角标 1" else digit
             markWhiteKey(this)
-            if (segmentation) {
+            if (atSymbol) {
                 setOnLongClickListener {
-                    onShowChoicePopup(this, listOf("@", "#", "/"))
+                    onShowChoicePopup(this, NineKeyLongPressPolicy.AT_SYMBOL_CHOICES)
                     true
                 }
             } else {

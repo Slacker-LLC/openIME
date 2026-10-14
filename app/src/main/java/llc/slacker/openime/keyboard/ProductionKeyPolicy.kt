@@ -9,7 +9,8 @@ internal object ProductionKeyPolicy {
 
     data class BottomRowWeights(
         val leftOuter: Float,
-        val leftInner: Float,
+        val merged: Float,
+        val symbol: Float,
         val space: Float,
         val rightInner: Float,
         val rightOuter: Float,
@@ -22,14 +23,16 @@ internal object ProductionKeyPolicy {
 
     /**
      * Visual reference geometry for the shared Chinese/English 26-key bottom row:
-     * 123 | ，。 | 空格 | 中/英 | 确定. The row mirrors around the space key so the
-     * space bar sits on the keyboard's centre line.
+     * 123 | ，。 | ， | 空格 | 。 | 中/英 | 确定, in the reference's own weights
+     * (`style.xml:957-978`: 123 70.6, the merged key 37.6, both symbol keys 35.5,
+     * space 133.6, 中/英 38.6, 确定 74.6). The row mirrors around the space key so
+     * the space bar sits on the keyboard's centre line.
      */
     fun twentySixKeyBottomRowWeights(landscape: Boolean = false): BottomRowWeights {
         // 横屏按参考键盘的横屏皮肤放大空格键：其空格权重 133.6 -> 182.2（×1.3638），
-        // 123 / 逗句号 / 中英 / 确定四个键均不变。
-        val space = if (landscape) 210f else 154f
-        return BottomRowWeights(70f, 48f, space, 48f, 70f)
+        // 其余各键均不变（skin-reference/land/style.xml:115）。
+        val space = if (landscape) 182.2f else 133.6f
+        return BottomRowWeights(70.6f, 37.6f, 35.5f, space, 38.6f, 74.6f)
     }
 
     /**

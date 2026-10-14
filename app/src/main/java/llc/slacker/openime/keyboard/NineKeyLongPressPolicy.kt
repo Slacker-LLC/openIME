@@ -12,6 +12,14 @@ import llc.slacker.openime.core.ImeData
  * their own behavior and return no rows.
  */
 internal object NineKeyLongPressPolicy {
+    /**
+     * The nine-key `@#` key's symbols, as the reference lists them in that key's
+     * own up-swipe bubble (`input_kbd_pinyin9.xml:26-27`). The corner already
+     * costs one of them — the digit 1, which a plain up swipe types — so the list
+     * stays reachable here.
+     */
+    val AT_SYMBOL_CHOICES = listOf("/", "-", "_", "1", "@", "#", ".")
+
     fun choiceRows(digit: String, keypad: Map<String, List<String>> = ImeData.keypad9Map): List<List<String>> {
         val letters = keypad[digit].orEmpty().filter { it.length == 1 && it[0] in 'a'..'z' }
         if (letters.isEmpty()) return emptyList()
