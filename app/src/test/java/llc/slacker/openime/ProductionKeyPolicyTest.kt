@@ -2,6 +2,7 @@ package llc.slacker.openime
 
 import llc.slacker.openime.keyboard.ProductionKeyPolicy
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Regression coverage for current-main production key geometry. */
@@ -46,12 +47,14 @@ class ProductionKeyPolicyTest {
     }
 
     @Test
-    fun nineKeyBottomRowGivesTheSpaceBarMoreRoomThanTheSideKeys() {
+    fun nineKeyBottomRowUsesTheReferencesOwnWeights() {
         val weights = ProductionKeyPolicy.nineKeyBottomRowWeights()
-        assertEquals(0.7f, weights.side, 0.0001f)
-        assertEquals(1.6f, weights.space, 0.0001f)
-        // Same total as the former 1:1:1 row, so the grid above is unaffected.
-        assertEquals(3f, weights.side * 2 + weights.space, 0.0001f)
+        assertEquals(45.5f, weights.side, 0.0001f)
+        assertEquals(134f, weights.space, 0.0001f)
+        // The three fill the reference's 225-unit centre column exactly, and
+        // the space bar keeps better than twice a side key's width.
+        assertEquals(225f, weights.side * 2 + weights.space, 0.0001f)
+        assertTrue(weights.space > weights.side * 2)
     }
 
     @Test

@@ -580,6 +580,7 @@ open class ImeKeyboardView(
             },
             // The nine-key rail: stroke glyphs are not digits, so it stays on symbols.
             createSymbolRail = { requireNineKeySymbolRailController().buildRail() },
+            onShowChoicePopup = ::showChoicePopup,
             markSideKey = { key -> key.setTag(MARK_SIDE_KEY, true) },
             markWhiteKey = { key -> key.setTag(MARK_WHITE_KEY, true) },
             onStroke = ::onStrokeKey,

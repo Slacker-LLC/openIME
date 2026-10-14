@@ -16,10 +16,15 @@ internal object ProductionKeyPolicy {
         val rightOuter: Float,
     )
 
-    /** Nine-key bottom row: 123 | 空格 | 中/英. The space bar is the wide key. */
+    /**
+     * Nine-key bottom row: 123 | 空格 | 中/英, in the reference's own weights.
+     * Its nine-key board and its stroke board give that row the same three
+     * figures — 45.5, 134, 45.5 — inside the 225-unit centre column
+     * (`input_kbd_pinyin9.xml:87-100`, `input_kbd_stroke.xml:69-84`).
+     */
     data class NineKeyBottomRowWeights(val side: Float, val space: Float)
 
-    fun nineKeyBottomRowWeights(): NineKeyBottomRowWeights = NineKeyBottomRowWeights(side = 0.7f, space = 1.6f)
+    fun nineKeyBottomRowWeights(): NineKeyBottomRowWeights = NineKeyBottomRowWeights(side = 45.5f, space = 134f)
 
     /**
      * Visual reference geometry for the shared Chinese/English 26-key bottom row:
