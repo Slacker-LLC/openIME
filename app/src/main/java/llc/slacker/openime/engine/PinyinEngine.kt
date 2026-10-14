@@ -36,7 +36,7 @@ class PinyinEngine internal constructor(
         val letters = normalize(input)
         if (letters.isEmpty() || letters.length > MAX_INPUT) return emptyList()
         val segmenter = segmenterFor(fuzzyRules)
-        val found = HashMap<String, Int>()
+        val found = HashMap<String, Candidate>()
         val budget = Budget()
 
         for (split in 0..letters.length) {
@@ -52,20 +52,20 @@ class PinyinEngine internal constructor(
             for (path in headPaths) {
                 if (budget.exhausted()) break
                 if (tail.isEmpty()) {
-                    collectExact(found, path.ids, path.fuzzy, budget)
-                    collectPrefix(found, path.ids, path.fuzzy, budget, COMPLETION_WORDS)
+                    collectExact(found, path.ids, path.fuzzy, budget, COMPLETE)
+                    collectPrefix(found, path.ids, path.fuzzy, budget, COMPLETION_WORDS, COMPLETE)
                 } else {
                     // Words that already match the settled prefix stay candidates
                     // while the next syllable is still being typed. An empty
                     // prefix would match from the top of the table: skip it.
                     if (path.ids.isNotEmpty()) {
-                        collectPrefix(found, path.ids, path.fuzzy, budget, FRAGMENT_WORDS)
+                        collectPrefix(found, path.ids, path.fuzzy, budget, FRAGMENT_WORDS, FRAGMENT)
                     }
                     for (edge in segmenter.syllablesStartingWith(tail, TAIL_SYLLABLES)) {
                         if (budget.exhausted()) break
                         val ids = path.ids.copyOf(path.ids.size + 1)
                         ids[ids.size - 1] = edge.id
-                        collectPrefix(found, ids, path.fuzzy || edge.fuzzy, budget, FRAGMENT_WORDS)
+                        collectPrefix(found, ids, path.fuzzy || edge.fuzzy, budget, FRAGMENT_WORDS, FRAGMENT)
                         budget.lookups++
                     }
                 }
@@ -73,7 +73,11 @@ class PinyinEngine internal constructor(
         }
         if (found.isEmpty()) return emptyList()
         return found.entries
-            .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
+            .sortedWith(
+                compareBy<Map.Entry<String, Candidate>> { it.value.coverage }
+                    .thenByDescending { it.value.score }
+                    .thenBy { it.key },
+            )
             .take(limit)
             .map { it.key }
     }
@@ -148,23 +152,30 @@ class PinyinEngine internal constructor(
         }
     }
 
-    private fun collectExact(found: HashMap<String, Int>, ids: IntArray, fuzzy: Boolean, budget: Budget) {
+    private fun collectExact(
+        found: HashMap<String, Candidate>,
+        ids: IntArray,
+        fuzzy: Boolean,
+        budget: Budget,
+        coverage: Int,
+    ) {
         val start = lexicon.lowerBound(ids, ids.size)
         val end = lexicon.exactEnd(ids, ids.size)
         var taken = 0
         for (word in start until end) {
             if (taken >= EXACT_WORDS) break
             taken++
-            add(found, word, fuzzy, budget)
+            add(found, word, fuzzy, budget, coverage)
         }
     }
 
     private fun collectPrefix(
-        found: HashMap<String, Int>,
+        found: HashMap<String, Candidate>,
         ids: IntArray,
         fuzzy: Boolean,
         budget: Budget,
         cap: Int,
+        coverage: Int,
     ) {
         val start = lexicon.lowerBound(ids, ids.size)
         val end = lexicon.prefixEnd(ids, ids.size)
@@ -172,11 +183,17 @@ class PinyinEngine internal constructor(
         for (word in start until end) {
             if (taken >= cap || budget.exhausted()) break
             taken++
-            add(found, word, fuzzy, budget)
+            add(found, word, fuzzy, budget, coverage)
         }
     }
 
-    private fun add(found: HashMap<String, Int>, word: Int, fuzzy: Boolean, budget: Budget) {
+    private fun add(
+        found: HashMap<String, Candidate>,
+        word: Int,
+        fuzzy: Boolean,
+        budget: Budget,
+        coverage: Int,
+    ) {
         val text = lexicon.textOf(word)
         if (text.isEmpty()) return
         // A fuzzy reading carries a moderate penalty: a frequent fuzzy word can
@@ -184,7 +201,12 @@ class PinyinEngine internal constructor(
         // solid literal match of similar frequency.
         val adjusted = lexicon.scoreOf(word) - if (fuzzy) FUZZY_SCORE_PENALTY else 0
         val current = found[text]
-        if (current == null || adjusted > current) found[text] = adjusted
+        if (current == null) {
+            found[text] = Candidate(coverage, adjusted)
+        } else if (coverage < current.coverage || (coverage == current.coverage && adjusted > current.score)) {
+            current.coverage = coverage
+            current.score = adjusted
+        }
         budget.words++
     }
 
@@ -228,6 +250,12 @@ class PinyinEngine internal constructor(
 
     private class Edge(val to: Int, val word: Int, val fuzzy: Boolean)
 
+    /**
+     * One candidate: how much of the typed input the reading explains
+     * ([coverage], COMPLETE beats FRAGMENT) and the word's frequency score.
+     */
+    private class Candidate(var coverage: Int, var score: Int)
+
     private class State(
         val score: Double,
         val word: Int,
@@ -245,6 +273,12 @@ class PinyinEngine internal constructor(
         private const val PATH_LIMIT = 32
         private const val MAX_WORD_SYLLABLES = 6
         private const val EXACT_WORDS = 48
+        /** Coverage ranks first: a word whose reading spells out every typed
+         *  letter (dang -> 当) always beats a more frequent word that only
+         *  matches a prefix of it (dang -> 打, from da + a tail that never
+         *  becomes a syllable). */
+        private const val COMPLETE = 0
+        private const val FRAGMENT = 1
         private const val COMPLETION_WORDS = 64
         private const val FRAGMENT_WORDS = 64
         private const val WORDS_PER_SPAN = 24
