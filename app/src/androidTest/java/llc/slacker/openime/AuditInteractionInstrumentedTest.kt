@@ -653,10 +653,11 @@ class AuditInteractionInstrumentedTest {
             keyboard.showPanel(Panel.TOOLS)
             val card = keyboard.findViewWithTag<View>("tool:表情")
             assertTrue("Tool card must be keyboard-focusable", card.isFocusable)
-            // The column is the target; its icon tile mirrors the column's state.
-            val tile = (card as ViewGroup).getChildAt(0)
-            assertTrue("Tool tile must expose pressed and focus feedback", tile.background is StateListDrawable)
-            assertTrue("Tool tile must follow the card's pressed state", tile.isDuplicateParentStateEnabled)
+            // The whole cell is the reference's own tile: it carries the face and
+            // the press, and its glyph mirrors the tile's state.
+            assertTrue("Tool tile must expose pressed and focus feedback", card.background is StateListDrawable)
+            val icon = (card as ViewGroup).getChildAt(0)
+            assertTrue("Tool glyph must follow the tile's pressed state", icon.isDuplicateParentStateEnabled)
             assertEquals("表情", card.contentDescription)
             val label = card.getChildAt(1)
             assertTrue(

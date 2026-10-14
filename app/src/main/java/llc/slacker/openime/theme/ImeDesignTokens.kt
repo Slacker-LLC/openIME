@@ -47,7 +47,6 @@ internal object ImeGeometryTokens {
     const val FIELD_HEIGHT_DP = 56
     const val PRIMARY_ROW_HEIGHT_DP = 52
     const val SETTING_ROW_HEIGHT_DP = 56
-    const val TOOL_CARD_HEIGHT_DP = 80
     const val VOICE_CONTROL_HEIGHT_DP = TOUCH_TARGET_DP
     // iOS switch geometry: a 51x31 track and a 27 knob, so the knob sits 2
     // from every edge, on and off alike.

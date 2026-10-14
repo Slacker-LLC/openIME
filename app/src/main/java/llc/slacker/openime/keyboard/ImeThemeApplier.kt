@@ -14,6 +14,7 @@ import android.widget.SeekBar
 import android.widget.TextView
 import llc.slacker.openime.R
 import llc.slacker.openime.handwriting.HandwritingPadView
+import llc.slacker.openime.panel.TileGridPolicy
 import llc.slacker.openime.theme.ImeDrawableFactory
 import llc.slacker.openime.theme.ImeGeometryTokens
 import llc.slacker.openime.theme.ImeSurfacePolicy
@@ -200,7 +201,19 @@ internal class ImeThemeApplier(
             }
             "nine-symbol-scroll-content", "digits-symbol-scroll-content" -> view.background = null
             // Tool-style tiles: the icon tile carries the colour, not the card.
-            "keyboard-choice", "keyboard-choice-selected" -> view.background = null
+            // A launcher tile is the reference's own rounded card: the whole
+            // cell takes `setting_button_bk` with `bkround="14"`, the accent
+            // when it is the chosen one (`cls_settings_button`, style.xml:626-647).
+            "keyboard-choice" -> view.background = statefulRounded(
+                t.toolCardBackground,
+                ImeSurfacePolicy.pressedSurface(t.toolCardBackground, t),
+                toPx(TileGridPolicy.TILE_RADIUS_DP),
+            )
+            "keyboard-choice-selected" -> view.background = statefulRounded(
+                t.primary,
+                ImeSurfacePolicy.primaryPressed(t),
+                toPx(TileGridPolicy.TILE_RADIUS_DP),
+            )
             "segmented-track" -> view.background = ImeDrawableFactory.rounded(
                 if (hasAncestorTag(view, "settings-panel")) ImeSurfacePolicy.controlTrack(t) else t.functionKeyBackground,
                 toPx(12),
@@ -233,8 +246,15 @@ internal class ImeThemeApplier(
             "compose-zone" -> view.setBackgroundColor(t.candidateBackground)
             "candidate-field" -> view.background = null
             else -> {
-                // A tool is a column (tile + name); its tile paints the press.
-                if ((view.tag as? String)?.startsWith("tool:") == true) view.background = null
+                // A tool's own tile is the card: the whole cell takes the
+                // reference's radius-14 face, its name drawn inside it.
+                if ((view.tag as? String)?.startsWith("tool:") == true) {
+                    view.background = statefulRounded(
+                        t.toolCardBackground,
+                        ImeSurfacePolicy.pressedSurface(t.toolCardBackground, t),
+                        toPx(TileGridPolicy.TILE_RADIUS_DP),
+                    )
+                }
             }
         }
 
@@ -350,17 +370,14 @@ internal class ImeThemeApplier(
                 )
             }
             view.tag == "tool-icon-selected" -> {
-                val selected = ImeSurfacePolicy.selectedSurface(t)
-                view.imageTintList = ColorStateList.valueOf(ImeSurfacePolicy.selectedText(t))
-                view.background = statefulRounded(selected, ImeSurfacePolicy.pressedSurface(selected, t), toPx(16))
+                // The chosen tile is the accent, so its glyph reads on it
+                // (`setting_button_icon_selected` over a `theme_color` face).
+                view.imageTintList = ColorStateList.valueOf(ImeDrawableFactory.contrastText(t.primary))
+                view.background = null
             }
             view.tag == "tool-icon" -> {
                 view.imageTintList = ColorStateList.valueOf(ImeSurfacePolicy.iconTint(t))
-                view.background = statefulRounded(
-                    t.toolCardBackground,
-                    ImeSurfacePolicy.pressedSurface(t.toolCardBackground, t),
-                    toPx(16),
-                )
+                view.background = null
             }
             view.tag == "undo-toolbar" -> view.imageTintList = ColorStateList.valueOf(t.keySecondaryText)
             view.tag == "key-panel-back" -> {
@@ -569,7 +586,11 @@ internal class ImeThemeApplier(
                 view.typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
             }
             tag == "segment-option-tall" -> { view.setTextColor(t.keySecondaryText); view.background = null }
-            tag == "tool-label-selected" -> view.setTextColor(ImeSurfacePolicy.selectedText(t))
+            // The tile's name takes `keybutton_text_3` (50% black, or 50% white
+            // in the dark skin, values/colors.xml:15) and white on the chosen
+            // tile (`setting_button_selectedtext`).
+            tag == "tool-label" -> view.setTextColor(t.keySecondaryText)
+            tag == "tool-label-selected" -> view.setTextColor(ImeDrawableFactory.contrastText(t.primary))
             tag == "fuzzy-rules" -> view.background = ImeDrawableFactory.rounded(t.toolCardBackground, toPx(16))
             tag == "textedit-spacer" -> view.background = null
             tag == "textedit-center" -> {

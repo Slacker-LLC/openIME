@@ -1,6 +1,7 @@
 package llc.slacker.openime.panel
 
 import android.content.Context
+import android.text.TextUtils
 import android.content.Intent
 import android.graphics.Canvas
 import android.graphics.Color
@@ -100,7 +101,6 @@ internal class ImePanelRenderer(
         addHeader("切换键盘")
         val body = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(toPx(12), toPx(12), toPx(4), 0)
             tag = "keyboard-select-panel"
         }
         val modes = listOf(
@@ -116,60 +116,42 @@ internal class ImePanelRenderer(
             (mode == KeyboardMode.WUBI && !rimeAssetPresent(WUBI_TABLE_ASSET)) ||
                 (mode == KeyboardMode.DOUBLE_PINYIN && !rimeAssetPresent(DOUBLE_PINYIN_SCHEMA_ASSET))
         }
-        modes.chunked(TOOL_COLUMNS).forEach { chunk ->
-            val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            chunk.forEach { (mode, label, iconRes) ->
-                row.addView(keyboardChoice(mode, label, iconRes), toolCardParams())
-            }
-            repeat(TOOL_COLUMNS - chunk.size) { row.addView(View(context), toolCardParams()) }
-            body.addView(
-                row,
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    toPx(ImeGeometryTokens.TOOL_CARD_HEIGHT_DP),
-                ).apply { bottomMargin = toPx(ImeSpacingTokens.LG_DP) },
-            )
-        }
+        val tiles = modes.map { (mode, label, iconRes) -> keyboardChoice(mode, label, iconRes) }.toMutableList()
         // Handwriting is an input surface, not a keyboard mode. Give it the
         // same entry point as the keyboards so it is found in the same place.
         if (StrokeMatchHandwritingProvider.assetPresent(context)) {
-            val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            row.addView(
-                toolCard(R.drawable.ic_pref_handwriting, "手写输入") {
-                    onShowPanel(Panel.HANDWRITING)
-                },
-                toolCardParams(),
-            )
-            repeat(TOOL_COLUMNS - 1) { row.addView(View(context), toolCardParams()) }
-            body.addView(
-                row,
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    toPx(ImeGeometryTokens.TOOL_CARD_HEIGHT_DP),
-                ).apply { bottomMargin = toPx(ImeSpacingTokens.LG_DP) },
+            tiles += TileEntry(
+                label = "手写输入",
+                iconRes = R.drawable.ic_pref_handwriting,
+                onTap = { onShowPanel(Panel.HANDWRITING) },
             )
         }
-        expandedPanel.addView(
-            body,
+        body.addView(
+            tileGrid(tiles),
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                imeHeightPx() - toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ),
+        )
+        val scroll = panelVerticalScroll(body, "keyboard-select-scroll")
+        rememberPanelVerticalScroll(scroll, "keyboard-select")
+        expandedPanel.addView(
+            scroll,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f,
             ),
         )
     }
-
-    private fun toolCardParams() =
-        LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOOL_CARD_HEIGHT_DP), 1f).apply { marginEnd = toPx(8) }
 
     fun renderTools() {
         addHeader("工具")
         val body = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(toPx(12), toPx(12), toPx(4), 0)
             tag = "tools-panel"
         }
-        val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        val cards = listOf(
+        val entries = listOf(
             ToolEntry("剪贴板", Panel.CLIPBOARD, R.drawable.ic_pref_clipboard),
             ToolEntry("表情", Panel.EMOJI, R.drawable.ic_pref_emoji),
             ToolEntry("符号", Panel.SYMBOLS, R.drawable.ic_pref_symbols),
@@ -187,42 +169,16 @@ internal class ImePanelRenderer(
             ToolEntry("数据管理", iconRes = R.drawable.ic_pref_data, action = onOpenDataManagement),
         ).filter { it.enabled }
 
-        cards.chunked(TOOL_COLUMNS).forEach { chunk ->
-            val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            chunk.forEach { entry ->
-                val action = entry.action ?: {
-                    entry.target?.let(onShowPanel)
-                    Unit
-                }
-                row.addView(
-                    toolCard(entry.iconRes ?: R.drawable.ic_settings, entry.label, action),
-                    LinearLayout.LayoutParams(
-                        0,
-                        toPx(ImeGeometryTokens.TOOL_CARD_HEIGHT_DP),
-                        1f,
-                    ).apply { marginEnd = toPx(8) },
-                )
-            }
-            repeat(TOOL_COLUMNS - chunk.size) {
-                row.addView(
-                    View(context),
-                    LinearLayout.LayoutParams(
-                        0,
-                        toPx(ImeGeometryTokens.TOOL_CARD_HEIGHT_DP),
-                        1f,
-                    ).apply { marginEnd = toPx(8) },
-                )
-            }
-            grid.addView(
-                row,
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    toPx(ImeGeometryTokens.TOOL_CARD_HEIGHT_DP),
-                ).apply { bottomMargin = toPx(ImeSpacingTokens.LG_DP) },
-            )
-        }
         body.addView(
-            grid,
+            tileGrid(
+                entries.map { entry ->
+                    TileEntry(
+                        label = entry.label,
+                        iconRes = entry.iconRes ?: R.drawable.ic_settings,
+                        onTap = entry.action ?: { entry.target?.let(onShowPanel); Unit },
+                    )
+                },
+            ),
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -733,71 +689,142 @@ internal class ImePanelRenderer(
         }
     }
 
+    /** One tile of a launcher grid: its glyph, its name, and what it opens. */
+    private class TileEntry(
+        val label: String,
+        val iconRes: Int,
+        val selected: Boolean = false,
+        /** Overrides the `tool:$label` tag the tiles of the tools page carry. */
+        val tag: String? = null,
+        val contentDescription: String? = null,
+        val onTap: () -> Unit,
+    )
+
     /**
-     * One tool: a 56dp icon tile with its name underneath. The whole column is
-     * the touch target; the tile shows the press.
+     * The reference's own launcher grid (`input_settings.xml:13-45`,
+     * `input_switch_keyboard.xml:13-29`): a 4-column, 2-row container 88.9% of
+     * the page wide with its own paddings, each tile filling its cell with the
+     * radius-14 face. See [TileGridPolicy] for every quoted value.
      */
-    private fun toolCard(
-        iconRes: Int,
-        label: String,
-        onTap: () -> Unit,
-    ): LinearLayout {
-        val card = LinearLayout(context).apply {
+    private fun tileGrid(entries: List<TileEntry>): View {
+        val pageWidth = expandedPanel.width.takeIf { it > 0 } ?: context.resources.displayMetrics.widthPixels
+        val containerWidth = (pageWidth * TileGridPolicy.WIDTH_FRACTION).toInt()
+        val padH = (pageWidth * TileGridPolicy.PAD_H_FRACTION).toInt()
+        val padTop = (pageWidth * TileGridPolicy.PAD_TOP_FRACTION).toInt()
+        val padBottom = (pageWidth * TileGridPolicy.PAD_BOTTOM_FRACTION).toInt()
+        val cellWidth = ((containerWidth - 2 * padH) / TileGridPolicy.COLUMNS).coerceAtLeast(1)
+        val hPad = (cellWidth * TileGridPolicy.CHILD_PAD_FRACTION).toInt()
+        // The grid never grows past the reference's own cap, and never past the
+        // room the panel has left under its header.
+        val available = (panelBodyHeightPx() - padTop - padBottom).coerceAtLeast(1)
+        val gridHeight = minOf(toPx(TileGridPolicy.MAX_HEIGHT_UNITS), available)
+        val rows = TileGridPolicy.rows(entries.size)
+        val fittedRow = gridHeight / rows
+        val vPad = (fittedRow * TileGridPolicy.CHILD_V_PAD_FRACTION).toInt()
+        // A tile never shrinks under our 48dp touch target; a row that would is
+        // grown back and the panel's own scroll takes the difference.
+        val tileHeight = (fittedRow - 2 * vPad).coerceAtLeast(toPx(ImeGeometryTokens.TOUCH_TARGET_DP))
+        val rowHeight = (tileHeight + 2 * vPad).coerceAtLeast(fittedRow)
+
+        val container = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL or Gravity.TOP
+            tag = "tile-grid"
+            setPadding(padH, padTop, padH, padBottom)
+        }
+        entries.chunked(TileGridPolicy.COLUMNS).forEach { chunk ->
+            val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+            chunk.forEach { entry ->
+                val cell = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+                cell.addView(
+                    toolTile(entry, cellWidth - 2 * hPad, tileHeight),
+                    LinearLayout.LayoutParams(
+                        cellWidth - 2 * hPad,
+                        tileHeight,
+                    ).apply {
+                        leftMargin = hPad
+                        rightMargin = hPad
+                        topMargin = vPad
+                        bottomMargin = vPad
+                    },
+                )
+                row.addView(
+                    cell,
+                    LinearLayout.LayoutParams(cellWidth, rowHeight).apply { gravity = Gravity.CENTER },
+                )
+            }
+            container.addView(
+                row,
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, rowHeight),
+            )
+        }
+        return container
+    }
+
+    /**
+     * One tile: the glyph over its name, the whole cell the touch target and
+     * the press (`cls_settings_button`; the label sits under the icon as the
+     * skin's `align="top"` draws it).
+     */
+    private fun toolTile(entry: TileEntry, widthPx: Int, heightPx: Int): LinearLayout {
+        val tile = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
             minimumWidth = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
             minimumHeight = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
-            tag = "tool:$label"
-            contentDescription = label
+            tag = entry.tag ?: "tool:${entry.label}"
+            contentDescription = entry.contentDescription ?: entry.label
+            isSelected = entry.selected
             isClickable = true
             isFocusable = true
             setOnClickListener {
                 onFeedback()
-                onTap()
+                entry.onTap()
             }
         }
-        card.addView(
+        val iconSide = (heightPx * TileGridPolicy.ICON_FRACTION).toInt().coerceAtLeast(1)
+        tile.addView(
             ImageView(context).apply {
-                setImageResource(iconRes)
+                setImageResource(entry.iconRes)
                 scaleType = ImageView.ScaleType.CENTER_INSIDE
                 contentDescription = null
                 isDuplicateParentStateEnabled = true
-                tag = "tool-icon"
+                tag = if (entry.selected) "tool-icon-selected" else "tool-icon"
             },
-            LinearLayout.LayoutParams(toPx(56), toPx(56)).apply {
-                bottomMargin = toPx(ImeSpacingTokens.SM_DP)
+            LinearLayout.LayoutParams(iconSide, iconSide).apply {
+                bottomMargin = toPx(ImeSpacingTokens.XS_DP)
             },
         )
-        card.addView(
+        tile.addView(
             TextView(context).apply {
-                text = label
-                tag = "tool-label"
+                text = entry.label
+                tag = if (entry.selected) "tool-label-selected" else "tool-label"
                 typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
                 textSize = ImeTypographyTokens.SMALL_SP
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
                 gravity = Gravity.CENTER
                 includeFontPadding = false
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             },
             LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
             ),
         )
-        return card
+        return tile
     }
 
-    /** A 工具-style tile; the current keyboard's tile is drawn selected. */
-    private fun keyboardChoice(mode: KeyboardMode, label: String, iconRes: Int): View {
+    /** A launcher tile for a keyboard; the current keyboard's tile is drawn selected. */
+    private fun keyboardChoice(mode: KeyboardMode, label: String, iconRes: Int): TileEntry {
         val selected = currentMode() == mode
-        return toolCard(iconRes, label) { onModeSelected(mode) }.apply {
-            tag = if (selected) "keyboard-choice-selected" else "keyboard-choice"
-            contentDescription = "$label，${if (selected) "已选中" else "未选中"}"
-            isSelected = selected
-            if (selected) {
-                findViewWithTag<View>("tool-icon")?.tag = "tool-icon-selected"
-                findViewWithTag<View>("tool-label")?.tag = "tool-label-selected"
-            }
-        }
+        return TileEntry(
+            label = label,
+            iconRes = iconRes,
+            selected = selected,
+            tag = if (selected) "keyboard-choice-selected" else "keyboard-choice",
+            contentDescription = "$label，${if (selected) "已选中" else "未选中"}",
+            onTap = { onModeSelected(mode) },
+        )
     }
 
     private fun symbolItems(category: String): List<String> = when (category) {
@@ -856,7 +883,6 @@ internal class ImePanelRenderer(
     )
 
     private companion object {
-        const val TOOL_COLUMNS = 4
         /** Longer than this, a symbol is text (kaomoji, 【】 pairs...) and needs a wide cell. */
         const val WIDE_SYMBOL_CODE_POINTS = 3
         /** Compiled wubi table; absent from builds without the local sources. */
