@@ -304,11 +304,14 @@ internal class ImeThemeApplier(
                 view.imageTintList = ColorStateList.valueOf(if (view.isSelected) t.primary else t.keySecondaryText)
             }
             view.tag == "candidate-emoji" || view.tag == "candidate-expand" -> {
+                // `cls_btn_morecand` is a `cls_bk_toolbar_button`: a transparent
+                // pill that only shows a press tint (`bkround="111"`,
+                // `pushedbkcolor="@color/canditem_pushedbk"`, style.xml:231-235, 482-488).
                 view.imageTintList = ColorStateList.valueOf(t.keySecondaryText)
                 view.background = statefulRounded(
                     Color.TRANSPARENT,
                     ImeSurfacePolicy.pressedSurface(t.candidateBackground, t),
-                    toPx(ImeGeometryTokens.KEY_RADIUS_DP),
+                    toPx(ImeGeometryTokens.PILL_RADIUS_DP),
                 )
             }
             view.tag == "candidate-expanded-backspace" -> {
@@ -715,6 +718,9 @@ internal class ImeThemeApplier(
             "setting-divider" ->
                 view.setBackgroundColor(ImeDrawableFactory.withAlpha(t.border, if (ImeSurfacePolicy.isDark(t)) 150 else 48))
             "row-hairline" -> view.setBackgroundColor(ImeSurfacePolicy.hairline(t))
+            // `cls_candidate_split` is filled with @color/canditem_split
+            // (style.xml:504-506), the colour the candidate row's hairlines use.
+            "candidate-strip-split" -> view.setBackgroundColor(ImeSurfacePolicy.divider(t))
         }
     }
 

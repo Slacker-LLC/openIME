@@ -43,6 +43,15 @@ internal enum class ImeTopZoneState {
 private const val COMPOSITION_LINE_DP = 18
 private const val CANDIDATE_ROW_DP = 42
 
+/**
+ * The reference's candidate strip is `[4] 候选列表(308) [1] [3] 更多候选(40) [4]`
+ * (`input_toolbar_typing.xml:16-30`, weights from `style.xml:530-534`, 506 and 468):
+ * a small inset at each end, a hairline split before the expand key and a 3-unit
+ * gap ahead of it.
+ */
+private const val CANDIDATE_EDGE_UNITS = 4
+private const val CANDIDATE_BUTTON_GAP_UNITS = 3
+
 internal class ImeTopZone(
     context: Context,
     private val toPx: (Int) -> Int,
@@ -260,8 +269,13 @@ internal class ImeTopZone(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             tag = "candidate-field"
-            setPadding(toPx(6), 0, toPx(0), 0)
+            setPadding(0, 0, 0, 0)
         }
+        // The reference's strip opens with a 4-unit inset.
+        candidateField.addView(
+            View(context).apply { tag = "candidate-strip-lead" },
+            LinearLayout.LayoutParams(toPx(CANDIDATE_EDGE_UNITS), LinearLayout.LayoutParams.MATCH_PARENT),
+        )
         candidateRow.apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -312,7 +326,24 @@ internal class ImeTopZone(
                 onExpandCandidates()
             }
         }
+        // The hairline split sits between the list and the expand key, and the
+        // expand key keeps a 3-unit gap from it.
+        candidateField.addView(
+            View(context).apply { tag = "candidate-strip-split" },
+            LinearLayout.LayoutParams(toPx(1).coerceAtLeast(1), LinearLayout.LayoutParams.MATCH_PARENT),
+        )
+        candidateField.addView(
+            View(context).apply { tag = "candidate-strip-gap" },
+            LinearLayout.LayoutParams(
+                toPx(CANDIDATE_BUTTON_GAP_UNITS),
+                LinearLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
         candidateField.addView(candidateExpandButton, touchTargetParams())
+        candidateField.addView(
+            View(context).apply { tag = "candidate-strip-tail" },
+            LinearLayout.LayoutParams(toPx(CANDIDATE_EDGE_UNITS), LinearLayout.LayoutParams.MATCH_PARENT),
+        )
         composeZone.addView(
             candidateField,
             LinearLayout.LayoutParams(
