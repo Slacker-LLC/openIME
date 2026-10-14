@@ -293,8 +293,8 @@ internal class NineKeySymbolRailController(
         const val PINYIN_PANEL_TAG = "nine-pinyin-panel"
         const val MAX_VISIBLE_PATHS = 16
 
-        /** The symbol cells' own size: one list, one text size for both kinds of item. */
-        const val RAIL_ITEM_TEXT_SP = 20f
+        /** The reference reads and marks the same way: one list, one item font. */
+        const val RAIL_ITEM_TEXT_SP = SymbolRailRenderer.ITEM_TEXT_SP
         const val RAIL_ITEM_TYPEFACE = "sans-serif-medium"
     }
 }

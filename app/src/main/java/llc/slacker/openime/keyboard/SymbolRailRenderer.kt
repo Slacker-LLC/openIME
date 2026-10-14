@@ -22,6 +22,9 @@ internal object SymbolRailRenderer {
     private const val CELL_HEIGHT_DP = 54
     private const val FADING_EDGE_DP = 18
 
+    /** The rail's one item font: the reference's 47-unit face over its own step of 3. */
+    const val ITEM_TEXT_SP = 15.5f
+
     fun build(
         context: Context,
         railTag: String,
@@ -178,7 +181,12 @@ internal object SymbolRailRenderer {
         onFeedback: () -> Unit,
     ): TextView = InkCenteredTextView(context).apply {
         text = symbol
-        textSize = when (symbol) { "！", "!", "？", "?" -> 24f; "，", "、", "%", "+", "−", "-" -> 22f; else -> 20f }
+        // One font for the whole list, marks and readings alike: the reference's
+        // item class gives every rail cell `fi_vertical_symbol_list_text`
+        // (`style.xml:1025-1027`), a 47-unit face — 47 ÷ 3, the step between the
+        // reference's own numbers and our sp scale (`key_letter` 57 is our 19,
+        // `comp_font` 40 our 13).
+        textSize = ITEM_TEXT_SP
         gravity = Gravity.CENTER
         tag = "$tagPrefix$symbol"
         contentDescription = symbol

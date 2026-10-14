@@ -325,11 +325,19 @@ internal class ImeThemeApplier(
             (view.tag == "nine-punct-stack" || view.tag == "digits-symbol-scroll") &&
             content in setOf("nine-pinyin-panel", "nine-symbol-scroll-content", "digits-symbol-scroll-content")
         ) {
-            // Reading or symbol list: the whole rail is one panel and its items are flat.
-            // Inset by half a key gap so the panel lines up with the key grid.
+            // Reading or symbol list: the whole rail is one panel and its items are
+            // flat. The panel is drawn inside the column with the margins the
+            // reference gives the list itself — 2.5 units sideways, 2.75 up and
+            // down (`cls_vertical_symbol_list`, `style.xml:1035-1036`) — so it
+            // lines up with the key grid beside it.
+            val unit = view.resources.displayMetrics.density * referenceScale()
+            fun inset(dp: Float): Int = Math.round(dp * unit)
             view.background = InsetDrawable(
                 ImeDrawableFactory.rounded(t.sideKeyBackground, toPx(ImeGeometryTokens.KEY_RADIUS_DP)),
-                toPx(ImeGeometryTokens.KEY_GAP_DP) / 2,
+                inset(ImeGeometryTokens.NINE_KEY_MARGIN_X_DP),
+                inset(ImeGeometryTokens.NINE_KEY_MARGIN_Y_DP),
+                inset(ImeGeometryTokens.NINE_KEY_MARGIN_X_DP),
+                inset(ImeGeometryTokens.NINE_KEY_MARGIN_Y_DP),
             )
         } else if (view.tag == "nine-punct-stack" || view.tag == "digits-symbol-scroll") {
             view.background = null
