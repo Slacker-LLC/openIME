@@ -561,6 +561,12 @@ def main() -> int:
     stress = load_stress()
     args.out.mkdir(parents=True, exist_ok=True)
     dev = stress.Device(args.serial, args.out)
+    # The run lasts hours, which is longer than the screen timeout: keep the
+    # screen on while the device charges and start from a woken device, or the
+    # input method goes away with the screen and takes the run with it.
+    dev.shell("svc", "power", "stayon", "true")
+    dev.shell("input", "keyevent", "KEYCODE_WAKEUP")
+    dev.shell("wm", "dismiss-keyguard")
     names = args.keyboard or list(PLAN)
     plan_all = {name: dict(PLAN[name]) for name in names}
     if args.quick:
