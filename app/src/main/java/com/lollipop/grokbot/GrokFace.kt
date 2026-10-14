@@ -378,6 +378,10 @@ public class GrokBotView @JvmOverloads constructor(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        // A gaze that does not follow the pointer reads no position at all
+        // (`GrokEngine.kt:882`), so the touch is left to the parent instead of being eaten:
+        // an IME has gestures under the character, and it must keep them.
+        if (!config.followPointer) return false
         // A finger that leaves the artwork drops the touch position, the `exit` of the
         // pointer in the Compose original; there is no such event for a view, so a move
         // outside the bounds stands in for it.

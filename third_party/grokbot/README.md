@@ -22,11 +22,19 @@ instead, so the IME can use it from its view layer, which is not a Compose tree:
 | `GrokFaceModels.kt` | Colours are ARGB ints, not Compose `Color`. |
 | `internal/GrokPathCache.kt` | Holds `android.graphics.Path`; `quadraticTo` is spelled `quadTo`. |
 | `internal/GrokRenderer.kt` | Draws onto a `Canvas`: `DrawScope` became a `Canvas` and a size, `withTransform` became `save`/`translate`/`rotate`/`scale`/`restoreToCount`, `Brush.linearGradient` became `LinearGradient`, and a Compose `Matrix` became `Matrix.setValues`. |
-| `GrokFace.kt` | `mutableStateOf` became a plain field with an observer, `withFrameNanos` became a `Choreographer` frame callback, and the `Canvas` composable became `GrokBotView`, a `View`. |
-| Everything else | Copied as it is. |
+| `GrokFace.kt` | `mutableStateOf` became a plain field with an observer, `withFrameNanos` became a `Choreographer` frame callback, and the `Canvas` composable became `GrokBotView`, a `View`. The touch listener returns early while the gaze does not follow the pointer, so the keyboard under it keeps its gestures. |
+| Everything else | Copied as it is, byte for byte. |
 
 `GrokBotState.step`, the engine, the geometry tables and the drawing order are unchanged, so the
-frames agree with the upstream reference fixtures.
+frames agree with the upstream reference fixtures. The five files above are the whole difference:
+`diff` against the pin reports no other change to any file of the `grokBot` module.
+
+The port keeps the meaning of the Compose calls it replaced, checked against the framework itself:
+`DrawTransform.transform` is `canvas.concat` (`ui-graphics` `CanvasDrawScope.kt:772`), and `rotate`,
+`scale` and `translate` with a zero pivot are the platform calls of the same name
+(`CanvasDrawScope.kt:752-770`). A Compose `Matrix` stores its translation at `values[12]`/`[13]`
+(`AndroidMatrixConversions.android.kt`), which is why the `2x3` form of an overlay element is handed
+to `Matrix.setValues` transposed.
 
 ## How the IME uses it
 
