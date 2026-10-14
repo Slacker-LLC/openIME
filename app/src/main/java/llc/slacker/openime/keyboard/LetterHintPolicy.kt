@@ -1,13 +1,15 @@
 package llc.slacker.openime.keyboard
 
 /**
- * The digit or symbol printed in the top-right corner of each 26-key letter key
- * (the scheme Sogou, iFlytek and WeChat Keyboard use): the top row carries
- * 1–0, the other rows carry punctuation. Swipe up on the key, or long press it,
- * commits the hint instead of the letter.
+ * The digit or symbol printed in the top-right corner of each 26-key letter key,
+ * on the reference product's map: the top row carries 1–0, every other key
+ * carries one mark. Chinese mode prints the full-width mark a Chinese IME types,
+ * English mode the ASCII one; the two layouts differ only where a full-width
+ * mark exists.
  *
- * Chinese mode commits the full-width marks a Chinese IME types; English mode
- * the ASCII ones. The two layouts differ only where a full-width mark exists.
+ * Swipe up on the key commits the hint. A long press opens the letter in both
+ * cases, upper first, as the reference keyboard does — it does not offer the
+ * hint.
  */
 internal object LetterHintPolicy {
     private val DIGITS = mapOf(
@@ -15,16 +17,21 @@ internal object LetterHintPolicy {
         'y' to "6", 'u' to "7", 'i' to "8", 'o' to "9", 'p' to "0",
     )
 
-    private val ENGLISH_SYMBOLS = mapOf(
-        'a' to "~", 's' to "!", 'd' to "@", 'f' to "#", 'g' to "$",
-        'h' to "%", 'j' to "&", 'k' to "*", 'l' to "?",
-        'z' to "(", 'x' to ")", 'c' to "-", 'v' to "_",
-        'b' to ":", 'n' to ";", 'm' to "/",
+    /** Marks that are the same in both languages: ASCII, or no full-width form. */
+    private val SHARED_SYMBOLS = mapOf(
+        'a' to "-", 's' to "/", 'z' to "@", 'c' to "#", 'm' to "…",
     )
 
-    private val CHINESE_SYMBOLS = ENGLISH_SYMBOLS + mapOf(
-        's' to "！", 'g' to "￥", 'l' to "？",
-        'z' to "（", 'x' to "）", 'b' to "：", 'n' to "；",
+    private val ENGLISH_SYMBOLS = SHARED_SYMBOLS + mapOf(
+        'd' to ":", 'f' to ";", 'g' to "(", 'h' to ")",
+        'j' to "~", 'k' to "'", 'l' to "\"",
+        'x' to "_", 'v' to "&", 'b' to "?", 'n' to "!",
+    )
+
+    private val CHINESE_SYMBOLS = SHARED_SYMBOLS + mapOf(
+        'd' to "：", 'f' to "；", 'g' to "（", 'h' to "）",
+        'j' to "～", 'k' to "“", 'l' to "”",
+        'x' to ".", 'v' to "、", 'b' to "？", 'n' to "！",
     )
 
     /** The hint of [letter] (lower case), or null for none. */
@@ -32,12 +39,9 @@ internal object LetterHintPolicy {
         DIGITS[letter] ?: (if (english) ENGLISH_SYMBOLS else CHINESE_SYMBOLS)[letter]
 
     /**
-     * What a long press on a letter key offers, in popup order: the letter in the
-     * other case, then the corner digit or symbol (Sogou's popup lists case, digit
-     * and mark). [shown] is the case the key currently prints.
+     * What a long press on a letter key offers, in popup order: the letter in
+     * both cases, upper first.
      */
-    fun longPressChoices(letter: Char, english: Boolean, upperShown: Boolean, hintsOn: Boolean): List<String> {
-        val other = if (upperShown) letter.toString() else letter.uppercaseChar().toString()
-        return listOfNotNull(other, if (hintsOn) hint(letter, english) else null)
-    }
+    fun caseChoices(letter: Char): List<String> =
+        listOf(letter.uppercaseChar().toString(), letter.lowercaseChar().toString())
 }

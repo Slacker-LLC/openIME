@@ -156,9 +156,11 @@ internal class Pinyin26KeyboardRenderer(
             onCommitCharacter(spec.comma)
         }.apply {
             tag = "key-punctuation"
-            contentDescription = "${spec.comma}，长按输入${spec.period}"
+            contentDescription = "${spec.comma}，上滑或长按输入${spec.period}"
             setSecondaryVisible(true)
             setSecondaryAlpha(1f)
+            // Up swipes the period, as the reference keyboard does.
+            onSwipeUp = { onCommitCharacter(spec.period) }
             setOnLongClickListener {
                 onCommitCharacter(spec.period)
                 true
@@ -216,12 +218,10 @@ internal class Pinyin26KeyboardRenderer(
                 onSwipeUp = { onCommitCharacter(secondary) }
                 swipeUpEnabled = this@Pinyin26KeyboardRenderer.swipeUpEnabled
             }
-            // Long press opens a popup (other case, digit or mark): slide to one and
-            // lift to type it, as the Sogou and iFlytek keyboards do.
+            // Long press opens the letter in both cases: slide to one and lift to
+            // type it, as the reference keyboard does.
             setOnLongClickListener {
-                val upperShown = currentMainText.firstOrNull()?.isUpperCase() == true
-                val choices = LetterHintPolicy.longPressChoices(character, english, upperShown, hintsEnabled())
-                onShowChoicePopup(this, choices)
+                onShowChoicePopup(this, LetterHintPolicy.caseChoices(character))
                 true
             }
         }

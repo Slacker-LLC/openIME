@@ -138,3 +138,7 @@ Add new entries at the end.
   Two committed Rime schemas (`double_pinyin_flypy`, `double_pinyin`) share the luna_pinyin dictionary; the keyboard is the plain 26-key surface and a settings choice picks the scheme.
   The chord tables come from rime-double-pinyin (GPL-3.0, credited in the schema header). The reference product ships the same two named schemes (`shuangpin_xiaohe` / `shuangpin_ziranma`, `oime_engine::ShuangPinScheme`); its mapping is compiled into native code without an extractable table, and 小鹤/自然码 chords are standardized layouts, so the standard tables are the same mapping.
   *Reason:* keyboard-type parity with the reference product without Lua or external dependencies.
+
+- **Letter hints follow the reference skin key by key.**
+  The corner marks on the 26-key letters are the reference product's own map (`skin-full/assets/skin/default/layout/input_kbd_pinyin26.xml`, `input_kbd_english26.xml`, attribute `ficon_text`): the same key carries the full-width mark in Chinese and the ASCII mark in English, and the top row carries 1–0. A long press opens only the letter in both cases, upper first (`long_press_bubble_text`); the mark belongs to the swipe-up gesture (`fusiyin_keycode`), and the comma/period key also commits the mark above it (。 / .) on an up swipe.
+  *Reason:* the previous marks (a=~, s=!, d=@ …) were an older scheme of our own; these values are read from the shipped skin instead of guessed. The reference lists the lower case first on P and L only; we keep a single rule (upper first) on every key, and the digit row is unchanged.
