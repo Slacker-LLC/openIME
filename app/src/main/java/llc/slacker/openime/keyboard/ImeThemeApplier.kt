@@ -178,6 +178,17 @@ internal class ImeThemeApplier(
                     toPx(RecentSymbolStripPolicy.CELL_RADIUS_DP),
                 )
             }
+            // The pre-edit block carries the reference's own press tint while the
+            // user edits the string (`cls_comp_container` pushedbkcolor
+            // @color/comp_pushedbk, style.xml:575-577 — black 8%, white 12%,
+            // the alphas our pressed surfaces already use).
+            "pinyin-composition-editor" -> {
+                view.background = statefulRounded(
+                    Color.TRANSPARENT,
+                    ImeSurfacePolicy.pressedSurface(t.toolbarBackground, t),
+                    0,
+                )
+            }
             // The tip banner: the reference's own pill, painted inside the row's
             // touch height (`cls_toolbar_tip_container` bkround 999,
             // style.xml:1273-1274), with the label in the key text colour

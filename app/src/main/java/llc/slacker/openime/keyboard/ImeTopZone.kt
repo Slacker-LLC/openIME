@@ -132,6 +132,8 @@ internal class ImeTopZone(
     private lateinit var tipLabel: TextView
     private lateinit var tipClose: ImageView
     private var tipShown = false
+    /** True while the zone draws the landscape strip, where the pre-edit sits beside the candidates. */
+    private var landscapeStrip = false
 
     /**
      * What the toolbar row shows; icons, autofill chips, associations, the
@@ -323,7 +325,10 @@ internal class ImeTopZone(
             setSelectAllOnFocus(false)
             background = null
             includeFontPadding = false
-            setPadding(toPx(14), toPx(3), toPx(14), 0)
+            // The block's own insets: a 5-unit lead and the row's 3-unit top
+            // (`input_toolbar_typing.xml:5,7`); the row leaves its right side to
+            // the surface beside it (line 18) and the string scrolls inside it.
+            setPadding(toPx(CompositionPolicy.LEAD_UNITS), toPx(3), 0, 0)
             minimumHeight = toPx(COMPOSITION_LINE_DP)
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -762,7 +767,33 @@ internal class ImeTopZone(
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        if (w > 0 && w != oldw) applyTipGeometry(w)
+        if (w > 0 && w != oldw) {
+            applyTipGeometry(w)
+            applyCompositionGeometry(w)
+        }
+    }
+
+    /**
+     * The pre-edit's own cap: half the page (`maxwidth="halfMaxWidth"` on the
+     * composition's wrapper, `input_toolbar_typing.xml:7`). The row above the
+     * candidates gives the other half back to the surface beside it, and a long
+     * string scrolls inside the cap the way the reference's own block does
+     * (`sliderenable="true"` on `cls_comp_container`, `style.xml:575-577`).
+     */
+    private fun compositionMaxWidthPx(): Int = CompositionPolicy.maxWidthPx(
+        if (width > 0) width else resources.displayMetrics.widthPixels,
+    )
+
+    private fun applyCompositionGeometry(zoneWidth: Int) {
+        val cap = CompositionPolicy.maxWidthPx(zoneWidth)
+        composition.maxWidth = cap
+        (composition.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+            val desired = if (landscapeStrip) LinearLayout.LayoutParams.WRAP_CONTENT else cap
+            if (params.width != desired) {
+                params.width = desired
+                composition.layoutParams = params
+            }
+        }
     }
 
     /** One history cell: the reference's 36-unit box over candidate-sized text. */
@@ -893,6 +924,7 @@ internal class ImeTopZone(
      * the pinyin sits at the left of the candidates instead of above them.
      */
     fun setLandscapeStrip(on: Boolean) {
+        landscapeStrip = on
         val height = toPx(
             if (on) ImeGeometryTokens.LANDSCAPE_TOP_ZONE_HEIGHT_DP else ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP,
         )
@@ -911,12 +943,12 @@ internal class ImeTopZone(
                 it.width = LinearLayout.LayoutParams.WRAP_CONTENT
                 it.height = LinearLayout.LayoutParams.MATCH_PARENT
             } else {
-                it.width = LinearLayout.LayoutParams.MATCH_PARENT
+                it.width = compositionMaxWidthPx()
                 it.height = toPx(COMPOSITION_LINE_DP)
             }
             composition.layoutParams = it
         }
-        composition.maxWidth = if (on) toPx(160) else Int.MAX_VALUE
+        composition.maxWidth = compositionMaxWidthPx()
         composition.gravity = Gravity.CENTER_VERTICAL or Gravity.START
         (candidateField.layoutParams as? LinearLayout.LayoutParams)?.let {
             if (on) {
@@ -987,7 +1019,12 @@ internal class ImeTopZone(
 
     fun setContentInset(contentInsetPx: Int) {
         toolbarRow.setPadding(contentInsetPx + toPx(6), 0, contentInsetPx + toPx(6), 0)
-        composition.setPadding(contentInsetPx + toPx(14), toPx(3), contentInsetPx + toPx(14), 0)
+        composition.setPadding(
+            contentInsetPx + toPx(CompositionPolicy.LEAD_UNITS),
+            toPx(3),
+            contentInsetPx,
+            0,
+        )
     }
 
     fun renderState(
