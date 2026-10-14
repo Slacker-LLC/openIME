@@ -39,9 +39,14 @@ internal enum class ImeTopZoneState {
  * The host supplies data/actions. This view owns construction and visibility
  * of the toolbar, composition/candidate surface, and inline voice surface.
  */
-/** Composing strip: a short pinyin line over the candidate row, 60dp in all. */
-private const val COMPOSITION_LINE_DP = 18
-private const val CANDIDATE_ROW_DP = 42
+/**
+ * Composing strip: a short pinyin line over the candidate row, 60dp in all.
+ * The reference splits its own strip 20 : 36 and leaves a 2-unit gap under it
+ * (`input_toolbar_typing.xml:4-30`); our zone keeps that gap inside itself, so
+ * the pinyin line takes the larger part of it than ours used to: 21 and 37.
+ */
+private const val COMPOSITION_LINE_DP = 21
+private const val CANDIDATE_ROW_DP = 37
 
 /**
  * The reference's candidate strip is `[4] 候选列表(308) [1] [3] 更多候选(40) [4]`
