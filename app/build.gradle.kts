@@ -72,7 +72,9 @@ android {
     ndkVersion = "27.0.12077973"
 
     defaultConfig {
-        applicationId = "llc.slacker.openime"
+        // A side-by-side development build (the owner's phone runs the .dev
+        // variant) passes -PopenimeAppIdSuffix=.dev; release builds never do.
+        applicationId = "llc.slacker.openime" + ((findProperty("openimeAppIdSuffix") as String?) ?: "")
         minSdk = 26
         targetSdk = 36
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
