@@ -71,6 +71,9 @@ internal class VoiceFaceView(
     private var state = VoiceFaceState.IDLE
     private val levels = VoiceFaceLevelPolicy()
 
+    /** Palette last painted with, so an unchanged one costs nothing. */
+    private var applied: ImeTheme.Tokens? = null
+
     /**
      * Whether the platform animates at all, read once: the engine takes
      * `reduceMotion` when it is built and cannot switch it afterwards.
@@ -112,6 +115,10 @@ internal class VoiceFaceView(
      * it when it is created, so it is fixed for the life of this view.
      */
     fun applyTokens(tokens: ImeTheme.Tokens) {
+        // The theme pass and every message of a session ask for this, so an
+        // unchanged palette is dropped before it builds a configuration.
+        if (applied == tokens) return
+        applied = tokens
         face.config = GrokBotConfig(
             mode = GrokMode.HOLD,
             mood = state.mood,

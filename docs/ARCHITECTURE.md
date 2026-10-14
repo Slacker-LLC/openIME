@@ -180,6 +180,13 @@ The project maintains `app/src/main/cpp/local_rime_jni.cc` and the CMake glue.
 Vendored librime, OpenCC and Boost are not refactoring targets.
 Change vendored code only for a confirmed native defect that has a test.
 
+The voice panel's character is `com.lollipop.grokbot` under `app/src/main/java/`.
+It is third-party artwork code, vendored from Mr-XiaoLiang/GrokBot and ported onto
+`android.graphics` (see `third_party/grokbot/README.md`).
+It is not a refactoring target either, and the source lint tests scan
+`app/src/main/java/llc/slacker/openime` only, so they do not restyle it.
+The IME talks to it through `voice/VoiceFaceView.kt` alone.
+
 ## Tests
 
 - JVM unit tests: pure policy, candidates, input connection, state, geometry.
