@@ -337,6 +337,76 @@ internal object ImeSurfacePolicy {
      * the dark one (`style.xml:224-227`, `:276-281`;
      * `values/colors.xml:27-28`, `values/dark_colors.xml:23-24`).
      */
+    /**
+     * A candidate cell fills with white when it is pressed: `canditem_pushedbk`
+     * is opaque white on the light skin and white at 8% on the dark one
+     * (`values/colors.xml:81`, `values/dark_colors.xml:79`). The cell under the
+     * finger brightens, the way the key classes brighten a pressed key.
+     */
+    fun candidatePressed(tokens: ImeTheme.Tokens): Int =
+        if (isDark(tokens)) {
+            ImeDrawableFactory.blend(tokens.keyText, tokens.candidateBackground, 0.08f)
+        } else {
+            tokens.lightKeyBackground
+        }
+
+    /**
+     * An expanded-candidate cell presses the other way: `morecands_button_pushedbk`
+     * is black at 6% on the light skin and black at 4% on the dark one — a shade
+     * both ways, never a lift (`values/colors.xml:117`,
+     * `values/dark_colors.xml:111`).
+     */
+    fun moreCandsPressed(tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.blend(
+            Color.BLACK,
+            tokens.candidateBackground,
+            if (isDark(tokens)) 0.04f else 0.06f,
+        )
+
+    /**
+     * A symbol-category tab is a neutral pill, never an accent-tinted one: the
+     * reference's own tab class wears no fill at rest and takes
+     * `symbol_option_pushedbk` when it is pressed or chosen — black at 6% on the
+     * light skin, white at 9% on the dark one (`cls_input_kbd_symbol_option`,
+     * `style.xml:715-724`, `values/colors.xml:105`,
+     * `values/dark_colors.xml:100`). The fill is translucent in the reference,
+     * so it is handed over translucent here and lies on whatever the tab row
+     * sits on.
+     */
+    fun symbolTabFill(tokens: ImeTheme.Tokens): Int =
+        if (isDark(tokens)) Color.parseColor("#17FFFFFF") else Color.parseColor("#0F000000")
+
+    /** The tab's label: 60% at rest, 85% when chosen (`symbol_option_text` /
+     *  `symbol_option_selectedtext`, `values/colors.xml:16-17`). */
+    fun symbolTabText(tokens: ImeTheme.Tokens, selected: Boolean): Int =
+        ImeDrawableFactory.withAlpha(tokens.keyText, if (selected) 217 else 153)
+
+    /**
+     * A row of the reading or symbol rail sits flat on the rail's gray panel and
+     * fills with the white key's own colour when pressed: the reference's
+     * `cls_vertical_symbol_list_button` asks for `keybutton_bk`
+     * (`style.xml:1025-1030`, `values/colors.xml:19`,
+     * `values/dark_colors.xml:18`).
+     */
+    fun railItemPressed(tokens: ImeTheme.Tokens): Int = tokens.lightKeyBackground
+
+    /**
+     * The accent key — 确定/发送/搜索 — presses the way a white key looks: the
+     * reference fills its action key with `theme_color` and swaps that for
+     * `action_button_pushedbk` under the finger, white on the light skin and
+     * white at 12% on the dark one, with the label moving to
+     * `action_button_pushedtext` (black at 85%) on the light skin
+     * (`cls_button_enter`, `style.xml:810-818`, `values/colors.xml:35-38`,
+     * `values/dark_colors.xml:34-36`). Its rounded back key presses the same
+     * way through `cls_bk_theme_circle` (`style.xml:282-287`).
+     */
+    fun actionKeyPressed(tokens: ImeTheme.Tokens): Int =
+        if (isDark(tokens)) {
+            ImeDrawableFactory.blend(tokens.keyText, tokens.keyboardBackground, 0.12f)
+        } else {
+            tokens.lightKeyBackground
+        }
+
     fun keyShadow(tokens: ImeTheme.Tokens): Int =
         if (isDark(tokens)) Color.parseColor("#66000000") else Color.parseColor("#4D000000")
 

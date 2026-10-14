@@ -1,5 +1,6 @@
 package llc.slacker.openime.keyboard
 
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.text.TextUtils
@@ -242,10 +243,22 @@ internal class KeyPopupController(
                         textSize = ImeTypographyTokens.POPUP_ITEM_SP
                         includeFontPadding = false
                         gravity = Gravity.CENTER
-                        setTextColor(t.keyText)
+                        // A bubble cell fills with the accent under the finger and
+                        // its glyph turns white (`cls_fusiyin_bubble_button`:
+                        // `pushedbkcolor="@color/theme_color"`, `pushedtextcolor`
+                        // white, style.xml:1135-1139, `values/colors.xml:177`).
+                        setTextColor(
+                            ColorStateList(
+                                arrayOf(intArrayOf(android.R.attr.state_pressed), intArrayOf()),
+                                intArrayOf(
+                                    ImeDrawableFactory.contrastText(t.primary),
+                                    t.keyText,
+                                ),
+                            ),
+                        )
                         background = statefulRounded(
                             Color.TRANSPARENT,
-                            ImeSurfacePolicy.pressedSurface(t.keyBackground, t),
+                            t.primary,
                             dp(ImeGeometryTokens.KEY_RADIUS_DP),
                         )
                         isClickable = true

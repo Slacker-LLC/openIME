@@ -516,12 +516,6 @@ internal class CandidateBarController(
         word.typeface = if (index == 0) MEDIUM_WEIGHT else Typeface.DEFAULT
 
         val palette = tokens()
-        val pressedSurface =
-            if (index == 0) {
-                ImeSurfacePolicy.selectedSurface(palette)
-            } else {
-                palette.candidateBackground
-            }
         word.setTextColor(
             if (index == 0) {
                 ImeSurfacePolicy.selectedText(palette)
@@ -529,9 +523,13 @@ internal class CandidateBarController(
                 palette.candidateText
             },
         )
+        // Every candidate cell, first or not, presses to the reference's one
+        // candidate fill: `canditem_pushedbk`, white (`style.xml:1076-1080`,
+        // `values/colors.xml:81`) or white at 8% on the dark skin
+        // (`values/dark_colors.xml:79`).
         item.background = statefulBackground(
             Color.TRANSPARENT,
-            ImeSurfacePolicy.pressedSurface(pressedSurface, palette),
+            ImeSurfacePolicy.candidatePressed(palette),
             toPx(ImeGeometryTokens.KEY_RADIUS_DP),
         )
         item.setOnTouchListener { _, event ->

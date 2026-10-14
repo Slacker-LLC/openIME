@@ -357,6 +357,22 @@ class ImeKeyView(
         returnIcon?.imageTintList = ColorStateList.valueOf(mainColor)
     }
 
+    /**
+     * The key's own face in two states. The reference's action key is the one
+     * that changes its label when the finger is down — the white press fill
+     * takes a dark label (`action_button_pushedtext`, `values/colors.xml:38`) —
+     * so its text and icon swap together with the cap.
+     */
+    fun setLabelColors(normalColor: Int, pressedColor: Int) {
+        val colors = ColorStateList(
+            arrayOf(intArrayOf(android.R.attr.state_pressed), intArrayOf()),
+            intArrayOf(pressedColor, normalColor),
+        )
+        mainTextView?.setTextColor(colors)
+        iconView?.imageTintList = colors
+        returnIcon?.imageTintList = colors
+    }
+
     val currentMainText: String
         get() = mainTextView?.text?.toString().orEmpty()
 

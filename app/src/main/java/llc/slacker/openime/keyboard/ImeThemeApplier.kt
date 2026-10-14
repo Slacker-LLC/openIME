@@ -81,7 +81,7 @@ internal class ImeThemeApplier(
                 toPx(1).coerceAtLeast(1),
             )
             view.background = LayerDrawable(
-                arrayOf(edge, statefulRounded(Color.TRANSPARENT, ImeSurfacePolicy.pressedSurface(t.candidateBackground, t), 0)),
+                arrayOf(edge, statefulRounded(Color.TRANSPARENT, ImeSurfacePolicy.moreCandsPressed(t), 0)),
             )
             view.setColors(t.keyText)
             return
@@ -104,7 +104,10 @@ internal class ImeThemeApplier(
             else -> t.keyBackground
         }
         val pressedColor = when {
-            primary -> ImeSurfacePolicy.primaryPressed(t)
+            // The accent key turns into a white key under the finger
+            // (`action_button_pushedbk`); the tiles that also carry the accent
+            // keep the plain pressed tint of their own class.
+            primary -> ImeSurfacePolicy.actionKeyPressed(t)
             // The reference's two key fills trade places on press: a white key
             // takes the gray fill (`keybutton_pushed_bk`, `values/colors.xml:21`,
             // is `keybutton_func_bk`, `:20`) and a gray key takes the white one
@@ -142,6 +145,9 @@ internal class ImeThemeApplier(
             primary -> {
                 val onPrimary = ImeDrawableFactory.contrastText(t.primary)
                 view.setColors(onPrimary, onPrimary, onPrimary)
+                // Under the finger the accent key wears the white face, so its
+                // label goes dark for as long as it is held.
+                view.setLabelColors(onPrimary, ImeDrawableFactory.contrastText(pressedColor))
             }
             white ->
                 view.setColors(t.lightKeyText, t.keySecondaryText, t.lightKeyText)
@@ -173,18 +179,13 @@ internal class ImeThemeApplier(
                 )
             }
             "app-setting-group" -> view.background = null
-            "candidate-first-row" -> {
-                val selected = t.keyBackground
-                view.background = statefulRounded(
-                    selected,
-                    ImeSurfacePolicy.pressedSurface(selected, t),
-                    toPx(ImeGeometryTokens.KEY_RADIUS_DP),
-                )
-            }
-            "candidate-row" -> {
+            // A candidate cell, first or not, has no tile of its own and presses
+            // to the reference's one candidate fill (`canditem_pushedbk`:
+            // style.xml:1076-1080, `values/colors.xml:81`).
+            "candidate-first-row", "candidate-row" -> {
                 view.background = statefulRounded(
                     Color.TRANSPARENT,
-                    ImeSurfacePolicy.pressedSurface(t.candidateBackground, t),
+                    ImeSurfacePolicy.candidatePressed(t),
                     toPx(ImeGeometryTokens.KEY_RADIUS_DP),
                 )
             }
@@ -194,7 +195,7 @@ internal class ImeThemeApplier(
             "recent-symbol-cell" -> {
                 view.background = statefulRounded(
                     Color.TRANSPARENT,
-                    ImeSurfacePolicy.pressedSurface(t.candidateBackground, t),
+                    ImeSurfacePolicy.candidatePressed(t),
                     toPx(RecentSymbolStripPolicy.CELL_RADIUS_DP),
                 )
             }
@@ -392,7 +393,7 @@ internal class ImeThemeApplier(
                 view.imageTintList = ColorStateList.valueOf(t.sideKeyText)
                 view.background = statefulRounded(
                     Color.TRANSPARENT,
-                    ImeSurfacePolicy.pressedSurface(t.sideKeyBackground, t),
+                    ImeSurfacePolicy.railItemPressed(t),
                     toPx(ImeGeometryTokens.KEY_RADIUS_DP),
                 )
             }
@@ -406,7 +407,7 @@ internal class ImeThemeApplier(
                 view.imageTintList = ColorStateList.valueOf(t.keySecondaryText)
                 view.background = statefulRounded(
                     Color.TRANSPARENT,
-                    ImeSurfacePolicy.pressedSurface(t.candidateBackground, t),
+                    ImeSurfacePolicy.candidatePressed(t),
                     toPx(ImeGeometryTokens.PILL_RADIUS_DP),
                 )
             }
@@ -578,21 +579,52 @@ internal class ImeThemeApplier(
             }
 
             tag == "tab-active" -> {
+                // The symbol page's category tabs are the reference's own tab
+                // class: a neutral pill filled with `symbol_option_pushedbk`,
+                // never an accent tint (`cls_input_kbd_symbol_option`,
+                // style.xml:715-724).
+                val symbolTab = hasAncestorTag(view, "symbols-panel")
                 val selected = ImeSurfacePolicy.selectedSurface(t)
-                view.setTextColor(ImeSurfacePolicy.selectedText(t))
+                val fill = if (symbolTab) ImeSurfacePolicy.symbolTabFill(t) else selected
+                view.setTextColor(
+                    if (symbolTab) {
+                        ImeSurfacePolicy.symbolTabText(t, selected = true)
+                    } else {
+                        ImeSurfacePolicy.selectedText(t)
+                    },
+                )
                 view.background = statefulRounded(
-                    selected,
-                    ImeSurfacePolicy.pressedSurface(selected, t),
-                    toPx(if (hasAncestorTag(view, "emoji-panel")) 99 else ImeGeometryTokens.CONTROL_RADIUS_DP),
+                    fill,
+                    if (symbolTab) fill else ImeSurfacePolicy.pressedSurface(selected, t),
+                    toPx(
+                        if (symbolTab || hasAncestorTag(view, "emoji-panel")) {
+                            99
+                        } else {
+                            ImeGeometryTokens.CONTROL_RADIUS_DP
+                        },
+                    ),
                 )
             }
 
             tag == "panel-tab" -> {
-                view.setTextColor(t.keySecondaryText)
+                val symbolTab = hasAncestorTag(view, "symbols-panel")
+                view.setTextColor(
+                    if (symbolTab) {
+                        ImeSurfacePolicy.symbolTabText(t, selected = false)
+                    } else {
+                        t.keySecondaryText
+                    },
+                )
                 view.background = statefulRounded(
                     Color.TRANSPARENT,
-                    ImeSurfacePolicy.pressedSurface(t.panelHeadBackground, t),
-                    toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
+                    if (symbolTab) {
+                        ImeSurfacePolicy.symbolTabFill(t)
+                    } else {
+                        ImeSurfacePolicy.pressedSurface(t.panelHeadBackground, t)
+                    },
+                    toPx(
+                        if (symbolTab) 99 else ImeGeometryTokens.CONTROL_RADIUS_DP,
+                    ),
                 )
             }
 
@@ -690,7 +722,7 @@ internal class ImeThemeApplier(
                 view.setTextColor(t.keyText)
                 view.background = statefulRounded(
                     Color.TRANSPARENT,
-                    ImeSurfacePolicy.pressedSurface(t.sideKeyBackground, t),
+                    ImeSurfacePolicy.railItemPressed(t),
                     toPx(ImeGeometryTokens.KEY_RADIUS_DP),
                 )
             }
@@ -703,7 +735,7 @@ internal class ImeThemeApplier(
                 view.setTextColor(t.keyText)
                 view.background = statefulRounded(
                     Color.TRANSPARENT,
-                    ImeSurfacePolicy.pressedSurface(t.sideKeyBackground, t),
+                    ImeSurfacePolicy.railItemPressed(t),
                     toPx(ImeGeometryTokens.KEY_RADIUS_DP),
                 )
             }
@@ -724,7 +756,7 @@ internal class ImeThemeApplier(
                 view.setTextColor(t.keySecondaryText)
                 view.background = statefulRounded(
                     Color.TRANSPARENT,
-                    ImeSurfacePolicy.pressedSurface(t.candidateBackground, t),
+                    ImeSurfacePolicy.candidatePressed(t),
                     toPx(ImeGeometryTokens.KEY_RADIUS_DP),
                 )
             }
