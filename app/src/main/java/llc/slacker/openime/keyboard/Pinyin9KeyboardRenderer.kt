@@ -84,15 +84,20 @@ internal class Pinyin9KeyboardRenderer(
         )
         val centerBottom = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         val weights = ProductionKeyPolicy.nineKeyBottomRowWeights()
+        // This row's two outer keys are white circles in the reference, not the
+        // grey function keys: 123 takes `cls_keyboard9_button_func_white_circle`
+        // (`input_kbd_pinyin9.xml:88`) and 中/英 the `cls_bk_white_circle` beside
+        // its `cls_button_cn2en` colours (`:98`), so they match the space bar
+        // between them and the letter keys above.
         centerBottom.addView(
-            createKey("123", true, null, ImeTypographyTokens.BODY_SP, onDigits).apply { markSideKey(this) },
+            createKey("123", true, null, ImeTypographyTokens.BODY_SP, onDigits).apply { markWhiteKey(this) },
             flexKeyParams(weights.side),
         )
         centerBottom.addView(createSpaceVoiceKey("空格", onSpace), flexKeyParams(weights.space))
         centerBottom.addView(
             createKey("中/英", true, null, ImeTypographyTokens.BODY_SP, onModeSwitch).apply {
                 tag = "key:mode"
-                markSideKey(this)
+                markWhiteKey(this)
             },
             flexKeyParams(weights.side),
         )

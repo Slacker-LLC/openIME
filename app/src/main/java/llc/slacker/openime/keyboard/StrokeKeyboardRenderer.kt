@@ -76,15 +76,19 @@ internal class StrokeKeyboardRenderer(
         )
         val bottom = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         val weights = ProductionKeyPolicy.nineKeyBottomRowWeights()
+        // White circles either side of the space bar, as the nine-key row draws
+        // them: `cls_keyboard9_button_func_white_circle` for 123
+        // (`input_kbd_stroke.xml:70`) and `cls_bk_white_circle` under
+        // `cls_button_stroke2en` for 中/英 (`:82`).
         bottom.addView(
-            createKey("123", true, null, ImeTypographyTokens.BODY_SP, onDigits).apply { markSideKey(this) },
+            createKey("123", true, null, ImeTypographyTokens.BODY_SP, onDigits).apply { markWhiteKey(this) },
             keyParams(keyRowHeightDp(), weights.side),
         )
         bottom.addView(createSpaceVoiceKey("空格", onSpace), keyParams(keyRowHeightDp(), weights.space))
         bottom.addView(
             createKey("中/英", true, null, ImeTypographyTokens.BODY_SP, onModeSwitch).apply {
                 tag = "key:mode"
-                markSideKey(this)
+                markWhiteKey(this)
             },
             keyParams(keyRowHeightDp(), weights.side),
         )
