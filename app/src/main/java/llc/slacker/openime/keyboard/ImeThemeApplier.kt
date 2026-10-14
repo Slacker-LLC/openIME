@@ -74,11 +74,14 @@ internal class ImeThemeApplier(
             // One item class in the reference (`cls_morecands_button`,
             // style.xml:1141-1149): every cell is a flat label with a hairline
             // edge on the list's own background, so no cell carries the accent
-            // tile here.
+            // tile here. The hairline is the sheet's own border colour at 1
+            // unit, the same `morecands_list_border` the sheet's 2-unit edge
+            // takes (`values/colors.xml:117,123`).
+            val sheet = ImeSurfacePolicy.moreCandsSheet(t.candidateBackground, t)
             val edge = ImeDrawableFactory.rounded(
                 Color.TRANSPARENT,
                 0,
-                ImeSurfacePolicy.divider(t),
+                ImeSurfacePolicy.moreCandsSheetEdge(sheet, t),
                 toPx(1).coerceAtLeast(1),
             )
             view.background = LayerDrawable(
@@ -188,7 +191,10 @@ internal class ImeThemeApplier(
             // The option group 全部 / 单字 sits on (`cls_morecand_filter_containder`,
             // style.xml:1157-1159: a 20-unit pill in the darker neutral).
             "candidate-filter-container" ->
-                view.background = ImeDrawableFactory.rounded(t.candidateBackground, toPx(20))
+                view.background = ImeDrawableFactory.rounded(
+                    ImeSurfacePolicy.filterTrack(t.candidateBackground, t),
+                    toPx(20),
+                )
 
             "app-setting-key" -> {
                 val radius = toPx(ImeGeometryTokens.KEY_RADIUS_DP)
@@ -434,8 +440,8 @@ internal class ImeThemeApplier(
                 // key that rounds only the list's bottom-right corner.
                 view.imageTintList = ColorStateList.valueOf(t.functionKeyText)
                 view.background = ImeDrawableFactory.statefulCorners(
-                    normal = t.functionKeyBackground,
-                    pressed = ImeSurfacePolicy.pressedSurface(t.functionKeyBackground, t),
+                    normal = ImeSurfacePolicy.moreCandsBackspace(t),
+                    pressed = ImeSurfacePolicy.moreCandsBackspacePressed(t),
                     bottomRightPx = toPx(11).toFloat(),
                 )
             }
@@ -588,17 +594,31 @@ internal class ImeThemeApplier(
             tag == "candidate-filter-chip" -> {
                 // 全部 / 单字: the chosen one is the raised surface with plain
                 // text, the other a dimmed label on the group's own background
-                // (`cls_filter_button`, style.xml:773-780).
+                // (`cls_filter_button`, style.xml:773-780). Its own text is
+                // `keybutton_text_2` — black or white at 40%, the corner-mark
+                // colour — and the chosen one's is `filter_button_selecttext`.
                 val selected = view.isSelected
-                view.setTextColor(if (selected) t.keyText else t.textSecondary)
+                val track = ImeSurfacePolicy.filterTrack(t.candidateBackground, t)
+                view.setTextColor(
+                    if (selected) {
+                        ImeSurfacePolicy.filterChipText(t)
+                    } else {
+                        ImeSurfacePolicy.keyHint(t)
+                    },
+                )
                 view.typeface = if (selected) {
                     android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
                 } else {
                     android.graphics.Typeface.DEFAULT
                 }
+                val chip = if (selected) ImeSurfacePolicy.filterChip(track, t) else Color.TRANSPARENT
                 view.background = statefulRounded(
-                    if (selected) t.keyBackground else Color.TRANSPARENT,
-                    ImeSurfacePolicy.pressedSurface(t.candidateBackground, t),
+                    chip,
+                    if (selected) {
+                        ImeSurfacePolicy.pressedOnGround(chip, t)
+                    } else {
+                        ImeSurfacePolicy.pressedSurface(t.candidateBackground, t)
+                    },
                     toPx(20),
                 )
             }
@@ -876,14 +896,17 @@ internal class ImeThemeApplier(
     private fun applyFrameLayout(view: FrameLayout, t: ImeTheme.Tokens) {
         when (view.tag) {
             // The expanded page's list card (`cls_morecand_bk`, style.xml:1162-1166):
-            // one rounded surface for the whole grid, an 11 radius and a 2 edge.
-            "candidate-expanded-card" ->
+            // one rounded surface for the whole grid, an 11 radius and a 2 edge
+            // in the sheet's own border colour.
+            "candidate-expanded-card" -> {
+                val sheet = ImeSurfacePolicy.moreCandsSheet(t.candidateBackground, t)
                 view.background = ImeDrawableFactory.rounded(
-                    t.keyBackground,
+                    sheet,
                     toPx(11),
-                    ImeSurfacePolicy.divider(t),
+                    ImeSurfacePolicy.moreCandsSheetEdge(sheet, t),
                     toPx(2).coerceAtLeast(1),
                 )
+            }
 
             "emoji-cell" -> {
                 view.background = statefulRounded(

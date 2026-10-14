@@ -607,6 +607,65 @@ internal object ImeSurfacePolicy {
         if (isDark(tokens)) ImeDrawableFactory.blend(tokens.keyText, controlTrack(tokens), 0.18f)
         else tokens.toolCardBackground
 
+    /**
+     * The expanded page's list sheet, laid over the page it opens on: the
+     * reference names it `morecands_list_bk` — white at 40% on the light skin
+     * and white at 6% on the dark one — with its 2-unit edge
+     * `morecands_list_border` (black 6% / white 10%) (`cls_morecand_bk`,
+     * `style.xml:1162-1166`, `values/colors.xml:121-123`,
+     * `values/dark_colors.xml:115-117`). Each candidate cell's hairline is the
+     * same border colour at 1 unit (`cls_morecands_button`, `style.xml:1141-1149`).
+     */
+    fun moreCandsSheet(ground: Int, tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.blend(Color.WHITE, ground, if (isDark(tokens)) 0.06f else 0.4f)
+
+    fun moreCandsSheetEdge(sheet: Int, tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.blend(
+            if (isDark(tokens)) Color.WHITE else Color.BLACK,
+            sheet,
+            if (isDark(tokens)) 0.10f else 0.06f,
+        )
+
+    /**
+     * The 全部 / 单字 group's own pill, `morecands_filter_container_bk`: black
+     * at 4% on the light skin and white at 6% on the dark one
+     * (`cls_morecand_filter_containder`, `style.xml:1157-1159`,
+     * `values/colors.xml:124`, `values/dark_colors.xml:118`).
+     */
+    fun filterTrack(ground: Int, tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.blend(
+            if (isDark(tokens)) Color.WHITE else Color.BLACK,
+            ground,
+            if (isDark(tokens)) 0.06f else 0.04f,
+        )
+
+    /**
+     * The chosen option inside that group: opaque white on the light skin, and
+     * black at 24% over the group's pill on the dark one, where the reference's
+     * chosen chip sinks into its track (`filter_button_selectedbk`,
+     * `values/colors.xml:125`, `values/dark_colors.xml:119`).
+     */
+    fun filterChip(track: Int, tokens: ImeTheme.Tokens): Int =
+        if (isDark(tokens)) ImeDrawableFactory.blend(Color.BLACK, track, 0.24f)
+        else Color.WHITE
+
+    /** The chosen option's label: near-black on the light skin, white on the dark one. */
+    fun filterChipText(tokens: ImeTheme.Tokens): Int =
+        if (isDark(tokens)) Color.WHITE else Color.parseColor("#141414")
+
+    /**
+     * The expanded page's corner backspace: the reference gives that key its own
+     * opaque greys, `morecands_backspace_bk` — rgb(233,233,233) on the light
+     * skin, rgb(59,59,59) on the dark one — pressing to rgb(193,193,193) /
+     * rgb(42,42,42) (`input_more_cand.xml:22-26`, `values/colors.xml:127-128`,
+     * `values/dark_colors.xml:121-122`).
+     */
+    fun moreCandsBackspace(tokens: ImeTheme.Tokens): Int =
+        if (isDark(tokens)) Color.parseColor("#3B3B3B") else Color.parseColor("#E9E9E9")
+
+    fun moreCandsBackspacePressed(tokens: ImeTheme.Tokens): Int =
+        if (isDark(tokens)) Color.parseColor("#2A2A2A") else Color.parseColor("#C1C1C1")
+
     fun destructiveText(tokens: ImeTheme.Tokens): Int {
         val surface = destructiveSurface(tokens)
         return if (ImeContrastPolicy.contrastRatio(tokens.destructive, surface) >= 4.5) {
