@@ -269,9 +269,12 @@ jobs:
             --title "openIME $GITHUB_REF_NAME" \
             --notes-file release-files/RELEASE_NOTES.md
 
-          count="$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets | length')"
-          if [[ "$count" -ne 1 ]]; then
-            echo "::error::Expected exactly the APK as release asset, found $count; the draft was left unpublished."
+          names="$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | sort)"
+          wanted="$(printf 'openIME-%s-arm64-lite-release.apk\nopenIME-%s-arm64-release.apk\n' "$GITHUB_REF_NAME" "$GITHUB_REF_NAME" | sort)"
+          if [[ "$names" != "$wanted" ]]; then
+            echo "::error::Expected the full and the lite APK as release assets; the draft was left unpublished."
+            echo "found:"
+            echo "$names"
             exit 1
           fi
           gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false "$latest_flag"
