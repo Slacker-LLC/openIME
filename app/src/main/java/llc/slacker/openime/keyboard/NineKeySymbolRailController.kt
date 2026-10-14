@@ -43,6 +43,8 @@ internal class NineKeySymbolRailController(
     private var railMode = RailMode.SYMBOLS
     private var renderedChoices: List<NineKeyReading> = emptyList()
     private var renderedSelected: NineKeyReading? = null
+    /** The open digits the list was built for: a new tail is a new list, so it starts at the top. */
+    private var renderedDigits: String? = null
 
     init {
         composition.addTextChangedListener(object : TextWatcher {
@@ -128,13 +130,14 @@ internal class NineKeySymbolRailController(
             return
         }
 
-        // Highlight the reading the visible pinyin shows, so the rail and the
-        // pre-edit text can never disagree.
+        // The reading the pre-edit is showing: the list leads with it and a tap
+        // on it cannot change anything. The pre-edit is where the reference
+        // shows which reading is current, so nothing is highlighted here.
         val shown = tail.filter { it in 'a'..'z' }
         val selected = choices.firstOrNull { it.coversAll && it.syllables.joinToString("") == shown }
             ?: choices.firstOrNull { shown.startsWith(it.syllables.joinToString("")) }
             ?: choices.first()
-        renderPinyinChoices(choices = choices, selected = selected) { chosen ->
+        renderPinyinChoices(digits = digits, choices = choices, selected = selected) { chosen ->
             onChooseReading(chosen)
         }
     }
@@ -171,6 +174,8 @@ internal class NineKeySymbolRailController(
         railMode = RailMode.SYMBOLS
         renderedChoices = emptyList()
         renderedSelected = null
+        // The next composition builds a new list; it starts at the top.
+        renderedDigits = null
         (scroll.getChildAt(0) as? LinearLayout)?.tag = NINE_CONTENT_TAG
         if (scroll.scrollY != 0) scroll.post { scroll.scrollTo(0, 0) }
         scroll.contentDescription = "九键常用符号，上下滑动查看更多"
@@ -178,6 +183,7 @@ internal class NineKeySymbolRailController(
     }
 
     private fun renderPinyinChoices(
+        digits: String,
         choices: List<NineKeyReading>,
         selected: NineKeyReading,
         onSelect: (NineKeyReading) -> Unit,
@@ -198,21 +204,21 @@ internal class NineKeySymbolRailController(
             ?.currentTextColor
 
         content.removeAllViews()
-        // One continuous panel with flat items (the theme paints it), not a
-        // stack of separate keys: it reads as a list to pick from.
+        // The same flat list the symbols use: one line per reading, a hairline
+        // between them, nothing highlighted. More readings fit by scrolling
+        // instead of by shrinking the text, and the item under the finger keeps
+        // its place when the list is rebuilt.
         content.tag = PINYIN_PANEL_TAG
         choices.forEachIndexed { index, choice ->
+            if (index > 0) SymbolRailRenderer.addDivider(content, toPx)
             val active = choice == selected
             content.addView(
                 TextView(content.context).apply {
-                    // A break after each apostrophe lets a long reading wrap into
-                    // two lines instead of shrinking to nothing.
-                    text = choice.display.replace("'", "'\u200B")
-                    // Whole readings (ni'hao) can run long: let them wrap to two
-                    // lines and shrink within a readable range.
-                    setAutoSizeTextTypeUniformWithConfiguration(
-                        12, 18, 1, android.util.TypedValue.COMPLEX_UNIT_SP,
-                    )
+                    text = choice.display
+                    textSize = RAIL_ITEM_TEXT_SP
+                    // The reference draws reading items a step heavier than the
+                    // marks (weight 600 against 500) at the same size.
+                    typeface = Typeface.create(RAIL_ITEM_TYPEFACE, Typeface.NORMAL)
                     gravity = Gravity.CENTER
                     tag = if (active) SELECTED_FILTER_TAG else FILTER_TAG
                     contentDescription =
@@ -225,10 +231,9 @@ internal class NineKeySymbolRailController(
                         stateDescription = if (active) "已选择" else "未选择"
                     }
                     isSelected = active
-                    typeface = if (active) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
                     isClickable = true
                     isFocusable = true
-                    maxLines = 2
+                    maxLines = 1
                     includeFontPadding = false
                     setPadding(toPx(4), 0, toPx(4), 0)
                     inheritedTextColor?.let(::setTextColor)
@@ -237,12 +242,7 @@ internal class NineKeySymbolRailController(
                         onSelect(choice)
                     }
                 },
-                SymbolRailRenderer.cellParams(
-                    content.context,
-                    withGap = index < choices.lastIndex,
-                    heightDp = cellHeightDp(),
-                    toPx = toPx,
-                ),
+                SymbolRailRenderer.flatCellParams(heightDp = cellHeightDp(), toPx = toPx),
             )
         }
 
@@ -251,17 +251,12 @@ internal class NineKeySymbolRailController(
         renderedSelected = selected
         scroll.contentDescription = "九键拼音读法，上下滑动查看更多"
         onRailChanged(scroll)
-        val selectedIndex = choices.indexOf(selected).coerceAtLeast(0)
-        scroll.post {
-            val target = content.getChildAt(selectedIndex) ?: return@post
-            val viewport = scroll.height.coerceAtLeast(SymbolRailRenderer.cellHeightPx(content.context))
-            val targetY = (target.top - (viewport - target.height) / 2).coerceAtLeast(0)
-            scroll.scrollTo(0, targetY)
-        }
+        // New digits are a new list: show it from its start. A refresh for the
+        // same digits leaves the scroll position where the user put it.
+        val tailChanged = renderedDigits != digits
+        renderedDigits = digits
+        if (tailChanged && scroll.scrollY != 0) scroll.post { scroll.scrollTo(0, 0) }
     }
-
-    private fun displayPath(path: String): String =
-        path.replace(" ", "'").replace("|", "'")
 
     private fun speakablePath(path: String): String =
         path.replace(" ", "、").replace("|", "、").replace("'", "、")
@@ -279,5 +274,9 @@ internal class NineKeySymbolRailController(
         const val SELECTED_FILTER_TAG = "nine-pinyin-path-selected"
         const val PINYIN_PANEL_TAG = "nine-pinyin-panel"
         const val MAX_VISIBLE_PATHS = 16
+
+        /** The symbol cells' own size: one list, one text size for both kinds of item. */
+        const val RAIL_ITEM_TEXT_SP = 20f
+        const val RAIL_ITEM_TYPEFACE = "sans-serif-medium"
     }
 }

@@ -525,18 +525,12 @@ internal class ImeThemeApplier(
                 )
             }
 
-            tag == "nine-pinyin-path-selected" -> {
-                val selected = ImeDrawableFactory.blend(t.primary, t.sideKeyBackground, 0.22f)
-                view.setTextColor(ImeSurfacePolicy.accentTextOn(t.primary, selected))
-                view.background = statefulRounded(
-                    selected,
-                    ImeSurfacePolicy.pressedSurface(selected, t),
-                    toPx(ImeGeometryTokens.KEY_RADIUS_DP),
-                )
-            }
-
-            tag == "nine-pinyin-path-filter" -> {
-                view.setTextColor(t.sideKeyText)
+            tag == "nine-pinyin-path-selected" || tag == "nine-pinyin-path-filter" -> {
+                // A reading is a list item, not a key: it carries no state of
+                // its own, exactly like the symbol cells beside it (the
+                // reference's cls_pinyin9_filter_button is the symbol item's
+                // style). Which reading is current is shown in the pre-edit.
+                view.setTextColor(t.keyText)
                 view.background = statefulRounded(
                     Color.TRANSPARENT,
                     ImeSurfacePolicy.pressedSurface(t.sideKeyBackground, t),
