@@ -59,7 +59,9 @@ class VoiceFaceRenderInstrumentedTest {
             val pixels = IntArray(SIZE * SIZE)
             picture.getPixels(pixels, 0, SIZE, 0, 0, SIZE, SIZE)
             val opaque = pixels.count { (it ushr 24) and 0xFF > 8 }
-            val body = pixels.count { it == tokens.primary }
+            // The body is the accent with its alpha forced opaque: the engine keeps the
+            // ink as `#RRGGBB` (`GrokEngine.kt:1260`), which drops it.
+            val body = pixels.count { it == tokens.primary or OPAQUE }
             save(picture, state)
             assertTrue("$state painted $opaque pixels", opaque > 200)
             assertTrue("$state painted no body colour ($body pixels)", body > 50)
@@ -86,5 +88,8 @@ class VoiceFaceRenderInstrumentedTest {
 
         /** Frames the state is given before the picture is taken, about one second. */
         const val FRAMES = 60
+
+        /** Alpha byte of an opaque colour. */
+        const val OPAQUE = 0xFF000000.toInt()
     }
 }
