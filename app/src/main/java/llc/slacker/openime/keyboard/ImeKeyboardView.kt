@@ -395,6 +395,21 @@ open class ImeKeyboardView(
             // (`input_toolbar_quickinput.xml:42`) and rides the glyph above its
             // right shoulder as a superscript (`:44-45`).
             val rowHeightPx = dp(36)
+            val label = TextView(context).apply {
+                text = suggestion.label
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                textSize = ImeTypographyTokens.CANDIDATE_SP
+                gravity = Gravity.CENTER_VERTICAL
+                includeFontPadding = false
+                tag = "suggestion-text"
+            }
+            val badge = ImageView(context).apply {
+                tag = "suggestion-icon"
+                setImageResource(if (sms) R.drawable.ic_bubble else R.drawable.ic_clipboard)
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }
             val row = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -407,15 +422,7 @@ open class ImeKeyboardView(
                     "刚复制的内容，点击输入"
                 }
                 addView(
-                    TextView(context).apply {
-                        text = suggestion.label
-                        maxLines = 1
-                        ellipsize = android.text.TextUtils.TruncateAt.END
-                        textSize = ImeTypographyTokens.CANDIDATE_SP
-                        gravity = Gravity.CENTER_VERTICAL
-                        includeFontPadding = false
-                        tag = "suggestion-text"
-                    },
+                    label,
                     LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.WRAP_CONTENT,
                         LinearLayout.LayoutParams.MATCH_PARENT,
@@ -424,21 +431,9 @@ open class ImeKeyboardView(
                         bottomMargin = (rowHeightPx * QuickInputRowPolicy.TEXT_BOTTOM_FRACTION).toInt()
                     },
                 )
-                // The badge is a share of the text it marks, so it is measured in
-                // the text's own unit rather than the keyboard's dp ruler.
-                val badgePx = kotlin.math.round(
-                    ImeTypographyTokens.CANDIDATE_SP *
-                        QuickInputRowPolicy.BADGE_FONT_RATIO *
-                        resources.displayMetrics.scaledDensity,
-                ).toInt()
                 addView(
-                    ImageView(context).apply {
-                        tag = "suggestion-icon"
-                        setImageResource(if (sms) R.drawable.ic_bubble else R.drawable.ic_clipboard)
-                        scaleType = ImageView.ScaleType.CENTER_INSIDE
-                        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                    },
-                    LinearLayout.LayoutParams(badgePx, badgePx).apply {
+                    badge,
+                    LinearLayout.LayoutParams(0, 0).apply {
                         gravity = Gravity.TOP
                         topMargin = (rowHeightPx * QuickInputRowPolicy.BADGE_TOP_FRACTION).toInt()
                     },
@@ -455,6 +450,19 @@ open class ImeKeyboardView(
             // The row is built after the last theme pass, so it takes the palette
             // itself, the way the nine-key rail does.
             applyThemeToSubtree(row)
+            // The badge is a share of the line it marks, and that line's size is
+            // the theme pass's (it rescales every text view it meets), so the
+            // badge is measured from the label rather than from the token.
+            row.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                val size = kotlin.math.round(label.textSize * QuickInputRowPolicy.BADGE_FONT_RATIO).toInt()
+                val params = badge.layoutParams as? LinearLayout.LayoutParams
+                    ?: return@addOnLayoutChangeListener
+                if (params.width != size || params.height != size) {
+                    params.width = size
+                    params.height = size
+                    badge.layoutParams = params
+                }
+            }
             row
         }
         topZone.onAutofillDismissed = {

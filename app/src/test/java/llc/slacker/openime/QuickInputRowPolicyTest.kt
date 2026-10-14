@@ -24,7 +24,7 @@ class QuickInputRowPolicyTest {
     @Test
     fun theBadgeIsASuperscriptOfTheCandidateFont() {
         assertEquals(30f / 56f, QuickInputRowPolicy.BADGE_FONT_RATIO, 0.00001f)
-        assertEquals(18f * 30f / 56f, QuickInputRowPolicy.badgeDiameterDp(18f), 0.001f)
+        assertEquals(9.64f, 18f * QuickInputRowPolicy.BADGE_FONT_RATIO, 0.01f)
         assertTrue(
             "The badge stays well under the text it marks",
             QuickInputRowPolicy.BADGE_FONT_RATIO < 0.6f,

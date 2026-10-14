@@ -27,7 +27,4 @@ internal object QuickInputRowPolicy {
      * (`input_toolbar_quickinput.xml:44-45`).
      */
     const val BADGE_TOP_FRACTION = 0.08f
-
-    /** The badge's diameter in dp for a candidate line of [candidateSp]. */
-    fun badgeDiameterDp(candidateSp: Float): Float = candidateSp * BADGE_FONT_RATIO
 }
