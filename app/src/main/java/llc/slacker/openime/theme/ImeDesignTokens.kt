@@ -115,6 +115,9 @@ internal object ImeTypographyTokens {
     const val CAPTION_SP = 11f
     const val SMALL_SP = 12f
     const val BODY_SP = 14f
+
+    /** The open Pinyin string above the candidates (`comp_font` size 40). */
+    const val COMPOSITION_SP = 13f
     const val TITLE_SP = 16f
     const val CANDIDATE_SP = 18f
     const val GLYPH_SP = 20f

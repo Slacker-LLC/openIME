@@ -221,7 +221,7 @@ internal class ImeTopZone(
         composition.apply {
             tag = "pinyin-composition-editor"
             contentDescription = "可编辑拼音预编辑"
-            textSize = ImeTypographyTokens.BODY_SP
+            textSize = ImeTypographyTokens.COMPOSITION_SP
             letterSpacing = 0.04f
             typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
             gravity = Gravity.CENTER_VERTICAL or Gravity.START

@@ -9,7 +9,10 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.text.Spannable
+import android.text.Spanned
 import android.text.TextUtils
+import android.text.style.ForegroundColorSpan
 import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
@@ -3026,6 +3029,25 @@ open class ImeKeyboardView(
         } finally {
             syncingComposition = false
         }
+        applyPreeditHighlight(text)
+    }
+
+    /**
+     * Paint the syllables the user has fixed in the accent, as the reference
+     * draws its two-part composition (`cls_comp_half` over `cls_comp_right`,
+     * `style.xml:580-587`). The rest of the pre-edit keeps the key text colour.
+     */
+    private fun applyPreeditHighlight(text: String) {
+        val editable = composition.text as? Spannable ?: return
+        editable.getSpans(0, editable.length, ForegroundColorSpan::class.java).forEach(editable::removeSpan)
+        val length = PreeditHighlightPolicy.fixedPrefixLength(text, lastNineSegmentPrefix)
+        if (length == 0) return
+        editable.setSpan(
+            ForegroundColorSpan(ImeSurfacePolicy.selectedText(currentThemeTokens())),
+            0,
+            length,
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+        )
     }
 
     /** Recompute candidates after the user edits the visible Pinyin field. */
@@ -3518,7 +3540,10 @@ open class ImeKeyboardView(
         expandedPanel.setBackgroundColor(t.keyboardBackground)
         candidateOverlay.setBackgroundColor(t.expandedBackground)
         themeApplier.apply(this, t)
-        composition.setTextColor(ImeSurfacePolicy.selectedText(t))
+        // comp_right: the unconverted tail keeps the key text colour; the fixed
+        // syllables carry the accent through the span applyPreeditHighlight sets.
+        composition.setTextColor(t.keyText)
+        applyPreeditHighlight(composition.text?.toString().orEmpty())
         topZone.candidateExpandButton.imageTintList = android.content.res.ColorStateList.valueOf(t.keyText)
         topZone.candidateEmojiButton.imageTintList = android.content.res.ColorStateList.valueOf(t.keySecondaryText)
         floatingKeyboardController.applyTheme(t)
