@@ -113,6 +113,9 @@ internal class ImeTopZone(
     /** Chips from the system autofill service, hosted in a strip of their own. */
     private lateinit var autofillScroll: HorizontalScrollView
     private val autofillRow = LinearLayout(context)
+    private lateinit var autofillClose: ImageView
+    /** True while the strip carries this app's own suggestion rows rather than the system's chips. */
+    private var autofillOwn = false
 
     /**
      * The symbol history the symbol board shows in the toolbar
@@ -281,6 +284,25 @@ internal class ImeTopZone(
             autofillScroll,
             LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f),
         )
+        // Our own quick-input rows end with the reference's own close key
+        // (`btn_quickinput_close` over `cls_history_close_button`, the 40-unit box
+        // the symbol history's close uses; `input_toolbar_quickinput.xml:45-46` for
+        // the clipboard row, `:31-32` for the message row). The system's autofill
+        // chips keep the strip's back control instead.
+        autofillClose = ImageView(context).apply {
+            tag = "autofill-close"
+            setImageResource(R.drawable.ic_close)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            contentDescription = "关闭建议"
+            visibility = View.GONE
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                onFeedback()
+                dismissAutofillChips()
+            }
+        }
+        toolbarRow.addView(autofillClose, touchTargetParams())
 
         // The reference keeps the icons at a fixed 40 units and leaves the slack
         // of the strip empty: `btn_hide` stays its own button on the right
@@ -532,9 +554,15 @@ internal class ImeTopZone(
     /**
      * Shows the autofill [chips] (already inflated by the system) in the toolbar
      * row, or the normal toolbar again when the list is empty. Associations keep
-     * priority for as long as they are showing.
+     * priority for as long as they are showing. [own] marks the rows this app
+     * built for its own suggestions, which close with the reference's own key.
      */
-    fun setAutofillChips(chips: List<View>, chipWidthPx: Int = 0, chipHeightPx: Int = 0) {
+    fun setAutofillChips(
+        chips: List<View>,
+        chipWidthPx: Int = 0,
+        chipHeightPx: Int = 0,
+        own: Boolean = false,
+    ) {
         autofillRow.removeAllViews()
         chips.forEach { chip ->
             (chip.parent as? ViewGroup)?.removeView(chip)
@@ -550,6 +578,7 @@ internal class ImeTopZone(
             )
         }
         autofillShown = chips.isNotEmpty()
+        autofillOwn = chips.isNotEmpty() && own
         autofillScroll.scrollTo(0, 0)
         toolbarMode = idleToolbarMode()
         refreshToolbar()
@@ -560,6 +589,7 @@ internal class ImeTopZone(
         onAutofillDismissed?.invoke()
         autofillRow.removeAllViews()
         autofillShown = false
+        autofillOwn = false
         toolbarMode = idleToolbarMode()
         refreshToolbar()
     }
@@ -990,7 +1020,9 @@ internal class ImeTopZone(
             it.visibility = if (normal && it in shown) View.VISIBLE else View.GONE
         }
         splitIcon.visibility = if (normal && splitToggleShown) View.VISIBLE else View.GONE
-        associationBack.visibility = if (association || autofill) View.VISIBLE else View.GONE
+        associationBack.visibility =
+            if (association || (autofill && !autofillOwn)) View.VISIBLE else View.GONE
+        autofillClose.visibility = if (autofill && autofillOwn) View.VISIBLE else View.GONE
         associationScroll.visibility = if (association) View.VISIBLE else View.GONE
         autofillScroll.visibility = if (autofill) View.VISIBLE else View.GONE
         recentSymbolStrip.visibility = if (recent) View.VISIBLE else View.GONE

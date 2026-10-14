@@ -22,6 +22,7 @@ import android.view.WindowInsets
 import android.view.animation.DecelerateInterpolator
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import llc.slacker.openime.QuickPhraseEditActivity
@@ -383,39 +384,68 @@ open class ImeKeyboardView(
             ownSuggestionsShown = false
             return
         }
-        val t = currentThemeTokens()
         val chips = found.map { suggestion ->
-            TextView(context).apply {
-                text = suggestion.label
-                maxLines = 1
-                ellipsize = android.text.TextUtils.TruncateAt.END
-                textSize = ImeTypographyTokens.BODY_SP
+            // The reference's own quick-input rows are flat: the text at the
+            // candidate font, then the glyph that names where it came from
+            // (`input_toolbar_quickinput.xml:39-45` for the clipboard row, whose
+            // `quickinput_clipboard_icon1` follows `btn_quickinput_clipboard`;
+            // `:23-28` for the message row).
+            val sms = suggestion.kind == ToolbarSuggestion.Kind.SMS_CODE
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setTextColor(t.keyText)
-                setPadding(dp(14), 0, dp(14), 0)
-                maxWidth = (resources.displayMetrics.widthPixels * 0.6f).toInt()
-                background = ImeDrawableFactory.rounded(t.lightKeyBackground, dp(ImeGeometryTokens.KEY_RADIUS_DP))
-                contentDescription = if (suggestion.kind == ToolbarSuggestion.Kind.SMS_CODE) {
+                tag = "suggestion-row"
+                isClickable = true
+                isFocusable = true
+                contentDescription = if (sms) {
                     "验证码${suggestion.text}，点击输入"
                 } else {
                     "刚复制的内容，点击输入"
                 }
+                addView(
+                    TextView(context).apply {
+                        text = suggestion.label
+                        maxLines = 1
+                        ellipsize = android.text.TextUtils.TruncateAt.END
+                        textSize = ImeTypographyTokens.CANDIDATE_SP
+                        gravity = Gravity.CENTER_VERTICAL
+                        includeFontPadding = false
+                        tag = "suggestion-text"
+                    },
+                    LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                    ),
+                )
+                addView(
+                    ImageView(context).apply {
+                        tag = "suggestion-icon"
+                        setImageResource(if (sms) R.drawable.ic_bubble else R.drawable.ic_clipboard)
+                        scaleType = ImageView.ScaleType.CENTER_INSIDE
+                        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                    },
+                    LinearLayout.LayoutParams(dp(18), LinearLayout.LayoutParams.MATCH_PARENT),
+                )
                 setOnClickListener {
                     feedback()
                     if (!insertIntoInlineEditor(suggestion.text)) listener.onCharacter(suggestion.text)
-                    if (suggestion.kind == ToolbarSuggestion.Kind.SMS_CODE) dismissedSmsCode = suggestion.text
+                    if (sms) dismissedSmsCode = suggestion.text
                     else dismissedSuggestion = suggestion.text
                     ownSuggestionsShown = false
                     topZone.setAutofillChips(emptyList())
                 }
             }
+            // The row is built after the last theme pass, so it takes the palette
+            // itself, the way the nine-key rail does.
+            applyThemeToSubtree(row)
+            row
         }
         topZone.onAutofillDismissed = {
             found.lastOrNull { it.kind == ToolbarSuggestion.Kind.CLIPBOARD }?.let { dismissedSuggestion = it.text }
             found.firstOrNull { it.kind == ToolbarSuggestion.Kind.SMS_CODE }?.let { dismissedSmsCode = it.text }
         }
         ownSuggestionsShown = true
-        topZone.setAutofillChips(chips, chipHeightPx = dp(36))
+        topZone.setAutofillChips(chips, chipHeightPx = dp(36), own = true)
     }
 
     internal fun refreshAuxiliaryContent() {

@@ -185,7 +185,7 @@ internal class ImeThemeApplier(
             "pinyin-composition-editor" -> {
                 view.background = statefulRounded(
                     Color.TRANSPARENT,
-                    ImeSurfacePolicy.pressedSurface(t.toolbarBackground, t),
+                    ImeSurfacePolicy.pressedSurface(t.candidateBackground, t),
                     0,
                 )
             }
@@ -418,6 +418,12 @@ internal class ImeThemeApplier(
                 view.background = null
             }
             view.tag == "undo-toolbar" -> view.imageTintList = ColorStateList.valueOf(t.keySecondaryText)
+            // The quick-input row's glyph takes `keybutton_text_2`
+            // (`fi_toolbar_tip_superscript` glyphs, `input_toolbar_quickinput.xml:44`).
+            view.tag == "suggestion-icon" -> {
+                view.imageTintList = ColorStateList.valueOf(t.keySecondaryText)
+                view.background = null
+            }
             view.tag == "key-panel-back" -> {
                 view.imageTintList = ColorStateList.valueOf(t.keyText)
                 view.background = statefulRounded(
@@ -490,6 +496,12 @@ internal class ImeThemeApplier(
             // style.xml:1267-1270) — the same key text colour the toolbar uses.
             tag == "toolbar-tip-label" ->
                 view.setTextColor(t.keyText)
+
+            // Our own quick-input rows read at the candidate font in
+            // `canditem_text`, the colour the reference gives the quick-input
+            // text (`input_toolbar_quickinput.xml:40`).
+            tag == "suggestion-text" ->
+                view.setTextColor(t.candidateText)
 
             tag == "candidate-filter-chip" -> {
                 // 全部 / 单字: the chosen one is the raised surface with plain
