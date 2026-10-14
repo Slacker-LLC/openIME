@@ -318,6 +318,17 @@ L3 stress covers at least these items:
 
 Check CPU, PSS, heat, model loading and recovery from low memory.
 
+The automated volume run covers the same ground on the emulator, one keyboard at a time:
+
+```bash
+python3 scripts/build_volume_data.py                                    # input lists from the local dictionaries
+ANDROID_SERIAL=emulator-5556 python3 -I scripts/typing_volume_e2e.py --serial emulator-5556
+```
+
+Each Chinese keyboard types 2,000 random keys, 1,000 words, 500 four-character words and 100 sentences of fifteen characters or more; the digit, wubi, stroke and English keyboards run the counts that apply to them. A word counts as a hit only when the committed text is the expected text; a sentence is scored by character accuracy. A miss keeps the expected text, the committed text and the candidate list in the report, so a run shows where the engine ranks a worse candidate above the right one.
+
+The run writes `summary.json` and one report per keyboard into `build/typing-volume`. Both scripts read the data already on this machine and write nothing into the repository.
+
 Failure tests create these conditions on purpose:
 
 - a revoked permission
