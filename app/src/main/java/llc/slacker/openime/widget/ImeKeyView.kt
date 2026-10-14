@@ -105,7 +105,7 @@ class ImeKeyView(
     private var touchFeedbackPending = false
     private var touchGeneration = 0L
     private val baseMainTextSize = mainTextSize
-    private val fitMain = fitMainText
+    private var fitMain = fitMainText
 
     /**
      * Key labels follow the system font size only up to [MAX_LABEL_FONT_SCALE].
@@ -377,6 +377,27 @@ class ImeKeyView(
 
     fun allowTwoLineLabel() {
         mainTextView?.maxLines = 2
+    }
+
+    /**
+     * Let a wide single glyph shrink to its key instead of turning into "…".
+     *
+     * The reference gives the bottom row's punctuation keys their own fonts so
+     * the mark always fits (`text_comma_cn` is 72 units for the merged key
+     * against `key_letter`'s 57, `style.xml:127`, `:4`); our one shared size
+     * would ellipsize the mark in a key that is only 8% of the row. The key
+     * keeps its label either way, as it does for the function keys.
+     */
+    fun allowLabelShrink() {
+        fitMain = true
+        // The same controlled range the function keys keep, so a later
+        // [applyMainTextScale] leaves the key in the shape it asks for.
+        val smallest = labelPx((baseMainTextSize * 0.68f).coerceAtLeast(10f)).toInt()
+        val largest = labelPx(baseMainTextSize.coerceAtLeast(12f)).toInt()
+        mainTextView?.apply {
+            ellipsize = null
+            setAutoSizeTextTypeUniformWithConfiguration(smallest, largest, 1, TypedValue.COMPLEX_UNIT_PX)
+        }
     }
 
     fun setIcon(value: Int) {

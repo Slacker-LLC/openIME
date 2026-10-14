@@ -167,6 +167,10 @@ internal class Pinyin26KeyboardRenderer(
             contentDescription = "${spec.merged}，上滑或长按输入${spec.mergedCorner}"
             setSecondaryVisible(true)
             setSecondaryAlpha(1f)
+            // The key is a mark and a corner in 8.8% of the row: the mark shrinks
+            // rather than showing an ellipsis when the key or the system font
+            // leaves it no room.
+            allowLabelShrink()
             // Up swipes the corner mark, as the reference keyboard does.
             onSwipeUp = { onCommitCharacter(spec.mergedCorner) }
             setOnLongClickListener {
@@ -187,6 +191,7 @@ internal class Pinyin26KeyboardRenderer(
         }.apply {
             this.tag = tag
             contentDescription = text
+            allowLabelShrink()
         }
 
     private fun segmentKey(): ImeKeyView =

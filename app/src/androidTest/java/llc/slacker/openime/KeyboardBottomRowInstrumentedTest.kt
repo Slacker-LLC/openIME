@@ -6,6 +6,7 @@ import android.widget.TextView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import llc.slacker.openime.core.KeyboardMode
 import llc.slacker.openime.keyboard.ImeKeyboardView
+import llc.slacker.openime.keyboard.ProductionKeyPolicy
 import llc.slacker.openime.voice.VoiceModelLifecycleState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -63,20 +64,49 @@ class KeyboardBottomRowInstrumentedTest {
     private fun settled(harness: DirectActivityHarness<DebugKeyboardActivity>, keyboard: ImeKeyboardView, tag: String): View =
         harness.awaitMain { keyboard.findViewWithTag<View>(tag)?.takeIf { it.width > 0 } }
 
+    /**
+     * The bottom row carries the reference's own key widths — 123 70.6, the
+     * merged key 37.6, both symbol keys 35.5, the space bar 133.6, 中/英 38.6,
+     * 确定 74.6 (`style.xml:960-978`) — in the order its layout puts them
+     * (`input_kbd_pinyin26.xml:134-158`). The reference's two sides are not
+     * equal, so the space bar sits where its own numbers put it, a hair left of
+     * the keyboard's centre line rather than exactly on it.
+     */
     @Test
-    fun twentySixKeySpaceIsCenteredAndTheRowMirrors() = withKeyboard { harness, _, keyboard ->
+    fun theBottomRowCarriesTheReferencesOwnKeyWidths() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain { keyboard.setMode(KeyboardMode.PINYIN_26); true }
         val space = settled(harness, keyboard, "key-space")
-        val mode = settled(harness, keyboard, "key:mode")
-        val punctuation = settled(harness, keyboard, "key-punctuation")
-        val digits = settled(harness, keyboard, "key:123")
-        val enter = settled(harness, keyboard, "key-enter")
+        val weights = ProductionKeyPolicy.twentySixKeyBottomRowWeights()
+        val shares = listOf(
+            "key:123" to weights.leftOuter,
+            "key-punctuation" to weights.merged,
+            "key-symbol-comma" to weights.symbol,
+            "key-space" to weights.space,
+            "key-symbol-period" to weights.symbol,
+            "key:mode" to weights.rightInner,
+            "key-enter" to weights.rightOuter,
+        )
         harness.awaitMain {
-            val tolerance = 3f
-            assertEquals(keyboard.width / 2f, space.centerX(keyboard), tolerance)
-            assertEquals(mode.width.toFloat(), punctuation.width.toFloat(), tolerance)
-            assertEquals(digits.width.toFloat(), enter.width.toFloat(), tolerance)
-            assertTrue("the mode key must be narrower than the digits key", mode.width < digits.width)
+            val row = space.parent as ViewGroup
+            val unit = row.width / shares.sumOf { it.second.toDouble() }.toFloat()
+            shares.forEach { (tag, weight) ->
+                val key = keyboard.findViewWithTag<View>(tag)
+                assertNotNull("$tag must be in the bottom row", key)
+                assertEquals(
+                    "$tag takes its share of the row",
+                    weight * unit,
+                    key!!.width.toFloat(),
+                    2f,
+                )
+            }
+            val before = shares.takeWhile { it.first != "key-space" }
+                .sumOf { it.second.toDouble() }.toFloat()
+            assertEquals(
+                "the space bar sits where the reference's own weights put it",
+                (before + weights.space / 2f) * unit,
+                space.centerX(row),
+                2f,
+            )
             true
         }
     }
@@ -117,6 +147,13 @@ class KeyboardBottomRowInstrumentedTest {
         }
     }
 
+    /**
+     * The reference's merged key carries the full stop in its own language and
+     * the mark it hides in its corner: Chinese draws `text="，"` with
+     * `ficon_text="。"` (`input_kbd_pinyin26.xml:145-152`), English draws
+     * `text="."` with `ficon_text=","` (`input_kbd_english26.xml:154-161`), so a
+     * long press commits the corner mark in both.
+     */
     @Test
     fun commaKeyTapsCommaAndLongPressesPeriodInBothLanguages() = withKeyboard { harness, recorder, keyboard ->
         harness.awaitMain { keyboard.setMode(KeyboardMode.PINYIN_26); true }
@@ -128,7 +165,7 @@ class KeyboardBottomRowInstrumentedTest {
         harness.awaitMain { keyboard.setMode(KeyboardMode.ENGLISH_26); true }
         val en = harness.awaitMain { keyboard.findViewWithTag<View>("key-punctuation")?.takeIf { it.width > 0 } }
         harness.awaitMain { assertTrue(en.performClick()); assertTrue(en.performLongClick()); true }
-        assertEquals(listOf(",", "."), recorder.characters.toList())
+        assertEquals(listOf(".", ","), recorder.characters.toList())
     }
 
     @Test

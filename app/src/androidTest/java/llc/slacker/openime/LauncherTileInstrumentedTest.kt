@@ -8,9 +8,11 @@ import android.widget.TextView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import llc.slacker.openime.core.KeyboardMode
 import llc.slacker.openime.core.Panel
+import llc.slacker.openime.handwriting.StrokeMatchHandwritingProvider
 import llc.slacker.openime.keyboard.ImeKeyboardView
 import llc.slacker.openime.panel.TileGridPolicy
 import llc.slacker.openime.theme.ImeAppearance
+import llc.slacker.openime.theme.ImeReferenceSizing
 import llc.slacker.openime.theme.ImeTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -78,13 +80,23 @@ class LauncherTileInstrumentedTest {
             assertNotNull("The tools page must lay its tiles out as a grid", grid)
             val rows = (grid as ViewGroup)
             assertEquals("The reference's grid is two rows deep", TileGridPolicy.ROWS, rows.childCount)
-            (0 until rows.childCount).forEach { index ->
-                assertEquals(
-                    "Every row of the grid is ${TileGridPolicy.COLUMNS} columns",
-                    TileGridPolicy.COLUMNS,
-                    (rows.getChildAt(index) as ViewGroup).childCount,
-                )
+            // The reference fills a row with four tiles and leaves a short last
+            // row short (`input_settings.xml:13-45` packs its own buttons four
+            // to a row); the cells keep the grid's own column width either way.
+            assertEquals(
+                "The first row carries the reference's four columns",
+                TileGridPolicy.COLUMNS,
+                (rows.getChildAt(0) as ViewGroup).childCount,
+            )
+            val cellWidths = (0 until rows.childCount).flatMap { index ->
+                val cells = rows.getChildAt(index) as ViewGroup
+                (0 until cells.childCount).map { cells.getChildAt(it).width }
             }
+            assertEquals(
+                "Every cell keeps the page's one column width: $cellWidths",
+                1,
+                cellWidths.distinct().size,
+            )
             // Every tile of a page is the same size, as `parent_average` makes it.
             val sizes = (0 until rows.childCount).flatMap { row ->
                 val cells = rows.getChildAt(row) as ViewGroup
@@ -109,9 +121,14 @@ class LauncherTileInstrumentedTest {
                 tokens.toolCardBackground,
                 faceColor(tile),
             )
+            // The radius goes through the view's own `dp`: the reference's units
+            // scale with the page (`ImeKeyboardView.dp`), so the test measures
+            // the tile with the same reference scale.
             assertEquals(
                 "`bkround=\"14\"` on cls_settings_button",
-                keyboard.resources.displayMetrics.density * TileGridPolicy.TILE_RADIUS_DP,
+                with(keyboard.resources.displayMetrics) {
+                    density * ImeReferenceSizing.scale(keyboard.context, keyboard.width) * TileGridPolicy.TILE_RADIUS_DP
+                },
                 faceRadius(tile),
                 1f,
             )
@@ -149,7 +166,13 @@ class LauncherTileInstrumentedTest {
                 }
             }
             assertTrue("The switcher keeps the pinyin keyboards", labels.contains("拼音 26 键"))
-            assertTrue("The switcher keeps the handwriting entry", labels.contains("手写输入"))
+            // The handwriting tile follows the strokes table, which only local
+            // builds ship (`StrokeMatchHandwritingProvider.assetPresent`).
+            assertEquals(
+                "The switcher carries the handwriting entry with its strokes table",
+                StrokeMatchHandwritingProvider.assetPresent(keyboard.context),
+                labels.contains("手写输入"),
+            )
             keyboard.setMode(KeyboardMode.PINYIN_9, notifyListener = false)
             keyboard.showPanel(Panel.KEYBOARD_SELECT)
             assertNotNull(

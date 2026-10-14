@@ -1776,8 +1776,16 @@ open class ImeKeyboardView(
         syncEnterKeyPresentation(state.editorInfo?.imeOptions)
     }
 
+    /**
+     * The editor the toolbar chips and the enter key are drawn for. The service
+     * supplies it on every input start; instrumented tests build this view
+     * without an input session and set it here instead.
+     */
+    internal var editorOptionsOverride: Int? = null
+
     private fun currentImeOptions(): Int? =
-        (context as? android.inputmethodservice.InputMethodService)?.currentInputEditorInfo?.imeOptions
+        editorOptionsOverride
+            ?: (context as? android.inputmethodservice.InputMethodService)?.currentInputEditorInfo?.imeOptions
 
     /** The editor the keys are being drawn for; null outside a real input session. */
     private fun currentEditorInfo(): android.view.inputmethod.EditorInfo? =

@@ -42,7 +42,8 @@ class SymbolHistoryInstrumentedTest {
     } as ImeKeyboardView.Listener
 
     private fun withKeyboard(test: (ImeKeyboardView) -> Unit) {
-        SymbolRecentRepository.clear(context)
+        // The history each test records before this call is the input it arranges;
+        // the @After cleanup empties the store between tests instead.
         DirectActivityHarness(DebugKeyboardActivity::class.java).use { harness ->
             harness.launch()
             val keyboard = harness.awaitMain { activity ->

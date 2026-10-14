@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
 import android.widget.TextView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import llc.slacker.openime.keyboard.ImeKeyboardView
@@ -66,10 +67,19 @@ class QuickInputRowInstrumentedTest {
                         popup = true,
                         fuzzy = false,
                     )
+                    // The quick-input rows belong to a real editor session;
+                    // this view has none, so it declares the options an editor
+                    // without the no-personalisation flag would give it.
+                    keyboard.editorOptionsOverride = EditorInfo.IME_ACTION_NONE
                     true
                 }
                 copy(text)
                 harness.awaitMain { keyboard.refreshSuggestions(); true }
+                // Let the row place itself: the assertions measure a laid-out glyph.
+                harness.awaitMain {
+                    val icon = keyboard.findViewWithTag<View>("suggestion-icon")
+                    if ((icon?.height ?: 0) > 0) true else null
+                }
                 harness.awaitMain { test(keyboard, copy); true }
             } finally {
                 harness.awaitMain {

@@ -25,7 +25,7 @@ class FloatingTipInstrumentedTest {
         arrayOf(ImeKeyboardView.Listener::class.java),
     ) { _, method, _ -> if (method.returnType == java.lang.Boolean.TYPE) false else null } as ImeKeyboardView.Listener
 
-    private fun withKeyboard(test: (ImeKeyboardView) -> Unit) {
+    private fun withKeyboard(test: (DirectActivityHarness<DebugKeyboardActivity>, ImeKeyboardView) -> Unit) {
         DirectActivityHarness(DebugKeyboardActivity::class.java).use { harness ->
             harness.launch()
             val keyboard = harness.awaitMain { activity ->
@@ -35,7 +35,7 @@ class FloatingTipInstrumentedTest {
             }
             try {
                 harness.awaitMain { if (keyboard.width > 0) true else null }
-                harness.awaitMain { test(keyboard); true }
+                harness.awaitMain { test(harness, keyboard); true }
             } finally {
                 harness.awaitMain {
                     keyboard.shutdown()
@@ -48,11 +48,17 @@ class FloatingTipInstrumentedTest {
 
     private fun tip(keyboard: ImeKeyboardView): View? = keyboard.findViewWithTag("toolbar-tip")
 
+    /** Floats the keyboard and lets the banner take its place in the row. */
+    private fun showFloatingTip(harness: DirectActivityHarness<DebugKeyboardActivity>, keyboard: ImeKeyboardView) {
+        harness.awaitMain { keyboard.setFloatingWindowMode(true); true }
+        harness.awaitMain { if ((tip(keyboard)?.width ?: 0) > 0) true else null }
+    }
+
     @Test
     fun theFloatingKeyboardOpensWithTheTipBanner() {
-        withKeyboard { keyboard ->
+        withKeyboard { harness, keyboard ->
             assertEquals(View.GONE, tip(keyboard)?.visibility)
-            keyboard.setFloatingWindowMode(true)
+            showFloatingTip(harness, keyboard)
             assertEquals(View.VISIBLE, tip(keyboard)?.visibility)
             val label = keyboard.findViewWithTag<TextView>("toolbar-tip-label")
             assertNotNull("The banner says what the handle does", label)
@@ -66,7 +72,7 @@ class FloatingTipInstrumentedTest {
 
     @Test
     fun theCloseKeySettlesTheTipForTheStayAfloat() {
-        withKeyboard { keyboard ->
+        withKeyboard { _, keyboard ->
             keyboard.setFloatingWindowMode(true)
             keyboard.findViewWithTag<View>("toolbar-tip-close")!!.performClick()
             assertEquals(View.GONE, tip(keyboard)?.visibility)
@@ -82,8 +88,8 @@ class FloatingTipInstrumentedTest {
 
     @Test
     fun theTipTakesTheRowButNotTheCollectKey() {
-        withKeyboard { keyboard ->
-            keyboard.setFloatingWindowMode(true)
+        withKeyboard { harness, keyboard ->
+            showFloatingTip(harness, keyboard)
             assertEquals(View.VISIBLE, tip(keyboard)?.visibility)
             val hide = keyboard.findViewWithTag<View>("keyboard-hide")
             assertNotNull("The collect-the-keyboard key stays reachable", hide)
@@ -97,8 +103,8 @@ class FloatingTipInstrumentedTest {
 
     @Test
     fun theBannerKeepsTheReferencesOwnProportions() {
-        withKeyboard { keyboard ->
-            keyboard.setFloatingWindowMode(true)
+        withKeyboard { harness, keyboard ->
+            showFloatingTip(harness, keyboard)
             val strip = tip(keyboard)!!
             val row = keyboard.findViewWithTag<View>("toolbar-row")!!
             val density = keyboard.resources.displayMetrics.density

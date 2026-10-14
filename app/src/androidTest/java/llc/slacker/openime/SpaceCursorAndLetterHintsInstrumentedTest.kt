@@ -411,6 +411,12 @@ class SpaceCursorAndLetterHintsInstrumentedTest {
         }
     }
 
+    /**
+     * The merged key commits its own mark and hides the other in its corner:
+     * Chinese 逗号 over 句号, English the full stop over the comma
+     * (`input_kbd_english26.xml:154-161`, `input_kbd_pinyin26.xml:145-152`), so
+     * an up swipe types the corner mark — 句号 in Chinese, the comma in English.
+     */
     @Test
     fun swipeUpOnTheCommaKeyTypesThePeriod() = withKeyboard { harness, recorder, keyboard ->
         harness.awaitMain { keyboard.setMode(KeyboardMode.PINYIN_26); true }
@@ -420,7 +426,7 @@ class SpaceCursorAndLetterHintsInstrumentedTest {
         recorder.characters.clear()
         harness.awaitMain { keyboard.setMode(KeyboardMode.ENGLISH_26); true }
         swipeUp(harness, settled(harness, keyboard, "key-punctuation"))
-        assertEquals(listOf("."), recorder.characters.toList())
+        assertEquals(listOf(","), recorder.characters.toList())
     }
 
     @Test

@@ -78,6 +78,18 @@ class FloatingGameKeyboardInstrumentedTest {
     private fun View.visibleByTag(tag: String): Boolean =
         findViewWithTag<View>(tag)?.visibility == View.VISIBLE
 
+    /**
+     * The floating keyboard meets the user with its one-time banner across the
+     * toolbar row (`input_toolbar_tip.xml:44-49`). A test that reads the toolbar
+     * or presses its icons settles the banner first, as the user does.
+     */
+    private fun settleTip(harness: DirectActivityHarness<DebugKeyboardActivity>, keyboard: ImeKeyboardView) {
+        harness.awaitMain {
+            keyboard.findViewWithTag<View>("toolbar-tip-close")?.performClick()
+            true
+        }
+    }
+
     /** The icons live in the toolbar's own scrolling strip, so search the row's subtree. */
     private fun View.toolbarIconByDescription(description: String): View? {
         val row = findViewWithTag<ViewGroup>("toolbar-row") ?: return null
@@ -125,6 +137,10 @@ class FloatingGameKeyboardInstrumentedTest {
             assertFalse("Docked toolbar has no quick-phrase shortcut", keyboard.visibleByTag("quick-phrase-toolbar"))
 
             keyboard.setFloatingWindowMode(true)
+            // The floating keyboard meets the user with its tip banner, which
+            // takes the toolbar row (`input_toolbar_tip.xml:44-49`); settling it
+            // gives the row back to the icons.
+            keyboard.findViewWithTag<View>("toolbar-tip-close")?.performClick()
             assertTrue("Floating toolbar exposes quick phrases", keyboard.visibleByTag("quick-phrase-toolbar"))
             assertFalse(keyboard.visibleByTag("clipboard-toolbar"))
             assertFalse(keyboard.visibleByTag("undo-toolbar"))
@@ -167,12 +183,15 @@ class FloatingGameKeyboardInstrumentedTest {
     @Test
     fun longPressOnTopZoneDragsTheFloatingKeyboardWithoutDockingOrClicking() = withKeyboard { harness, recorder, keyboard ->
         harness.awaitMain { keyboard.setFloatingWindowMode(true); true }
+        settleTip(harness, keyboard)
         val topZone = harness.awaitMain { keyboard.findViewWithTag<View>("ime_toolbar") }
         val downTime = SystemClock.uptimeMillis()
         // Press on an icon, so a leaked click would be visible as a panel opening.
         val (x, y) = harness.awaitMain {
             val icon = keyboard.findViewWithTag<View>("quick-phrase-toolbar")
-            val loc = IntArray(2).also { icon.getLocationInWindow(it) }
+            // The row is laid out once the banner has given it back.
+            if (icon?.width == 0) return@awaitMain null
+            val loc = IntArray(2).also { icon!!.getLocationInWindow(it) }
             val zoneLoc = IntArray(2).also { topZone.getLocationInWindow(it) }
             (loc[0] - zoneLoc[0] + icon.width / 2f) to (loc[1] - zoneLoc[1] + icon.height / 2f)
         }
