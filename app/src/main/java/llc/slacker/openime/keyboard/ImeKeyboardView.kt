@@ -65,6 +65,7 @@ import llc.slacker.openime.theme.ImeSurfacePolicy
 import llc.slacker.openime.theme.ImeTheme
 import llc.slacker.openime.theme.ImeTypographyTokens
 import llc.slacker.openime.voice.InlineVoicePresenter
+import llc.slacker.openime.voice.VoiceFaceState
 import llc.slacker.openime.voice.VoicePanelController
 import llc.slacker.openime.voice.VoiceSessionHost
 import llc.slacker.openime.widget.ImeKeyView
@@ -698,7 +699,7 @@ open class ImeKeyboardView(
             handler = repeatHandler,
             toPx = ::dp,
             zone = { topZone.voiceInlineZone },
-            icon = { topZone.voiceInlineIcon },
+            face = { topZone.voiceInlineFace },
             status = { topZone.voiceInlineStatus },
             waves = { topZone.voiceInlineWaves },
             tokens = {
@@ -732,6 +733,7 @@ open class ImeKeyboardView(
                     !voicePanelController.active
                 }
             },
+            onInlineFaceState = { state -> inlineVoicePresenter.setFaceState(state) },
             onFeedback = ::feedback,
             onSessionTerminal = {
                 voiceGestureSession = false
@@ -2397,7 +2399,7 @@ open class ImeKeyboardView(
         voiceGestureSession = true
         voicePanelController.lockLanguageForGesture()
         inlineVoicePresenter.invalidateGeneration()
-        inlineVoicePresenter.show("正在准备麦克风…")
+        inlineVoicePresenter.show("正在准备麦克风…", state = VoiceFaceState.PREPARING)
         inlineVoicePresenter.startPulse()
         // Let the in-place state row draw before model/session startup begins.
         post {
@@ -2410,7 +2412,7 @@ open class ImeKeyboardView(
         if (!voiceGestureSession) return
         voiceGestureSession = false
         inlineVoicePresenter.stopPulse()
-        inlineVoicePresenter.show("正在识别…")
+        inlineVoicePresenter.show("正在识别…", state = VoiceFaceState.THINKING)
         voicePanelController.stop()
     }
 

@@ -1,9 +1,7 @@
 package llc.slacker.openime.voice
 
-import android.content.res.ColorStateList
 import android.os.Handler
 import android.view.View
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import llc.slacker.openime.theme.ImeDrawableFactory
@@ -15,7 +13,7 @@ internal class InlineVoicePresenter(
     private val handler: Handler,
     private val toPx: (Int) -> Int,
     private val zone: () -> LinearLayout,
-    private val icon: () -> ImageView,
+    private val face: () -> VoiceFaceView,
     private val status: () -> TextView,
     private val waves: () -> List<View>,
     private val tokens: () -> ImeTheme.Tokens,
@@ -48,15 +46,24 @@ internal class InlineVoicePresenter(
         }
     }
 
+    /**
+     * Shows one message of a session, and the step of it that [state] names.
+     *
+     * The panel controller sends the state through [setFaceState] instead, so
+     * that one state drives the panel's character and this one together; the
+     * callers that show a message on their own pass it here.
+     */
     fun show(
         message: String,
         cancelling: Boolean = false,
         error: Boolean = false,
         rms: Float? = null,
+        state: VoiceFaceState? = null,
     ) {
         active = true
         this.cancelling = cancelling
         this.error = error
+        if (state != null) face().setState(state)
 
         val statusView = status()
         if (statusView.text.toString() != message) {
@@ -66,6 +73,7 @@ internal class InlineVoicePresenter(
 
         if (rms != null) {
             hasLiveRms = true
+            face().setLevel(rms)
             handler.removeCallbacks(pulseAction)
             val strength = (rms * 9f).coerceIn(0.08f, 1f)
             waves().forEachIndexed { index, bar ->
@@ -89,6 +97,11 @@ internal class InlineVoicePresenter(
 
         refreshPalette()
         updateTopZone(false)
+    }
+
+    /** Shows [state] on the character of this zone. */
+    fun setFaceState(state: VoiceFaceState) {
+        face().setState(state)
     }
 
     fun startPulse() {
@@ -119,7 +132,7 @@ internal class InlineVoicePresenter(
             setTextColor(foregroundColor)
             background = ImeDrawableFactory.rounded(palette.functionKeyBackground, toPx(99))
         }
-        icon().imageTintList = ColorStateList.valueOf(foregroundColor)
+        face().applyTokens(palette)
         status().setTextColor(foregroundColor)
         waves().forEach { bar ->
             bar.background = ImeDrawableFactory.rounded(
@@ -131,6 +144,7 @@ internal class InlineVoicePresenter(
 
     fun hide() {
         stopPulse()
+        face().setState(VoiceFaceState.IDLE)
         active = false
         cancelling = false
         error = false

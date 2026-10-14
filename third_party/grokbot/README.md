@@ -35,6 +35,9 @@ voice session (`VoiceFaceState`). The microphone level drives hops on the onsets
 (`VoiceFaceLevelPolicy`). Colours come from the IME theme, through `GrokBotConfig.flatInk`,
 `eyeColor` and `badgeColor`.
 
+Two of those faces exist, and they never show at once: the one in the voice panel, at 64 dp, and the
+one in the zone over the keyboard, at 26 dp, which is built the first time a session shows it.
+
 To remove the character without touching the rest of the voice panel, delete
 `app/src/main/java/com/lollipop/grokbot/`, `VoiceFaceView.kt` and `VoiceFaceLevelPolicy.kt`, and take
 the face out of `VoicePanelView`.

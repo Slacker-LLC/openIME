@@ -63,6 +63,7 @@ internal enum class VoiceFaceState(internal val mood: GrokMood) {
 internal class VoiceFaceView(
     context: Context,
     private val toPx: (Int) -> Int,
+    private val sizeDp: Int = PANEL_SIZE_DP,
 ) : FrameLayout(context) {
 
     val face = GrokBotView(context)
@@ -80,7 +81,7 @@ internal class VoiceFaceView(
         tag = "voice-face"
         addView(
             face,
-            LayoutParams(toPx(FACE_SIZE_DP), toPx(FACE_SIZE_DP), Gravity.CENTER),
+            LayoutParams(toPx(sizeDp), toPx(sizeDp), Gravity.CENTER),
         )
     }
 
@@ -116,7 +117,7 @@ internal class VoiceFaceView(
             mood = state.mood,
             followPointer = false,
             reduceMotion = reduceMotion,
-            sizePx = toPx(FACE_SIZE_DP),
+            sizePx = toPx(sizeDp),
             flatInk = tokens.primary,
             eyeColor = tokens.keyboardBackground,
             badgeColor = tokens.primary,
@@ -131,7 +132,10 @@ internal class VoiceFaceView(
         internal const val HALO_MIX = 0.16f
 
         /** Side of the face, inside the panel's disc. */
-        private const val FACE_SIZE_DP = 64
+        private const val PANEL_SIZE_DP = 64
+
+        /** Side of the face, on the inline zone over the keyboard. */
+        internal const val INLINE_SIZE_DP = 26
 
         /**
          * Whether the platform is set to animate. `ANIMATOR_DURATION_SCALE` is

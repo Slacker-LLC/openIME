@@ -23,6 +23,7 @@ internal class VoicePanelController(
     private val listener: VoiceSessionHost,
     private val isGestureSessionActive: () -> Boolean,
     private val onInlineState: (String, Boolean, Boolean, Float?) -> Unit,
+    private val onInlineFaceState: (VoiceFaceState) -> Unit = {},
     private val onHideInlineLater: (Long) -> Unit,
     private val onFeedback: () -> Unit,
     private val onSessionTerminal: () -> Unit = {},
@@ -95,7 +96,6 @@ internal class VoicePanelController(
 
         refreshLanguageControl()
         onInlineState("正在准备麦克风…", false, false, null)
-        setFaceState(VoiceFaceState.PREPARING, "语音状态，正在准备麦克风")
         setFaceState(VoiceFaceState.LISTENING, "语音输入进行中，松开空格结束，上滑取消")
         setGestureHint(
             "松开空格上屏 · 上滑取消",
@@ -435,6 +435,9 @@ internal class VoicePanelController(
 
     private fun setFaceState(state: VoiceFaceState, description: String) {
         view?.setFaceState(state, description)
+        // The same state shows on the zone over the keyboard, so a session reads
+        // the same whichever of the two surfaces is on screen.
+        onInlineFaceState(state)
     }
 
     private fun setGestureHint(label: String, description: String) {

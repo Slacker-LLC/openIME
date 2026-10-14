@@ -25,6 +25,7 @@ import llc.slacker.openime.theme.ImeGeometryTokens
 import llc.slacker.openime.theme.ImeSurfacePolicy
 import llc.slacker.openime.theme.ImeTheme
 import llc.slacker.openime.theme.ImeTypographyTokens
+import llc.slacker.openime.voice.VoiceFaceView
 
 internal enum class ImeTopZoneState {
     IDLE,
@@ -73,10 +74,36 @@ internal class ImeTopZone(
     val candidateExpandButton = ImageView(context)
     val candidateEmojiButton = ImageView(context)
     val voiceInlineZone = LinearLayout(context)
-    val voiceInlineIcon = ImageView(context)
     val voiceInlineStatus = TextView(context)
     val voiceInlineWaves = mutableListOf<View>()
     val associationBack = ImageView(context)
+    /**
+     * The character of the voice zone, built the first time a session shows it.
+     *
+     * Building it loads the artwork's geometry tables, which is work the
+     * keyboard does not owe a user who never dictates, so it happens when the
+     * zone is first asked for rather than when the keyboard is built.
+     */
+    val voiceInlineFace: VoiceFaceView
+        get() {
+            inlineFace?.let { return it }
+            val view = VoiceFaceView(context, toPx, VoiceFaceView.INLINE_SIZE_DP).apply {
+                tag = "voice-inline-face"
+                contentDescription = null
+            }
+            inlineFace = view
+            voiceInlineZone.addView(
+                view,
+                0,
+                LinearLayout.LayoutParams(
+                    toPx(VoiceFaceView.INLINE_SIZE_DP),
+                    toPx(VoiceFaceView.INLINE_SIZE_DP),
+                ).apply { marginEnd = toPx(9) },
+            )
+            return view
+        }
+
+    private var inlineFace: VoiceFaceView? = null
     private lateinit var toolbarIcons: List<View>
     private lateinit var compactToolbarIcons: List<View>
     private var compact = false
@@ -335,17 +362,6 @@ internal class ImeTopZone(
             visibility = View.GONE
             setPadding(toPx(12), 0, toPx(12), 0)
         }
-        voiceInlineIcon.apply {
-            tag = "voice-inline-icon"
-            contentDescription = null
-            setImageResource(R.drawable.ic_mic)
-            imageTintList = ColorStateList.valueOf(Color.WHITE)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-        }
-        voiceInlineZone.addView(
-            voiceInlineIcon,
-            LinearLayout.LayoutParams(toPx(22), toPx(22)).apply { marginEnd = toPx(9) },
-        )
         voiceInlineStatus.apply {
             tag = "voice-inline-status"
             text = "正在聆听"
@@ -387,7 +403,6 @@ internal class ImeTopZone(
         }
         voiceInlineZone.addView(inlineWave, 0,
             LinearLayout.LayoutParams(toPx(64), LinearLayout.LayoutParams.MATCH_PARENT).apply { marginEnd = toPx(12) })
-        voiceInlineIcon.visibility = View.GONE
         voiceInlineZone.addView(TextView(context).apply {
             text = "↑ 上滑取消"
             textSize = ImeTypographyTokens.SMALL_SP
