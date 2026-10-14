@@ -45,7 +45,7 @@ private const val CANDIDATE_ROW_DP = 42
 
 /**
  * The reference's candidate strip is `[4] 候选列表(308) [1] [3] 更多候选(40) [4]`
- * (`input_toolbar_typing.xml:16-30`, weights from `style.xml:530-534`, 506 and 468):
+ * (`input_toolbar_typing.xml:23-32`, weights from `style.xml:530-534`, 506 and 468):
  * a small inset at each end, a hairline split before the expand key and a 3-unit
  * gap ahead of it.
  */
