@@ -599,7 +599,6 @@ open class ImeKeyboardView(
             keyboardBody = keyboardBody,
             toPx = ::dp,
             keyRowHeightDp = ::keyRowHeightDp,
-            nineGridHeightDp = ::nineGridHeightDp,
             nineBodyHeightDp = ::nineBodyHeightDp,
             createKey = { text, function, textSize, onTap ->
                 key(
@@ -611,8 +610,10 @@ open class ImeKeyboardView(
                 )
             },
             createBackspaceKey = ::backspaceKey,
+            // The number page's space is a grey function key in the reference
+            // (`cls_keyboard9_button_func`, input_kbd_number_from26.xml:35).
             createSpaceVoiceKey = { label, onTap ->
-                spaceVoiceKey(label, white = true, onTap = onTap)
+                spaceVoiceKey(label, white = false, onTap = onTap)
             },
             markSideKey = { key -> key.setTag(MARK_SIDE_KEY, true) },
             markWhiteKey = { key -> key.setTag(MARK_WHITE_KEY, true) },
