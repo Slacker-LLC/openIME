@@ -159,6 +159,13 @@ open class ImeKeyboardView(
         private const val SCALE_CHANGE_EPSILON = 0.01f
         private const val FLOATING_NAV_STRIP_DP = 6
 
+        /**
+         * The floating tip's own wording. The reference's tip asks for a drag to
+         * the bottom edge (`input_toolbar_tip.xml:48`); our floating keyboard
+         * docks again on a tap of its handle, so the tip says that instead.
+         */
+        private const val FLOATING_TIP_TEXT = "轻点顶部把手可恢复默认键盘"
+
         /** How often a deferred row rebuild re-checks whether the press ended. */
         private const val ROW_REBUILD_POLL_MS = 40L
 
@@ -325,6 +332,8 @@ open class ImeKeyboardView(
     private var floatingOpacityPercent = ImeSettingsRepository.loadFloatingOpacityPercent(context)
     private var referenceScale = if (standalonePanel) 1f else ImeReferenceSizing.scale(context)
     private var floatingWindowMode = false
+    /** True once the floating tip's close key was tapped: it stays away until the next afloat stay. */
+    private var floatingTipDismissed = false
     /** Floating that the landscape setting started: it keeps the compact landscape rows. */
     private var floatingCompact = false
     private var layoutMetrics = buildLayoutMetrics()
@@ -1536,11 +1545,28 @@ open class ImeKeyboardView(
 
     /** Keep content geometry local when the service changes the window bounds. */
     fun setFloatingWindowMode(enabled: Boolean, compact: Boolean = false) {
+        val wasFloating = floatingWindowMode
         floatingWindowMode = enabled
         floatingCompact = enabled && compact
         navigationBottomInsetPx = bottomInsetFor(systemBottomInsetPx)
         floatingKeyboardController.setEnabled(enabled)
         topZone.setCompactToolbar(enabled)
+        // The reference meets the floating keyboard with a tip in the toolbar row
+        // (`input_toolbar_tip.xml:43-50`); ours names our own way back, a tap on
+        // the handle. Its close key settles the tip for this stay afloat.
+        if (enabled) {
+            if (!wasFloating) floatingTipDismissed = false
+            if (floatingTipDismissed) {
+                topZone.hideTooltip()
+            } else {
+                topZone.showTooltip(FLOATING_TIP_TEXT) {
+                    floatingTipDismissed = true
+                    topZone.hideTooltip()
+                }
+            }
+        } else {
+            topZone.hideTooltip()
+        }
         layoutMetrics = buildLayoutMetrics()
         renderedMode = null
         topZone.setLongPressDrag(

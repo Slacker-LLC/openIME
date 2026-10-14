@@ -346,6 +346,34 @@ internal object ImeSurfacePolicy {
     fun switchKnob(tokens: ImeTheme.Tokens): Int =
         if (isDark(tokens)) Color.parseColor("#F2F3F5") else Color.WHITE
 
+    /**
+     * The tip banner's pill: the reference fills it with `keybutton_bk`, opaque
+     * white on the light skin and white at 28% over the keyboard on the dark one
+     * (`values/colors.xml:19`, `values/dark_colors.xml:18`).
+     */
+    fun tipBackground(tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.blend(
+            Color.WHITE,
+            tokens.keyboardBackground,
+            if (isDark(tokens)) 0.28f else 1f,
+        )
+
+    /** The tip's close key, `toolbar_tip_close_button_bk` (black 4% / white 7% over the pill). */
+    fun tipCloseBackground(tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.blend(
+            if (isDark(tokens)) Color.WHITE else Color.BLACK,
+            tipBackground(tokens),
+            if (isDark(tokens)) 0.07f else 0.04f,
+        )
+
+    /** Its pressed face, `toolbar_tip_close_button_pushedbk` (black 14% / white 17%). */
+    fun tipClosePressed(tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.blend(
+            if (isDark(tokens)) Color.WHITE else Color.BLACK,
+            tipBackground(tokens),
+            if (isDark(tokens)) 0.17f else 0.14f,
+        )
+
     /** Inset separator between rows of one grouped card. */
     fun hairline(tokens: ImeTheme.Tokens): Int =
         ImeDrawableFactory.blend(tokens.keyText, tokens.toolCardBackground, if (isDark(tokens)) 0.10f else 0.08f)

@@ -124,16 +124,28 @@ internal class ImeTopZone(
     private var recentSymbolsShown = false
 
     /**
-     * What the toolbar row shows; icons, autofill chips, associations and the
-     * symbol history are exclusive. The history takes the row while the symbol
-     * board is open, as the reference's own symbol toolbar does.
+     * The tip banner the reference shows in the toolbar row while the floating
+     * keyboard is up (`input_toolbar_tip.xml:43-50`, see [ToolbarTipPolicy]).
      */
-    private enum class ToolbarMode { NORMAL, AUTOFILL, ASSOCIATION, RECENT_SYMBOLS }
+    private val tipStrip = LinearLayout(context)
+    private val tipLead = View(context)
+    private lateinit var tipLabel: TextView
+    private lateinit var tipClose: ImageView
+    private var tipShown = false
+
+    /**
+     * What the toolbar row shows; icons, autofill chips, associations, the
+     * symbol history and the tip are exclusive. The history takes the row while
+     * the symbol board is open, as the reference's own symbol toolbar does; the
+     * tip gives to every strip that has something to say while the user types.
+     */
+    private enum class ToolbarMode { NORMAL, AUTOFILL, ASSOCIATION, RECENT_SYMBOLS, TIP }
 
     private fun idleToolbarMode(): ToolbarMode = when {
         recentSymbolsShown -> ToolbarMode.RECENT_SYMBOLS
         associationsShown -> ToolbarMode.ASSOCIATION
         autofillShown -> ToolbarMode.AUTOFILL
+        tipShown -> ToolbarMode.TIP
         else -> ToolbarMode.NORMAL
     }
 
@@ -273,6 +285,7 @@ internal class ImeTopZone(
         // (`input_toolbar_idle.xml:41-43`, `cls_toolbar_idle_button` width 40,
         // `style.xml:237-248`).
         buildRecentSymbolStrip()
+        buildTipStrip()
         keyboardHide = toolbarIcon(R.drawable.ic_chevron_down, "收起键盘", "keyboard-hide", onHideKeyboard)
         toolbarRow.addView(
             keyboardHide,
@@ -659,6 +672,99 @@ internal class ImeTopZone(
         refreshToolbar()
     }
 
+    /**
+     * Lays out the reference's tip banner: one pill across the toolbar row, a
+     * lead space, the label at the left of the rest and a round close key
+     * (`input_toolbar_tip.xml:43-50`, `style.xml:442`, `:1265-1313`). The strip
+     * is the row's full 48 units and the pill is painted inside it, as
+     * [ToolbarTipPolicy.PILL_UNITS] describes.
+     */
+    private fun buildTipStrip() {
+        tipStrip.apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            tag = "toolbar-tip"
+            visibility = View.GONE
+        }
+        tipLead.apply { tag = "toolbar-tip-lead" }
+        tipStrip.addView(
+            tipLead,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT),
+        )
+        tipLabel = TextView(context).apply {
+            tag = "toolbar-tip-label"
+            textSize = ImeTypographyTokens.BODY_SP
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            gravity = Gravity.CENTER_VERTICAL or Gravity.START
+            includeFontPadding = false
+            isClickable = false
+        }
+        tipStrip.addView(
+            tipLabel,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f),
+        )
+        tipClose = ImageView(context).apply {
+            tag = "toolbar-tip-close"
+            setImageResource(R.drawable.ic_close)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            contentDescription = "关闭提示"
+            isClickable = true
+            isFocusable = true
+        }
+        tipStrip.addView(tipClose, touchTargetParams())
+        toolbarRow.addView(tipStrip, LinearLayout.LayoutParams(0, toPx(48)))
+    }
+
+    /**
+     * Shows the tip banner with [text] in the toolbar row, or the normal toolbar
+     * again when [hideTooltip] runs. The label is left-aligned and ellipsized
+     * (`cls_toolbar_tip_label`, `style.xml:1267-1270`), and the close key is the
+     * same 48dp touch target as every other toolbar control.
+     */
+    fun showTooltip(text: String, onClose: () -> Unit) {
+        tipLabel.text = text
+        tipClose.setOnClickListener {
+            onFeedback()
+            onClose()
+        }
+        val changed = !tipShown
+        tipShown = true
+        if (changed) {
+            toolbarMode = idleToolbarMode()
+            refreshToolbar()
+        }
+    }
+
+    /** Takes the tip banner out of the toolbar row (floating mode ended, or its close key tapped). */
+    fun hideTooltip() {
+        if (!tipShown) return
+        tipShown = false
+        toolbarMode = idleToolbarMode()
+        refreshToolbar()
+    }
+
+    /**
+     * The banner's own fractions of the row width: the container's 3.333%
+     * horizontal padding, its 3.571% lead space and the 1.2% the label keeps
+     * before its text (`style.xml:442`, `:1265`, `:1278`).
+     */
+    private fun applyTipGeometry(rowWidth: Int) {
+        fun units(fraction: Float): Int = (rowWidth * fraction).toInt().coerceAtLeast(0)
+        val pad = units(ToolbarTipPolicy.CONTAINER_PAD_FRACTION)
+        tipStrip.setPadding(pad, 0, pad, 0)
+        (tipLead.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+            params.width = units(ToolbarTipPolicy.LEAD_WEIGHT)
+            tipLead.layoutParams = params
+        }
+        tipLabel.setPadding(units(ToolbarTipPolicy.LABEL_PAD_FRACTION), 0, 0, 0)
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        if (w > 0 && w != oldw) applyTipGeometry(w)
+    }
+
     /** One history cell: the reference's 36-unit box over candidate-sized text. */
     private fun recentSymbolCell(symbol: String, onPick: (String) -> Unit): View =
         LinearLayout(context).apply {
@@ -846,6 +952,7 @@ internal class ImeTopZone(
         val association = toolbarMode == ToolbarMode.ASSOCIATION
         val autofill = toolbarMode == ToolbarMode.AUTOFILL
         val recent = toolbarMode == ToolbarMode.RECENT_SYMBOLS
+        val tip = toolbarMode == ToolbarMode.TIP
         val shown = if (compact) compactToolbarIcons else toolbarIcons
         (toolbarIcons + compactToolbarIcons).distinct().forEach {
             it.visibility = if (normal && it in shown) View.VISIBLE else View.GONE
@@ -855,6 +962,7 @@ internal class ImeTopZone(
         associationScroll.visibility = if (association) View.VISIBLE else View.GONE
         autofillScroll.visibility = if (autofill) View.VISIBLE else View.GONE
         recentSymbolStrip.visibility = if (recent) View.VISIBLE else View.GONE
+        tipStrip.visibility = if (tip) View.VISIBLE else View.GONE
         keyboardHide.visibility = View.VISIBLE
         // The icons keep the reference's own width and their own row takes the
         // slack; a suggestion strip, the autofill chips or the symbol history
@@ -869,6 +977,11 @@ internal class ImeTopZone(
             params.width = 0
             params.weight = if (recent) 1f else 0f
             recentSymbolStrip.layoutParams = params
+        }
+        (tipStrip.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+            params.width = 0
+            params.weight = if (tip) 1f else 0f
+            tipStrip.layoutParams = params
         }
     }
 

@@ -178,6 +178,33 @@ internal class ImeThemeApplier(
                     toPx(RecentSymbolStripPolicy.CELL_RADIUS_DP),
                 )
             }
+            // The tip banner: the reference's own pill, painted inside the row's
+            // touch height (`cls_toolbar_tip_container` bkround 999,
+            // style.xml:1273-1274), with the label in the key text colour
+            // (`cls_toolbar_tip_label`, style.xml:1267-1270).
+            "toolbar-tip" -> {
+                view.background = paintedWithinTarget(
+                    ImeDrawableFactory.rounded(
+                        ImeSurfacePolicy.tipBackground(t),
+                        toPx(ImeGeometryTokens.PILL_RADIUS_DP),
+                    ),
+                    ToolbarTipPolicy.PILL_UNITS,
+                    padsView = false,
+                )
+            }
+            // The close key keeps the reference's square of the pill's height
+            // (`width="match_height"`, style.xml:1306-1307) and its own
+            // translucent faces (`toolbar_tip_close_button_bk`, colors.xml:163).
+            "toolbar-tip-close" -> {
+                view.background = paintedSquareWithinTarget(
+                    statefulRounded(
+                        ImeSurfacePolicy.tipCloseBackground(t),
+                        ImeSurfacePolicy.tipClosePressed(t),
+                        toPx(ImeGeometryTokens.PILL_RADIUS_DP),
+                    ),
+                    ToolbarTipPolicy.PILL_UNITS,
+                )
+            }
             // Rows sit inside a card that clips to its corners, so the pressed
             // fill is square and the card supplies the rounding.
             "setting-row" -> if (view.isClickable) {
@@ -447,6 +474,11 @@ internal class ImeThemeApplier(
             // 历史符号列表按钮 takes the candidate text colour (style.xml:1063).
             tag == "recent-symbol-label" ->
                 view.setTextColor(t.candidateText)
+
+            // The tip's label takes `keybutton_text` (cls_toolbar_tip_label,
+            // style.xml:1267-1270) — the same key text colour the toolbar uses.
+            tag == "toolbar-tip-label" ->
+                view.setTextColor(t.keyText)
 
             tag == "candidate-filter-chip" -> {
                 // 全部 / 单字: the chosen one is the raised surface with plain
@@ -779,6 +811,24 @@ internal class ImeThemeApplier(
         // An InsetDrawable background also pads its view by the inset, which
         // squeezed a segment's label into the painted pill and clipped it.
         return object : InsetDrawable(drawable, 0, extra / 2, 0, extra - extra / 2) {
+            override fun getPadding(padding: android.graphics.Rect): Boolean {
+                padding.set(0, 0, 0, 0)
+                return false
+            }
+        }
+    }
+
+    /**
+     * Paint [drawable] as a [paintedDp] square, centred in the full touch
+     * target: the reference's close keys are as wide as the pill is high
+     * (`width="match_height"`), and our touch target stays 48dp.
+     */
+    private fun paintedSquareWithinTarget(
+        drawable: android.graphics.drawable.Drawable,
+        paintedDp: Int,
+    ): android.graphics.drawable.Drawable {
+        val inset = (toPx(ImeGeometryTokens.TOUCH_TARGET_DP) - toPx(paintedDp)) / 2
+        return object : InsetDrawable(drawable, inset, inset, inset, inset) {
             override fun getPadding(padding: android.graphics.Rect): Boolean {
                 padding.set(0, 0, 0, 0)
                 return false
