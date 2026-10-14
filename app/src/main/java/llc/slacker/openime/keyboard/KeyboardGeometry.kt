@@ -66,8 +66,8 @@ internal data class KeyboardLayoutMetrics(
         val fontGrow = ((fontScale - 1f).coerceAtLeast(0f) * 12f)
             .toInt()
             .coerceAtMost(12)
-        val scaled = ((base + fontGrow) * heightPercent.coerceIn(80, 120) / 100f).toInt()
-        scaled.coerceAtLeast(if (landscape) 38 else 44)
+        val scaled = ((base + fontGrow) * heightPercent.coerceIn(ImeGeometryTokens.KEYBOARD_HEIGHT_MIN_PERCENT, ImeGeometryTokens.KEYBOARD_HEIGHT_MAX_PERCENT) / 100f).toInt()
+        scaled.coerceAtLeast(if (landscape) 30 else 34)
     }
 
     val nineGridHeightDp: Int =
@@ -93,7 +93,7 @@ internal data class KeyboardLayoutMetrics(
             keyRowHeightDp * 4 + ImeGeometryTokens.KEYBOARD_TOP_PAD_DP + bottomPadDp
         val baseMinimum = 0
         val scaledMinimum =
-            (baseMinimum * heightPercent.coerceIn(80, 120) / 100f).toInt()
+            (baseMinimum * heightPercent.coerceIn(ImeGeometryTokens.KEYBOARD_HEIGHT_MIN_PERCENT, ImeGeometryTokens.KEYBOARD_HEIGHT_MAX_PERCENT) / 100f).toInt()
         maxOf(scaledMinimum, derived)
     }
 

@@ -13,6 +13,9 @@ schema_list:
   - schema: cangjie5
   - schema: stroke
   - schema: terra_pinyin
+  - schema: wubi86
+  - schema: double_pinyin_flypy
+  - schema: double_pinyin
 
 switcher:
   caption: 〔方案選單〕

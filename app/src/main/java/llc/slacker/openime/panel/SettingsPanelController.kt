@@ -21,6 +21,8 @@ import android.widget.TextView
 import llc.slacker.openime.ImeSettingsActivity
 import llc.slacker.openime.R
 import llc.slacker.openime.core.LandscapeLayout
+import llc.slacker.openime.core.DoublePinyinScheme
+import llc.slacker.openime.core.OneHandMode
 import llc.slacker.openime.data.HapticStyle
 import llc.slacker.openime.data.KeySoundStyle
 import llc.slacker.openime.theme.ImeAppearance
@@ -60,6 +62,8 @@ internal class SettingsPanelController(
     private val currentHapticStrengthPercent: () -> Int,
     private val currentHapticStyle: () -> HapticStyle,
     private val currentLandscapeLayout: () -> LandscapeLayout,
+    private val currentOneHandMode: () -> OneHandMode,
+    private val currentDoublePinyinScheme: () -> DoublePinyinScheme,
     private val currentKeySoundStyle: () -> KeySoundStyle,
     private val currentPopup: () -> Boolean,
     private val currentSwipeUpDigits: () -> Boolean,
@@ -77,6 +81,8 @@ internal class SettingsPanelController(
     private val onHapticStrengthChanged: (Int) -> Unit,
     private val onHapticStyleChanged: (HapticStyle) -> Unit,
     private val onLandscapeLayoutChanged: (LandscapeLayout) -> Unit,
+    private val onOneHandModeChanged: (OneHandMode) -> Unit,
+    private val onDoublePinyinSchemeChanged: (DoublePinyinScheme) -> Unit,
     private val onKeySoundStyleChanged: (KeySoundStyle) -> Unit,
     private val onFloatingStyleChanged: (Int, Int) -> Unit,
     private val onShowFuzzySettings: () -> Unit,
@@ -84,6 +90,7 @@ internal class SettingsPanelController(
     private val onFuzzyRulesChanged: () -> Unit,
     private val onOpenAbout: () -> Unit,
     private val onOpenDataManagement: () -> Unit,
+    private val onOpenVoiceModel: () -> Unit,
     private val onFeedback: () -> Unit,
     private val applyTheme: () -> Unit,
     private val onHierarchyRebuilt: () -> Unit,
@@ -176,16 +183,21 @@ internal class SettingsPanelController(
         content.addSection("外观", first = true)
         content.addCard(
             segmentedRow("外观", R.drawable.ic_pref_appearance),
-            sliderRow(currentKeyboardHeightLabel(), R.drawable.ic_pref_height, 80, 120, currentKeyboardHeightPercent(), onChange = onKeyboardHeightChanged),
+            sliderRow(currentKeyboardHeightLabel(), R.drawable.ic_pref_height, ImeGeometryTokens.KEYBOARD_HEIGHT_MIN_PERCENT, ImeGeometryTokens.KEYBOARD_HEIGHT_MAX_PERCENT, currentKeyboardHeightPercent(), ImeGeometryTokens.KEYBOARD_HEIGHT_DEFAULT_PERCENT, onChange = onKeyboardHeightChanged),
         )
+        content.addSection("键盘")
+        content.addCard(doublePinyinSchemeRow(R.drawable.ic_kb_double))
         content.addSection("横屏")
-        content.addCard(landscapeLayoutRow(R.drawable.ic_pref_width))
+        content.addCard(
+            landscapeLayoutRow(R.drawable.ic_pref_width),
+            oneHandModeRow(R.drawable.ic_pref_width),
+        )
         content.addSection("浮动键盘")
         content.addCard(
-            sliderRow("浮动宽度", R.drawable.ic_pref_width, 72, 100, currentFloatingWidthPercent()) {
+            sliderRow("浮动宽度", R.drawable.ic_pref_width, ImeGeometryTokens.FLOATING_WIDTH_MIN_PERCENT, ImeGeometryTokens.FLOATING_WIDTH_MAX_PERCENT, currentFloatingWidthPercent(), ImeGeometryTokens.FLOATING_WIDTH_DEFAULT_PERCENT) {
                 onFloatingStyleChanged(it, currentFloatingOpacityPercent())
             },
-            sliderRow("浮动透明度", R.drawable.ic_pref_opacity, 82, 100, currentFloatingOpacityPercent()) {
+            sliderRow("浮动透明度", R.drawable.ic_pref_opacity, ImeGeometryTokens.FLOATING_OPACITY_MIN_PERCENT, ImeGeometryTokens.FLOATING_OPACITY_MAX_PERCENT, currentFloatingOpacityPercent(), ImeGeometryTokens.FLOATING_OPACITY_DEFAULT_PERCENT) {
                 onFloatingStyleChanged(currentFloatingWidthPercent(), it)
             },
         )
@@ -195,7 +207,7 @@ internal class SettingsPanelController(
             soundStyleRow(NESTED_ROW),
             toggleRow("触感震动", "清脆短促，按下即停", R.drawable.ic_pref_haptic),
             hapticStyleRow(NESTED_ROW),
-            sliderRow("震动强度", NESTED_ROW, 10, 100, currentHapticStrengthPercent(), onChange = onHapticStrengthChanged),
+            sliderRow("震动强度", NESTED_ROW, ImeGeometryTokens.HAPTIC_STRENGTH_MIN_PERCENT, ImeGeometryTokens.HAPTIC_STRENGTH_MAX_PERCENT, currentHapticStrengthPercent(), ImeGeometryTokens.HAPTIC_STRENGTH_DEFAULT_PERCENT, onChange = onHapticStrengthChanged),
             toggleRow("按键气泡", "按下时显示字母预览", R.drawable.ic_pref_bubble),
             toggleRow("数字和符号提示", "字母键右上角显示数字和符号", R.drawable.ic_pref_hints),
             toggleRow("上滑输入数字", "按键上滑输入右上角的数字或符号", R.drawable.ic_pref_swipe_up),
@@ -218,6 +230,7 @@ internal class SettingsPanelController(
         content.addSection("关于与数据")
         content.addCard(
             navigationRow("关于", "版本、隐私与诊断", R.drawable.ic_pref_info, onOpenAbout),
+            navigationRow("语音模型", "导入、切换或删除离线模型", R.drawable.ic_pref_waveform, onOpenVoiceModel),
             navigationRow("数据管理", "导出与导入用户数据", R.drawable.ic_pref_data, onOpenDataManagement),
         )
     }
@@ -234,8 +247,8 @@ internal class SettingsPanelController(
         )
         content.addCard(
             segmentedRow("外观", iconRes = 0),
-            sliderRow(currentKeyboardHeightLabel(), 0, 80, 120, currentKeyboardHeightPercent(), onChange = onKeyboardHeightChanged),
-            sliderRow("震动强度", 0, 10, 100, currentHapticStrengthPercent(), onChange = onHapticStrengthChanged),
+            sliderRow(currentKeyboardHeightLabel(), 0, ImeGeometryTokens.KEYBOARD_HEIGHT_MIN_PERCENT, ImeGeometryTokens.KEYBOARD_HEIGHT_MAX_PERCENT, currentKeyboardHeightPercent(), ImeGeometryTokens.KEYBOARD_HEIGHT_DEFAULT_PERCENT, onChange = onKeyboardHeightChanged),
+            sliderRow("震动强度", 0, ImeGeometryTokens.HAPTIC_STRENGTH_MIN_PERCENT, ImeGeometryTokens.HAPTIC_STRENGTH_MAX_PERCENT, currentHapticStrengthPercent(), ImeGeometryTokens.HAPTIC_STRENGTH_DEFAULT_PERCENT, onChange = onHapticStrengthChanged),
             topMarginDp = ImeSpacingTokens.MD_DP,
         )
         content.addSection("按键反馈")
@@ -244,13 +257,13 @@ internal class SettingsPanelController(
             hapticStyleRow(0),
         )
         content.addSection("横屏")
-        content.addCard(landscapeLayoutRow(0))
+        content.addCard(landscapeLayoutRow(0), oneHandModeRow(0))
         content.addSection("浮动键盘")
         content.addCard(
-            sliderRow("浮动宽度", 0, 72, 100, currentFloatingWidthPercent(), shortLabel = "宽度") {
+            sliderRow("浮动宽度", 0, ImeGeometryTokens.FLOATING_WIDTH_MIN_PERCENT, ImeGeometryTokens.FLOATING_WIDTH_MAX_PERCENT, currentFloatingWidthPercent(), ImeGeometryTokens.FLOATING_WIDTH_DEFAULT_PERCENT, shortLabel = "宽度") {
                 onFloatingStyleChanged(it, currentFloatingOpacityPercent())
             },
-            sliderRow("浮动透明度", 0, 82, 100, currentFloatingOpacityPercent(), shortLabel = "透明度") {
+            sliderRow("浮动透明度", 0, ImeGeometryTokens.FLOATING_OPACITY_MIN_PERCENT, ImeGeometryTokens.FLOATING_OPACITY_MAX_PERCENT, currentFloatingOpacityPercent(), ImeGeometryTokens.FLOATING_OPACITY_DEFAULT_PERCENT, shortLabel = "透明度") {
                 onFloatingStyleChanged(currentFloatingWidthPercent(), it)
             },
         )
@@ -270,6 +283,7 @@ internal class SettingsPanelController(
         content.addSection("关于与数据")
         content.addCard(
             navigationRow("关于", null, 0, onOpenAbout),
+            navigationRow("语音模型", null, 0, onOpenVoiceModel),
             navigationRow("数据管理", null, 0, onOpenDataManagement),
         )
     }
@@ -571,6 +585,16 @@ internal class SettingsPanelController(
             onLandscapeLayoutChanged(LandscapeLayout.entries.first { it.label == label })
         }
 
+    private fun oneHandModeRow(iconRes: Int): View =
+        choiceRow("单手模式", iconRes, OneHandMode.entries.map { it.label }, currentOneHandMode().label) { label ->
+            onOneHandModeChanged(OneHandMode.entries.first { it.label == label })
+        }
+
+    private fun doublePinyinSchemeRow(iconRes: Int): View =
+        choiceRow("双拼方案", iconRes, DoublePinyinScheme.entries.map { it.label }, currentDoublePinyinScheme().label) { label ->
+            onDoublePinyinSchemeChanged(DoublePinyinScheme.entries.first { it.label == label })
+        }
+
     private fun hapticStyleRow(iconRes: Int): View =
         choiceRow("震动手感", iconRes, HapticStyle.entries.map { it.label }, currentHapticStyle().label) { label ->
             onHapticStyleChanged(HapticStyle.entries.first { it.label == label })
@@ -741,6 +765,7 @@ internal class SettingsPanelController(
         min: Int,
         max: Int,
         initial: Int,
+        defaultValue: Int,
         shortLabel: String = label,
         onChange: (Int) -> Unit,
     ): LinearLayout {
@@ -778,6 +803,38 @@ internal class SettingsPanelController(
                 },
             )
         }
+        val resetView = TextView(context).apply {
+            tag = "setting-reset"
+            text = "默认"
+            textSize = ImeTypographyTokens.SMALL_SP
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            setPadding(toPx(8), 0, toPx(8), 0)
+            contentDescription = "$label，恢复默认 $defaultValue%"
+            isClickable = true
+            isFocusable = true
+            alpha = if (seekBar.progress == defaultValue) 0.35f else 1f
+            setOnClickListener {
+                if (seekBar.progress != defaultValue) {
+                    seekBar.progress = defaultValue
+                    onChange(defaultValue)
+                }
+            }
+        }
+        seekBar.setOnSeekBarChangeListener(
+            object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
+                    val description = "$label，$progress%"
+                    valueView.text = "$progress%"
+                    seekBar.contentDescription = description
+                    if (Build.VERSION.SDK_INT >= 30) seekBar.stateDescription = description
+                    resetView.alpha = if (progress == defaultValue) 0.35f else 1f
+                    if (fromUser) onChange(progress)
+                }
+                override fun onStartTrackingTouch(bar: SeekBar) = Unit
+                override fun onStopTrackingTouch(bar: SeekBar) = Unit
+            },
+        )
         val initialDescription = "$label，${seekBar.progress}%"
         valueView.text = "${seekBar.progress}%"
         seekBar.contentDescription = initialDescription
@@ -798,6 +855,7 @@ internal class SettingsPanelController(
                             gravity = Gravity.CENTER_VERTICAL
                             addView(rowLabel(label), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
                             addView(valueView, wrapParams())
+                            addView(resetView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, toPx(32)))
                         },
                         LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT),
                     )
@@ -818,6 +876,7 @@ internal class SettingsPanelController(
             row.addView(rowLabel(shortLabel), LinearLayout.LayoutParams(toPx(64), LinearLayout.LayoutParams.WRAP_CONTENT))
             row.addView(seekBar, LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f))
             row.addView(valueView, LinearLayout.LayoutParams(toPx(44), LinearLayout.LayoutParams.WRAP_CONTENT))
+            row.addView(resetView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, toPx(32)))
         }
         return row
     }

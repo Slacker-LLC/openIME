@@ -257,10 +257,11 @@ jobs:
             channel_flags=(--prerelease)
             latest_flag=--latest=false
           fi
-          # The APK is the only asset; its SHA-256 and the signing certificate
+          # The full and lite APKs are the assets; their SHA-256 and the signing certificate
           # are in the release notes, and the licenses ship inside the APK.
           gh release create "$GITHUB_REF_NAME" \
             release-files/openIME-*-arm64-release.apk \
+            release-files/openIME-*-arm64-lite-release.apk \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
             --draft \

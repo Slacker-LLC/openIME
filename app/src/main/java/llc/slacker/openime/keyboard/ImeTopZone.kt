@@ -19,7 +19,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import llc.slacker.openime.R
-import llc.slacker.openime.floating.FloatingDragController
+import llc.slacker.openime.floating.LongPressDragTarget
 import llc.slacker.openime.theme.ImeDrawableFactory
 import llc.slacker.openime.theme.ImeGeometryTokens
 import llc.slacker.openime.theme.ImeSurfacePolicy
@@ -450,7 +450,9 @@ internal class ImeTopZone(
         refreshToolbar()
     }
 
-    private var longPressDrag: FloatingDragController? = null
+    private var longPressDrag: LongPressDragTarget? = null
+    /** 停靠键盘的高度调节只允许在顶栏范围起手，避免抢候选/输入区的长按。 */
+    private var longPressToolbarOnly = false
     private var longPressArmed = false
     private var longPressDragging = false
     private var pressRawX = 0f
@@ -464,8 +466,9 @@ internal class ImeTopZone(
      * Floating mode: long-press anywhere on the top zone, then drag, to move the
      * keyboard. Taps and scrolls on toolbar icons and candidates are untouched.
      */
-    fun setLongPressDrag(controller: FloatingDragController?) {
+    fun setLongPressDrag(controller: LongPressDragTarget?, toolbarOnly: Boolean = false) {
         longPressDrag = controller
+        longPressToolbarOnly = toolbarOnly
         resetLongPress()
     }
 
@@ -475,11 +478,21 @@ internal class ImeTopZone(
         longPressDragging = false
     }
 
+    /** 手指是否落在顶栏（工具条）范围内；用窗口坐标比较，兼容嵌套层级。 */
+    private fun isInsideToolbar(rawX: Float, rawY: Float): Boolean {
+        if (toolbarRow.width == 0 || toolbarRow.height == 0) return false
+        val location = IntArray(2)
+        toolbarRow.getLocationInWindow(location)
+        return rawX >= location[0] && rawX <= location[0] + toolbarRow.width &&
+            rawY >= location[1] && rawY <= location[1] + toolbarRow.height
+    }
+
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
         val drag = longPressDrag ?: return false
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 resetLongPress()
+                if (longPressToolbarOnly && !isInsideToolbar(ev.rawX, ev.rawY)) return false
                 pressRawX = ev.rawX
                 pressRawY = ev.rawY
                 postDelayed(longPressRunnable, ViewConfiguration.getLongPressTimeout().toLong())

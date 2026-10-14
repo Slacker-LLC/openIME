@@ -123,7 +123,8 @@ To add a dependency, first change the table in that test.
 | `setup` | Shared UI helpers for activities | data, theme |
 | `widget` | Reusable controls: `ImeKeyView`, `SwipeUpDetector` | theme |
 | `floating` | Floating keyboard window, drag, card style | theme |
-| `handwriting` | Handwriting pad | data, theme |
+| `handwriting` | Handwriting pad, stroke classifier, stroke-table provider | data, theme |
+| `engine` | Clean-room pinyin engine: binary lexicon/bigram tables, syllable lattice, fuzzy pairs, Viterbi | core |
 | `rime` | librime wrapper, input normalization, native candidate references | core, data |
 | `candidate` | Candidate pipeline, snapshots, nine-key decoder, fuzzy pinyin, lexicons | core, rime |
 | `voice` | Speech recognition, model lifecycle, voice panel, text post-processing | data, editor, theme |
@@ -158,6 +159,7 @@ Split them next. Follow the package rules above and add no cross-package depende
 | 26-key pinyin | `ImeKeyboardView`, `CandidatePipeline`, Rime | Production |
 | Nine-key pinyin | `ImeKeyboardView`, `NineKeyLocalDecoder`, Rime | Production. No English nine-key. |
 | Stroke | `StrokeKeyboardRenderer`, `StrokeLexicon` | Production |
+| Wubi 26-key | `ImeKeyboardView`, `CandidatePipeline`, Rime (`wubi86`) | Production. The table ships only in builds with the local data. |
 | English 26-key | `CandidatePipeline`, `CandidateEngine` | Production |
 | Digits, phone, decimal | `EditorInfoAdapter`, `NumericKeyboardRenderer` | Production |
 | Symbols | `SymbolCatalog`, `CustomSymbolRepository` | Production |
@@ -166,7 +168,7 @@ Split them next. Follow the package rules above and add no cross-package depende
 | Quick phrases | `QuickPhraseRepository`, `QuickPhraseEditActivity` | Production |
 | Text editing | `InputConnectionGateway` | Production. Available actions depend on the editor. |
 | Voice | `VoiceModelLifecycleManager`, sherpa-onnx | Production. Hold space to speak. |
-| Handwriting | `HandwritingPadView` | Pad only. No recognition engine. The entry point is hidden. |
+| Handwriting | `HandwritingPadView`, `StrokeMatchHandwritingProvider` | Stroke-table recognition. Builds without the local table hide the entry. |
 | Floating keyboard | `FloatingKeyboardController`, `LocalVoiceImeService` | Production |
 | Settings | `ImeSettingsRepository`, settings UI | Production |
 

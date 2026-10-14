@@ -1,5 +1,7 @@
 package llc.slacker.openime.floating
 
+import llc.slacker.openime.theme.ImeGeometryTokens
+import android.content.res.Configuration
 import android.os.Handler
 import android.view.Gravity
 import android.view.Window
@@ -30,6 +32,8 @@ internal class FloatingWindowController(
     private var baseHeight: Int? = null
     private var baseSoftInputMode: Int? = null
     private var baseAlpha: Float? = null
+    private val positionMemory = FloatingPositionMemory()
+    private var lastOrientation: Int? = null
 
     fun enable(resetPosition: Boolean = x == 0 && y == 0) {
         enabled = true
@@ -41,7 +45,19 @@ internal class FloatingWindowController(
     }
 
     fun onConfigurationChanged() {
-        if (enabled) scheduleLayout(resetPosition = false)
+        if (!enabled) return
+        // Rotating swaps the coordinate space: park the current position in
+        // this orientation's slot and continue from the other one's.
+        val current = resources.configuration.orientation
+        val previous = lastOrientation
+        if (previous != null && previous != current) {
+            positionMemory.save(previous, x, y)
+            positionMemory.restore(current)?.let { restored ->
+                x = restored[0]
+                y = restored[1]
+            }
+        }
+        scheduleLayout(resetPosition = false)
     }
 
     fun drag(deltaX: Float, deltaY: Float) {
@@ -100,12 +116,13 @@ internal class FloatingWindowController(
             attrs.width = desiredWidth
             attrs.height = currentHeight
             attrs.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
-            attrs.alpha = floatingOpacityPercent().coerceIn(82, 100) / 100f
+            attrs.alpha = floatingOpacityPercent().coerceIn(ImeGeometryTokens.FLOATING_OPACITY_MIN_PERCENT, ImeGeometryTokens.FLOATING_OPACITY_MAX_PERCENT) / 100f
             attrs.x = x.coerceIn(bounds[0], bounds[1])
             attrs.y = y.coerceIn(bounds[2], bounds[3])
             x = attrs.x
             y = attrs.y
             imeWindow.attributes = attrs
+            rememberPosition()
             debugLog("floating-window x=${attrs.x} y=${attrs.y} w=${attrs.width} h=${attrs.height}")
         }
     }
@@ -132,11 +149,18 @@ internal class FloatingWindowController(
         attrs.width = width
         attrs.height = height
         attrs.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
-        attrs.alpha = floatingOpacityPercent().coerceIn(82, 100) / 100f
+        attrs.alpha = floatingOpacityPercent().coerceIn(ImeGeometryTokens.FLOATING_OPACITY_MIN_PERCENT, ImeGeometryTokens.FLOATING_OPACITY_MAX_PERCENT) / 100f
         attrs.x = x
         attrs.y = y
         imeWindow.attributes = attrs
+        rememberPosition()
         debugLog("floating-window-drag x=$x y=$y w=$width h=$height")
+    }
+
+    private fun rememberPosition() {
+        val orientation = resources.configuration.orientation
+        lastOrientation = orientation
+        positionMemory.save(orientation, x, y)
     }
 
     /** Return [minX, maxX, minY, maxY] for a visible floating IME card. */
@@ -162,11 +186,12 @@ internal class FloatingWindowController(
     private fun floatingWidth(screenWidth: Int): Int {
         val metrics = resources.displayMetrics
         val portraitWidth = minOf(metrics.widthPixels, metrics.heightPixels)
-        val percent = floatingWidthPercent().coerceIn(72, 100)
+        val percent = floatingWidthPercent().coerceIn(ImeGeometryTokens.FLOATING_WIDTH_MIN_PERCENT, ImeGeometryTokens.FLOATING_WIDTH_MAX_PERCENT)
         val preferred = (portraitWidth * percent / 100f).toInt()
         val available = (screenWidth - dp(16)).coerceAtLeast(dp(1))
-        val minimum = minOf(dp(280), available)
-        return minOf(preferred, dp(420), available).coerceAtLeast(minimum)
+        // 以前这里还有 280dp 下限和 420dp 上限，会让滑块的一大段不起作用。现在只受屏幕可用宽度限制。
+        val minimum = minOf(dp(200), available)
+        return minOf(preferred, available).coerceAtLeast(minimum)
     }
 
     private fun displaySize(): Pair<Int, Int> {

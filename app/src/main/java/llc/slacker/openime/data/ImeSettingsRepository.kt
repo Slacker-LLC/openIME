@@ -1,9 +1,12 @@
 package llc.slacker.openime.data
 
+import llc.slacker.openime.theme.ImeGeometryTokens
 import android.content.Context
 import llc.slacker.openime.core.FuzzyRule
+import llc.slacker.openime.core.DoublePinyinScheme
 import llc.slacker.openime.core.KeyboardMode
 import llc.slacker.openime.core.LandscapeLayout
+import llc.slacker.openime.core.OneHandMode
 import llc.slacker.openime.theme.ImeAppearance
 import llc.slacker.openime.theme.ImeTheme
 
@@ -32,6 +35,8 @@ object ImeSettingsRepository {
     private const val KEY_FLOATING_WIDTH = "floating_width_percent"
     private const val KEY_FLOATING_OPACITY = "floating_opacity_percent"
     private const val KEY_LANDSCAPE_LAYOUT = "landscape_layout"
+    private const val KEY_ONE_HAND_MODE = "one_hand_mode"
+    private const val KEY_DOUBLE_PINYIN_SCHEME = "double_pinyin_scheme"
     private const val KEY_SPLIT_MIRRORED = "split_mirrored"
     private const val KEY_SMS_CODE_CHIP = "sms_code_chip"
     private const val KEY_CLIPBOARD_CHIP = "clipboard_chip"
@@ -55,16 +60,40 @@ object ImeSettingsRepository {
             .edit().putString(KEY_PREFERRED_CHINESE_MODE, mode.name).apply()
     }
 
+    /** 单手模式：关闭 / 左手 / 右手；键面收窄贴向所选一侧。 */
+    fun loadOneHandMode(context: Context): OneHandMode =
+        OneHandMode.fromKey(
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_ONE_HAND_MODE, null),
+        )
+
+    fun saveOneHandMode(context: Context, mode: OneHandMode) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY_ONE_HAND_MODE, mode.key).apply()
+    }
+
+    /** 双拼键位方案（小鹤 / 自然码），默认小鹤。 */
+    fun loadDoublePinyinScheme(context: Context): DoublePinyinScheme =
+        DoublePinyinScheme.fromKey(
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_DOUBLE_PINYIN_SCHEME, null),
+        )
+
+    fun saveDoublePinyinScheme(context: Context, scheme: DoublePinyinScheme) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY_DOUBLE_PINYIN_SCHEME, scheme.key).apply()
+    }
+
     fun loadKeyboardHeightPercent(context: Context, landscape: Boolean = false): Int {
         val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val stored = if (landscape && preferences.contains(KEY_LANDSCAPE_KEYBOARD_HEIGHT)) {
-            preferences.getInt(KEY_LANDSCAPE_KEYBOARD_HEIGHT, 100)
+            preferences.getInt(KEY_LANDSCAPE_KEYBOARD_HEIGHT, ImeGeometryTokens.KEYBOARD_HEIGHT_DEFAULT_PERCENT)
         } else {
             // Existing height preferences seed landscape until a user changes
             // its independent value, preserving the current appearance on upgrade.
-            preferences.getInt(KEY_KEYBOARD_HEIGHT, 100)
+            preferences.getInt(KEY_KEYBOARD_HEIGHT, ImeGeometryTokens.KEYBOARD_HEIGHT_DEFAULT_PERCENT)
         }
-        return stored.coerceIn(80, 120)
+        return stored.coerceIn(ImeGeometryTokens.KEYBOARD_HEIGHT_MIN_PERCENT, ImeGeometryTokens.KEYBOARD_HEIGHT_MAX_PERCENT)
     }
 
     fun saveKeyboardHeightPercent(context: Context, percent: Int, landscape: Boolean = false) {
@@ -72,7 +101,7 @@ object ImeSettingsRepository {
             .edit()
             .putInt(
                 if (landscape) KEY_LANDSCAPE_KEYBOARD_HEIGHT else KEY_KEYBOARD_HEIGHT,
-                percent.coerceIn(80, 120),
+                percent.coerceIn(ImeGeometryTokens.KEYBOARD_HEIGHT_MIN_PERCENT, ImeGeometryTokens.KEYBOARD_HEIGHT_MAX_PERCENT),
             )
             .apply()
     }
@@ -110,22 +139,22 @@ object ImeSettingsRepository {
 
     fun loadFloatingWidthPercent(context: Context): Int =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getInt(KEY_FLOATING_WIDTH, 100)
-            .coerceIn(72, 100)
+            .getInt(KEY_FLOATING_WIDTH, ImeGeometryTokens.FLOATING_WIDTH_DEFAULT_PERCENT)
+            .coerceIn(ImeGeometryTokens.FLOATING_WIDTH_MIN_PERCENT, ImeGeometryTokens.FLOATING_WIDTH_MAX_PERCENT)
 
     fun saveFloatingWidthPercent(context: Context, percent: Int) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putInt(KEY_FLOATING_WIDTH, percent.coerceIn(72, 100)).apply()
+            .edit().putInt(KEY_FLOATING_WIDTH, percent.coerceIn(ImeGeometryTokens.FLOATING_WIDTH_MIN_PERCENT, ImeGeometryTokens.FLOATING_WIDTH_MAX_PERCENT)).apply()
     }
 
     fun loadFloatingOpacityPercent(context: Context): Int =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getInt(KEY_FLOATING_OPACITY, 100)
-            .coerceIn(82, 100)
+            .getInt(KEY_FLOATING_OPACITY, ImeGeometryTokens.FLOATING_OPACITY_DEFAULT_PERCENT)
+            .coerceIn(ImeGeometryTokens.FLOATING_OPACITY_MIN_PERCENT, ImeGeometryTokens.FLOATING_OPACITY_MAX_PERCENT)
 
     fun saveFloatingOpacityPercent(context: Context, percent: Int) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putInt(KEY_FLOATING_OPACITY, percent.coerceIn(82, 100)).apply()
+            .edit().putInt(KEY_FLOATING_OPACITY, percent.coerceIn(ImeGeometryTokens.FLOATING_OPACITY_MIN_PERCENT, ImeGeometryTokens.FLOATING_OPACITY_MAX_PERCENT)).apply()
     }
 
     internal fun parseTheme(value: String?): ImeTheme =
@@ -179,15 +208,15 @@ object ImeSettingsRepository {
             .edit().putBoolean(KEY_HAPTIC, enabled).apply()
     }
 
-    /** Key-click strength, 10–100% of the full click. */
+    /** Key-click strength, 1–100% of the full click. */
     fun loadHapticStrengthPercent(context: Context): Int =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getInt(KEY_HAPTIC_STRENGTH, 100)
-            .coerceIn(10, 100)
+            .getInt(KEY_HAPTIC_STRENGTH, ImeGeometryTokens.HAPTIC_STRENGTH_DEFAULT_PERCENT)
+            .coerceIn(ImeGeometryTokens.HAPTIC_STRENGTH_MIN_PERCENT, ImeGeometryTokens.HAPTIC_STRENGTH_MAX_PERCENT)
 
     fun saveHapticStrengthPercent(context: Context, percent: Int) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putInt(KEY_HAPTIC_STRENGTH, percent.coerceIn(10, 100)).apply()
+            .edit().putInt(KEY_HAPTIC_STRENGTH, percent.coerceIn(ImeGeometryTokens.HAPTIC_STRENGTH_MIN_PERCENT, ImeGeometryTokens.HAPTIC_STRENGTH_MAX_PERCENT)).apply()
     }
 
     /** 震动手感 key: "crisp" (default), "firm" or "system". */

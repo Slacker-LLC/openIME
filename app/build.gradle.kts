@@ -22,8 +22,14 @@ val rimeCompiledOnlySources = listOf(
     "base.dict.yaml",
     "ext.dict.yaml",
     "others.dict.yaml",
+    "wubi86.dict.yaml",
     "essay.txt",
 )
+
+/** -Popenime.lite=true 或环境变量 OPENIME_LITE=1：构建不含语音模型的精简包。 */
+val liteBuild: Boolean =
+    (providers.gradleProperty("openime.lite").orNull ?: providers.environmentVariable("OPENIME_LITE").orNull)
+        .let { it == "true" || it == "1" }
 
 val releaseSigningReady = listOf(
     releaseKeystorePath,
@@ -125,7 +131,14 @@ android {
         // first entries are aapt's defaults, which this list replaces.
         ignoreAssetsPatterns += listOf(
             "!.svn", "!.git", "!.ds_store", "!*.scc", ".*", "<dir>_*", "!CVS", "!thumbs.db", "!picasa.ini", "!*~",
-        ) + rimeCompiledOnlySources.map { "!$it" }
+        ) + rimeCompiledOnlySources.map { "!$it" } + if (liteBuild) {
+            // 精简包：不带语音模型。用户在「设置 → 语音模型」里导入自己的模型。
+            // 只排除两个模型目录；models/voice/manifest.json 与受信目录仍然保留，
+            // 这样应用知道"没有内置模型"而不是"安装包损坏"。
+            listOf("!bilingual-paraformer", "!punctuation")
+        } else {
+            emptyList()
+        }
     }
 
     compileOptions {

@@ -59,7 +59,26 @@ EXPECTED = [
     "stroke.table.bin",
     "stroke.prism.bin",
     "stroke.reverse.bin",
+    "double_pinyin.schema.yaml",
+    "double_pinyin.prism.bin",
+    "double_pinyin_flypy.schema.yaml",
+    "double_pinyin_flypy.prism.bin",
 ]
+
+
+def expected_outputs():
+    """Required compiler outputs. The wubi table joins the list only when its
+    local dictionary sources are present (they are not part of the
+    repository), so clones without them still build."""
+    names = list(EXPECTED)
+    if (SOURCES / "openime_dicts" / "wubi86.dict.yaml").is_file():
+        names += [
+            "wubi86.schema.yaml",
+            "wubi86.table.bin",
+            "wubi86.prism.bin",
+            "wubi86.reverse.bin",
+        ]
+    return names
 
 
 def cmake_tools():
@@ -114,14 +133,14 @@ def compile_dictionaries(deployer, out_dir):
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        missing = [name for name in EXPECTED if not (staging / name).is_file()]
+        missing = [name for name in expected_outputs() if not (staging / name).is_file()]
         if missing:
             sys.exit("build_rime_prebuilt: librime did not produce " + ", ".join(missing))
         target = out_dir / "rime-data" / "build"
         if target.exists():
             shutil.rmtree(target)
         target.mkdir(parents=True)
-        for name in EXPECTED:
+        for name in expected_outputs():
             shutil.copy2(staging / name, target / name)
         return target
 
@@ -192,7 +211,7 @@ def main():
     strokes = write_stroke_table(out)
     total = sum(path.stat().st_size for path in target.iterdir())
     print(
-        f"build_rime_prebuilt: {len(EXPECTED)} files, {total // 1024} KiB in {target}, "
+        f"build_rime_prebuilt: {len(expected_outputs())} files, {total // 1024} KiB in {target}, "
         f"revision {revision[:12]}, {strokes} stroke codes"
     )
 

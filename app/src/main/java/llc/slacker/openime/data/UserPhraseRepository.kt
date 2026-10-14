@@ -17,7 +17,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 object UserPhraseRepository {
     private const val PREFS = "user_phrases"
     private const val KEY = "entries"
+    private const val HOTWORDS_KEY = "voice_hotwords"
     private const val MAX_ENTRIES = 2000
+    private const val MAX_MANUAL_HOTWORDS = 64
 
     private data class Entry(
         val code: String,
@@ -30,6 +32,9 @@ object UserPhraseRepository {
     private val persistenceLock = Any()
     private var preferences: SharedPreferences? = null
     private val entries = LinkedHashMap<String, Entry>()
+
+    /** 管理页手动热词；不受学习频率门槛影响，插入顺序稳定。 */
+    private val manualHotwords = LinkedHashSet<String>()
 
     /**
      * Persisting must stay off the IME thread. Unlike the old 500 ms debounce,
@@ -180,15 +185,39 @@ object UserPhraseRepository {
         val boundedLimit = limit.coerceIn(0, 128)
         if (boundedLimit == 0) return emptyList()
         synchronized(lock) {
-            return entries.values
+            // 手动热词排在前面，且不参与学习频率门槛。
+            val learned = entries.values
                 .asSequence()
                 .filter { it.frequency >= threshold }
                 .sortedWith(compareByDescending<Entry> { it.frequency }.thenByDescending { it.lastUsed })
                 .map { it.text }
+            return (manualHotwords.asSequence() + learned)
                 .distinct()
                 .take(boundedLimit)
                 .toList()
         }
+    }
+
+    /** 管理页保存的手动语音热词（一行一个），不受学习频率门槛影响。 */
+    fun manualVoiceHotwords(): List<String> = synchronized(lock) { manualHotwords.toList() }
+
+    /**
+     * 覆盖保存手动热词：去空白、去重、最多 64 条；能否进 sherpa 热词串由
+     * VoiceHotwordProvider 决定。@return false 表示偏好尚未 configure，没有写盘。
+     */
+    fun setManualVoiceHotwords(phrases: List<String>): Boolean {
+        val cleaned = phrases
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .distinct()
+            .take(MAX_MANUAL_HOTWORDS)
+        synchronized(lock) {
+            manualHotwords.clear()
+            manualHotwords.addAll(cleaned)
+        }
+        // 输入法还没 configure 时先留在内存；返回值只反映是否写盘成功。
+        val target = preferences ?: return false
+        return target.edit().putString(HOTWORDS_KEY, JSONArray(cleaned).toString()).commit()
     }
 
     internal fun exportArchiveEntries(): List<ArchiveUserPhrase> =
@@ -246,7 +275,8 @@ object UserPhraseRepository {
         synchronized(persistenceLock) {
             synchronized(lock) {
                 entries.clear()
-                preferences?.edit()?.remove(KEY)?.commit()
+                manualHotwords.clear()
+                preferences?.edit()?.remove(KEY)?.remove(HOTWORDS_KEY)?.commit()
             }
         }
     }
@@ -277,6 +307,13 @@ object UserPhraseRepository {
                     )
                     entries["$code\u0000$text"] = entry
                 }
+            }
+        }
+        manualHotwords.clear()
+        runCatching {
+            val array = JSONArray(preferences?.getString(HOTWORDS_KEY, null).orEmpty())
+            for (index in 0 until array.length()) {
+                array.optString(index).trim().takeIf { it.isNotEmpty() }?.let(manualHotwords::add)
             }
         }
     }

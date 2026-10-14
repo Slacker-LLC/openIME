@@ -29,7 +29,7 @@ import llc.slacker.openime.data.HapticStyle
  * Long pulses ring on linear motors such as the X-axis motor in Xiaomi phones,
  * which feels muddy; the one-shot fallbacks are kept to 8–12 ms for that reason.
  *
- * The 震动强度 slider sets [strengthPercent] (10–100, like Sogou's and Huawei
+ * The 震动强度 slider sets [strengthPercent] (1–100, like Sogou's and Huawei
  * 小艺's strength settings); 100 is the full click.
  *
  * The vibration is tagged as touch feedback, so the system "touch feedback"
@@ -109,7 +109,7 @@ internal class KeyHaptics(context: Context) {
     }
 
     companion object {
-        const val MIN_STRENGTH = 10
+        const val MIN_STRENGTH = 1
         const val MAX_STRENGTH = 100
         private const val CRISP_PULSE_MS = 8L
         private const val FIRM_PULSE_MS = 12L

@@ -93,3 +93,48 @@ Add new entries at the end.
   From 0.0.6-beta.1, the `hotword` module, the built-in lists, the management page and the typing candidate weighting are gone.
   *Reason:* homophone replacement is not mature. We do not ship it yet.
   The earlier code is on the `archive/voice-word-lists` branch (`f3bb5cc`, the 0.0.5-beta.1 commit). We can merge it back after a fix.
+
+## 2026-10-14
+
+- **Wubi 26-key.**
+  Add a wubi86 keyboard that shares the 26-key surface with pinyin.
+  Rime selects the `wubi86` schema from the saved Chinese mode, and the keyboard switcher shows the entry only when the compiled table is in the APK.
+  The schema and the import script ship in the repository; the dictionary table does not (local data).
+  *Reason:* wubi codes are plain letters, so the existing composition, candidate and commit paths apply unchanged; a separate renderer would duplicate the 26-key layout.
+- **Handwriting recognition by stroke table.**
+  `StrokeMatchHandwritingProvider` classifies each drawn stroke as one of the five basic strokes (h s p n z) and matches the sequence against a table.
+  Keep the `HandwritingProvider` boundary; a learned recognizer can replace the implementation later.
+  The tools panel shows the entry only when the table is in the APK.
+  *Reason:* an offline, deterministic matcher is honest about its limits and needs no model runtime.
+- **Local dictionary import.**
+  `scripts/import_doubao_data.py` merges decoded external word data into the Rime tables and builds the wubi, handwriting and English tables.
+  The data files are git-ignored; the script is committed, and it reads pristine sources from its own backup so a rerun does not drift.
+  Phrase weights take the larger of the existing and imported value (an import can raise a word but never demote a tuned entry); the single-character table only gains missing readings, and they enter below weight 1000, because its weights order candidates and are hand-tuned.
+  *Reason:* the external data must not ship in the public repository, and the curated ordering must survive the import.
+- **English completions from the ranked list.**
+  `EnglishLexicon` serves english-words.tsv (rank 1 = most common; unranked rows dropped) and merges with the small `ImeData.englishDict` before the casing fallback.
+  *Reason:* the decoded rank column is the only reliable frequency signal; 118k unranked rows would drown the completion rank.
+
+- **Self-developed pinyin engine (clean room).**
+  `engine/` implements the pinyin flow from the reverse-engineered behaviour (full-path syllable DAG, syllable-prefix completion for a trailing fragment, Viterbi sentences with a bigram bonus) over binary tables compiled from the locally decoded lexicon.
+  `CandidatePipeline` serves 26-key pinyin from it when the tables exist and fuzzy input is off; Rime stays as the source for fuzzy input, nine-key, stroke and wubi, and remains a supplement behind the engine's list.
+  *Reason:* the Rime path could not deliver the expected candidate behaviour, and the engine is our own code against our own binary format (no third-party source copied); the tables are not distributed in the repository.
+- **Handwriting in the keyboard switcher.**
+  The handwriting surface gets an entry card beside the keyboards, not only inside the tools grid.
+  *Reason:* users look for input surfaces where the keyboards are; hiding it in the tools panel made it feel missing.
+
+- **Landscape matches the reference skin.**
+  The landscape keyboard copies the measured values from the reference APK's landscape skin (`assets/skin/default/land/style.xml`, archived beside the dictionary handover under `skin-reference/`): keyboard side insets 6.485% (nine-key 9.5%), toolbar 8.2%, expanded candidates 9.5%, and the 26-key space weight 133.6 -> 182.2 (openIME 154 -> 210, the same ratio).
+  *Reason:* landscape must feel like the reference product, and the numbers come from its shipped skin file instead of guesswork. The window stays full width and the background still spans it; only the content moves inward.
+
+- **One-hand mode.**
+  A 76%-width keyboard anchored to the chosen side (关闭 / 左手 / 右手), offered in the layout settings group next to the landscape options; it applies in both orientations and steps aside when the split layout is active.
+  *Reason:* the reference product ships a one-hand mode (`单手模式`), and a wide landscape screen makes single-thumb typing awkward; reusing the existing content-inset path keeps every renderer untouched.
+- **Keyboard height drag (键盘调节).**
+  Long-press on the docked toolbar and drag vertically to change the keyboard height live (fixed sensitivity: a full screen height equals 200 points, so about 20% of the screen covers 40 points); reaching/keying persistence goes through the existing height path. The gesture only arms inside the toolbar row, so candidate long-presses and the input area keep their own gestures.
+  *Reason:* the reference product offers height adjustment (`键盘调节`, `is_change_keyboard_height`); dragging the toolbar needs no new controls and is discoverable.
+
+- **Double pinyin (小鹤 / 自然码).**
+  Two committed Rime schemas (`double_pinyin_flypy`, `double_pinyin`) share the luna_pinyin dictionary; the keyboard is the plain 26-key surface and a settings choice picks the scheme.
+  The chord tables come from rime-double-pinyin (GPL-3.0, credited in the schema header). The reference product ships the same two named schemes (`shuangpin_xiaohe` / `shuangpin_ziranma`, `oime_engine::ShuangPinScheme`); its mapping is compiled into native code without an extractable table, and 小鹤/自然码 chords are standardized layouts, so the standard tables are the same mapping.
+  *Reason:* keyboard-type parity with the reference product without Lua or external dependencies.

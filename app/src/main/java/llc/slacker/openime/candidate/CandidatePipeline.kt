@@ -1,6 +1,8 @@
 package llc.slacker.openime.candidate
 
+import llc.slacker.openime.core.FuzzyRule
 import llc.slacker.openime.core.KeyboardMode
+import llc.slacker.openime.engine.PinyinEngine
 
 /**
  * One way to read the open nine-key digits as pinyin, for the left rail.
@@ -64,7 +66,14 @@ class CandidatePipeline internal constructor(
     private val nineKeyFallbackRegistry: NineKeyFallbackRegistry = NineKeyFallbackRegistry(),
     /** The 笔画 table once loaded; null (no candidates yet) while it loads. */
     private val strokeLexicon: () -> StrokeLexicon? = StrokeLexicon::current,
+    /** Clean-room pinyin engine; null keeps the Rime/fallback path. */
+    private val pinyinEngine: PinyinEngine? = null,
+    /** 当前启用的模糊音规则（关掉时为空集），引擎按规则展开候选。 */
+    private val fuzzyRules: () -> Set<FuzzyRule> = { emptySet() },
 ) : CandidateResolver {
+
+    /** True when the 26-key pinyin flow is served by the built-in engine. */
+    val usesPinyinEngine: Boolean get() = pinyinEngine != null
     /**
      * [pinyinPaths] keeps its historical name for Listener compatibility. For
      * PINYIN_9 it contains exactly one native Rime T9 code (digits plus
@@ -93,7 +102,13 @@ class CandidatePipeline internal constructor(
         composition: String,
         fuzzy: Boolean,
     ): List<String> = when (mode) {
-        KeyboardMode.PINYIN_26 -> pinyin26Candidates(composition, fuzzy)
+        KeyboardMode.PINYIN_26 -> if (pinyinEngine == null) {
+            pinyin26Candidates(composition, fuzzy)
+        } else {
+            // The built-in engine serves full pinyin and honours the enabled
+            // fuzzy switches itself; exact readings rank above fuzzy ones.
+            pinyinEngine.candidates(composition, fuzzyRules = fuzzyRules())
+        }
         KeyboardMode.ENGLISH_26 -> englishCandidates(composition)
         KeyboardMode.PINYIN_9 -> if (composition.length <= 32) {
             engine.getCandidates(composition, fuzzy)
@@ -101,6 +116,10 @@ class CandidatePipeline internal constructor(
             emptyList()
         }
         KeyboardMode.STROKE -> strokeLexicon()?.candidatesFor(composition).orEmpty()
+        // Wubi codes are table lookups: no pinyin corrections, no local fallback.
+        KeyboardMode.WUBI -> engine.getCandidates(composition, fuzzy = false).take(MAX_CANDIDATES)
+        // Double pinyin rides the Rime schema (chords expand to full pinyin there).
+        KeyboardMode.DOUBLE_PINYIN -> engine.getCandidates(composition, fuzzy).take(MAX_CANDIDATES)
         KeyboardMode.DIGITS -> emptyList()
     }
 

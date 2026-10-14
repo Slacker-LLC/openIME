@@ -231,6 +231,10 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
         startActivity(Intent(this, AboutActivity::class.java))
     }
 
+    override fun onOpenVoiceModel() {
+        startActivity(Intent(this, VoiceModelActivity::class.java))
+    }
+
     override fun onOpenDataManagement() {
         startActivity(Intent(this, DataManagementActivity::class.java))
     }

@@ -53,9 +53,30 @@ class KeyboardLayoutMetricsTest {
     fun userHeightScaleStaysWithinTheSupportedRange() {
         val smallest = KeyboardLayoutMetrics(landscape = false, fontScale = 1f, heightPercent = 10)
         val largest = KeyboardLayoutMetrics(landscape = false, fontScale = 1f, heightPercent = 500)
-        // Out-of-range requests are clamped to 80%..120%, then floored at 44dp.
-        assertEquals(maxOf(44, ImeGeometryTokens.KEY_ROW_HEIGHT_DP * 80 / 100), smallest.keyRowHeightDp)
-        assertEquals(ImeGeometryTokens.KEY_ROW_HEIGHT_DP * 120 / 100, largest.keyRowHeightDp)
+        // Out-of-range requests are clamped to the token range, then floored at 34dp.
+        val lo = ImeGeometryTokens.KEYBOARD_HEIGHT_MIN_PERCENT
+        val hi = ImeGeometryTokens.KEYBOARD_HEIGHT_MAX_PERCENT
+        assertEquals(maxOf(34, ImeGeometryTokens.KEY_ROW_HEIGHT_DP * lo / 100), smallest.keyRowHeightDp)
+        assertEquals(ImeGeometryTokens.KEY_ROW_HEIGHT_DP * hi / 100, largest.keyRowHeightDp)
+    }
+
+    @Test
+    fun defaultHeightMatchesTheUnscaledRow() {
+        val default = KeyboardLayoutMetrics(
+            landscape = false, fontScale = 1f,
+            heightPercent = ImeGeometryTokens.KEYBOARD_HEIGHT_DEFAULT_PERCENT,
+        )
+        assertEquals(ImeGeometryTokens.KEY_ROW_HEIGHT_DP, default.keyRowHeightDp)
+    }
+
+    @Test
+    fun everySliderDefaultLiesInsideItsRange() {
+        listOf(
+            Triple(ImeGeometryTokens.KEYBOARD_HEIGHT_MIN_PERCENT, ImeGeometryTokens.KEYBOARD_HEIGHT_MAX_PERCENT, ImeGeometryTokens.KEYBOARD_HEIGHT_DEFAULT_PERCENT),
+            Triple(ImeGeometryTokens.FLOATING_WIDTH_MIN_PERCENT, ImeGeometryTokens.FLOATING_WIDTH_MAX_PERCENT, ImeGeometryTokens.FLOATING_WIDTH_DEFAULT_PERCENT),
+            Triple(ImeGeometryTokens.FLOATING_OPACITY_MIN_PERCENT, ImeGeometryTokens.FLOATING_OPACITY_MAX_PERCENT, ImeGeometryTokens.FLOATING_OPACITY_DEFAULT_PERCENT),
+            Triple(ImeGeometryTokens.HAPTIC_STRENGTH_MIN_PERCENT, ImeGeometryTokens.HAPTIC_STRENGTH_MAX_PERCENT, ImeGeometryTokens.HAPTIC_STRENGTH_DEFAULT_PERCENT),
+        ).forEach { (lo, hi, def) -> org.junit.Assert.assertTrue("$def not in $lo..$hi", def in lo..hi) }
     }
 
     @Test

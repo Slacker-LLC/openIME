@@ -69,6 +69,11 @@
             android:label="@string/activity_label_about" />
 
         <activity
+            android:name=".VoiceModelActivity"
+            android:exported="false"
+            android:label="@string/activity_label_voice_model" />
+
+        <activity
             android:name=".DataManagementActivity"
             android:exported="false"
             android:label="@string/activity_label_data" />

@@ -27,8 +27,9 @@ import llc.slacker.openime.data.CustomSymbolRepository
 import llc.slacker.openime.data.EmojiRecentRepository
 import llc.slacker.openime.data.ImeSettingsRepository
 import llc.slacker.openime.handwriting.HandwritingPadView
+import llc.slacker.openime.handwriting.HandwritingProvider
 import llc.slacker.openime.handwriting.HandwritingResult
-import llc.slacker.openime.handwriting.UnavailableHandwritingProvider
+import llc.slacker.openime.handwriting.StrokeMatchHandwritingProvider
 import llc.slacker.openime.theme.ImeGeometryTokens
 import llc.slacker.openime.theme.ImeSurfacePolicy
 import llc.slacker.openime.theme.ImeSpacingTokens
@@ -73,6 +74,14 @@ internal class ImePanelRenderer(
 ) {
     private var symbolCategory = "中文"
     private var emojiCategory = "笑脸"
+
+    /** Parsed on first use; stays unavailable when the local table is absent. */
+    private val handwritingProvider: HandwritingProvider by lazy {
+        StrokeMatchHandwritingProvider.forContext(context)
+    }
+
+    private fun rimeAssetPresent(path: String): Boolean =
+        runCatching { context.assets.open(path).close() }.isSuccess
     private var symbolsBody: LinearLayout? = null
     private val chipScrollPositions = mutableMapOf<String, Int>()
     private val verticalScrollPositions = mutableMapOf<String, Int>()
@@ -96,16 +105,41 @@ internal class ImePanelRenderer(
         val modes = listOf(
             Triple(KeyboardMode.PINYIN_26, "拼音 26 键", R.drawable.ic_kb_pinyin26),
             Triple(KeyboardMode.PINYIN_9, "拼音 9 键", R.drawable.ic_kb_pinyin9),
+            Triple(KeyboardMode.DOUBLE_PINYIN, "双拼", R.drawable.ic_kb_double),
             Triple(KeyboardMode.STROKE, "笔画", R.drawable.ic_kb_stroke),
+            Triple(KeyboardMode.WUBI, "五笔", R.drawable.ic_kb_wubi26),
             Triple(KeyboardMode.ENGLISH_26, "英文 26 键", R.drawable.ic_kb_english),
             Triple(KeyboardMode.DIGITS, "数字键盘", R.drawable.ic_kb_digits),
-        )
+        ).filterNot { (mode, _, _) ->
+            // Tables that ship only with local builds keep their entry hidden.
+            (mode == KeyboardMode.WUBI && !rimeAssetPresent(WUBI_TABLE_ASSET)) ||
+                (mode == KeyboardMode.DOUBLE_PINYIN && !rimeAssetPresent(DOUBLE_PINYIN_SCHEMA_ASSET))
+        }
         modes.chunked(TOOL_COLUMNS).forEach { chunk ->
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             chunk.forEach { (mode, label, iconRes) ->
                 row.addView(keyboardChoice(mode, label, iconRes), toolCardParams())
             }
             repeat(TOOL_COLUMNS - chunk.size) { row.addView(View(context), toolCardParams()) }
+            body.addView(
+                row,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    toPx(ImeGeometryTokens.TOOL_CARD_HEIGHT_DP),
+                ).apply { bottomMargin = toPx(ImeSpacingTokens.LG_DP) },
+            )
+        }
+        // Handwriting is an input surface, not a keyboard mode. Give it the
+        // same entry point as the keyboards so it is found in the same place.
+        if (StrokeMatchHandwritingProvider.assetPresent(context)) {
+            val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+            row.addView(
+                toolCard(R.drawable.ic_pref_handwriting, "手写输入") {
+                    onShowPanel(Panel.HANDWRITING)
+                },
+                toolCardParams(),
+            )
+            repeat(TOOL_COLUMNS - 1) { row.addView(View(context), toolCardParams()) }
             body.addView(
                 row,
                 LinearLayout.LayoutParams(
@@ -138,6 +172,12 @@ internal class ImePanelRenderer(
             ToolEntry("剪贴板", Panel.CLIPBOARD, R.drawable.ic_pref_clipboard),
             ToolEntry("表情", Panel.EMOJI, R.drawable.ic_pref_emoji),
             ToolEntry("符号", Panel.SYMBOLS, R.drawable.ic_pref_symbols),
+            ToolEntry(
+                "手写输入",
+                Panel.HANDWRITING,
+                R.drawable.ic_pref_handwriting,
+                enabled = StrokeMatchHandwritingProvider.assetPresent(context),
+            ),
             ToolEntry("文本编辑", Panel.TEXT_EDITOR, R.drawable.ic_pref_cursor),
             ToolEntry("浮动键盘", iconRes = R.drawable.ic_pref_floating, action = onEnableFloatingKeyboard),
             ToolEntry("设置", Panel.SETTINGS, R.drawable.ic_pref_settings),
@@ -262,29 +302,35 @@ internal class ImePanelRenderer(
             }
         }
 
+        var padRef: HandwritingPadView? = null
+        fun showHandwritingHint(text: String) {
+            candidateRow.addView(createTitle(text, true), wrapParams())
+        }
         val pad = HandwritingPadView(context) { strokes ->
             refreshStrokeActions(strokes.isNotEmpty())
             candidateRow.removeAllViews()
-            when (val result = UnavailableHandwritingProvider.recognize(strokes)) {
-                is HandwritingResult.NotConfigured -> {
-                    candidateRow.addView(
-                        createTitle("当前未配置手写识别引擎", true),
-                        wrapParams(),
-                    )
-                }
-                is HandwritingResult.Success -> {
-                    result.candidates.forEach { candidate ->
+            when (val result = handwritingProvider.recognize(strokes)) {
+                is HandwritingResult.NotConfigured -> showHandwritingHint("当前未配置手写识别引擎")
+                is HandwritingResult.Success -> when {
+                    result.candidates.isNotEmpty() -> result.candidates.forEach { candidate ->
                         candidateRow.addView(
-                            createKey(candidate, false, ImeTypographyTokens.TITLE_SP) { onCharacter(candidate) },
+                            createKey(candidate, false, ImeTypographyTokens.TITLE_SP) {
+                                onCharacter(candidate)
+                                // 上屏后清空落笔区，直接写下一个字。
+                                padRef?.clear()
+                            },
                             wrapParams(),
                         )
                     }
+                    strokes.isEmpty() -> showHandwritingHint("在下方区域落笔手写...")
+                    else -> showHandwritingHint("没有认出这个字，再写一次试试")
                 }
-                is HandwritingResult.Error -> Unit
+                is HandwritingResult.Error -> showHandwritingHint("识别出错了：${result.message}")
             }
         }.apply {
             tag = "handwriting-canvas"
         }
+        padRef = pad
         body.addView(
             pad,
             LinearLayout.LayoutParams(
@@ -769,5 +815,9 @@ internal class ImePanelRenderer(
         const val TOOL_COLUMNS = 4
         /** Longer than this, a symbol is text (kaomoji, 【】 pairs...) and needs a wide cell. */
         const val WIDE_SYMBOL_CODE_POINTS = 3
+        /** Compiled wubi table; absent from builds without the local sources. */
+        const val WUBI_TABLE_ASSET = "rime-data/build/wubi86.table.bin"
+        /** Compiled double-pinyin schema marker. */
+        const val DOUBLE_PINYIN_SCHEMA_ASSET = "rime-data/build/double_pinyin_flypy.schema.yaml"
     }
 }

@@ -18,13 +18,16 @@ import android.view.inputmethod.InputMethodManager
 import android.view.inputmethod.InputMethodSubtype
 import llc.slacker.openime.candidate.CandidateEngine
 import llc.slacker.openime.candidate.CandidatePipeline
+import llc.slacker.openime.candidate.CandidatePreviewPolicy
 import llc.slacker.openime.candidate.CandidateQueryCoordinator
 import llc.slacker.openime.candidate.CandidateResolver
 import llc.slacker.openime.candidate.CandidateSnapshot
 import llc.slacker.openime.candidate.CandidateSnapshotEntry
 import llc.slacker.openime.candidate.EmojiAssociationIndex
+import llc.slacker.openime.candidate.EnglishLexicon
 import llc.slacker.openime.candidate.NineKeyReading
 import llc.slacker.openime.candidate.PinyinLexicon
+import llc.slacker.openime.engine.PinyinEngine
 import llc.slacker.openime.candidate.FuzzyPinyin
 import llc.slacker.openime.candidate.Stroke
 import llc.slacker.openime.candidate.StrokeLexicon
@@ -202,10 +205,24 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         VoiceCorrectionRepository.configure(this)
         FuzzyPinyin.rules = ImeSettingsRepository.loadFuzzyRules(this)
         voiceLifecycle = VoiceModelLifecycleManager(this)
+        registerClipboardWatcher()
         Thread({
-            runCatching { CandidatePipeline(CandidateEngine(PinyinLexicon.load(this))) }
+            runCatching {
+                CandidatePipeline(
+                    CandidateEngine(
+                        PinyinLexicon.load(this),
+                        englishLexicon = { prefix, limit ->
+                            EnglishLexicon.obtain(this)?.complete(prefix, limit).orEmpty()
+                        },
+                    ),
+                    pinyinEngine = PinyinEngine.obtain(this),
+                    fuzzyRules = { ImeSettingsRepository.activeFuzzyRules(this) },
+                )
+            }
                 .onSuccess { candidatePipeline = it }
                 .onFailure { Log.e(TAG, "lexicon/decoder initialisation failed; running on Rime only", it) }
+            // English completions read a large word list; warm it here, not on the first keystroke.
+            runCatching { EnglishLexicon.preload(this) }
             // The emoji panel's full list checks every emoji against the font: do it here, not on first open.
             runCatching { EmojiCatalog.byCategory(this) }
             // Only someone who uses the 笔画 keyboard pays for its table; the
@@ -320,6 +337,22 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     override fun onCreateInputView(): View {
         keyboardView = createKeyboardView()
         return keyboardView!!
+    }
+
+    /**
+     * 停靠时键盘占据屏幕底部；浮动时卡片只是浮层。系统按窗口 frame 计算 IME 遮挡区域，
+     * 会让应用把整块屏幕当作"被输入法盖住"而把输入框顶上去（resize/pan）。
+     * 浮动时这里报告"没有遮挡内容"，输入框原地不动。
+     */
+    override fun onComputeInsets(outInsets: InputMethodService.Insets) {
+        super.onComputeInsets(outInsets)
+        if (floatingWindow.enabled) {
+            val fullHeight = window?.window?.decorView?.height ?: 0
+            if (fullHeight > 0) {
+                outInsets.contentTopInsets = fullHeight
+                outInsets.visibleTopInsets = fullHeight
+            }
+        }
     }
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
@@ -620,7 +653,26 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         keyboardView?.renderState(state)
     }
 
+    private var clipboardListener: android.content.ClipboardManager.OnPrimaryClipChangedListener? = null
+
+    /** 复制发生的当下就入库，不再依赖用户碰巧打开剪贴板面板。 */
+    private fun registerClipboardWatcher() {
+        val cm = getSystemService(CLIPBOARD_SERVICE) as? android.content.ClipboardManager ?: return
+        val listener = android.content.ClipboardManager.OnPrimaryClipChangedListener {
+            val clip = runCatching { cm.primaryClip }.getOrNull() ?: return@OnPrimaryClipChangedListener
+            Thread {
+                runCatching { ClipboardHistoryRepository.captureCopied(this, clip) }
+            }.apply { isDaemon = true }.start()
+        }
+        cm.addPrimaryClipChangedListener(listener)
+        clipboardListener = listener
+    }
+
     override fun onDestroy() {
+        clipboardListener?.let {
+            (getSystemService(CLIPBOARD_SERVICE) as? android.content.ClipboardManager)?.removePrimaryClipChangedListener(it)
+        }
+        clipboardListener = null
         mainHandler.removeCallbacksAndMessages(null)
         if (::candidateQueries.isInitialized) candidateQueries.shutdown()
         renderedCandidateSnapshot = null
@@ -1560,7 +1612,12 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
                 else -> "none"
             },
         )
-        return (learned + fallback).distinct().take(MAX_CANDIDATES)
+        // 等 Rime 回答的这一帧不能显示拼音原串：词库没命中时本地引擎会把输入原样当候选，
+        // 用户看到英文闪一下才变中文。中文布局下先只留含汉字的项；Rime 若最后也没结果，
+        // 回调里的 fallback 分支仍会把原串补上，所以不会丢候选。
+        val preview = (learned + fallback).distinct().take(MAX_CANDIDATES)
+        if (!state.keyboardMode.isChineseLayout) return preview
+        return CandidatePreviewPolicy.chineseOnly(preview)
     }
 
     /** Query librime away from the IME input thread; stale answers are ignored. */
@@ -1608,28 +1665,37 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
                             texts
                         }
                     }
-                    val exactQuickPhrases =
-                        if (mode == KeyboardMode.PINYIN_26 || mode == KeyboardMode.ENGLISH_26) {
-                            QuickPhraseRepository.candidatesForInputCode(
-                                context = this,
-                                rawCode = composition,
-                                exactOnly = true,
-                                limit = 8,
-                            )
-                        } else {
-                            emptyList()
-                        }
-                    if (exactQuickPhrases.isNotEmpty()) {
-                        (exactQuickPhrases + nativeText + fallback)
-                            .distinct()
-                            .take(MAX_CANDIDATES)
-                    } else if (
-                        mode == KeyboardMode.PINYIN_26 &&
-                        nativeText.size < TYPO_CORRECTION_NATIVE_THRESHOLD
-                    ) {
-                        (nativeText + fallback).distinct().take(MAX_CANDIDATES)
+                    // The built-in pinyin engine owns the visible order; Rime
+                    // stays behind it as a supplement (extra readings, user
+                    // words) instead of replacing the list.
+                    val engineFirst = mode == KeyboardMode.PINYIN_26 &&
+                        candidatePipeline.usesPinyinEngine
+                    if (engineFirst) {
+                        (fallback + nativeText).distinct().take(MAX_CANDIDATES)
                     } else {
-                        nativeText
+                        val exactQuickPhrases =
+                            if (mode == KeyboardMode.PINYIN_26 || mode == KeyboardMode.ENGLISH_26) {
+                                QuickPhraseRepository.candidatesForInputCode(
+                                    context = this,
+                                    rawCode = composition,
+                                    exactOnly = true,
+                                    limit = 8,
+                                )
+                            } else {
+                                emptyList()
+                            }
+                        if (exactQuickPhrases.isNotEmpty()) {
+                            (exactQuickPhrases + nativeText + fallback)
+                                .distinct()
+                                .take(MAX_CANDIDATES)
+                        } else if (
+                            mode == KeyboardMode.PINYIN_26 &&
+                            nativeText.size < TYPO_CORRECTION_NATIVE_THRESHOLD
+                        ) {
+                            (nativeText + fallback).distinct().take(MAX_CANDIDATES)
+                        } else {
+                            nativeText
+                        }
                     }
                 } else {
                     (learned + fallback).distinct().take(MAX_CANDIDATES)
@@ -1743,7 +1809,8 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         val nativeCommit = if (
             reference != null &&
             rime.isReady &&
-            (mode == KeyboardMode.PINYIN_26 || mode == KeyboardMode.PINYIN_9)
+            (mode == KeyboardMode.PINYIN_26 || mode == KeyboardMode.PINYIN_9 ||
+                mode == KeyboardMode.WUBI || mode == KeyboardMode.DOUBLE_PINYIN)
         ) {
             rime.selectCandidate(reference.input, reference.nativeIndex, allowsPersonalizedLearning())
         } else {
@@ -1898,6 +1965,10 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
 
     override fun onOpenAbout() {
         startActivity(Intent(this, AboutActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
+    override fun onOpenVoiceModel() {
+        startActivity(Intent(this, VoiceModelActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
     override fun onOpenDataManagement() {

@@ -1,0 +1,14 @@
+# Rime dictionary: wubi86 (root table)
+# encoding: utf-8
+#
+# librime resolves the schema's `dictionary: wubi86` to this file; the actual
+# entries live in openime_dicts/wubi86.dict.yaml, which is generated locally
+# (scripts/import_doubao_data.py) and is not part of the repository.
+
+---
+name: wubi86
+version: "1"
+sort: by_weight
+import_tables:
+  - openime_dicts/wubi86
+...

@@ -6,7 +6,11 @@ import llc.slacker.openime.core.ImeData
  * Kotlin port of ui-suite/js/ime-engine.js IMEEngine.
  * Candidate ordering and fallback behavior mirror the web prototype.
  */
-class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
+class CandidateEngine(
+    externalPinyin: Map<String, List<String>> = emptyMap(),
+    /** Local English word list; null keeps the small built-in map only. */
+    private val englishLexicon: ((String, Int) -> List<String>)? = null,
+) {
 
     private val pinyinDict: Map<String, List<String>> = LinkedHashMap<String, List<String>>().apply {
         externalPinyin.forEach { (key, values) ->
@@ -564,7 +568,10 @@ class CandidateEngine(externalPinyin: Map<String, List<String>> = emptyMap()) {
     fun getEnglishCompletions(prefix: String): List<String> {
         if (prefix.isEmpty()) return emptyList()
         val p = prefix.lowercase()
-        ImeData.englishDict[p]?.let { return it }
+        val curated = ImeData.englishDict[p].orEmpty()
+        val extended = englishLexicon?.invoke(p, EnglishLexicon.DEFAULT_LIMIT).orEmpty()
+        val suggestions = (curated + extended).distinct()
+        if (suggestions.isNotEmpty()) return suggestions
         return listOf(
             prefix,
             prefix.uppercase(),
