@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.inputmethodservice.InputMethodService
+import android.os.Looper
 import android.view.inputmethod.EditorInfo
 import llc.slacker.openime.editor.EditorInfoAdapter
 import org.json.JSONArray
@@ -206,6 +207,12 @@ object ClipboardHistoryRepository {
 
     /** Records the clip that is on the clipboard now; caller holds [lock]. */
     private fun suppressCurrentSystemClip(context: Context) {
+        // Below API 28 the ClipboardManager builds its Handler on the calling
+        // thread, so a thread without a Looper (a worker, an instrumentation
+        // test) cannot create the service at all: getSystemService throws.
+        // Every caller in the app runs on the UI thread; elsewhere the
+        // suppression is skipped instead of crashing.
+        if (Looper.myLooper() == null) return
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
         val clip = runCatching { clipboard.primaryClip }.getOrNull() ?: return
         val text = runCatching {
