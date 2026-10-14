@@ -443,6 +443,34 @@ internal object ImeSurfacePolicy {
      */
     fun toolbarIcon(tokens: ImeTheme.Tokens): Int = ImeDrawableFactory.withAlpha(tokens.keyText, 128)
 
+    /**
+     * The panel header's close key. Both pages the reference gives a header —
+     * the tools page and the keyboard switcher — open with one, drawn as a
+     * circle filled `toolbar_idle_button_bk`: white at 80% on the light skin
+     * and white at 12% on the dark one (`cld_toolbar_close_button`,
+     * `style.xml:266-273`; `input_settings.xml:6`, `input_switch_keyboard.xml:6`;
+     * `values/colors.xml:43`, `values/dark_colors.xml:41`). Its press is the
+     * skin's usual one — `toolbar_idle_button_pushedbk`, black at 6% on the
+     * light skin and white at 4% on the dark one (`values/colors.xml:45`,
+     * `values/dark_colors.xml:43`) — the same shade [cardPressed] lays on the
+     * header ground.
+     */
+    fun headerCloseKey(tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.blend(
+            Color.WHITE,
+            tokens.keyboardBackground,
+            if (isDark(tokens)) 0.12f else 0.8f,
+        )
+
+    /**
+     * The close key's glyph is `action_button_pushedtext`: black at 85% on the
+     * light skin and full white on the dark one, darker than the idle toolbar's
+     * own icon grey (`cld_toolbar_close_button`, `style.xml:266-273`;
+     * `values/colors.xml:38`, `values/dark_colors.xml:36`).
+     */
+    fun headerCloseIcon(tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.withAlpha(tokens.keyText, 217)
+
     fun keyShadow(tokens: ImeTheme.Tokens): Int =
         if (isDark(tokens)) Color.parseColor("#66000000") else Color.parseColor("#4D000000")
 

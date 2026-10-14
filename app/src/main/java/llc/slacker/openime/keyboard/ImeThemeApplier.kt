@@ -475,12 +475,20 @@ internal class ImeThemeApplier(
                 view.imageTintList = ColorStateList.valueOf(t.keySecondaryText)
                 view.background = null
             }
+            // The panel header's close key: the reference draws it as a circle
+            // on the header's own ground, in the shade it uses for button glyphs
+            // rather than the idle toolbar's icon grey — and never in the
+            // page's accent, which its tiles carry (`cld_toolbar_close_button`,
+            // style.xml:266-273).
             view.tag == "key-panel-back" -> {
-                view.imageTintList = ColorStateList.valueOf(t.keyText)
-                view.background = statefulRounded(
-                    Color.TRANSPARENT,
-                    ImeSurfacePolicy.pressedSurface(t.keyboardBackground, t),
-                    toPx(ImeGeometryTokens.PILL_RADIUS_DP),
+                view.imageTintList = ColorStateList.valueOf(ImeSurfacePolicy.headerCloseIcon(t))
+                view.background = paintedSquareWithinTarget(
+                    statefulRounded(
+                        ImeSurfacePolicy.headerCloseKey(t),
+                        ImeSurfacePolicy.cardPressed(t),
+                        toPx(ImeGeometryTokens.PILL_RADIUS_DP),
+                    ),
+                    HEADER_CLOSE_PAINTED_DP,
                 )
             }
             // The strips' own controls — the association back control and the
@@ -991,6 +999,13 @@ internal class ImeThemeApplier(
         /** Painted heights of controls whose touch target is a full 48dp. */
         const val SEGMENT_PAINTED_DP = 34
         const val RETENTION_PAINTED_DP = 36
+
+        /**
+         * The header's close key is the reference's 40-unit circle
+         * (`cls_toolbar_idle_button` is 40 wide, `cld_toolbar_close_button` as
+         * wide as its row is high, `style.xml:237-248`, `:266-273`).
+         */
+        const val HEADER_CLOSE_PAINTED_DP = 40
         const val REFERENCE_ICON_SIZE = 0x1F000011
         const val REFERENCE_TEXT_SIZE = 0x1F000010
         val DIGITS_ONLY = Regex("[0-9]+")
