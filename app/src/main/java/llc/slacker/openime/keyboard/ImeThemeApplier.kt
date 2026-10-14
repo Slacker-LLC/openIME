@@ -244,7 +244,7 @@ internal class ImeThemeApplier(
             "setting-row" -> if (view.isClickable) {
                 view.background = statefulRounded(
                     Color.TRANSPARENT,
-                    ImeSurfacePolicy.pressedSurface(t.toolCardBackground, t),
+                    ImeSurfacePolicy.cardPressed(t),
                     0,
                 )
             }
@@ -256,7 +256,7 @@ internal class ImeThemeApplier(
                 val fill = if (view.isSelected) t.primary else t.toolCardBackground
                 view.background = statefulRounded(
                     fill,
-                    if (view.isSelected) ImeSurfacePolicy.primaryPressed(t) else ImeSurfacePolicy.pressedSurface(fill, t),
+                    if (view.isSelected) ImeSurfacePolicy.primaryPressed(t) else ImeSurfacePolicy.cardPressed(t),
                     toPx(14),
                 )
             }
@@ -267,7 +267,7 @@ internal class ImeThemeApplier(
             // when it is the chosen one (`cls_settings_button`, style.xml:626-647).
             "keyboard-choice" -> view.background = statefulRounded(
                 t.toolCardBackground,
-                ImeSurfacePolicy.pressedSurface(t.toolCardBackground, t),
+                ImeSurfacePolicy.cardPressed(t),
                 toPx(TileGridPolicy.TILE_RADIUS_DP),
             )
             "keyboard-choice-selected" -> view.background = statefulRounded(
@@ -312,7 +312,7 @@ internal class ImeThemeApplier(
                 if ((view.tag as? String)?.startsWith("tool:") == true) {
                     view.background = statefulRounded(
                         t.toolCardBackground,
-                        ImeSurfacePolicy.pressedSurface(t.toolCardBackground, t),
+                        ImeSurfacePolicy.cardPressed(t),
                         toPx(TileGridPolicy.TILE_RADIUS_DP),
                     )
                 }
@@ -495,10 +495,11 @@ internal class ImeThemeApplier(
                     // Every idle-toolbar key wears its own pill face at rest
                     // (`cls_toolbar_idle_button`: `bkcolor="@color/toolbar_idle_button_bk"`,
                     // `bkround="999"`, `pushedbkcolor`, style.xml:237-248), which on the
-                    // toolbar surface is the key cap colour.
+                    // toolbar surface is the key cap colour, and presses to the
+                    // reference's own shade instead of a derived one.
                     view.background = statefulRounded(
                         t.keyBackground,
-                        ImeSurfacePolicy.pressedSurface(t.keyBackground, t),
+                        ImeSurfacePolicy.pressedOnGround(t.toolbarBackground, t),
                         toPx(ImeGeometryTokens.PILL_RADIUS_DP),
                     )
                 }
@@ -800,10 +801,16 @@ internal class ImeThemeApplier(
                 view.setTextColor(t.keySecondaryText)
 
             tag == "association-candidate" -> {
+                // The association bar's items are candidate items — the
+                // reference's own class for them carries the candidate font and
+                // the candidate text colour (`cls_option_associate_first_canditem`,
+                // style.xml:562-566) — and none of the bar's classes names a
+                // press colour, so they press to the candidate fill the strip's
+                // cells use.
                 view.setTextColor(t.candidateText)
                 view.background = statefulRounded(
                     Color.TRANSPARENT,
-                    ImeSurfacePolicy.pressedSurface(t.toolCardBackground, t),
+                    ImeSurfacePolicy.candidatePressed(t),
                     toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
                 )
             }

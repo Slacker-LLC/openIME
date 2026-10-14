@@ -415,6 +415,27 @@ internal object ImeSurfacePolicy {
     fun keyHint(tokens: ImeTheme.Tokens): Int = ImeDrawableFactory.withAlpha(tokens.keyText, 102)
 
     /**
+     * A face that presses the way every surface in the reference does: the skin
+     * writes each press colour as black at 6% on the light skin and white at 4%
+     * on the dark one, laid over the ground the face sits on
+     * (`toolbar_idle_button_pushedbk`, `values/colors.xml:45`,
+     * `values/dark_colors.xml:43`; `setting_button_pushedbk`,
+     * `values/colors.xml:89`, `values/dark_colors.xml:87`). A pressed tile or
+     * toolbar key therefore sinks toward its page on both skins, where a shade
+     * derived from the resting colour brightens it on the dark one.
+     */
+    fun pressedOnGround(ground: Int, tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.blend(
+            if (isDark(tokens)) Color.WHITE else Color.BLACK,
+            ground,
+            if (isDark(tokens)) 0.04f else 0.06f,
+        )
+
+    /** A card or tile that presses onto the page it lies on. */
+    fun cardPressed(tokens: ImeTheme.Tokens): Int =
+        pressedOnGround(tokens.keyboardBackground, tokens)
+
+    /**
      * An idle-toolbar icon is half of the key text colour, never the key text
      * itself: `toolbar_idle_button_text` is a mid gray on the light skin and
      * half white on the dark one (`cls_toolbar_idle_button`,
