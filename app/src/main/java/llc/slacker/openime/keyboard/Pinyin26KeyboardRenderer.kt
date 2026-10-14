@@ -48,6 +48,7 @@ internal class Pinyin26KeyboardRenderer(
         english: Boolean,
         shiftState: ShiftState,
         enterLabel: String,
+        landscape: Boolean = false,
     ) {
         if (splitLayout()) {
             renderSplit(english, shiftState, enterLabel)
@@ -77,7 +78,7 @@ internal class Pinyin26KeyboardRenderer(
             keyboardBody.addView(row, rowParams())
         }
 
-        val weights = ProductionKeyPolicy.twentySixKeyBottomRowWeights()
+        val weights = ProductionKeyPolicy.twentySixKeyBottomRowWeights(landscape)
 
         val bottom = rowHost()
         bottom.addView(

@@ -1,8 +1,11 @@
 package llc.slacker.openime.data
 
+import llc.slacker.openime.theme.ImeGeometryTokens
 import android.content.Context
 import llc.slacker.openime.core.FuzzyRule
 import llc.slacker.openime.core.KeyboardMode
+import llc.slacker.openime.core.DoublePinyinScheme
+import llc.slacker.openime.core.OneHandMode
 import llc.slacker.openime.theme.ImeAppearance
 import llc.slacker.openime.theme.ImeTheme
 import org.json.JSONArray
@@ -36,6 +39,8 @@ internal data class ArchiveSettings(
     val fuzzy: Boolean,
     val swipeUpDigits: Boolean,
     val preferredChineseMode: String,
+    val oneHandMode: String = OneHandMode.OFF.key,
+    val doublePinyinScheme: String = DoublePinyinScheme.FLYPY.key,
     val keyboardHeightPercent: Int,
     val floatingWidthPercent: Int,
     val floatingOpacityPercent: Int,
@@ -190,6 +195,8 @@ internal object UserDataArchiveCodec {
             .put("fuzzy", value.fuzzy)
             .put("swipe_up_digits", value.swipeUpDigits)
             .put("preferred_chinese_mode", value.preferredChineseMode)
+            .put("one_hand_mode", value.oneHandMode)
+            .put("double_pinyin_scheme", value.doublePinyinScheme)
             .put("keyboard_height_percent", value.keyboardHeightPercent)
             .put("landscape_keyboard_height_percent", value.landscapeKeyboardHeightPercent)
             .put("floating_width_percent", value.floatingWidthPercent)
@@ -207,7 +214,7 @@ internal object UserDataArchiveCodec {
             appearance = value.optString("appearance", ImeAppearance.SYSTEM.name),
             sound = value.optBoolean("sound", true),
             haptic = value.optBoolean("haptic", true),
-            hapticStrengthPercent = value.optInt("haptic_strength_percent", 100).coerceIn(10, 100),
+            hapticStrengthPercent = value.optInt("haptic_strength_percent", ImeGeometryTokens.HAPTIC_STRENGTH_DEFAULT_PERCENT).coerceIn(ImeGeometryTokens.HAPTIC_STRENGTH_MIN_PERCENT, ImeGeometryTokens.HAPTIC_STRENGTH_MAX_PERCENT),
             hapticStyle = value.optString("haptic_style", "crisp"),
             keySoundStyle = value.optString("key_sound_style", "system"),
             popup = value.optBoolean("popup", false),
@@ -217,16 +224,24 @@ internal object UserDataArchiveCodec {
                 "preferred_chinese_mode",
                 KeyboardMode.PINYIN_26.name,
             ),
+            oneHandMode = value.optString(
+                "one_hand_mode",
+                OneHandMode.OFF.key,
+            ),
+            doublePinyinScheme = value.optString(
+                "double_pinyin_scheme",
+                DoublePinyinScheme.FLYPY.key,
+            ),
             keyboardHeightPercent =
-                value.optInt("keyboard_height_percent", 100).coerceIn(80, 120),
+                value.optInt("keyboard_height_percent", ImeGeometryTokens.KEYBOARD_HEIGHT_DEFAULT_PERCENT).coerceIn(ImeGeometryTokens.KEYBOARD_HEIGHT_MIN_PERCENT, ImeGeometryTokens.KEYBOARD_HEIGHT_MAX_PERCENT),
             landscapeKeyboardHeightPercent = value.optInt(
                 "landscape_keyboard_height_percent",
-                value.optInt("keyboard_height_percent", 100),
-            ).coerceIn(80, 120),
+                value.optInt("keyboard_height_percent", ImeGeometryTokens.KEYBOARD_HEIGHT_DEFAULT_PERCENT),
+            ).coerceIn(ImeGeometryTokens.KEYBOARD_HEIGHT_MIN_PERCENT, ImeGeometryTokens.KEYBOARD_HEIGHT_MAX_PERCENT),
             floatingWidthPercent =
-                value.optInt("floating_width_percent", 88).coerceIn(72, 96),
+                value.optInt("floating_width_percent", ImeGeometryTokens.FLOATING_WIDTH_DEFAULT_PERCENT).coerceIn(ImeGeometryTokens.FLOATING_WIDTH_MIN_PERCENT, ImeGeometryTokens.FLOATING_WIDTH_MAX_PERCENT),
             floatingOpacityPercent =
-                value.optInt("floating_opacity_percent", 100).coerceIn(82, 100),
+                value.optInt("floating_opacity_percent", ImeGeometryTokens.FLOATING_OPACITY_DEFAULT_PERCENT).coerceIn(ImeGeometryTokens.FLOATING_OPACITY_MIN_PERCENT, ImeGeometryTokens.FLOATING_OPACITY_MAX_PERCENT),
             letterHints = value.optBoolean("letter_hints", true),
             emojiAssociation = value.optBoolean("emoji_association", true),
             voiceStripFillers = value.optBoolean("voice_strip_fillers", true),
@@ -357,6 +372,10 @@ internal object UserDataRepository {
                 swipeUpDigits = ImeSettingsRepository.loadSwipeUpDigits(context),
                 preferredChineseMode =
                     ImeSettingsRepository.loadPreferredChineseMode(context).name,
+                oneHandMode =
+                    ImeSettingsRepository.loadOneHandMode(context).key,
+                doublePinyinScheme =
+                    ImeSettingsRepository.loadDoublePinyinScheme(context).key,
                 keyboardHeightPercent =
                     ImeSettingsRepository.loadKeyboardHeightPercent(context),
                 landscapeKeyboardHeightPercent =
@@ -451,6 +470,14 @@ internal object UserDataRepository {
             context,
             runCatching { KeyboardMode.valueOf(value.preferredChineseMode) }
                 .getOrDefault(KeyboardMode.PINYIN_26),
+        )
+        ImeSettingsRepository.saveOneHandMode(
+            context,
+            OneHandMode.fromKey(value.oneHandMode),
+        )
+        ImeSettingsRepository.saveDoublePinyinScheme(
+            context,
+            DoublePinyinScheme.fromKey(value.doublePinyinScheme),
         )
         ImeSettingsRepository.saveKeyboardHeightPercent(
             context,

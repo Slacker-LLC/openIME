@@ -59,14 +59,20 @@ We maintain only the newest MINOR line. Security fixes ship as PATCH versions.
 
 ## Release assets
 
-The pipeline builds only an `arm64-v8a` release APK:
+The pipeline builds two `arm64-v8a` release APKs from the same source:
 
 ```text
 openIME-v{VERSION}-arm64-release.apk
+openIME-v{VERSION}-arm64-lite-release.apk
 ```
 
-The GitHub release has only this APK.
-The release notes show its SHA-256 and the fingerprint of the signing certificate.
+The full APK carries the offline voice models.
+The lite APK leaves them out (`OPENIME_LITE=1`), so it is much smaller; the user imports a model in 设置 → 语音模型.
+Both APKs use the same signing key, so they install over each other and keep the user data.
+`scripts/release_build.sh` builds both, checks that the lite APK is smaller and holds no `.onnx` model, and signs both.
+
+The GitHub release has only these APKs.
+The release notes show the SHA-256 of each APK and the fingerprint of the signing certificate.
 The third-party licenses are in the APK (`assets/licenses/`).
 The release notes link to `THIRD_PARTY_NOTICES.md`.
 The pipeline also creates `SHA256SUMS.txt` for its own check but does not upload it.

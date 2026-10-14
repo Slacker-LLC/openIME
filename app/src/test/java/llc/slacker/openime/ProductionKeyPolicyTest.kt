@@ -23,6 +23,19 @@ class ProductionKeyPolicyTest {
     }
 
     @Test
+    fun twentySixKeyBottomRowGivesLandscapeASpaceBarLikeTheReference() {
+        val portrait = ProductionKeyPolicy.twentySixKeyBottomRowWeights()
+        val landscape = ProductionKeyPolicy.twentySixKeyBottomRowWeights(landscape = true)
+        // 参考键盘横屏皮肤只放大空格键（133.6 -> 182.2，×1.3638），其余键不动。
+        assertEquals(portrait.leftOuter, landscape.leftOuter, 0.0001f)
+        assertEquals(portrait.leftInner, landscape.leftInner, 0.0001f)
+        assertEquals(portrait.rightInner, landscape.rightInner, 0.0001f)
+        assertEquals(portrait.rightOuter, landscape.rightOuter, 0.0001f)
+        assertEquals(210f, landscape.space, 0.2f)
+        assertEquals(182.2f / 133.6f, landscape.space / portrait.space, 0.01f)
+    }
+
+    @Test
     fun twentySixKeyBottomRowIsSymmetricAroundTheSpaceKey() {
         val weights = ProductionKeyPolicy.twentySixKeyBottomRowWeights()
         assertEquals(weights.leftOuter, weights.rightOuter, 0.0001f)

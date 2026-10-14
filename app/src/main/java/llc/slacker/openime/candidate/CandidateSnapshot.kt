@@ -90,6 +90,10 @@ internal data class CandidateSnapshot(
 
         private fun deferredInputFor(composition: String, mode: KeyboardMode): String? = when (mode) {
             KeyboardMode.PINYIN_26 -> RimeInputNormalizer.normalize(composition).ifBlank { null }
+            // Wubi codes are plain letters and share the pinyin normalizer.
+            KeyboardMode.WUBI -> RimeInputNormalizer.normalize(composition).ifBlank { null }
+            // Double-pinyin chords are plain letters too.
+            KeyboardMode.DOUBLE_PINYIN -> RimeInputNormalizer.normalize(composition).ifBlank { null }
             KeyboardMode.PINYIN_9 -> nineKeyCodeFromPreview(composition)
             else -> null
         }

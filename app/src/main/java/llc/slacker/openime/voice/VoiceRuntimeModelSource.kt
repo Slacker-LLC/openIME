@@ -14,11 +14,24 @@ internal enum class SherpaRuntimeStorage {
     FILES,
 }
 
+/** 运行时要交给 sherpa-onnx 的文件。路径含义因 [kind] 而异，缺的角色为 null。 */
 internal data class SherpaRuntimeModelFiles(
     val storage: SherpaRuntimeStorage,
-    val encoder: String,
-    val decoder: String,
+    val kind: StreamingModelKind,
+    val encoder: String? = null,
+    val decoder: String? = null,
+    val joiner: String? = null,
+    val model: String? = null,
     val tokens: String,
+    /** transducer 家族提示（传给 sherpa 的 modelType；空=读模型元数据）。 */
+    val family: String = "",
+    /** 分词单元与 bpe 词表（中英混合模型可能需要）。 */
+    val modelingUnit: String = "",
+    val bpeVocab: String? = null,
+    /** 热词表；有它时 transducer 改用 modified_beam_search。 */
+    val hotwords: String? = null,
+    /** Silero VAD 模型（可选）；有它时端点判断用 isSpeechDetected。 */
+    val vad: String? = null,
 )
 
 internal fun VoiceModelSelection.runtimeIdentity(): String {
@@ -36,17 +49,26 @@ internal fun resolveSherpaRuntimeModelFiles(
     downloadedRoot: File,
 ): SherpaRuntimeModelFiles? {
     val manifest = selection.manifest ?: return null
-    if (manifest.modelType != "paraformer") return null
-    val required = listOf(SHERPA_ENCODER, SHERPA_DECODER, SHERPA_TOKENS)
-    if (!manifest.files.containsAll(required)) return null
+    val layout = VoiceModelLayoutResolver.resolve(manifest) ?: return null
+
+    fun build(storage: SherpaRuntimeStorage, resolve: (String) -> String): SherpaRuntimeModelFiles =
+        SherpaRuntimeModelFiles(
+            storage = storage,
+            kind = layout.kind,
+            encoder = layout.files["encoder"]?.let(resolve),
+            decoder = layout.files["decoder"]?.let(resolve),
+            joiner = layout.files["joiner"]?.let(resolve),
+            model = layout.files["model"]?.let(resolve),
+            tokens = resolve(layout.path("tokens")),
+            family = manifest.family,
+            modelingUnit = manifest.modelingUnit,
+            bpeVocab = layout.files["bpeVocab"]?.let(resolve),
+            hotwords = layout.files["hotwords"]?.let(resolve),
+            vad = layout.files["vad"]?.let(resolve),
+        )
 
     return when (selection.source) {
-        VoiceModelSelection.Source.BUILT_IN -> SherpaRuntimeModelFiles(
-            storage = SherpaRuntimeStorage.ASSETS,
-            encoder = SHERPA_ENCODER,
-            decoder = SHERPA_DECODER,
-            tokens = SHERPA_TOKENS,
-        )
+        VoiceModelSelection.Source.BUILT_IN -> build(SherpaRuntimeStorage.ASSETS) { it }
 
         VoiceModelSelection.Source.DOWNLOADED -> {
             if (!isSafeVoiceModelId(manifest.modelId)) return null
@@ -55,19 +77,12 @@ internal fun resolveSherpaRuntimeModelFiles(
             if (!packageRoot.isDirectory || Files.isSymbolicLink(packageRoot.toPath())) return null
             if (packageRoot.canonicalFile.parentFile != canonicalDownloadedRoot) return null
 
-            fun resolve(path: String): String {
-                val file = resolveContainedVoiceModelFile(packageRoot, path)
-                require(file.isFile) { "缺少模型文件: $path" }
-                return file.absolutePath
-            }
-
             runCatching {
-                SherpaRuntimeModelFiles(
-                    storage = SherpaRuntimeStorage.FILES,
-                    encoder = resolve(SHERPA_ENCODER),
-                    decoder = resolve(SHERPA_DECODER),
-                    tokens = resolve(SHERPA_TOKENS),
-                )
+                build(SherpaRuntimeStorage.FILES) { path ->
+                    val file = resolveContainedVoiceModelFile(packageRoot, path)
+                    require(file.isFile) { "缺少模型文件: $path" }
+                    file.absolutePath
+                }
             }.getOrNull()
         }
 

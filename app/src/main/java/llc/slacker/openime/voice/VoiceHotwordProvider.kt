@@ -14,6 +14,15 @@ object VoiceHotwordProvider {
             VoiceCorrectionRepository.hotwords(limit = 32),
     )
 
+    /** 管理页多行输入解析：一行一个词；去空白、去重，最多 64 条。 */
+    internal fun parseLines(text: String): List<String> = text
+        .lineSequence()
+        .map(String::trim)
+        .filter(String::isNotEmpty)
+        .distinct()
+        .take(MAX_HOTWORDS)
+        .toList()
+
     internal fun encode(phrases: List<String>): String = phrases
         .asSequence()
         .map(::sanitize)
@@ -27,7 +36,8 @@ object VoiceHotwordProvider {
     private fun sanitize(value: String): String {
         val cleaned = value
             .trim()
-            .replace(Regex("[\\r\\n/:]+"), " ")
+            // 控制字符（含换行、NUL）和 / : 会破坏热词串或截断原生字符串。
+            .replace(Regex("[/:\\p{Cntrl}]+"), " ")
             .replace(Regex("\\s+"), " ")
         if (cleaned.isBlank()) return ""
         val codePoints = cleaned.codePoints().toArray()

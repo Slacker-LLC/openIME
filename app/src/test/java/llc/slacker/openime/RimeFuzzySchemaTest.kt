@@ -1,5 +1,7 @@
 package llc.slacker.openime
 
+import llc.slacker.openime.core.DoublePinyinScheme
+import llc.slacker.openime.core.KeyboardMode
 import llc.slacker.openime.rime.rimeSchemaId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -15,8 +17,24 @@ class RimeFuzzySchemaTest {
 
     @Test
     fun fuzzySettingMapsToDistinctNativeSchemas() {
-        assertEquals("luna_pinyin_simp", rimeSchemaId(fuzzyEnabled = false))
-        assertEquals("luna_pinyin_simp_fuzzy", rimeSchemaId(fuzzyEnabled = true))
+        assertEquals("luna_pinyin_simp", rimeSchemaId(KeyboardMode.PINYIN_26, fuzzyEnabled = false))
+        assertEquals("luna_pinyin_simp_fuzzy", rimeSchemaId(KeyboardMode.PINYIN_26, fuzzyEnabled = true))
+        assertEquals("wubi86", rimeSchemaId(KeyboardMode.WUBI, fuzzyEnabled = false))
+        assertEquals("wubi86", rimeSchemaId(KeyboardMode.WUBI, fuzzyEnabled = true))
+    }
+
+    @Test
+    fun doublePinyinMapsToItsSchemeSchema() {
+        assertEquals(
+            "double_pinyin_flypy",
+            rimeSchemaId(KeyboardMode.DOUBLE_PINYIN, fuzzyEnabled = false, doublePinyin = DoublePinyinScheme.FLYPY),
+        )
+        assertEquals(
+            "double_pinyin",
+            rimeSchemaId(KeyboardMode.DOUBLE_PINYIN, fuzzyEnabled = false, doublePinyin = DoublePinyinScheme.NATURAL),
+        )
+        // 默认（不传方案）走小鹤。
+        assertEquals("double_pinyin_flypy", rimeSchemaId(KeyboardMode.DOUBLE_PINYIN, fuzzyEnabled = true))
     }
 
     @Test

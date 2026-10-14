@@ -8,7 +8,9 @@ import android.os.SystemClock
 import android.util.Log
 import llc.slacker.openime.RimeNative
 import llc.slacker.openime.core.CrashGuard
+import llc.slacker.openime.core.DoublePinyinScheme
 import llc.slacker.openime.core.FuzzyRule
+import llc.slacker.openime.core.KeyboardMode
 import llc.slacker.openime.core.RimeStartupRecovery
 import llc.slacker.openime.data.ImeSettingsRepository
 import llc.slacker.openime.data.PersonalizationPolicy
@@ -40,8 +42,15 @@ internal fun rimeDataRevision(contentHash: String?, versionCode: Long): String =
 
 private val RIME_CONTENT_HASH = Regex("[0-9a-f]{64}")
 
-internal fun rimeSchemaId(fuzzyEnabled: Boolean): String =
-    if (fuzzyEnabled) "luna_pinyin_simp_fuzzy" else "luna_pinyin_simp"
+internal fun rimeSchemaId(
+    mode: KeyboardMode,
+    fuzzyEnabled: Boolean,
+    doublePinyin: DoublePinyinScheme = DoublePinyinScheme.FLYPY,
+): String = when (mode) {
+    KeyboardMode.WUBI -> "wubi86"
+    KeyboardMode.DOUBLE_PINYIN -> doublePinyin.schemaId
+    else -> if (fuzzyEnabled) "luna_pinyin_simp_fuzzy" else "luna_pinyin_simp"
+}
 
 /**
  * One serial lane for native mutations that must never stall the IME thread.
@@ -615,8 +624,21 @@ class RimeEngine(
         return value
     }
 
+    /**
+     * The schema follows the user's keyboard. WUBI has its own table, every
+     * other Chinese layout reads the pinyin schema (with or without fuzzy
+     * rules). The preference is a SharedPreferences read; the keyboard view
+     * persists it before a mode switch can produce new input.
+     */
+    private fun currentChineseMode(): KeyboardMode =
+        ImeSettingsRepository.loadPreferredChineseMode(context)
+
     private fun syncSchemaFromSettingsLocked(): Boolean {
-        val desiredSchemaId = rimeSchemaId(fuzzyPinyinEnabled())
+        val desiredSchemaId = rimeSchemaId(
+            currentChineseMode(),
+            fuzzyPinyinEnabled(),
+            ImeSettingsRepository.loadDoublePinyinScheme(context),
+        )
         if (activeSchemaId == desiredSchemaId) return true
         if (!RimeNative.nativeSelectSchema(desiredSchemaId)) return false
         activeSchemaId = desiredSchemaId

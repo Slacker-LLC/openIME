@@ -53,4 +53,5 @@
     <string name="activity_label_rail_symbols">常用符号栏</string>
     <string name="activity_label_about">关于</string>
     <string name="activity_label_data">数据管理</string>
+    <string name="activity_label_voice_model">语音模型</string>
 </resources>

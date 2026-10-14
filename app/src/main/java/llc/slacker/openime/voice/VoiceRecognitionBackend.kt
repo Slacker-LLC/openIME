@@ -4,13 +4,20 @@ import android.content.Context
 import android.util.Log
 import com.k2fsa.sherpa.onnx.FeatureConfig
 import com.k2fsa.sherpa.onnx.OnlineModelConfig
+import com.k2fsa.sherpa.onnx.OnlineNeMoCtcModelConfig
 import com.k2fsa.sherpa.onnx.OnlineParaformerModelConfig
+import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
+import com.k2fsa.sherpa.onnx.OnlineToneCtcModelConfig
+import com.k2fsa.sherpa.onnx.OnlineZipformer2CtcModelConfig
 import com.k2fsa.sherpa.onnx.OnlineRecognizer
 import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig
 import com.k2fsa.sherpa.onnx.OfflinePunctuation
 import com.k2fsa.sherpa.onnx.OfflinePunctuationConfig
 import com.k2fsa.sherpa.onnx.OfflinePunctuationModelConfig
 import com.k2fsa.sherpa.onnx.OnlineStream
+import com.k2fsa.sherpa.onnx.SileroVadModelConfig
+import com.k2fsa.sherpa.onnx.Vad
+import com.k2fsa.sherpa.onnx.VadModelConfig
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -102,6 +109,29 @@ internal class VoiceStreamLease<T : Any>(
     }
 }
 
+/**
+ * 解码方法选择。sherpa-onnx 只有 transducer 支持热词：静态热词表与开流时的
+ * 动态热词都要求 modified_beam_search，所以 transducer 一律用它；
+ * paraformer / CTC 即使用户有热词也保持 greedy_search（hasHotwords 被忽略）。
+ */
+internal fun decodingFor(kind: StreamingModelKind, hasHotwords: Boolean): String =
+    if (kind == StreamingModelKind.TRANSDUCER) {
+        "modified_beam_search"
+    } else {
+        "greedy_search"
+    }
+
+/**
+ * 热词分词方式准入。原生 EncodeHotwords 只认 cjkchar / bpe / cjkchar+bpe，
+ * 遇到其他取值会直接结束进程；modelingUnit 未声明时按 cjkchar 处理（本应用
+ * 的热词均含 CJK 字符），bpe 类缺少词表时返回 null（禁用热词）。
+ */
+internal fun hotwordModelingUnit(modelingUnit: String, hasBpeVocab: Boolean): String? = when (modelingUnit) {
+    "", "cjkchar" -> "cjkchar"
+    "bpe", "cjkchar+bpe" -> modelingUnit.takeIf { hasBpeVocab }
+    else -> null
+}
+
 /** Local-only backend backed by whichever verified model source is selected. */
 class EmbeddedLocalVoiceBackend(
     private val context: Context,
@@ -162,7 +192,7 @@ object EmbeddedVoiceRuntimeFactory {
         selection: VoiceModelSelection,
     ): EmbeddedVoiceModelRuntime? {
         val manifest = selection.manifest ?: return null
-        if (manifest.modelType != "paraformer") return null
+        if (VoiceModelLayoutResolver.resolve(manifest) == null) return null
         val downloadedRoot = File(context.filesDir, VOICE_MODEL_DOWNLOADED_DIR)
         if (resolveSherpaRuntimeModelFiles(selection, downloadedRoot) == null) return null
         return SherpaOnnxStreamingRuntime(context, selection)
@@ -190,19 +220,21 @@ private class SherpaOnnxStreamingRuntime(
         resolveSherpaRuntimeModelFiles(initialSelection, downloadedRoot)
     private var recognizer: OnlineRecognizer? = null
     private var punctuation: OfflinePunctuation? = null
+    private var vad: Vad? = null
     private val activeSessions = mutableSetOf<SherpaSession>()
     private var legacySession: SherpaSession? = null
 
     override val isReady: Boolean
         get() = synchronized(runtimeLock) {
             val manifest = selection.manifest
-            manifest?.modelType == "paraformer" && modelFiles != null
+            manifest != null && modelFiles != null
         }
 
     override fun preload() {
         synchronized(runtimeLock) {
             refreshSelectionLocked()
             ensureRecognizerLocked()
+            ensureVadLocked()
         }
     }
 
@@ -251,6 +283,28 @@ private class SherpaOnnxStreamingRuntime(
         modelFiles = resolveSherpaRuntimeModelFiles(latest, downloadedRoot)
     }
 
+    /** 标点模型跟着所选模型走：内置读 assets，导入的读私有目录；没有就返回 null（保留原文）。 */
+    private fun createPunctuationLocked(): OfflinePunctuation? {
+        val manifest = selection.manifest ?: return null
+        if (!manifest.supportsPunctuation) return null
+        val rel = VoiceModelLayoutResolver.punctuationPath(manifest) ?: return null
+        return when (selection.source) {
+            VoiceModelSelection.Source.BUILT_IN -> OfflinePunctuation(
+                context.assets,
+                OfflinePunctuationConfig(model = OfflinePunctuationModelConfig(ctTransformer = rel, numThreads = 2)),
+            )
+            VoiceModelSelection.Source.DOWNLOADED -> {
+                val root = File(downloadedRoot, manifest.modelId)
+                val file = resolveContainedVoiceModelFile(root, rel)
+                OfflinePunctuation(
+                    null,
+                    OfflinePunctuationConfig(model = OfflinePunctuationModelConfig(ctTransformer = file.absolutePath, numThreads = 2)),
+                )
+            }
+            VoiceModelSelection.Source.NONE -> null
+        }
+    }
+
     private fun releaseRecognizerLocked() {
         activeSessions.toList().forEach { it.closeLocked() }
         legacySession = null
@@ -258,25 +312,62 @@ private class SherpaOnnxStreamingRuntime(
         recognizer = null
         punctuation?.release()
         punctuation = null
+        vad?.release()
+        vad = null
     }
 
     private fun ensureRecognizerLocked(): OnlineRecognizer {
         recognizer?.let { return it }
         val files = checkNotNull(modelFiles) { "本地语音模型清单或文件不完整" }
+        // 热词分词方式先过准入：原生编码器遇到不支持的 modelingUnit 会直接
+        // 结束进程，bpe 类缺少词表也会失败；两种情况都不给引擎传热词。
+        val hotwordUnit = hotwordModelingUnit(files.modelingUnit, files.bpeVocab != null)
+        if (files.kind == StreamingModelKind.TRANSDUCER && hotwordUnit == null) {
+            Log.i("OpenImeVoicePerf", "modelingUnit=${files.modelingUnit} 不支持热词，热词表与动态热词已禁用")
+        }
+        val staticHotwords = files.hotwords?.takeIf {
+            files.kind == StreamingModelKind.TRANSDUCER && hotwordUnit != null
+        }
+        val modelConfig = when (files.kind) {
+            StreamingModelKind.PARAFORMER -> OnlineModelConfig(
+                paraformer = OnlineParaformerModelConfig(
+                    encoder = checkNotNull(files.encoder), decoder = checkNotNull(files.decoder),
+                ),
+                tokens = files.tokens, numThreads = 2, provider = "cpu", modelType = "paraformer",
+            )
+            StreamingModelKind.TRANSDUCER -> OnlineModelConfig(
+                transducer = OnlineTransducerModelConfig(
+                    encoder = checkNotNull(files.encoder), decoder = checkNotNull(files.decoder),
+                    joiner = checkNotNull(files.joiner),
+                ),
+                tokens = files.tokens, numThreads = 2, provider = "cpu",
+                // 家族留空时由 ONNX 元数据判定；bpe 词表/分词单元按包里的清单透传。
+                modelType = files.family,
+                modelingUnit = hotwordUnit.orEmpty(),
+                bpeVocab = files.bpeVocab.orEmpty(),
+            )
+            StreamingModelKind.ZIPFORMER2_CTC -> OnlineModelConfig(
+                zipformer2Ctc = OnlineZipformer2CtcModelConfig(model = checkNotNull(files.model)),
+                tokens = files.tokens, numThreads = 2, provider = "cpu",
+            )
+            StreamingModelKind.NEMO_CTC -> OnlineModelConfig(
+                neMoCtc = OnlineNeMoCtcModelConfig(model = checkNotNull(files.model)),
+                tokens = files.tokens, numThreads = 2, provider = "cpu",
+            )
+            StreamingModelKind.T_ONE_CTC -> OnlineModelConfig(
+                toneCtc = OnlineToneCtcModelConfig(model = checkNotNull(files.model)),
+                tokens = files.tokens, numThreads = 2, provider = "cpu",
+            )
+        }
         val config = OnlineRecognizerConfig(
             featConfig = FeatureConfig(sampleRate = SAMPLE_RATE, featureDim = 80),
-            modelConfig = OnlineModelConfig(
-                paraformer = OnlineParaformerModelConfig(
-                    encoder = files.encoder,
-                    decoder = files.decoder,
-                ),
-                tokens = files.tokens,
-                numThreads = 2,
-                provider = "cpu",
-                modelType = "paraformer",
-            ),
-            enableEndpoint = false,
-            decodingMethod = "greedy_search",
+            modelConfig = modelConfig,
+            // paraformer 的流式端点由本应用自己判断；其余类型用引擎自带的端点检测。
+            enableEndpoint = files.kind != StreamingModelKind.PARAFORMER,
+            // 解码方法见 decodingFor()；按解码方法要求固定 beam 宽度。
+            decodingMethod = decodingFor(files.kind, staticHotwords != null),
+            maxActivePaths = 4,
+            hotwordsFile = staticHotwords.orEmpty(),
         )
         val assetManager = if (files.storage == SherpaRuntimeStorage.ASSETS) {
             context.assets
@@ -286,19 +377,65 @@ private class SherpaOnnxStreamingRuntime(
         return OnlineRecognizer(assetManager, config).also { recognizer = it }
     }
 
+    /**
+     * Silero VAD 可选：包里有 silero_vad.onnx 时用它做端点判断；创建失败只是
+     * 记录日志并退回原有判断，绝不阻塞识别器本身。
+     */
+    private fun ensureVadLocked(): Vad? {
+        vad?.let { return it }
+        val files = modelFiles ?: return null
+        val model = files.vad ?: return null
+        return runCatching {
+            val config = VadModelConfig(
+                sileroVadModelConfig = SileroVadModelConfig(
+                    model = model,
+                    threshold = 0.5F,
+                    minSilenceDuration = 0.5F,
+                    minSpeechDuration = 0.25F,
+                    windowSize = 512,
+                ),
+                sampleRate = SAMPLE_RATE,
+                numThreads = 1,
+                provider = "cpu",
+            )
+            val assetManager = if (files.storage == SherpaRuntimeStorage.ASSETS) context.assets else null
+            Vad(assetManager, config).also { vad = it }
+        }.onFailure {
+            Log.w("OpenImeVoicePerf", "VAD 模型不可用，端点判断退回原有逻辑", it)
+        }.getOrNull()
+    }
+
     private fun openSessionLocked(
         languageTag: String,
         events: VoiceRecognitionEvents,
     ): SherpaSession {
         val currentRecognizer = ensureRecognizerLocked()
-        // sherpa-onnx dynamic hotword graphs are implemented by the
-        // transducer recognizer. Streaming Paraformer uses a plain stream;
-        // openIME still applies its local post-ASR correction repository.
-        val stream = currentRecognizer.createStream()
+        val currentVad = ensureVadLocked()
+        val files = checkNotNull(modelFiles) { "本地语音模型清单或文件不完整" }
+        val hotwordUnit = hotwordModelingUnit(files.modelingUnit, files.bpeVocab != null)
+        // 动态热词只对 transducer 生效；每次开流都重新取，用户可能刚改过。
+        // Streaming Paraformer uses a plain stream; openIME still applies its
+        // local post-ASR correction repository.
+        val hotwords = if (files.kind == StreamingModelKind.TRANSDUCER && hotwordUnit != null) {
+            VoiceHotwordProvider.current()
+        } else {
+            ""
+        }
+        val stream = if (hotwords.isEmpty()) {
+            currentRecognizer.createStream()
+        } else {
+            // sherpa-onnx 按 "/" 换行解析热词；图构建失败时退回无热词流，
+            // 不能让用户为一条坏热词丢掉整次录音。
+            runCatching { currentRecognizer.createStream(hotwords) }.getOrElse {
+                Log.w("OpenImeVoicePerf", "动态热词开流失败，本次退回无热词流", it)
+                currentRecognizer.createStream()
+            }
+        }
         return SherpaSession(
             streamLease = VoiceStreamLease(stream) { it.release() },
             languageTag = languageTag,
             events = events,
+            vad = currentVad,
         ).also(activeSessions::add)
     }
 
@@ -306,8 +443,11 @@ private class SherpaOnnxStreamingRuntime(
         private val streamLease: VoiceStreamLease<OnlineStream>,
         private val languageTag: String,
         private val events: VoiceRecognitionEvents,
+        private val vad: Vad?,
     ) : StreamingVoiceModelSession {
         private var lastPartial = ""
+        private val endpointTracker = VadSpeechTracker()
+        private var activeVad: Vad? = vad
 
         override fun acceptWaveform(samples: FloatArray) {
             if (samples.isEmpty()) return
@@ -316,9 +456,23 @@ private class SherpaOnnxStreamingRuntime(
                 val currentRecognizer = checkNotNull(recognizer) { "语音识别器已释放" }
                 val currentStream = streamLease.value
                 currentStream.acceptWaveform(samples, SAMPLE_RATE)
+                observeVadLocked(samples)
                 decodeReadyLocked(currentRecognizer, currentStream)
             }
             partials.forEach(events::onPartial)
+        }
+
+        /** VAD 跟随同一块 PCM 更新；不可用或中途失败时立刻退回原有端点判断。 */
+        private fun observeVadLocked(samples: FloatArray) {
+            val detector = activeVad ?: return
+            runCatching {
+                detector.acceptWaveform(samples)
+                endpointTracker.observe(detector.isSpeechDetected())
+            }.onFailure {
+                activeVad = null
+                endpointTracker.observe(null)
+                Log.w("OpenImeVoicePerf", "VAD 推理失败，本次会话退回原有端点判断", it)
+            }
         }
 
         override fun inputFinished(): String {
@@ -328,12 +482,25 @@ private class SherpaOnnxStreamingRuntime(
                 val currentStream = streamLease.value
                 // sherpa-onnx's streaming Paraformer examples append 300 ms
                 // silence before InputFinished so the last chunk can flush.
-                currentStream.acceptWaveform(FloatArray(PARAFORMER_TAIL_PADDING_SAMPLES), SAMPLE_RATE)
+                // VAD 可用时用 isSpeechDetected 的状态收窄补零：整段没听到语音
+                // 就不补；其余情况（包括没有 VAD）与原来完全一致。
+                if (selection.manifest?.modelType == "paraformer" && endpointTracker.tailPaddingNeeded()) {
+                    currentStream.acceptWaveform(FloatArray(PARAFORMER_TAIL_PADDING_SAMPLES), SAMPLE_RATE)
+                }
+                if (vad != null) {
+                    Log.i(
+                        "OpenImeVoicePerf",
+                        "endpoint vadActive=${endpointTracker.isVadActive} " +
+                            "hasSpeech=${endpointTracker.hasSpeech} " +
+                            "speechEnded=${endpointTracker.speechEnded()} " +
+                            "tailPad=${endpointTracker.tailPaddingNeeded()}",
+                    )
+                }
                 currentStream.inputFinished()
                 // InputFinished ends feature extraction, but Paraformer's
                 // IsReady accepts the remaining short chunk only with this
                 // option. Otherwise already-recorded tail frames stay undecoded.
-                currentStream.setOption("is_final", "1")
+                if (selection.manifest?.modelType == "paraformer") currentStream.setOption("is_final", "1")
                 val decoded = decodeReadyLocked(currentRecognizer, currentStream)
                 val recognizerFinal = currentRecognizer.getResult(currentStream).text.trim()
                 val usedFallback = recognizerFinal.isBlank() && lastPartial.isNotBlank()
@@ -366,12 +533,9 @@ private class SherpaOnnxStreamingRuntime(
                 synchronized(runtimeLock) {
                     checkOpenLocked()
                     runCatching {
-                        val model = punctuation ?: OfflinePunctuation(context.assets,
-                            OfflinePunctuationConfig(model = OfflinePunctuationModelConfig(
-                                ctTransformer = "models/voice/punctuation/model.int8.onnx",
-                                numThreads = 2,
-                            )),
-                        ).also { punctuation = it }
+                        val model = punctuation ?: createPunctuationLocked()
+                            ?: error("当前模型不带标点模型")
+                        punctuation = model
                         model.addPunctuation(prepared)
                     }.onFailure { Log.w("OpenImeVoicePerf", "punctuation failed; keeping transcript", it) }
                         .getOrNull()

@@ -80,7 +80,12 @@ internal class CandidateQueryCoordinator(
         val scheduled =
             composition.isNotBlank() &&
                 composition.length <= maxInputLength &&
-                (mode == KeyboardMode.PINYIN_26 || mode == KeyboardMode.PINYIN_9) &&
+                (
+                    mode == KeyboardMode.PINYIN_26 ||
+                        mode == KeyboardMode.PINYIN_9 ||
+                        mode == KeyboardMode.WUBI ||
+                        mode == KeyboardMode.DOUBLE_PINYIN
+                    ) &&
                 queryInputs.isNotEmpty()
 
         if (!scheduled) {

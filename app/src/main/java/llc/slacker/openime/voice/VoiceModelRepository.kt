@@ -56,8 +56,17 @@ data class VoiceModelManifest(
     val supportsPunctuation: Boolean,
     val requiredMemory: Long,
     val files: List<String>,
+    /** 文件角色到路径的映射（encoder/decoder/joiner/model/tokens/punctuation/bpeVocab/hotwords/vad）。旧清单为空，按固定布局处理。 */
+    val roles: Map<String, String> = emptyMap(),
+    /** transducer 家族提示（zipformer/zipformer2/conformer/lstm/ebranchformer）；空则读模型元数据。 */
+    val family: String = "",
+    /** 分词单元（cjkchar / bpe / cjkchar+bpe）；部分中英混合模型需要它配合 bpeVocab。 */
+    val modelingUnit: String = "",
 ) {
     companion object {
+        val TRANSDUCER_FAMILIES = setOf("zipformer", "zipformer2", "conformer", "lstm", "ebranchformer")
+        val MODELING_UNITS = setOf("cjkchar", "bpe", "cjkchar+bpe")
+
         fun parse(json: String): VoiceModelManifest {
             val root = JSONObject(json)
             val files = buildList {
@@ -65,6 +74,10 @@ data class VoiceModelManifest(
                 for (index in 0 until values.length()) {
                     values.optString(index).trim().takeIf { it.isNotEmpty() }?.let(::add)
                 }
+            }
+            val roles = buildMap {
+                val obj = root.optJSONObject("roles") ?: return@buildMap
+                obj.keys().forEach { key -> obj.optString(key).trim().takeIf { it.isNotEmpty() }?.let { put(key, it) } }
             }
             return VoiceModelManifest(
                 modelId = root.optString("modelId").trim(),
@@ -76,9 +89,27 @@ data class VoiceModelManifest(
                 supportsPunctuation = root.optBoolean("supportsPunctuation", false),
                 requiredMemory = root.optLong("requiredMemory", 0L),
                 files = files,
+                roles = roles,
+                family = root.optString("family").trim(),
+                modelingUnit = root.optString("modelingUnit").trim(),
             )
         }
     }
+
+    fun toJson(): String = JSONObject()
+        .put("modelId", modelId)
+        .put("modelVersion", modelVersion)
+        .put("language", language)
+        .put("modelType", modelType)
+        .put("engineVersion", engineVersion)
+        .put("fileHash", fileHash)
+        .put("supportsPunctuation", supportsPunctuation)
+        .put("requiredMemory", requiredMemory)
+        .put("files", org.json.JSONArray(files))
+        .apply { if (roles.isNotEmpty()) put("roles", JSONObject(roles as Map<*, *>)) }
+        .apply { if (family.isNotEmpty()) put("family", family) }
+        .apply { if (modelingUnit.isNotEmpty()) put("modelingUnit", modelingUnit) }
+        .toString(2)
 
     fun validateShape(): String? = when {
         !isSafeVoiceModelId(modelId) -> "modelId 非法"
@@ -91,7 +122,13 @@ data class VoiceModelManifest(
         files.isEmpty() -> "没有模型文件列表"
         files.distinct().size != files.size -> "模型文件列表包含重复项"
         files.any { !isSafeVoiceModelRelativePath(it) } -> "模型文件路径非法"
-        else -> null
+        family.isNotEmpty() && family !in TRANSDUCER_FAMILIES ->
+            "family 取值非法：$family（可用：${TRANSDUCER_FAMILIES.joinToString("、")}）"
+        family.isNotEmpty() && modelType != "transducer" -> "只有 transducer 模型可以声明 family"
+        modelingUnit.isNotEmpty() && modelingUnit !in MODELING_UNITS ->
+            "modelingUnit 取值非法：$modelingUnit（可用：${MODELING_UNITS.joinToString("、")}）"
+        modelingUnit.isNotEmpty() && modelType != "transducer" -> "只有 transducer 模型可以声明 modelingUnit"
+        else -> VoiceModelLayoutResolver.explain(this)
     }
 }
 
@@ -124,6 +161,19 @@ internal fun VoiceModelManifest.trustFingerprint(): String {
         files.size.toString(),
     ).forEach(digest::updateFramed)
     files.forEach(digest::updateFramed)
+    if (roles.isNotEmpty()) {
+        digest.updateFramed("roles")
+        roles.toSortedMap().forEach { (role, path) -> digest.updateFramed(role); digest.updateFramed(path) }
+    }
+    // Empty defaults keep the legacy (built-in) fingerprints identical.
+    if (family.isNotEmpty()) {
+        digest.updateFramed("family")
+        digest.updateFramed(family)
+    }
+    if (modelingUnit.isNotEmpty()) {
+        digest.updateFramed("modelingUnit")
+        digest.updateFramed(modelingUnit)
+    }
     return digest.digest().toHexString()
 }
 
@@ -225,6 +275,8 @@ data class VoiceModelSelection(
     val reason: String = "",
 ) {
     enum class Source { BUILT_IN, DOWNLOADED, NONE }
+
+    /** 用户亲手导入并确认过的模型，与受信目录里的下载模型同一存放位置，但信任来源不同。 */
 }
 
 /**
@@ -242,6 +294,7 @@ class VoiceModelRepository(private val context: Context) {
         private const val BUILT_IN_MANIFEST = "models/voice/manifest.json"
         private const val TRUSTED_DOWNLOADS = "models/voice/trusted-downloads.tsv"
         private const val DOWNLOADED_DIR = "voice-models"
+        private const val USER_CONFIRMED_PREFIX = "user_confirmed_"
     }
 
     private val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -279,7 +332,7 @@ class VoiceModelRepository(private val context: Context) {
             VoiceModelSelection(
                 manifest = null,
                 source = VoiceModelSelection.Source.NONE,
-                reason = "APK 未包含有效的内置本地语音模型",
+                reason = "未安装语音模型。到 设置 → 语音模型 导入一个，或安装完整版",
             )
         }
     }
@@ -323,8 +376,96 @@ class VoiceModelRepository(private val context: Context) {
         val target = downloadedModelDirectory(modelId) ?: return false
         if (preferences.getString(SELECTED_MODEL, null) == modelId) useBuiltInModel()
         val deleted = target.deleteRecursively()
-        if (deleted) clearDownloadedVerification(modelId)
+        if (deleted) {
+            clearDownloadedVerification(modelId)
+            preferences.edit().remove(USER_CONFIRMED_PREFIX + modelId).apply()
+        }
         return deleted
+    }
+
+    /** 一个模型包的概览，用于导入确认与管理页展示。 */
+    data class PackageInfo(
+        val modelId: String,
+        val modelVersion: String,
+        val language: String,
+        val modelType: String,
+        val supportsPunctuation: Boolean,
+        val totalBytes: Long,
+        val trusted: Boolean,
+        /** true 表示目录里原本没有 manifest.json，清单是 app 自动识别并生成的。 */
+        val autoDetected: Boolean = false,
+        val note: String = "",
+    )
+
+    /** 只读检查一个待导入目录：清单合法、文件齐全、整体哈希对得上。不写任何东西。 */
+    fun inspectPackage(sourceDirectory: File): Result<PackageInfo> = runCatching {
+        check(sourceDirectory.isDirectory && !Files.isSymbolicLink(sourceDirectory.toPath())) { "不是有效的模型目录" }
+        val manifestFile = resolveContainedVoiceModelFile(sourceDirectory, "manifest.json")
+        val autoDetected = !manifestFile.isFile
+        val detectedNote: String
+        val manifest = if (autoDetected) {
+            val detected = VoiceModelAutoDetector.detect(sourceDirectory, sourceDirectory.name).getOrThrow()
+            // 写进目录，后面安装、校验、复制都按同一份清单走。
+            manifestFile.writeText(detected.manifest.toJson(), Charsets.UTF_8)
+            detectedNote = detected.note
+            detected.manifest
+        } else {
+            detectedNote = ""
+            VoiceModelManifest.parse(manifestFile.readText(Charsets.UTF_8))
+        }
+        manifest.validateShape()?.let { error(it) }
+        var total = 0L
+        manifest.files.forEach { path ->
+            val file = resolveContainedVoiceModelFile(sourceDirectory, path)
+            check(file.isFile) { "缺少模型文件: $path" }
+            total += file.length()
+        }
+        check(sha256Files(sourceDirectory, manifest.files) == manifest.fileHash) { "文件内容与清单里的 SHA-256 不一致，模型包可能已损坏" }
+        PackageInfo(
+            modelId = manifest.modelId,
+            modelVersion = manifest.modelVersion,
+            language = manifest.language,
+            modelType = manifest.modelType,
+            supportsPunctuation = manifest.supportsPunctuation,
+            totalBytes = total,
+            trusted = trustedCatalog?.entryFor(manifest) != null,
+            autoDetected = autoDetected,
+            note = detectedNote,
+        )
+    }
+
+    /** 用户已看过 [inspectPackage] 的结果并同意：登记信任后安装并选中。 */
+    fun importUserPackage(sourceDirectory: File): Result<String> = runCatching {
+        val info = inspectPackage(sourceDirectory).getOrThrow()
+        val manifest = VoiceModelManifest.parse(
+            resolveContainedVoiceModelFile(sourceDirectory, "manifest.json").readText(Charsets.UTF_8),
+        )
+        if (!info.trusted) confirmUser(manifest)
+        check(installDownloadedModel(sourceDirectory, manifest.modelId)) { "安装失败" }
+        check(setSelectedModel(manifest.modelId)) { "无法选中新模型" }
+        manifest.modelId
+    }
+
+    /** 已安装的模型（不含内置）。 */
+    fun installedModels(): List<VoiceModelManifest> =
+        downloadedRoot.listFiles().orEmpty()
+            .filter { it.isDirectory && !it.name.startsWith(".") && !Files.isSymbolicLink(it.toPath()) }
+            .mapNotNull { dir ->
+                runCatching {
+                    VoiceModelManifest.parse(File(dir, "manifest.json").readText(Charsets.UTF_8))
+                }.getOrNull()?.takeIf { it.modelId == dir.name }
+            }
+            .sortedBy { it.modelId }
+
+    fun selectedModelId(): String? = preferences.getString(SELECTED_MODEL, null)
+
+    private fun isUserConfirmed(manifest: VoiceModelManifest): Boolean =
+        preferences.getString(USER_CONFIRMED_PREFIX + manifest.modelId, null) == manifest.trustFingerprint()
+
+    private fun confirmUser(manifest: VoiceModelManifest) {
+        check(preferences.edit().putString(USER_CONFIRMED_PREFIX + manifest.modelId, manifest.trustFingerprint()).commit()) {
+            "无法保存确认状态"
+        }
     }
 
     fun useBuiltInModel() {
@@ -388,11 +529,18 @@ class VoiceModelRepository(private val context: Context) {
         check(manifest.validateShape() == null) { manifest.validateShape().orEmpty() }
 
         val entry = trustedCatalog?.entryFor(manifest)
-            ?: error("模型未列入 APK 受信下载目录")
-        check(entry.matchesLayout(manifest, directory)) { "模型文件布局与受信 metadata 不匹配" }
+        val publisher: String
+        if (entry != null) {
+            check(entry.matchesLayout(manifest, directory)) { "模型文件布局与受信 metadata 不匹配" }
+            publisher = entry.publisher
+        } else {
+            // 不在白名单：只有用户在导入时确认过同一份清单，才继续做哈希校验。
+            check(isUserConfirmed(manifest)) { "模型未列入受信目录，也未经用户确认" }
+            publisher = "user"
+        }
 
         val cacheEligible = allowCache && isInstalledDownloadedDirectory(directory, manifest)
-        val signature = downloadedPackageCacheSignature(directory, manifest, entry.publisher)
+        val signature = downloadedPackageCacheSignature(directory, manifest, publisher)
         if (
             cacheEligible &&
             preferences.getString(downloadedVerificationKey(manifest.modelId), null) == signature

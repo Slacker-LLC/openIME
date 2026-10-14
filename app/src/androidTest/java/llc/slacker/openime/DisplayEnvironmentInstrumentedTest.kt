@@ -92,7 +92,10 @@ class DisplayEnvironmentInstrumentedTest {
 
     @Test
     fun landscapeContentBoxKeepsEveryRowInsideIt() {
-        // Landscape fills the whole width (padding 0), like Gboard and the Chinese keyboards.
+        // Landscape insets the key area by the reference skin's fractions: 6.485%
+        // per side for the 26-key and digit surfaces, 9.5% for the nine-key
+        // (ReferenceLandscapeInsets). The window stays full width and the
+        // background spans it; only the content moves inward.
         // Rows used to keep the width they were measured with before the padding
         // was applied: as wide as the window, clipped to the box.
         for (mode in listOf(KeyboardMode.PINYIN_26, KeyboardMode.ENGLISH_26, KeyboardMode.PINYIN_9, KeyboardMode.DIGITS)) {
@@ -109,7 +112,19 @@ class DisplayEnvironmentInstrumentedTest {
                 val body = keyboard.findViewWithTag<ViewGroup>("keyboard-body")
                 assertNotNull("keyboard body", body)
                 val content = body.width - body.paddingLeft - body.paddingRight
-                assertEquals("$mode landscape fills the full width", 0, body.paddingLeft)
+                val fraction = if (mode == KeyboardMode.PINYIN_9) 0.095f else 0.0648508f
+                val expectedInset = (keyboard.width * fraction).toInt()
+                assertEquals(
+                    "$mode landscape insets the key area on the reference fraction",
+                    expectedInset.toFloat(),
+                    body.paddingLeft.toFloat(),
+                    1f,
+                )
+                assertEquals(
+                    "$mode landscape insets both sides equally",
+                    body.paddingLeft,
+                    body.paddingRight,
+                )
                 for (index in 0 until body.childCount) {
                     val row = body.getChildAt(index)
                     assertTrue(

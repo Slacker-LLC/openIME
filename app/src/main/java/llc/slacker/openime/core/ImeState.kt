@@ -10,11 +10,16 @@ enum class KeyboardMode {
     PINYIN_9,
     /** 笔画: five stroke keys and 通配; characters come from StrokeLexicon. */
     STROKE,
+    /** 五笔: the 26-key wubi86 table through Rime (schema "wubi86"). */
+    WUBI,
+    /** 双拼: the 26-key surface with a double-pinyin schema (小鹤 / 自然码). */
+    DOUBLE_PINYIN,
     DIGITS,
     ;
 
     /** A Chinese layout: 中/英 returns to the last one used, and it is remembered. */
-    val isChineseLayout: Boolean get() = this == PINYIN_26 || this == PINYIN_9 || this == STROKE
+    val isChineseLayout: Boolean
+        get() = this == PINYIN_26 || this == PINYIN_9 || this == STROKE || this == WUBI || this == DOUBLE_PINYIN
 }
 
 enum class Panel {

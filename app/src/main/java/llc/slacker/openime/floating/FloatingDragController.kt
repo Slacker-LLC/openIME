@@ -13,7 +13,7 @@ internal class FloatingDragController(
     private val toPx: (Int) -> Int,
     private val onDragBy: (Float, Float) -> Unit,
     private val onDock: () -> Unit,
-) {
+) : LongPressDragTarget {
     private var active = false
     private var moved = false
     private var pointerId = -1
@@ -24,7 +24,7 @@ internal class FloatingDragController(
      * Start a drag mid-gesture (long press on the top zone). The gesture is
      * already a drag, so releasing it must not count as a dock tap.
      */
-    fun begin(event: MotionEvent) {
+    override fun begin(event: MotionEvent) {
         active = true
         moved = true
         pointerId = event.getPointerId(event.actionIndex)
@@ -32,7 +32,7 @@ internal class FloatingDragController(
         lastY = event.rawY
     }
 
-    fun onTouch(event: MotionEvent): Boolean {
+    override fun onTouch(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 active = true
@@ -64,7 +64,7 @@ internal class FloatingDragController(
         return true
     }
 
-    fun reset() {
+    override fun reset() {
         active = false
         moved = false
         pointerId = -1
@@ -72,8 +72,7 @@ internal class FloatingDragController(
         lastY = 0f
     }
 
-    private fun finish(dockIfTap: Boolean) {
-        val shouldDock = dockIfTap && active && !moved
+    private fun finish(dockIfTap: Boolean) {        val shouldDock = dockIfTap && active && !moved
         reset()
         if (shouldDock) onDock()
     }

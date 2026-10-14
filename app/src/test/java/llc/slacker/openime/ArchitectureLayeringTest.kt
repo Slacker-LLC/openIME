@@ -27,8 +27,10 @@ class ArchitectureLayeringTest {
         "widget" to setOf("theme"),
         "floating" to setOf("theme"),
         "handwriting" to setOf("data", "theme"),
+        // 纯数据/逻辑引擎：二进制表与拼音流水线；只依赖最底层的 core（模糊音规则）。
+        "engine" to setOf("core"),
         "rime" to setOf("core", "data"),
-        "candidate" to setOf("core", "rime"),
+        "candidate" to setOf("core", "engine", "rime"),
         "voice" to setOf("data", "editor", "theme"),
         "panel" to setOf("core", "data", "handwriting", "setup", "theme", "widget"),
         "keyboard" to setOf(
@@ -37,7 +39,7 @@ class ArchitectureLayeringTest {
         ),
         "app" to setOf(
             "candidate", "core", "data", "editor", "floating", "keyboard",
-            "rime", "setup", "theme", "voice",
+            "rime", "setup", "theme", "voice", "engine",
         ),
     )
 

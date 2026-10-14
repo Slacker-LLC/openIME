@@ -11,6 +11,26 @@ import android.graphics.Color
  * prevents each panel from inventing another near-identical radius or size.
  */
 internal object ImeGeometryTokens {
+    /** 键盘高度可调范围（占默认高度的百分比）。所有读写、裁剪、滑块都用这一对常量。 */
+    const val KEYBOARD_HEIGHT_MIN_PERCENT = 60
+    const val KEYBOARD_HEIGHT_MAX_PERCENT = 160
+    const val KEYBOARD_HEIGHT_DEFAULT_PERCENT = 100
+
+    /** 浮动键盘宽度（占竖屏宽度的百分比）。上限 150 允许在平板或横屏上撑得更宽。 */
+    const val FLOATING_WIDTH_MIN_PERCENT = 50
+    const val FLOATING_WIDTH_MAX_PERCENT = 150
+    const val FLOATING_WIDTH_DEFAULT_PERCENT = 100
+
+    /** 浮动键盘不透明度。保留 20% 底线：再低键盘看不见，用户无法回到设置里改回来。 */
+    const val FLOATING_OPACITY_MIN_PERCENT = 20
+    const val FLOATING_OPACITY_MAX_PERCENT = 100
+    const val FLOATING_OPACITY_DEFAULT_PERCENT = 100
+
+    /** 震动强度。0 表示关闭由单独的开关负责，这里只放宽到 1 到 100。 */
+    const val HAPTIC_STRENGTH_MIN_PERCENT = 1
+    const val HAPTIC_STRENGTH_MAX_PERCENT = 100
+    const val HAPTIC_STRENGTH_DEFAULT_PERCENT = 100
+
     /** Portrait key row height on the reference design's 390-unit canvas. */
     const val KEY_ROW_HEIGHT_DP = 54
     const val KEY_RADIUS_DP = 8

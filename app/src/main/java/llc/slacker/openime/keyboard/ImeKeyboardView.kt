@@ -36,6 +36,8 @@ import llc.slacker.openime.core.ImeState
 import llc.slacker.openime.core.KeyboardMode
 import llc.slacker.openime.core.Panel
 import llc.slacker.openime.core.LandscapeLayout
+import llc.slacker.openime.core.DoublePinyinScheme
+import llc.slacker.openime.core.OneHandMode
 import llc.slacker.openime.core.ShiftState
 import llc.slacker.openime.data.HapticStyle
 import llc.slacker.openime.data.ImeSettingsRepository
@@ -139,6 +141,7 @@ open class ImeKeyboardView(
         fun onLandscapeLayoutChanged(layout: LandscapeLayout) {}
         fun onOpenAbout() {}
         fun onOpenDataManagement() {}
+        fun onOpenVoiceModel() {}
     }
 
     /** Visual class marker for white keys (nine/digits grid). */
@@ -150,7 +153,7 @@ open class ImeKeyboardView(
     companion object {
         /** Scale differences below this are rounding noise, not a new geometry. */
         private const val SCALE_CHANGE_EPSILON = 0.01f
-        private const val FLOATING_NAV_STRIP_DP = 28
+        private const val FLOATING_NAV_STRIP_DP = 6
 
         /** How often a deferred row rebuild re-checks whether the press ended. */
         private const val ROW_REBUILD_POLL_MS = 40L
@@ -451,6 +454,12 @@ open class ImeKeyboardView(
         )
     }
     private var contentInsetPx = dp(0)
+    private var topZoneInsetPx = dp(0)
+    private var moreCandidatesInsetPx = dp(0)
+    private var oneHandMode = ImeSettingsRepository.loadOneHandMode(context)
+
+    /** 停靠键盘的“键盘调节”拖拽（顶栏长按后上下拖）。 */
+    private val heightDragController = KeyboardHeightDragController(::adjustKeyboardHeightByDrag)
     private var navigationBottomInsetPx = 0
     private val themeApplier: ImeThemeApplier by lazy {
         ImeThemeApplier(
@@ -745,6 +754,8 @@ open class ImeKeyboardView(
             currentHapticStrengthPercent = { keyHaptics.strengthPercent },
             currentHapticStyle = { keyHaptics.style },
             currentLandscapeLayout = { ImeSettingsRepository.loadLandscapeLayout(context) },
+            currentOneHandMode = { oneHandMode },
+            currentDoublePinyinScheme = { ImeSettingsRepository.loadDoublePinyinScheme(context) },
             currentKeySoundStyle = { keySounds.style },
             currentPopup = { popupEnabled },
             currentSwipeUpDigits = { ImeSettingsRepository.loadSwipeUpDigits(context) },
@@ -770,12 +781,15 @@ open class ImeKeyboardView(
             onHapticStrengthChanged = ::setHapticStrengthPercent,
             onHapticStyleChanged = ::setHapticStyle,
             onLandscapeLayoutChanged = ::setLandscapeLayout,
+            onOneHandModeChanged = ::setOneHandMode,
+            onDoublePinyinSchemeChanged = ::setDoublePinyinScheme,
             onKeySoundStyleChanged = ::setKeySoundStyle,
             onFloatingStyleChanged = ::setFloatingStyle,
             onShowFuzzySettings = { showPanel(Panel.FUZZY_SETTINGS) },
             onFuzzyRulesChanged = listener::onFuzzyRulesChanged,
             onOpenAbout = listener::onOpenAbout,
             onOpenDataManagement = listener::onOpenDataManagement,
+            onOpenVoiceModel = listener::onOpenVoiceModel,
             onFeedback = ::feedback,
             applyTheme = ::applyTheme,
             onHierarchyRebuilt = ::onViewHierarchyRebuilt,
@@ -1188,6 +1202,8 @@ open class ImeKeyboardView(
             // width before WindowManager applies the floating window bounds.
             // Keep the normal keyboard's content inset local to its window.
             contentInsetPx = dp(0)
+            topZoneInsetPx = dp(0)
+            moreCandidatesInsetPx = dp(0)
             keyboardBody.setPadding(contentInsetPx, dp(ImeGeometryTokens.KEYBOARD_TOP_PAD_DP), contentInsetPx, dp(layoutMetrics.bottomPadDp))
             keyboardBody.findViewWithTag<View>("key-row-secondary")?.let { row ->
                 // The portrait layout narrows this row to 90% of the full
@@ -1211,23 +1227,36 @@ open class ImeKeyboardView(
         }
         val minimumInset = dp(0)
         val landscape = appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-        val maxWidth = when {
-            standalonePanel -> dp(maxContentWidthDp)
-            // Landscape rows are short, so the width is what makes keys easy to hit.
-            // Like Gboard and the Chinese keyboards, fill the whole width instead of
-            // shrinking the keys to the height-derived portrait width.
-            landscape -> measuredWidthPx
-            else -> (minOf(maxContentWidthDp.toFloat(), 390f * referenceScale) * resources.displayMetrics.density).toInt()
+        if (standalonePanel) {
+            contentInsetPx = maxOf(minimumInset, (measuredWidthPx - dp(maxContentWidthDp)) / 2)
+            topZoneInsetPx = contentInsetPx
+            moreCandidatesInsetPx = contentInsetPx
+        } else if (landscape) {
+            // 横屏对齐参考键盘的横屏皮肤：键区两侧留白（九键更多），顶栏与展开候选
+            // 各有自己的比例；窗口仍整宽，背景铺满，只有内容往中间收。
+            contentInsetPx = (measuredWidthPx * ReferenceLandscapeInsets.keyboardFraction(mode == KeyboardMode.PINYIN_9)).toInt()
+            topZoneInsetPx = (measuredWidthPx * ReferenceLandscapeInsets.TOOLBAR_FRACTION).toInt()
+            moreCandidatesInsetPx = (measuredWidthPx * ReferenceLandscapeInsets.EXPANDED_CANDIDATES_FRACTION).toInt()
+        } else {
+            val maxWidth = (minOf(maxContentWidthDp.toFloat(), 390f * referenceScale) * resources.displayMetrics.density).toInt()
+            contentInsetPx = maxOf(minimumInset, (measuredWidthPx - maxWidth) / 2)
+            topZoneInsetPx = contentInsetPx
+            moreCandidatesInsetPx = contentInsetPx
         }
-        contentInsetPx = maxOf(minimumInset, (measuredWidthPx - maxWidth) / 2)
+        // 单手模式把键面收窄贴向一侧；左右分离布局本身就是两侧的安排，不再叠加。
+        val oneHand = if (splitKeyboard()) null else OneHandPolicy.insets(measuredWidthPx, oneHandMode, contentInsetPx)
+        val bodyLeft = oneHand?.first ?: contentInsetPx
+        val bodyRight = oneHand?.second ?: contentInsetPx
+        val panelLeft = oneHand?.first ?: moreCandidatesInsetPx
+        val panelRight = oneHand?.second ?: moreCandidatesInsetPx
         keyboardBody.setPadding(
-            contentInsetPx,
+            bodyLeft,
             dp(ImeGeometryTokens.KEYBOARD_TOP_PAD_DP),
-            contentInsetPx,
+            bodyRight,
             dp(layoutMetrics.bottomPadDp),
         )
         keyboardBody.findViewWithTag<View>("key-row-secondary")?.let { row ->
-            val rowWidth = ((measuredWidthPx - contentInsetPx * 2) * 0.9f).toInt()
+            val rowWidth = ((measuredWidthPx - bodyLeft - bodyRight) * 0.9f).toInt()
             val params = row.layoutParams as? LinearLayout.LayoutParams
             if (params != null) {
                 params.gravity = Gravity.CENTER_HORIZONTAL
@@ -1235,9 +1264,9 @@ open class ImeKeyboardView(
                 row.layoutParams = params
             }
         }
-        expandedPanel.setPadding(contentInsetPx, 0, contentInsetPx, 0)
-        candidateOverlay.setPadding(contentInsetPx, 0, contentInsetPx, 0)
-        topZone.setContentInset(contentInsetPx)
+        expandedPanel.setPadding(panelLeft, 0, panelRight, 0)
+        candidateOverlay.setPadding(panelLeft, 0, panelRight, 0)
+        topZone.setContentInset(topZoneInsetPx)
         if (!applyingGeometryInMeasure) {
             requestLayout()
             scheduleRelayout()
@@ -1320,6 +1349,8 @@ open class ImeKeyboardView(
             onSplitToggle = ::toggleSplit,
             onAssociationDismiss = ::clearAssociationCandidates,
         )
+        // 停靠时顶栏长按上下拖 = 键盘调节；浮动时同一入口拖窗口。
+        topZone.setLongPressDrag(heightDragController, toolbarOnly = true)
         candidateBarController = CandidateBarController(
             context = context,
             row = topZone.candidateRow,
@@ -1376,7 +1407,9 @@ open class ImeKeyboardView(
 
     fun cycleMode() {
         val next = when (mode) {
-            KeyboardMode.PINYIN_26, KeyboardMode.PINYIN_9, KeyboardMode.STROKE -> KeyboardMode.ENGLISH_26
+            KeyboardMode.PINYIN_26, KeyboardMode.PINYIN_9, KeyboardMode.STROKE,
+            KeyboardMode.WUBI, KeyboardMode.DOUBLE_PINYIN,
+            -> KeyboardMode.ENGLISH_26
             KeyboardMode.ENGLISH_26 -> preferredChineseMode
             KeyboardMode.DIGITS -> lastTextMode
         }
@@ -1487,12 +1520,17 @@ open class ImeKeyboardView(
         topZone.setCompactToolbar(enabled)
         layoutMetrics = buildLayoutMetrics()
         renderedMode = null
-        topZone.setLongPressDrag(if (enabled) floatingKeyboardController.dragController else null)
+        topZone.setLongPressDrag(
+            if (enabled) floatingKeyboardController.dragController else heightDragController,
+            toolbarOnly = !enabled,
+        )
         applyDynamicHeights()
         // Floating landscape uses portrait rows, so the key surface must be rebuilt.
         if (!standalonePanel && panel == Panel.NONE) renderModeBody()
         if (enabled) {
             contentInsetPx = dp(0)
+            topZoneInsetPx = dp(0)
+            moreCandidatesInsetPx = dp(0)
             keyboardBody.setPadding(contentInsetPx, dp(ImeGeometryTokens.KEYBOARD_TOP_PAD_DP), contentInsetPx, dp(layoutMetrics.bottomPadDp))
             expandedPanel.setPadding(contentInsetPx, 0, contentInsetPx, 0)
             candidateOverlay.setPadding(contentInsetPx, 0, contentInsetPx, 0)
@@ -1724,8 +1762,8 @@ open class ImeKeyboardView(
     }
 
     private fun setFloatingStyle(widthPercent: Int, opacityPercent: Int) {
-        val width = widthPercent.coerceIn(72, 96)
-        val opacity = opacityPercent.coerceIn(82, 100)
+        val width = widthPercent.coerceIn(ImeGeometryTokens.FLOATING_WIDTH_MIN_PERCENT, ImeGeometryTokens.FLOATING_WIDTH_MAX_PERCENT)
+        val opacity = opacityPercent.coerceIn(ImeGeometryTokens.FLOATING_OPACITY_MIN_PERCENT, ImeGeometryTokens.FLOATING_OPACITY_MAX_PERCENT)
         if (floatingWidthPercent == width && floatingOpacityPercent == opacity) return
         floatingWidthPercent = width
         floatingOpacityPercent = opacity
@@ -1800,8 +1838,39 @@ open class ImeKeyboardView(
         postDelayed({ keySounds.play() }, SOUND_PREVIEW_DELAY_MS)
     }
 
+    /** 单手模式：键面收窄贴向一侧；立即按当前宽度重排。 */
+    internal fun setOneHandMode(mode: OneHandMode) {
+        if (oneHandMode == mode) return
+        oneHandMode = mode
+        ImeSettingsRepository.saveOneHandMode(context, mode)
+        if (!floatingKeyboardController.enabled && width > 0) updateResponsiveGeometry(width)
+    }
+
+    /** 双拼键位方案；Rime 每次同步都读取设置，切换后重查当前输入即可生效。 */
+    internal fun setDoublePinyinScheme(scheme: DoublePinyinScheme) {
+        ImeSettingsRepository.saveDoublePinyinScheme(context, scheme)
+        if (mode == KeyboardMode.DOUBLE_PINYIN) {
+            val text = composition.text?.toString().orEmpty()
+            if (text.isNotEmpty()) {
+                publishComposition(text, candidatesForComposition(text))
+            }
+        }
+    }
+
+    /** 键盘调节：按竖直拖动量改变高度百分比（持久化在 [setKeyboardHeightPercent] 内）。 */
+    private fun adjustKeyboardHeightByDrag(deltaY: Float) {
+        if (floatingKeyboardController.enabled) return
+        setKeyboardHeightPercent(
+            KeyboardHeightDragPolicy.applyTo(
+                keyboardHeightPercent,
+                deltaY,
+                resources.displayMetrics.heightPixels,
+            ),
+        )
+    }
+
     private fun setKeyboardHeightPercent(percent: Int) {
-        val bounded = percent.coerceIn(80, 120)
+        val bounded = percent.coerceIn(ImeGeometryTokens.KEYBOARD_HEIGHT_MIN_PERCENT, ImeGeometryTokens.KEYBOARD_HEIGHT_MAX_PERCENT)
         if (keyboardHeightPercent == bounded) return
         keyboardHeightPercent = bounded
         ImeSettingsRepository.saveKeyboardHeightPercent(
@@ -2091,6 +2160,11 @@ open class ImeKeyboardView(
             KeyboardMode.ENGLISH_26 -> renderEnglish26()
             KeyboardMode.PINYIN_9 -> renderPinyin9()
             KeyboardMode.STROKE -> renderStroke()
+            // Five-stroke input shares the plain 26-key surface; Rime supplies
+            // the candidates from the wubi86 table.
+            KeyboardMode.WUBI -> renderPinyin26()
+            // Double pinyin shares the 26-key surface too; the schema expands chords.
+            KeyboardMode.DOUBLE_PINYIN -> renderPinyin26()
             KeyboardMode.DIGITS -> renderDigits()
         }
         updateTopZone(composition.text?.isNotEmpty() == true)
@@ -2111,10 +2185,14 @@ open class ImeKeyboardView(
     private fun syncModeAccessibility() {
         val modeKey = findViewWithTag<View>("key:mode") ?: return
         val target = when (mode) {
-            KeyboardMode.PINYIN_26, KeyboardMode.PINYIN_9, KeyboardMode.STROKE -> "英文 26 键"
+            KeyboardMode.PINYIN_26, KeyboardMode.PINYIN_9, KeyboardMode.STROKE,
+            KeyboardMode.WUBI, KeyboardMode.DOUBLE_PINYIN,
+            -> "英文 26 键"
             KeyboardMode.ENGLISH_26 -> when (preferredChineseMode) {
                 KeyboardMode.PINYIN_9 -> "中文九键"
                 KeyboardMode.STROKE -> "笔画"
+                KeyboardMode.WUBI -> "五笔"
+                KeyboardMode.DOUBLE_PINYIN -> "双拼"
                 else -> "中文 26 键"
             }
             KeyboardMode.DIGITS -> "文字键盘"
@@ -2128,6 +2206,8 @@ open class ImeKeyboardView(
                 KeyboardMode.PINYIN_26 -> "当前中文 26 键"
                 KeyboardMode.PINYIN_9 -> "当前中文九键"
                 KeyboardMode.STROKE -> "当前笔画"
+                KeyboardMode.WUBI -> "当前五笔"
+                KeyboardMode.DOUBLE_PINYIN -> "当前双拼"
                 KeyboardMode.ENGLISH_26 -> "当前英文 26 键"
                 KeyboardMode.DIGITS -> "当前数字键盘"
             }
@@ -2139,6 +2219,7 @@ open class ImeKeyboardView(
             english = false,
             shiftState = shiftState,
             enterLabel = enterKeyLabel(),
+            landscape = layoutMetrics.landscape,
         )
     }
 
@@ -2147,6 +2228,7 @@ open class ImeKeyboardView(
             english = true,
             shiftState = shiftState,
             enterLabel = enterKeyLabel(),
+            landscape = layoutMetrics.landscape,
         )
     }
 
@@ -2570,7 +2652,7 @@ open class ImeKeyboardView(
     private fun onKeyTapped(base: String) {
         if (insertIntoInlineEditor(base)) return
         clearAssociationCandidates()
-        if (mode == KeyboardMode.PINYIN_26) {
+        if (mode == KeyboardMode.PINYIN_26 || mode == KeyboardMode.WUBI || mode == KeyboardMode.DOUBLE_PINYIN) {
             val (py, selection) = replaceCompositionSelection(base)
             publishComposition(py, candidatesForComposition(py), selection)
         } else if (mode == KeyboardMode.ENGLISH_26) {
@@ -3354,9 +3436,10 @@ open class ImeKeyboardView(
 
     // --- physical keyboard: the same entry points a tap on the soft key reaches ---
 
-    /** Pinyin typing from a physical keyboard needs the plain 26-key surface: no panel, no voice. */
+    /** Pinyin, wubi or double-pinyin typing from a physical keyboard needs the plain 26-key surface: no panel, no voice. */
     internal fun hardwareAccepts(): Boolean =
-        mode == KeyboardMode.PINYIN_26 && panel == Panel.NONE && !standalonePanel &&
+        (mode == KeyboardMode.PINYIN_26 || mode == KeyboardMode.WUBI || mode == KeyboardMode.DOUBLE_PINYIN) &&
+            panel == Panel.NONE && !standalonePanel &&
             !voicePanelController.active && !voiceGestureSession
 
     internal fun hardwareIsComposing(): Boolean = composition.text.isNotEmpty()

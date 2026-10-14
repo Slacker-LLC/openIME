@@ -60,6 +60,20 @@ read -r -a extra_gradle_args <<< "${OPENIME_GRADLE_ARGS:-}"
 APK="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name 'app-release*.apk' | head -n 1)"
 [[ -n "$APK" && -f "$APK" ]] || die "release APK not found (was signing configured?)"
 
+# 2b. 精简包：同一份源码，不含语音模型。完整包先拷走，因为两次构建写同一个输出目录。
+FULL_APK="$OUT/.full.apk"
+cp "$APK" "$FULL_APK"
+if [[ "${OPENIME_SKIP_LITE:-0}" != "1" ]]; then
+  OPENIME_LITE=1 ./gradlew :app:assembleRelease --no-daemon --console=plain "${extra_gradle_args[@]}"
+  LITE_SOURCE="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name 'app-release*.apk' | head -n 1)"
+  [[ -n "$LITE_SOURCE" && -f "$LITE_SOURCE" ]] || die "lite release APK not found"
+  LITE_APK="$OUT/.lite.apk"
+  cp "$LITE_SOURCE" "$LITE_APK"
+  [[ "$(stat -c %s "$LITE_APK")" -lt "$(stat -c %s "$FULL_APK")" ]] || die "lite APK is not smaller than the full APK"
+  if unzip -Z1 "$LITE_APK" | grep '\.onnx$' >/dev/null; then die "lite APK still contains an .onnx model"; fi
+fi
+APK="$FULL_APK"
+
 # 3. The APK is signed with the release key and nothing else.
 "$APKSIGNER" verify --verbose --print-certs "$APK" | tee "$OUT/apksigner.txt"
 grep -Eq 'Verified using v[23][^:]*: true' "$OUT/apksigner.txt" || die "no v2/v3 signature"
@@ -94,8 +108,21 @@ fi
 # 7. Release files.
 NAME="openIME-v${VERSION}-arm64-release.apk"
 cp "$APK" "$OUT/$NAME"
-(cd "$OUT" && sha256sum "$NAME" > SHA256SUMS.txt)
-APK_SHA256="$(cut -d' ' -f1 "$OUT/SHA256SUMS.txt")"
+rm -f "$FULL_APK"
+LITE_NAME="openIME-v${VERSION}-arm64-lite-release.apk"
+if [[ -n "${LITE_APK:-}" ]]; then
+  "$APKSIGNER" verify --verbose --print-certs "$LITE_APK" > "$OUT/lite-apksigner.txt" || die "lite APK signature check failed"
+  LITE_CERT_SHA256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$OUT/lite-apksigner.txt" | head -n 1)"
+  [[ -n "$LITE_CERT_SHA256" ]] || die "could not read the lite signing certificate digest"
+  [[ "$(printf '%s' "$LITE_CERT_SHA256" | tr -d ':' | tr 'A-F' 'a-f')" == "$(printf '%s' "$CERT_SHA256" | tr -d ':' | tr 'A-F' 'a-f')" ]] || die "full and lite APK signing certificates differ"
+  if unzip -Z1 "$LITE_APK" | awk -F/ '/^lib\/[^/]+\/[^/]+$/ {print $2}' | sort -u | grep -vx 'arm64-v8a' >/dev/null; then die "lite APK contains a non-arm64 ABI"; fi
+  python3 scripts/release_check.py apk "$LITE_APK" --aapt2 "$AAPT2"
+  mv "$LITE_APK" "$OUT/$LITE_NAME"
+fi
+(cd "$OUT" && sha256sum "$NAME" ${LITE_APK:+"$LITE_NAME"} > SHA256SUMS.txt)
+APK_SHA256="$(grep " $NAME\$" "$OUT/SHA256SUMS.txt" | cut -d' ' -f1)"
+LITE_SHA256=""
+[[ -n "${LITE_APK:-}" ]] && LITE_SHA256="$(grep " $LITE_NAME\$" "$OUT/SHA256SUMS.txt" | cut -d' ' -f1)"
 REPO_URL="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-Slacker-LLC/openIME}"
 
 CHANNEL="$(python3 scripts/release_check.py channel)"
@@ -116,8 +143,11 @@ fi
 
 ### 下载与校验
 
-- \`$NAME\`：$PACKAGE_NOTE。这是本次发布唯一的附件。
+- \`$NAME\`：$PACKAGE_NOTE，**完整版**，内置离线语音模型，开箱即用。
 - APK SHA-256：\`$APK_SHA256\`。下载后执行 \`sha256sum $NAME\`，结果一致再安装。
+${LITE_SHA256:+- \`$LITE_NAME\`：**精简版**，不含语音模型，体积小很多。需要语音输入时到「设置 → 语音模型」导入自己的模型。
+- 精简版 SHA-256：\`$LITE_SHA256\`。
+- 两个版本签名相同，可以互相覆盖升级，用户数据保留。}
 - 第三方组件的许可证随 APK 一起打包；清单见仓库中的 [THIRD_PARTY_NOTICES.md]($REPO_URL/blob/v$VERSION/THIRD_PARTY_NOTICES.md)。
 
 签名证书 SHA-256：\`$(printf '%s' "$CERT_SHA256" | tr -d ':' | tr 'A-F' 'a-f')\`。每个版本都应一致，可用 \`apksigner verify --print-certs\` 核对。

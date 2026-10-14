@@ -37,6 +37,14 @@ If the PCM ring buffer overflows, openIME reports an error and removes the compo
 It never commits a truncated result.
 After capture ends, openIME restores the media volume at once. Queued model work does not keep media muted.
 
+## Hotwords
+
+「设置 → 语音模型 → 语音热词」 keeps a private list of terms, one term per line.
+The list applies to transducer models only.
+openIME rebuilds the hotword string for every recording, so an edit takes effect the next time the user holds space.
+The list stays on the device.
+After a save, openIME tells the user when the current model does not support hotwords.
+
 ## Text processing
 
 - The punctuation model (CT-Transformer INT8) restores sentence breaks, commas and question marks.
@@ -92,6 +100,19 @@ A downloaded model must pass the same checks and load in the background before i
 If a downloaded model fails, is corrupt, times out or crashes, openIME falls back to the built-in model.
 The model never changes during a recording.
 
+## Import your own streaming model
+
+The app never downloads anything. 「设置 → 语音模型」 imports a local package:
+
+- Archives: `.zip`, `.tar`, `.tar.gz`, `.tgz` (repack `tar.bz2` as zip first).
+- Streaming families (sherpa-onnx online), detected from the file set:
+  - transducer: `encoder*.onnx` + `decoder*.onnx` + `joiner*.onnx` + `tokens.txt` — zipformer, zipformer2, conformer, lstm, ebranchformer. The family is inferred from the package name and travels in the manifest `family` field; without it sherpa reads the ONNX metadata.
+  - paraformer: `encoder*.onnx` + `decoder*.onnx` + `tokens.txt`.
+  - zipformer2-ctc / nemo-ctc / t-one-ctc: one `model*.onnx` + `tokens.txt`. A single-file CTC package must declare `modelType` in its own `manifest.json`; the app never guesses the family, because a wrong one fails inside the native runtime.
+- Optional files: `bpe.vocab` (with `modelingUnit` in the manifest for cjkchar+bpe models), `hotwords.txt` (transducer only), `silero_vad.onnx` (speech detection near the end of a voice segment), and a punctuation model (an `.onnx` with "punct" in its name).
+- INT8 and FP32 both work; INT8 wins when a package carries both.
+- Every package is unpacked into the app cache, checked (roles, files, SHA-256) and confirmed by the user before it installs. A failing import never replaces the current model.
+
 ## Runtime
 
 `StreamingEmbeddedVoiceModelRuntime` connects the sherpa-onnx arm64 runtime:
@@ -105,7 +126,20 @@ The model never changes during a recording.
 - Model loading and inference never block the main thread.
 
 The runtime uses `OnlineParaformerModelConfig`, `modelType="paraformer"` and `greedy_search`.
-Because Paraformer does not use transducer hotwords, openIME sends no hotwords to the stream.
+
+Transducer models always use `modified_beam_search` (`maxActivePaths=4`).
+Only transducers take hotwords, so every stream of a transducer model is opened with `createStream(hotwords)`.
+The hotword string is rebuilt for each recording: typed terms from 「设置 → 语音模型 → 语音热词」, plus learned phrases and voice corrections.
+A term must have 2 to 16 code points and contain at least one CJK character; the score is 1.8.
+Hotwords need a usable `modelingUnit` in the manifest (`bpe` and `cjkchar+bpe` also need `bpe.vocab`); when it is absent, openIME encodes CJK terms as `cjkchar`.
+An unsupported unit disables hotwords; decoding stays `modified_beam_search`.
+If the hotword graph fails, openIME records the session without hotwords.
+Paraformer and CTC models keep `greedy_search` and no hotwords, because the engine ignores them there.
+
+If the package carries `silero_vad.onnx` (role `vad`), openIME creates a Silero VAD (`sampleRate=16000`, `numThreads=1`, `provider="cpu"`) and feeds it the same 20 ms blocks as the recognizer.
+The `isSpeechDetected()` state then decides whether the Paraformer tail pad is needed: when the session never detected speech, openIME skips the 300 ms zero pad.
+It never stops a recording on its own; the user still ends a session by releasing space.
+Without the model, endpoint behavior is exactly as before.
 
 The keyboard uses the service-level `VoiceModelLifecycleManager` for all voice work.
 The keyboard view only shows state. It does not build model providers.
