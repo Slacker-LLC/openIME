@@ -409,7 +409,12 @@ def run_case(dev: Device, name: str, minimum: int) -> tuple[bool, str]:
             dev.shell("input", "tap", str(int(x)), str(int(y)))
             time.sleep(0.25)
             expected += tag[len("punct:"):]
-        dev.tap_tag("key-9:0")
+        # The nine-key pad has no 0 key: the zero is the space bar's up swipe,
+        # as on the reference keyboard.
+        _, _, space_x, space_y = next(b for b in dev.bounds if b[0] == "key-space")
+        dev.shell("input", "swipe", str(int(space_x)), str(int(space_y)),
+                  str(int(space_x)), str(int(space_y - 420)), "300")
+        time.sleep(0.5)
         expected += "0"
         minimum = min(minimum, len(expected))
     elif name == "expand":
