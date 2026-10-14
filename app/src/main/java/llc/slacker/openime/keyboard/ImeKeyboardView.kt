@@ -391,6 +391,10 @@ open class ImeKeyboardView(
             // `quickinput_clipboard_icon1` follows `btn_quickinput_clipboard`;
             // `:24-29` for the message row).
             val sms = suggestion.kind == ToolbarSuggestion.Kind.SMS_CODE
+            // The row's own geometry: the reference insets the text box
+            // (`input_toolbar_quickinput.xml:42`) and rides the glyph above its
+            // right shoulder as a superscript (`:44-45`).
+            val rowHeightPx = dp(36)
             val row = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -415,8 +419,18 @@ open class ImeKeyboardView(
                     LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.WRAP_CONTENT,
                         LinearLayout.LayoutParams.MATCH_PARENT,
-                    ),
+                    ).apply {
+                        topMargin = (rowHeightPx * QuickInputRowPolicy.TEXT_TOP_FRACTION).toInt()
+                        bottomMargin = (rowHeightPx * QuickInputRowPolicy.TEXT_BOTTOM_FRACTION).toInt()
+                    },
                 )
+                // The badge is a share of the text it marks, so it is measured in
+                // the text's own unit rather than the keyboard's dp ruler.
+                val badgePx = kotlin.math.round(
+                    ImeTypographyTokens.CANDIDATE_SP *
+                        QuickInputRowPolicy.BADGE_FONT_RATIO *
+                        resources.displayMetrics.scaledDensity,
+                ).toInt()
                 addView(
                     ImageView(context).apply {
                         tag = "suggestion-icon"
@@ -424,7 +438,10 @@ open class ImeKeyboardView(
                         scaleType = ImageView.ScaleType.CENTER_INSIDE
                         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                     },
-                    LinearLayout.LayoutParams(dp(18), LinearLayout.LayoutParams.MATCH_PARENT),
+                    LinearLayout.LayoutParams(badgePx, badgePx).apply {
+                        gravity = Gravity.TOP
+                        topMargin = (rowHeightPx * QuickInputRowPolicy.BADGE_TOP_FRACTION).toInt()
+                    },
                 )
                 setOnClickListener {
                     feedback()

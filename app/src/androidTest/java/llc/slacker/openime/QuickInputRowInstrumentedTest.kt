@@ -8,6 +8,7 @@ import android.view.ViewGroup
 import android.widget.TextView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import llc.slacker.openime.keyboard.ImeKeyboardView
+import llc.slacker.openime.keyboard.QuickInputRowPolicy
 import llc.slacker.openime.theme.ImeAppearance
 import llc.slacker.openime.theme.ImeTheme
 import llc.slacker.openime.theme.ImeTypographyTokens
@@ -94,6 +95,16 @@ class QuickInputRowInstrumentedTest {
                 0.5f,
             )
             assertNotNull("and the glyph that says where it came from", keyboard.findViewWithTag<View>("suggestion-icon"))
+            val badge = keyboard.findViewWithTag<View>("suggestion-icon")!!
+            assertEquals(
+                "The glyph rides at `fi_toolbar_tip_superscript` against the candidate font",
+                (label.textSize * QuickInputRowPolicy.BADGE_FONT_RATIO + 0.5f).toInt().toLong(),
+                badge.height.toLong(),
+            )
+            assertTrue(
+                "as a superscript above the text, not a centred icon",
+                badge.top - row.top < row.height / 2,
+            )
             val tokens = ImeTheme.IOS.tokens(ImeAppearance.LIGHT)
             assertEquals(
                 "`canditem_text` over the row (`input_toolbar_quickinput.xml:40`)",
