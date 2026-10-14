@@ -367,10 +367,14 @@ internal class ImeThemeApplier(
                 ) || hasAncestorTag(view, "tools-panel") -> {
                 view.imageTintList = ColorStateList.valueOf(if (hasAncestorTag(view, "tools-panel")) ImeSurfacePolicy.selectedText(t) else t.keyText)
                 if (view.isClickable) {
+                    // Every idle-toolbar key wears its own pill face at rest
+                    // (`cls_toolbar_idle_button`: `bkcolor="@color/toolbar_idle_button_bk"`,
+                    // `bkround="999"`, `pushedbkcolor`, style.xml:237-248), which on the
+                    // toolbar surface is the key cap colour.
                     view.background = statefulRounded(
-                        Color.TRANSPARENT,
-                        ImeSurfacePolicy.pressedSurface(t.toolbarBackground, t),
-                        toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
+                        t.keyBackground,
+                        ImeSurfacePolicy.pressedSurface(t.keyBackground, t),
+                        toPx(ImeGeometryTokens.PILL_RADIUS_DP),
                     )
                 }
             }

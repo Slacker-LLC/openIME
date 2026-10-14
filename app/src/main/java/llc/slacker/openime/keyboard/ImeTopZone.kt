@@ -52,6 +52,12 @@ private const val CANDIDATE_ROW_DP = 42
 private const val CANDIDATE_EDGE_UNITS = 4
 private const val CANDIDATE_BUTTON_GAP_UNITS = 3
 
+/**
+ * One idle-toolbar button: `cls_toolbar_idle_button` is 40 units wide and as
+ * tall as the row, with its own pill face (`style.xml:237-248`).
+ */
+private const val TOOLBAR_BUTTON_UNITS = 40
+
 internal class ImeTopZone(
     context: Context,
     private val toPx: (Int) -> Int,
@@ -90,6 +96,7 @@ internal class ImeTopZone(
     private lateinit var compactToolbarIcons: List<View>
     private var compact = false
     private lateinit var keyboardHide: View
+    private val toolbarSpacer = View(context)
     private lateinit var associationScroll: HorizontalScrollView
     private var toolbarMode = ToolbarMode.NORMAL
     private var associationsShown = false
@@ -141,7 +148,7 @@ internal class ImeTopZone(
         toolbarIcons = listOf(keyboardIcon, clipboardIcon, emojiIcon, textEditIcon, undoIcon, toolsIcon)
         compactToolbarIcons = listOf(keyboardIcon, phraseIcon, emojiIcon, toolsIcon)
         (toolbarIcons + phraseIcon + splitIcon).distinct().forEach {
-            toolbarRow.addView(it, LinearLayout.LayoutParams(0, toPx(48), 1f))
+            toolbarRow.addView(it, LinearLayout.LayoutParams(toPx(TOOLBAR_BUTTON_UNITS), toPx(48)))
         }
 
         // Association state: "‹  words…  ∨". The back control and the hide
@@ -211,8 +218,20 @@ internal class ImeTopZone(
             LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f),
         )
 
+        // The reference keeps the icons at a fixed 40 units and leaves the slack
+        // of the strip empty: `btn_hide` stays its own button on the right
+        // (`input_toolbar_idle.xml:41-43`, `cls_toolbar_idle_button` width 40,
+        // `style.xml:237-248`).
+        toolbarSpacer.apply {
+            tag = "toolbar-spacer"
+            visibility = View.VISIBLE
+        }
+        toolbarRow.addView(toolbarSpacer, LinearLayout.LayoutParams(0, toPx(48), 1f))
         keyboardHide = toolbarIcon(R.drawable.ic_chevron_down, "收起键盘", "keyboard-hide", onHideKeyboard)
-        toolbarRow.addView(keyboardHide, LinearLayout.LayoutParams(0, toPx(48), 1f))
+        toolbarRow.addView(
+            keyboardHide,
+            LinearLayout.LayoutParams(toPx(TOOLBAR_BUTTON_UNITS), toPx(48)),
+        )
 
         addView(
             toolbarRow,
@@ -638,15 +657,14 @@ internal class ImeTopZone(
         associationScroll.visibility = if (association) View.VISIBLE else View.GONE
         autofillScroll.visibility = if (autofill) View.VISIBLE else View.GONE
         keyboardHide.visibility = View.VISIBLE
-        (keyboardHide.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
-            if (association || autofill) {
-                params.width = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
-                params.weight = 0f
-            } else {
-                params.width = 0
-                params.weight = 1f
-            }
-            keyboardHide.layoutParams = params
+        // The slack of the strip belongs to the spacer before 收起, so the icons
+        // and the hide key keep the reference's own width. A strip or the
+        // autofill chips take the slack instead.
+        (toolbarSpacer.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+            val flexible = normal
+            params.width = 0
+            params.weight = if (flexible) 1f else 0f
+            toolbarSpacer.layoutParams = params
         }
     }
 
