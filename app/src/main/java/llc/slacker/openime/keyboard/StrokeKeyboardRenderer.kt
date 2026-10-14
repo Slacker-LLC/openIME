@@ -97,20 +97,23 @@ internal class StrokeKeyboardRenderer(
             orientation = LinearLayout.VERTICAL
             tag = "stroke-actions"
         }
-        side.addView(createBackspaceKey().apply { markSideKey(this) }, sideKeyParams())
+        // Delete, retype and send, with send twice as tall, as the reference
+        // keyboard draws this column (the nine-key column has the same shape).
+        val sideQuarterDp = bodyHeightDp() / 4
+        side.addView(createBackspaceKey().apply { markSideKey(this) }, sideKeyParams(sideQuarterDp))
         side.addView(
             createKey("重输", true, null, ImeTypographyTokens.BODY_SP, onRetype).apply {
                 tag = "key-retype"
                 markSideKey(this)
             },
-            sideKeyParams(),
+            sideKeyParams(sideQuarterDp),
         )
         side.addView(
             createKey(enterLabel, true, null, ImeTypographyTokens.BODY_SP, onEnter).apply {
                 tag = "key-enter"
                 markSideKey(this)
             },
-            sideKeyParams(),
+            sideKeyParams(sideQuarterDp * 2),
         )
         container.addView(side, columnParams(1f))
 
@@ -155,8 +158,8 @@ internal class StrokeKeyboardRenderer(
     private fun keyParams(heightDp: Int, weight: Float = 1f) =
         LinearLayout.LayoutParams(0, toPx(heightDp), weight)
 
-    private fun sideKeyParams() =
-        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(bodyHeightDp() / 3))
+    private fun sideKeyParams(heightDp: Int) =
+        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(heightDp))
 
     private fun columnParams(weight: Float) =
         LinearLayout.LayoutParams(0, toPx(bodyHeightDp()), weight)

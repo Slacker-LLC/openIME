@@ -12,7 +12,9 @@ import kotlin.math.abs
  * A short press remains space. A deliberate horizontal drag enters cursor
  * movement before the long-press timeout. Holding still past Android's
  * configured long-press timeout arms voice; sliding upward then toggles the
- * voice cancel preview.
+ * voice cancel preview. Upward movement before the timeout swipes the key's
+ * corner mark (the reference keyboard prints 0 on the nine-key and stroke
+ * space bar) on the surfaces that carry one.
  */
 internal class SpaceVoiceGestureController(
     private val toPx: (Int) -> Int,
@@ -25,6 +27,9 @@ internal class SpaceVoiceGestureController(
     private val onCursorStep: (Int) -> Unit,
     /** Called with the space key when a cursor drag starts and when it ends. */
     private val onCursorModeChanged: (anchor: View, active: Boolean) -> Unit = { _, _ -> },
+    /** True on a surface whose space bar carries a corner mark. */
+    private val hintSwipeEnabled: () -> Boolean = { false },
+    private val onHintSwipe: () -> Unit = {},
 ) {
     private val handler = Handler(Looper.getMainLooper())
     private val longPressTimeoutMs = ViewConfiguration.getLongPressTimeout().toLong()
@@ -39,6 +44,10 @@ internal class SpaceVoiceGestureController(
         private set
 
     var cursorMode: Boolean = false
+        private set
+
+    /** True when an upward swipe owns this gesture (it types the corner mark). */
+    var hintMode: Boolean = false
         private set
 
     private var downX = 0f
@@ -66,6 +75,7 @@ internal class SpaceVoiceGestureController(
         trackingTouch = true
         active = false
         cursorMode = false
+        hintMode = false
         this.anchor = anchor
         this.pointerId = pointerId
         downX = rawX
@@ -85,6 +95,21 @@ internal class SpaceVoiceGestureController(
         if (!active) {
             val horizontal = rawX - downX
             val vertical = rawY - downY
+            // Upward movement belongs to the corner mark on the surfaces that
+            // have one: it must win before the cursor drag is considered.
+            if (
+                !cursorMode &&
+                !hintMode &&
+                hintSwipeEnabled() &&
+                -vertical >= toPx(HINT_SWIPE_START_DP) &&
+                -vertical > abs(horizontal) * 1.25f
+            ) {
+                hintMode = true
+                handler.removeCallbacks(armVoice)
+                anchor?.isPressed = false
+                return true
+            }
+
             if (
                 !cursorMode &&
                 abs(horizontal) >= toPx(CURSOR_MODE_START_DP) &&
@@ -135,6 +160,21 @@ internal class SpaceVoiceGestureController(
         if (!trackingTouch) return false
         handler.removeCallbacks(armVoice)
 
+        if (hintMode) {
+            hintMode = false
+            trackingTouch = false
+            active = false
+            pointerId = -1
+            downX = 0f
+            downY = 0f
+            lastX = 0f
+            cursorTravel = 0f
+            cancelPreview = false
+            anchor = null
+            if (!cancelled) onHintSwipe()
+            return true
+        }
+
         if (cursorMode) {
             endCursorMode()
             trackingTouch = false
@@ -181,6 +221,7 @@ internal class SpaceVoiceGestureController(
         trackingTouch = false
         active = false
         cursorMode = false
+        hintMode = false
         pointerId = -1
         downX = 0f
         downY = 0f
@@ -206,6 +247,7 @@ internal class SpaceVoiceGestureController(
         const val CANCEL_ENTER_DISTANCE_DP = 72
         const val CANCEL_EXIT_DISTANCE_DP = 48
         const val CURSOR_MODE_START_DP = 18
+        const val HINT_SWIPE_START_DP = 18
         const val CURSOR_STEP_DP = 12
     }
 }

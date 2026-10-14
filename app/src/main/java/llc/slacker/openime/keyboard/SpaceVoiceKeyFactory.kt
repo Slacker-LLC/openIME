@@ -9,7 +9,7 @@ import llc.slacker.openime.widget.ImeKeyView
  */
 internal class SpaceVoiceKeyFactory(
     private val gestureController: SpaceVoiceGestureController,
-    private val createBaseKey: (String, () -> Unit) -> ImeKeyView,
+    private val createBaseKey: (label: String, secondary: String?, onTap: () -> Unit) -> ImeKeyView,
     private val canStartVoice: () -> Boolean,
     private val markWhiteKey: (ImeKeyView) -> Unit,
     private val onFeedback: () -> Unit,
@@ -19,10 +19,11 @@ internal class SpaceVoiceKeyFactory(
         label: String,
         white: Boolean,
         onTap: () -> Unit,
+        hint: String? = null,
     ): ImeKeyView {
         var suppressNextTap = false
         var physicalTouchSequenceActive = false
-        return createBaseKey(label) {
+        return createBaseKey(label, hint) {
             if (suppressNextTap) {
                 suppressNextTap = false
             } else {
@@ -30,7 +31,15 @@ internal class SpaceVoiceKeyFactory(
             }
         }.apply {
             tag = "key-space"
-            contentDescription = "$label，点击空格，左右滑动移动光标，长按语音输入"
+            contentDescription = if (hint == null) {
+                "$label，点击空格，左右滑动移动光标，长按语音输入"
+            } else {
+                "$label，点击空格，上滑输入$hint，左右滑动移动光标，长按语音输入"
+            }
+            if (hint != null) {
+                setSecondaryVisible(true)
+                setSecondaryAlpha(1f)
+            }
 
             setOnLongClickListener {
                 if (!canStartVoice()) return@setOnLongClickListener true

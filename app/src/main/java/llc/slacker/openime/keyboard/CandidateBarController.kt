@@ -340,7 +340,9 @@ internal class CandidateBarController(
                     textSize = ImeTypographyTokens.CANDIDATE_SP
                     maxLines = 1
                     includeFontPadding = false
-                    setPadding(toPx(12), 0, toPx(12), 0)
+                    // The reference item pads 2.7% of the strip per side and
+                    // adds 4 units between items; 8dp keeps that rhythm.
+                    setPadding(toPx(8), 0, toPx(8), 0)
                     isClickable = false
                     importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                 },

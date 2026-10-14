@@ -158,6 +158,9 @@ open class ImeKeyboardView(
         /** How often a deferred row rebuild re-checks whether the press ended. */
         private const val ROW_REBUILD_POLL_MS = 40L
 
+        /** Surfaces whose space bar carries the reference keyboard's 0 mark. */
+        private val SPACE_HINT_MODES = setOf(KeyboardMode.PINYIN_9, KeyboardMode.STROKE)
+
         /** Slider drags preview the strength at most this often. */
         private const val STRENGTH_PREVIEW_INTERVAL_MS = 80L
 
@@ -210,6 +213,12 @@ open class ImeKeyboardView(
         },
         onCursorStep = ::moveCursorFromSpace,
         onCursorModeChanged = ::lockBottomRowForCursorDrag,
+        // The reference keyboard prints 0 on the nine-key and stroke space bar
+        // and types it on an up swipe; the 26-key space bar has no corner mark.
+        hintSwipeEnabled = {
+            mode in SPACE_HINT_MODES && ImeSettingsRepository.loadSwipeUpDigits(context)
+        },
+        onHintSwipe = { commitKeyboardCharacter("0") },
     )
 
     /**
@@ -242,11 +251,12 @@ open class ImeKeyboardView(
     private val spaceVoiceKeyFactory: SpaceVoiceKeyFactory by lazy {
         SpaceVoiceKeyFactory(
             gestureController = spaceVoiceGestureController,
-            createBaseKey = { label, onTap ->
+            createBaseKey = { label, secondary, onTap ->
                 key(
                     text = label,
                     func = true,
-                    secondary = null,
+                    secondary = secondary,
+                    allowSecondary = true,
                     mainTextSizeOverride = ImeTypographyTokens.BODY_SP,
                     iconRes = R.drawable.ic_mic,
                     onTap = {
@@ -522,7 +532,7 @@ open class ImeKeyboardView(
             },
             createBackspaceKey = ::backspaceKey,
             createSpaceVoiceKey = { label, onTap ->
-                spaceVoiceKey(label, white = true, onTap = onTap)
+                spaceVoiceKey(label, white = true, onTap = onTap, hint = "0")
             },
             createSymbolRail = { requireNineKeySymbolRailController().buildRail() },
             markSideKey = { key -> key.setTag(MARK_SIDE_KEY, true) },
@@ -564,7 +574,7 @@ open class ImeKeyboardView(
             },
             createBackspaceKey = ::backspaceKey,
             createSpaceVoiceKey = { label, onTap ->
-                spaceVoiceKey(label, white = true, onTap = onTap)
+                spaceVoiceKey(label, white = true, onTap = onTap, hint = "0")
             },
             // The nine-key rail: stroke glyphs are not digits, so it stays on symbols.
             createSymbolRail = { requireNineKeySymbolRailController().buildRail() },
@@ -2385,11 +2395,13 @@ open class ImeKeyboardView(
         label: String = "空格",
         white: Boolean = false,
         onTap: () -> Unit,
+        hint: String? = null,
     ): ImeKeyView =
         spaceVoiceKeyFactory.build(
             label = label,
             white = white,
             onTap = onTap,
+            hint = hint,
         )
 
     /** Starts recording after the combined space key crosses the long-press threshold. */
@@ -3340,12 +3352,14 @@ open class ImeKeyboardView(
         weight: Float = 1f,
         mainTextSizeOverride: Float? = null,
         iconRes: Int = 0,
+        /** The space bar is a function key with the reference keyboard's 0 mark. */
+        allowSecondary: Boolean = false,
         onTap: () -> Unit,
     ): ImeKeyView {
         return ImeKeyView(
             context,
             text = text,
-            secondary = if (func) null else secondary,
+            secondary = if (func && !allowSecondary) null else secondary,
             iconRes = iconRes,
             mainTextSize = mainTextSizeOverride ?: if (func) {
                 ImeTypographyTokens.BODY_SP

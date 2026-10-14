@@ -108,29 +108,23 @@ internal class Pinyin9KeyboardRenderer(
             orientation = LinearLayout.VERTICAL
             tag = "pinyin9-actions"
         }
-        // Keep the zero key separate from retype and enter, as on the phone keypad.
-        side.addView(createBackspaceKey().apply { markSideKey(this) }, sideKeyParams(nineBodyHeightDp() / 4))
+        // Delete, retype and send, with send twice as tall, as the reference
+        // keyboard draws this column; the 0 sits on the space bar's corner.
+        val quarter = nineBodyHeightDp() / 4
+        side.addView(createBackspaceKey().apply { markSideKey(this) }, sideKeyParams(quarter))
         side.addView(
             createKey("重输", true, null, ImeTypographyTokens.BODY_SP, onRetranslate).apply {
                 tag = "key-retype"
                 markSideKey(this)
             },
-            sideKeyParams(nineBodyHeightDp() / 4),
-        )
-        side.addView(
-            createKey("0", true, null, ImeTypographyTokens.KEY_LETTER_SP) { onCommitCharacter("0") }.apply {
-                tag = "key-9:0"
-                contentDescription = "0"
-                markSideKey(this)
-            },
-            sideKeyParams(nineBodyHeightDp() / 4),
+            sideKeyParams(quarter),
         )
         side.addView(
             createKey(enterLabel, true, null, ImeTypographyTokens.BODY_SP, onEnter).apply {
                 tag = "key-enter"
                 markSideKey(this)
             },
-            sideKeyParams(nineBodyHeightDp() / 4),
+            sideKeyParams(quarter * 2),
         )
         if (splitLayout()) {
             // Keep all Chinese keys in their familiar three-by-three order.

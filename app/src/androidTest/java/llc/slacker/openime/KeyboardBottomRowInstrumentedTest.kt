@@ -8,6 +8,8 @@ import llc.slacker.openime.core.KeyboardMode
 import llc.slacker.openime.keyboard.ImeKeyboardView
 import llc.slacker.openime.voice.VoiceModelLifecycleState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -75,6 +77,42 @@ class KeyboardBottomRowInstrumentedTest {
             assertEquals(mode.width.toFloat(), punctuation.width.toFloat(), tolerance)
             assertEquals(digits.width.toFloat(), enter.width.toFloat(), tolerance)
             assertTrue("the mode key must be narrower than the digits key", mode.width < digits.width)
+            true
+        }
+    }
+
+    /** The reference draws this column as delete, retype and a send key twice as tall. */
+    @Test
+    fun theNineKeySideColumnIsDeleteRetypeAndATallSend() = withKeyboard { harness, _, keyboard ->
+        listOf(KeyboardMode.PINYIN_9, KeyboardMode.STROKE).forEach { mode ->
+            harness.awaitMain { keyboard.setMode(KeyboardMode.DIGITS); keyboard.setMode(mode); true }
+            settled(harness, keyboard, "key-space")
+            val ok = harness.awaitMain {
+                assertNull("$mode has no separate zero key", keyboard.findViewWithTag<View>("key-9:0"))
+                val retype = keyboard.findViewWithTag<View>("key-retype")
+                val enter = keyboard.findViewWithTag<View>("key-enter")
+                val backspace = keyboard.findViewWithTag<View>("key-backspace")
+                assertNotNull("$mode retype", retype)
+                assertNotNull("$mode send", enter)
+                assertNotNull("$mode delete", backspace)
+                assertEquals("$mode delete matches retype", retype.height.toFloat(), backspace.height.toFloat(), 2f)
+                assertEquals("$mode send is twice as tall", (retype.height * 2).toFloat(), enter.height.toFloat(), 2f)
+                true
+            }
+            check(ok)
+        }
+    }
+
+    /** The reference widens A and L by half a letter (weight 15 against 10). */
+    @Test
+    fun theEdgeLetterKeysAreHalfALetterWider() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain { keyboard.setMode(KeyboardMode.PINYIN_26); true }
+        settled(harness, keyboard, "key:q")
+        harness.awaitMain {
+            fun width(tag: String) = keyboard.findViewWithTag<View>(tag).width
+            assertEquals("A is half a letter wider", width("key:s") * 1.5f, width("key:a").toFloat(), 2f)
+            assertEquals("L is half a letter wider", width("key:s") * 1.5f, width("key:l").toFloat(), 2f)
+            assertEquals("the middle letters stay equal", width("key:s"), width("key:d"))
             true
         }
     }

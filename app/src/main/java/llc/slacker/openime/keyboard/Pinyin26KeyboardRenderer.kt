@@ -61,19 +61,22 @@ internal class Pinyin26KeyboardRenderer(
             if (rowIndex == 2) {
                 row.addView(
                     shiftKey(shiftState),
-                    flexKeyParams(1.25f),
+                    flexKeyParams(EDGE_KEY_WEIGHT),
                 )
             }
 
-            rowText.forEach { character ->
+            rowText.forEachIndexed { index, character ->
+                // The reference widens A and L by half a letter (weight 15
+                // against 10) and the function keys of the last row likewise.
+                val wide = rowIndex == 1 && (index == 0 || index == rowText.lastIndex)
                 row.addView(
                     letterKey(character, english, shiftState),
-                    flexKeyParams(),
+                    flexKeyParams(if (wide) EDGE_KEY_WEIGHT else 1f),
                 )
             }
 
             if (rowIndex == 2) {
-                row.addView(createBackspaceKey(), flexKeyParams(1.25f))
+                row.addView(createBackspaceKey(), flexKeyParams(EDGE_KEY_WEIGHT))
             }
             keyboardBody.addView(row, rowParams())
         }
@@ -248,6 +251,9 @@ internal class Pinyin26KeyboardRenderer(
 
     private companion object {
         const val SPLIT_GAP = 3.5f
+
+        /** The reference skin's weight 15 against a letter's 10. */
+        const val EDGE_KEY_WEIGHT = 1.5f
         val ROWS = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
     }
 }
