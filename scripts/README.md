@@ -28,6 +28,18 @@ The script changes and restores rotation, font scale, resolution and dark mode:
 python3 scripts/display_matrix_regression.py --serial <serial> [case ...]
 ```
 
+## Voice face
+
+The character in the voice panel is drawn with `android.graphics`, so only a device shows what it
+looks like. One instrumentation test paints every state of a voice session and writes a picture of
+each. This runs that test alone and collects the pictures:
+
+```bash
+bash scripts/voice_face_capture.sh [serial]
+```
+
+The pictures land in `build/voice-face/`, one per state, named after the state.
+
 ## Device tests
 
 ```powershell
