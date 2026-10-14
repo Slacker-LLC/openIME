@@ -477,22 +477,18 @@ internal class ImePanelRenderer(
         notifyRebuilt: Boolean,
     ) {
         body.removeAllViews()
-        val categories = SymbolCatalog.CATEGORIES
-        body.orientation = LinearLayout.HORIZONTAL
-        body.setPadding(toPx(8), toPx(5), toPx(4), 0)
-        val categoryColumn = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        categories.forEach { category ->
-            categoryColumn.addView(filterChip(category, category == symbolCategory) {
-                if (category != symbolCategory) {
-                    symbolCategory = category
-                    renderSymbolContent(body, notifyRebuilt = true)
-                }
-            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(44)))
-        }
-        body.addView(panelVerticalScroll(categoryColumn, "symbol-categories"),
-            LinearLayout.LayoutParams(toPx(74), LinearLayout.LayoutParams.MATCH_PARENT).apply { marginEnd = toPx(5) })
+        body.orientation = LinearLayout.VERTICAL
+        body.setPadding(toPx(8), toPx(5), toPx(4), toPx(4))
+
         val content = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        body.addView(content, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
+        body.addView(
+            content,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f,
+            ),
+        )
         if (symbolCategory == "自定义") {
             content.addView(
                 createPanelButton("管理自定义符号", ImeTypographyTokens.BODY_SP, true).apply {
@@ -528,7 +524,9 @@ internal class ImePanelRenderer(
             )
         }
         // Kaomoji and other long items get three wide cells a row and a smaller
-        // size; five narrow cells cut (づ｡◕‿‿◕｡)づ down to "(づ｡".
+        // size; five narrow cells cut (づ｡◕‿‿◕｡)づ down to "(づ｡". The reference
+        // halves its symbol cells to ten a row (`input_kbd_symbol.xml:6-15`),
+        // which our touch-target floor does not allow.
         val wide = items.any { it.codePointCount(0, it.length) > WIDE_SYMBOL_CODE_POINTS }
         val columns = if (wide) 3 else 5
         val textSize = if (wide) ImeTypographyTokens.BODY_SP else ImeTypographyTokens.KEY_LETTER_SP
@@ -565,6 +563,22 @@ internal class ImePanelRenderer(
                 0,
                 1f,
             ),
+        )
+
+        // The reference keeps this page's category strip in its bottom row,
+        // beside the return key (`input_kbd_symbol.xml:44-47`, weight 85 against
+        // the key's 13.1, `cls_symbol_tab_container`, `style.xml:707-710`).
+        body.addView(
+            panelChipScroll(SymbolCatalog.CATEGORIES, symbolCategory, { category ->
+                if (category != symbolCategory) {
+                    symbolCategory = category
+                    renderSymbolContent(body, notifyRebuilt = true)
+                }
+            }, heightDp = 32),
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                toPx(32),
+            ).apply { bottomMargin = toPx(6) },
         )
         applyTheme()
         if (notifyRebuilt) onHierarchyRebuilt()
