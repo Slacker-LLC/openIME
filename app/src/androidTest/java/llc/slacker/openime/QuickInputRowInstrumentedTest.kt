@@ -11,9 +11,11 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import llc.slacker.openime.keyboard.ImeKeyboardView
 import llc.slacker.openime.keyboard.QuickInputRowPolicy
 import llc.slacker.openime.theme.ImeAppearance
+import llc.slacker.openime.theme.ImeReferenceSizing
 import llc.slacker.openime.theme.ImeTheme
 import llc.slacker.openime.theme.ImeTypographyTokens
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -38,7 +40,10 @@ class QuickInputRowInstrumentedTest {
         if (method.returnType == java.lang.Boolean.TYPE) false else null
     } as ImeKeyboardView.Listener
 
-    private fun withClipboard(text: String, test: (ImeKeyboardView, (String) -> Unit) -> Unit) {
+    private fun withClipboard(
+        text: String,
+        test: (DirectActivityHarness<DebugKeyboardActivity>, ImeKeyboardView, (String) -> Unit) -> Unit,
+    ) {
         DirectActivityHarness(DebugKeyboardActivity::class.java).use { harness ->
             harness.launch()
             val keyboard = harness.awaitMain { activity ->
@@ -80,7 +85,7 @@ class QuickInputRowInstrumentedTest {
                     val icon = keyboard.findViewWithTag<View>("suggestion-icon")
                     if ((icon?.height ?: 0) > 0) true else null
                 }
-                harness.awaitMain { test(keyboard, copy); true }
+                test(harness, keyboard, copy)
             } finally {
                 harness.awaitMain {
                     keyboard.shutdown()
@@ -93,27 +98,33 @@ class QuickInputRowInstrumentedTest {
 
     @Test
     fun theClipboardSuggestionIsTheReferencesOwnRow() {
-        withClipboard("hello from the clipboard") { keyboard, _ ->
-            val row = keyboard.findViewWithTag<View>("suggestion-row")
+        withClipboard("hello from the clipboard") { harness, keyboard, _ ->
+            val row = harness.awaitMain { keyboard.findViewWithTag<View>("suggestion-row") }
             assertNotNull("A copied text must offer a row", row)
-            val label = keyboard.findViewWithTag<TextView>("suggestion-text")
+            val label = harness.awaitMain { keyboard.findViewWithTag<TextView>("suggestion-text") }
             assertNotNull("The row carries the text itself", label)
+            // Every text outside a key cap is drawn at the reference scale's
+            // size, so the row reads at the candidate font as drawn.
             assertEquals(
                 "The quick-input text reads at the candidate font",
-                ImeTypographyTokens.CANDIDATE_SP,
-                label!!.textSize / keyboard.resources.displayMetrics.scaledDensity,
+                ImeTypographyTokens.CANDIDATE_SP *
+                    ImeReferenceSizing.scale(keyboard.context, keyboard.width),
+                harness.awaitMain { label!!.textSize / keyboard.resources.displayMetrics.scaledDensity },
                 0.5f,
             )
-            assertNotNull("and the glyph that says where it came from", keyboard.findViewWithTag<View>("suggestion-icon"))
-            val badge = keyboard.findViewWithTag<View>("suggestion-icon")!!
+            assertNotNull(
+                "and the glyph that says where it came from",
+                harness.awaitMain { keyboard.findViewWithTag<View>("suggestion-icon") },
+            )
+            val badge = harness.awaitMain { keyboard.findViewWithTag<View>("suggestion-icon")!! }
             assertEquals(
                 "The glyph rides at `fi_toolbar_tip_superscript` against the candidate font",
-                (label.textSize * QuickInputRowPolicy.BADGE_FONT_RATIO + 0.5f).toInt().toLong(),
+                (label!!.textSize * QuickInputRowPolicy.BADGE_FONT_RATIO + 0.5f).toInt().toLong(),
                 badge.height.toLong(),
             )
             assertTrue(
                 "as a superscript above the text, not a centred icon",
-                badge.top - row.top < row.height / 2,
+                badge.top - row!!.top < row.height / 2,
             )
             val tokens = ImeTheme.IOS.tokens(ImeAppearance.LIGHT)
             assertEquals(
@@ -121,44 +132,51 @@ class QuickInputRowInstrumentedTest {
                 tokens.candidateText,
                 label.currentTextColor,
             )
-            val close = keyboard.findViewWithTag<View>("autofill-close")
+            val close = harness.awaitMain { keyboard.findViewWithTag<View>("autofill-close") }
             assertNotNull("The row ends with the reference's close key", close)
-            assertEquals(View.VISIBLE, close.visibility)
-            assertEquals(
+            assertEquals(View.VISIBLE, harness.awaitMain { close!!.visibility })
+            assertFalse(
                 "The strip's back control belongs to the system's chips",
-                View.GONE,
-                keyboard.findViewWithTag<View>("association-back")?.visibility,
+                harness.awaitMain {
+                    keyboard.findViewWithTag<View>("association-back")?.visibility == View.VISIBLE
+                },
             )
         }
     }
 
     @Test
     fun tappingTheRowTypesTheTextAndTheCloseKeyDropsIt() {
-        withClipboard("123456", { keyboard, copy ->
+        withClipboard("123456") { harness, keyboard, copy ->
             characters.clear()
-            keyboard.findViewWithTag<View>("suggestion-row")!!.performClick()
+            harness.awaitMain {
+                keyboard.findViewWithTag<View>("suggestion-row")!!.performClick()
+                true
+            }
             assertTrue("A tap types the copied text", characters.contains("123456"))
-            assertNull(
+            assertTrue(
                 "The row goes away with the tap",
-                keyboard.findViewWithTag<View>("suggestion-row"),
+                harness.awaitMain { keyboard.findViewWithTag<View>("suggestion-row") == null },
             )
             // A later copy is a new suggestion, so the row is back.
             copy("654321")
-            keyboard.refreshSuggestions()
+            harness.awaitMain { keyboard.refreshSuggestions(); true }
             assertNotNull(
                 "A fresh copy brings the row back",
-                keyboard.findViewWithTag<View>("suggestion-row"),
+                harness.awaitMain { keyboard.findViewWithTag<View>("suggestion-row") },
             )
-            keyboard.findViewWithTag<View>("autofill-close")!!.performClick()
-            assertNull(
+            harness.awaitMain {
+                keyboard.findViewWithTag<View>("autofill-close")!!.performClick()
+                true
+            }
+            assertTrue(
                 "The close key drops the row for this text",
-                keyboard.findViewWithTag<View>("suggestion-row"),
+                harness.awaitMain { keyboard.findViewWithTag<View>("suggestion-row") == null },
             )
-            keyboard.refreshSuggestions()
-            assertNull(
+            harness.awaitMain { keyboard.refreshSuggestions(); true }
+            assertTrue(
                 "and keeps it away until the clipboard changes",
-                keyboard.findViewWithTag<View>("suggestion-row"),
+                harness.awaitMain { keyboard.findViewWithTag<View>("suggestion-row") == null },
             )
-        })
+        }
     }
 }

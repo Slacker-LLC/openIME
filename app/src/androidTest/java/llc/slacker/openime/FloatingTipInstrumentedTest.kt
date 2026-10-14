@@ -6,6 +6,7 @@ import android.widget.TextView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import llc.slacker.openime.keyboard.ImeKeyboardView
 import llc.slacker.openime.keyboard.ToolbarTipPolicy
+import llc.slacker.openime.theme.ImeReferenceSizing
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -35,7 +36,7 @@ class FloatingTipInstrumentedTest {
             }
             try {
                 harness.awaitMain { if (keyboard.width > 0) true else null }
-                harness.awaitMain { test(harness, keyboard); true }
+                test(harness, keyboard)
             } finally {
                 harness.awaitMain {
                     keyboard.shutdown()
@@ -57,32 +58,38 @@ class FloatingTipInstrumentedTest {
     @Test
     fun theFloatingKeyboardOpensWithTheTipBanner() {
         withKeyboard { harness, keyboard ->
-            assertEquals(View.GONE, tip(keyboard)?.visibility)
+            assertEquals(View.GONE, harness.awaitMain { tip(keyboard)?.visibility })
             showFloatingTip(harness, keyboard)
-            assertEquals(View.VISIBLE, tip(keyboard)?.visibility)
-            val label = keyboard.findViewWithTag<TextView>("toolbar-tip-label")
+            assertEquals(View.VISIBLE, harness.awaitMain { tip(keyboard)?.visibility })
+            val label = harness.awaitMain { keyboard.findViewWithTag<TextView>("toolbar-tip-label") }
             assertNotNull("The banner says what the handle does", label)
             assertTrue(
                 "Our tip names our own way back to the docked keyboard",
-                label.text.toString().contains("把手"),
+                label!!.text.toString().contains("把手"),
             )
-            assertNotNull("The banner keeps the reference's round close key", keyboard.findViewWithTag<View>("toolbar-tip-close"))
+            assertNotNull(
+                "The banner keeps the reference's round close key",
+                harness.awaitMain { keyboard.findViewWithTag<View>("toolbar-tip-close") },
+            )
         }
     }
 
     @Test
     fun theCloseKeySettlesTheTipForTheStayAfloat() {
-        withKeyboard { _, keyboard ->
-            keyboard.setFloatingWindowMode(true)
-            keyboard.findViewWithTag<View>("toolbar-tip-close")!!.performClick()
-            assertEquals(View.GONE, tip(keyboard)?.visibility)
+        withKeyboard { harness, keyboard ->
+            harness.awaitMain { keyboard.setFloatingWindowMode(true); true }
+            harness.awaitMain {
+                keyboard.findViewWithTag<View>("toolbar-tip-close")!!.performClick()
+                true
+            }
+            assertEquals(View.GONE, harness.awaitMain { tip(keyboard)?.visibility })
             // A later floating update keeps it away: the user has read it.
-            keyboard.setFloatingWindowMode(true, compact = true)
-            assertEquals(View.GONE, tip(keyboard)?.visibility)
+            harness.awaitMain { keyboard.setFloatingWindowMode(true, compact = true); true }
+            assertEquals(View.GONE, harness.awaitMain { tip(keyboard)?.visibility })
             // Docking and floating again shows it once more.
-            keyboard.setFloatingWindowMode(false)
-            keyboard.setFloatingWindowMode(true)
-            assertEquals(View.VISIBLE, tip(keyboard)?.visibility)
+            harness.awaitMain { keyboard.setFloatingWindowMode(false); true }
+            harness.awaitMain { keyboard.setFloatingWindowMode(true); true }
+            assertEquals(View.VISIBLE, harness.awaitMain { tip(keyboard)?.visibility })
         }
     }
 
@@ -90,13 +97,13 @@ class FloatingTipInstrumentedTest {
     fun theTipTakesTheRowButNotTheCollectKey() {
         withKeyboard { harness, keyboard ->
             showFloatingTip(harness, keyboard)
-            assertEquals(View.VISIBLE, tip(keyboard)?.visibility)
-            val hide = keyboard.findViewWithTag<View>("keyboard-hide")
+            assertEquals(View.VISIBLE, harness.awaitMain { tip(keyboard)?.visibility })
+            val hide = harness.awaitMain { keyboard.findViewWithTag<View>("keyboard-hide") }
             assertNotNull("The collect-the-keyboard key stays reachable", hide)
-            assertEquals(View.VISIBLE, hide.visibility)
+            assertEquals(View.VISIBLE, harness.awaitMain { hide!!.visibility })
             assertTrue(
                 "The banner is wider than a toolbar icon: it takes the row",
-                tip(keyboard)!!.width > hide.width,
+                harness.awaitMain { (tip(keyboard)?.width ?: 0) > hide.width },
             )
         }
     }
@@ -105,24 +112,24 @@ class FloatingTipInstrumentedTest {
     fun theBannerKeepsTheReferencesOwnProportions() {
         withKeyboard { harness, keyboard ->
             showFloatingTip(harness, keyboard)
-            val strip = tip(keyboard)!!
-            val row = keyboard.findViewWithTag<View>("toolbar-row")!!
+            val strip = harness.awaitMain { tip(keyboard)!! }
+            val row = harness.awaitMain { keyboard.findViewWithTag<View>("toolbar-row")!! }
             val density = keyboard.resources.displayMetrics.density
             assertEquals(
                 "The container keeps its own 3.333% padding",
                 (row.width * ToolbarTipPolicy.CONTAINER_PAD_FRACTION).toInt().toLong(),
                 strip.paddingLeft.toLong(),
             )
-            val lead = keyboard.findViewWithTag<View>("toolbar-tip-lead")!!
+            val lead = harness.awaitMain { keyboard.findViewWithTag<View>("toolbar-tip-lead")!! }
             assertEquals(
                 "`width_weight=\"0.03571\"` before the label",
                 (row.width * ToolbarTipPolicy.LEAD_WEIGHT).toInt().toLong(),
                 lead.width.toLong(),
             )
-            val close = keyboard.findViewWithTag<View>("toolbar-tip-close")!!
+            val close = harness.awaitMain { keyboard.findViewWithTag<View>("toolbar-tip-close")!! }
             assertEquals(
                 "The close key keeps the 48dp touch target",
-                (48 * density).toInt().toLong(),
+                (48 * density * ImeReferenceSizing.scale(keyboard.context, keyboard.width) + 0.5f).toInt().toLong(),
                 close.width.toLong(),
             )
         }

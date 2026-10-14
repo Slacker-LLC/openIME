@@ -49,7 +49,7 @@ class KeyMarginsInstrumentedTest {
             }
             try {
                 harness.awaitMain { if (keyboard.width > 0) true else null }
-                harness.awaitMain { test(harness, keyboard); true }
+                test(harness, keyboard)
             } finally {
                 harness.awaitMain {
                     keyboard.shutdown()
@@ -165,9 +165,15 @@ class KeyMarginsInstrumentedTest {
             }
             // A panel's keys are the reference's own 26-key key whatever board
             // it was opened from (`cls_symbol_keyboard_button`, `style.xml:1332`).
-            val symbol = allViews(keyboard)
-                .filterIsInstance<ImeKeyView>()
-                .firstOrNull { it.isShown && it.width > 0 && capInsets(it).left > 0 }
+            // The page is laid out on the frame after it opens, so wait for its
+            // first key to have a size.
+            val symbol = harness.awaitMain {
+                allViews(keyboard)
+                    .filterIsInstance<ImeKeyView>()
+                    .firstOrNull {
+                        it.isShown && it.width > 0 && it.background is InsetDrawable && capInsets(it).left > 0
+                    }
+            }
             assertNotNull("the symbol page carries keys", symbol)
             assertMargins(
                 keyboard,

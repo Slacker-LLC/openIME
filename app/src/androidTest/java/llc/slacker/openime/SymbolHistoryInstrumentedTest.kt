@@ -66,6 +66,9 @@ class SymbolHistoryInstrumentedTest {
 
     @Test
     fun theSymbolBoardListsTheSymbolsTheUserTyped() {
+        // The store outlives this class: another test that commits a symbol
+        // through the service leaves its own entry behind.
+        SymbolRecentRepository.clear(context)
         SymbolRecentRepository.record(context, "★")
         SymbolRecentRepository.record(context, "→")
         withKeyboard { keyboard ->
