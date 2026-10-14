@@ -96,7 +96,8 @@ internal class ImeTopZone(
     private lateinit var compactToolbarIcons: List<View>
     private var compact = false
     private lateinit var keyboardHide: View
-    private val toolbarSpacer = View(context)
+    private lateinit var toolbarIconScroll: HorizontalScrollView
+    private val toolbarStripSpacer = View(context)
     private lateinit var associationScroll: HorizontalScrollView
     private var toolbarMode = ToolbarMode.NORMAL
     private var associationsShown = false
@@ -135,21 +136,56 @@ internal class ImeTopZone(
             setPadding(toPx(6), 0, toPx(6), 0)
             minimumHeight = toPx(ImeGeometryTokens.TOOLBAR_HEIGHT_DP)
         }
-        val keyboardIcon = toolbarIcon(R.drawable.ic_keyboard, "切换键盘", "keyboard-selector", onKeyboardSelect)
         val clipboardIcon = toolbarIcon(R.drawable.ic_clipboard, "剪贴板", "clipboard-toolbar", onClipboard)
-        val phraseIcon = toolbarIcon(R.drawable.ic_bubble, "常用语", "quick-phrase-toolbar", onQuickPhrases)
         val emojiIcon = toolbarIcon(R.drawable.ic_emoji, "表情", "toolbar", onEmoji)
+        val phraseIcon = toolbarIcon(R.drawable.ic_bubble, "常用语", "quick-phrase-toolbar", onQuickPhrases)
+        val keyboardIcon = toolbarIcon(R.drawable.ic_keyboard, "切换键盘", "keyboard-selector", onKeyboardSelect)
         val textEditIcon = toolbarIcon(R.drawable.ic_text_cursor, "文本编辑", "toolbar", onTextEditor)
         val undoIcon = toolbarIcon(R.drawable.ic_undo, "撤销", "undo-toolbar") { onUndo() }
         splitIcon = toolbarIcon(R.drawable.ic_keyboard_split, "左右分离键盘", "split-toggle") { onSplitToggle() }
         val toolsIcon = toolbarIcon(R.drawable.ic_grid, "更多", "toolbar", onTools)
-        // Docked keeps the full toolbar. Floating (game) mode drops text editing
-        // and undo and puts quick phrases one tap away.
-        toolbarIcons = listOf(keyboardIcon, clipboardIcon, emojiIcon, textEditIcon, undoIcon, toolsIcon)
-        compactToolbarIcons = listOf(keyboardIcon, phraseIcon, emojiIcon, toolsIcon)
-        (toolbarIcons + phraseIcon + splitIcon).distinct().forEach {
-            toolbarRow.addView(it, LinearLayout.LayoutParams(toPx(TOOLBAR_BUTTON_UNITS), toPx(48)))
+        // The reference's own idle order, for the tools we show: clipboard,
+        // emoji, then the board selector (`input_toolbar_idle.xml:21-25`). Our
+        // own extras follow them. Floating (game) mode keeps the compact set,
+        // where quick phrases take the clipboard's place.
+        toolbarIcons = listOf(
+            clipboardIcon,
+            emojiIcon,
+            keyboardIcon,
+            textEditIcon,
+            undoIcon,
+            toolsIcon,
+        )
+        compactToolbarIcons = listOf(emojiIcon, phraseIcon, keyboardIcon, toolsIcon)
+
+        // The strip scrolls when the tools do not fit, as the reference's own
+        // toolbar strip does (`sliderenable="true" sliderstopslowdown="true"`,
+        // `input_toolbar_idle.xml:14`), and its slack sits in a spacer at the end
+        // of the strip (`toolbar_right_spacer`, line 34).
+        val strip = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            tag = "toolbar-icon-strip"
         }
+        (toolbarIcons + compactToolbarIcons + splitIcon).distinct().forEach {
+            strip.addView(it, LinearLayout.LayoutParams(toPx(TOOLBAR_BUTTON_UNITS), toPx(48)))
+        }
+        toolbarStripSpacer.apply { tag = "toolbar-strip-spacer" }
+        strip.addView(toolbarStripSpacer, LinearLayout.LayoutParams(0, 1, 1f))
+        toolbarIconScroll = HorizontalScrollView(context).apply {
+            tag = "toolbar-icon-scroll"
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            isFillViewport = true
+            addView(
+                strip,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    toPx(48),
+                ),
+            )
+        }
+        toolbarRow.addView(toolbarIconScroll, LinearLayout.LayoutParams(0, toPx(48), 1f))
 
         // Association state: "‹  words…  ∨". The back control and the hide
         // control are fixed-width; the words take the rest of the row.
@@ -222,11 +258,6 @@ internal class ImeTopZone(
         // of the strip empty: `btn_hide` stays its own button on the right
         // (`input_toolbar_idle.xml:41-43`, `cls_toolbar_idle_button` width 40,
         // `style.xml:237-248`).
-        toolbarSpacer.apply {
-            tag = "toolbar-spacer"
-            visibility = View.VISIBLE
-        }
-        toolbarRow.addView(toolbarSpacer, LinearLayout.LayoutParams(0, toPx(48), 1f))
         keyboardHide = toolbarIcon(R.drawable.ic_chevron_down, "收起键盘", "keyboard-hide", onHideKeyboard)
         toolbarRow.addView(
             keyboardHide,
@@ -657,14 +688,13 @@ internal class ImeTopZone(
         associationScroll.visibility = if (association) View.VISIBLE else View.GONE
         autofillScroll.visibility = if (autofill) View.VISIBLE else View.GONE
         keyboardHide.visibility = View.VISIBLE
-        // The slack of the strip belongs to the spacer before 收起, so the icons
-        // and the hide key keep the reference's own width. A strip or the
-        // autofill chips take the slack instead.
-        (toolbarSpacer.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+        // The icons keep the reference's own width and their own row takes the
+        // slack; a suggestion strip or the autofill chips take it instead.
+        (toolbarIconScroll.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
             val flexible = normal
             params.width = 0
             params.weight = if (flexible) 1f else 0f
-            toolbarSpacer.layoutParams = params
+            toolbarIconScroll.layoutParams = params
         }
     }
 

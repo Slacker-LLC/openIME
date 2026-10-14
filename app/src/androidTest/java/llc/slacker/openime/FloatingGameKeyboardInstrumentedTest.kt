@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.DisplayMetrics
+import android.widget.HorizontalScrollView
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -77,10 +78,42 @@ class FloatingGameKeyboardInstrumentedTest {
     private fun View.visibleByTag(tag: String): Boolean =
         findViewWithTag<View>(tag)?.visibility == View.VISIBLE
 
+    /** The icons live in the toolbar's own scrolling strip, so search the row's subtree. */
     private fun View.toolbarIconByDescription(description: String): View? {
         val row = findViewWithTag<ViewGroup>("toolbar-row") ?: return null
-        return (0 until row.childCount).map(row::getChildAt)
-            .firstOrNull { it.contentDescription == description }
+        fun find(view: View): View? {
+            if (view.contentDescription == description) return view
+            if (view is ViewGroup) {
+                for (index in 0 until view.childCount) find(view.getChildAt(index))?.let { return it }
+            }
+            return null
+        }
+        return find(row)
+    }
+
+    /** The idle row is the reference's own order, in the reference's own scrolling strip. */
+    @Test
+    fun theIdleIconsFollowTheReferencesOrderInsideAScrollingStrip() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            val strip = keyboard.findViewWithTag<ViewGroup>("toolbar-icon-strip") ?: return@awaitMain null
+            val scroll = keyboard.findViewWithTag<View>("toolbar-icon-scroll")
+            assertTrue(
+                "The idle row must scroll like the reference's own strip",
+                scroll is HorizontalScrollView,
+            )
+            val labels = (0 until strip.childCount).map(strip::getChildAt)
+                .filter { it.visibility == View.VISIBLE && it.contentDescription != null }
+                .map { it.contentDescription.toString() }
+            listOf("剪贴板", "表情", "切换键盘").forEach {
+                assertTrue("$it must keep its key in the idle row, got $labels", it in labels)
+            }
+            assertTrue(
+                "The reference puts the clipboard first, then emoji, then the board selector: $labels",
+                labels.indexOf("剪贴板") < labels.indexOf("表情") &&
+                    labels.indexOf("表情") < labels.indexOf("切换键盘"),
+            )
+            true
+        }
     }
 
     @Test
