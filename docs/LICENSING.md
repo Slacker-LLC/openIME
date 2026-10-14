@@ -10,7 +10,7 @@ This way, the license of the APK as a whole is clear.
 We do not need to decide if the dictionary data and the program are an aggregate or a derivative work.
 
 All other components use BSD, Apache-2.0 or MIT licenses, which are compatible with GPL-3.0.
-These components are librime, OpenCC, Snappy, sherpa-onnx, the Paraformer and CT-Transformer models and Fluent Emoji.
+These components are librime, OpenCC, Snappy, sherpa-onnx, the Paraformer and CT-Transformer models, Fluent Emoji and the GrokBot character.
 To use a different main license, first remove or replace the Rime Ice dictionaries.
 
 ## Third-party components in the repository
@@ -49,12 +49,20 @@ The license files ship in the APK.
   The APK contains `ct-transformer-Apache-2.0.txt`.
   The file hashes are part of the voice model manifest.
 
+### Voice panel character
+
+- The character in the voice panel is `Mr-XiaoLiang/GrokBot`, pinned commit `2cd2e82f31cddcec7b825877830362b3ec364e33`.
+  Its code uses MIT and the source is vendored in `app/src/main/java/com/lollipop/grokbot/`.
+- The MIT grant covers the code only.
+  The character, its name and its likeness are fan art of xAI's Grok, and xAI keeps that right.
+  `third_party/grokbot/README.md` records the boundary and the port.
+
 Git LFS only stores the files. It does not change their licenses.
 
 ## Licenses in the APK
 
 The release APK carries the main third-party license texts in `assets/licenses/`.
-These are librime, OpenCC, Snappy, Rime Ice, the sherpa-onnx runtime, the Paraformer and CT-Transformer models and Fluent Emoji.
+These are librime, OpenCC, Snappy, Rime Ice, the sherpa-onnx runtime, the Paraformer and CT-Transformer models, Fluent Emoji and GrokBot.
 
 `THIRD_PARTY_NOTICES.md` lists each component, its source, its version or pinned commit and its file location.
 The release notes link to this file, so you can read it outside the APK.

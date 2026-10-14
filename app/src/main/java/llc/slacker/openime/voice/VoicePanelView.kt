@@ -14,6 +14,7 @@ import android.widget.TextView
 import llc.slacker.openime.R
 import llc.slacker.openime.data.ImeSettingsRepository
 import llc.slacker.openime.theme.ImeDrawableFactory
+import llc.slacker.openime.theme.ImeGeometryTokens
 import llc.slacker.openime.theme.ImeSurfacePolicy
 import llc.slacker.openime.theme.ImeTheme
 import llc.slacker.openime.theme.ImeTypographyTokens
@@ -39,7 +40,8 @@ internal class VoicePanelView(
     private val waves = mutableListOf<View>()
     private val languageButton: TextView
     private val englishButton: TextView
-    private val micButton: TextView
+    private val face: VoiceFaceView
+    private val hero: FrameLayout
     private val gestureHint: TextView
 
     private var languageIndex =
@@ -63,20 +65,16 @@ internal class VoicePanelView(
             accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         }
         addView(transcript, LayoutParams(0, 0))
-        val hero = FrameLayout(context).apply {
-            background = ImeDrawableFactory.rounded(ImeDrawableFactory.blend(palette.primary, palette.keyboardBackground, 0.16f), toPx(99))
-        }
-        micButton = createButton("", ImeTypographyTokens.BODY_SP, false).apply {
+        // The tag of the disc is what the panel's tests and the design reference
+        // run look for; the character inside it answers to "voice-face", which is
+        // what the theme pass repaints.
+        hero = FrameLayout(context).apply {
             tag = "voice-mic"
-            setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_mic, 0, 0, 0)
-            gravity = Gravity.CENTER
-            setPadding(toPx(18), 0, 0, 0)
-            background = ImeDrawableFactory.rounded(palette.primary, toPx(99))
-            compoundDrawableTintList = ColorStateList.valueOf(palette.onAccent)
-            isEnabled = false
+            background = ImeDrawableFactory.rounded(ImeDrawableFactory.blend(palette.primary, palette.keyboardBackground, VoiceFaceView.HALO_MIX), toPx(ImeGeometryTokens.PILL_RADIUS_DP))
             contentDescription = "语音状态，长按空格开始"
         }
-        hero.addView(micButton, FrameLayout.LayoutParams(toPx(60), toPx(60)).apply { gravity = Gravity.CENTER })
+        face = VoiceFaceView(context, toPx).apply { applyTokens(palette) }
+        hero.addView(face, FrameLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER })
         addView(hero, LayoutParams(toPx(88), toPx(88)).apply { bottomMargin = toPx(14) })
         languageButton = createButton(LANGUAGES[0].first, ImeTypographyTokens.BODY_SP, true).apply {
             tag = "voice-language"
@@ -131,9 +129,18 @@ internal class VoicePanelView(
         updateLanguagePresentation(locked)
     }
 
-    fun setMicState(iconRes: Int, description: String) {
-        micButton.setCompoundDrawablesRelativeWithIntrinsicBounds(iconRes, 0, 0, 0)
-        micButton.contentDescription = description
+    /**
+     * Shows one step of the voice session: the character plays [state] and [description]
+     * becomes what a screen reader reads for it.
+     */
+    fun setFaceState(state: VoiceFaceState, description: String) {
+        face.setState(state)
+        hero.contentDescription = description
+    }
+
+    /** Hands the microphone level of a listening session to the character. */
+    fun setVoiceLevel(level: Float) {
+        face.setLevel(level)
     }
 
     fun setGestureHint(label: String, description: String) {

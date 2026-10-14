@@ -95,7 +95,8 @@ internal class VoicePanelController(
 
         refreshLanguageControl()
         onInlineState("正在准备麦克风…", false, false, null)
-        setMicState(R.drawable.ic_stop, "语音输入进行中，松开空格结束，上滑取消")
+        setFaceState(VoiceFaceState.PREPARING, "语音状态，正在准备麦克风")
+        setFaceState(VoiceFaceState.LISTENING, "语音输入进行中，松开空格结束，上滑取消")
         setGestureHint(
             "松开空格上屏 · 上滑取消",
             "松开空格结束语音并自动上屏，上滑取消",
@@ -113,7 +114,7 @@ internal class VoicePanelController(
     fun stop() {
         if (!active || stopRequested) return
         listener.stopVoiceRecognition()
-        setMicState(R.drawable.ic_mic, "正在整理语音识别结果，请稍候")
+        setFaceState(VoiceFaceState.THINKING, "正在整理语音识别结果，请稍候")
         setGestureHint("整理识别结果…", "正在整理语音识别结果，请稍候")
         stopRequested = true
         refreshLanguageControl()
@@ -132,7 +133,7 @@ internal class VoicePanelController(
         refreshLanguageControl()
         listener.cancelVoiceRecognition()
         recognizedText = ""
-        setMicState(R.drawable.ic_mic, "语音状态，已取消，仅支持长按空格启动")
+        setFaceState(VoiceFaceState.CANCELLED, "语音状态，已取消，仅支持长按空格启动")
         setGestureHint(
             "长按空格开始",
             "长按空格开始语音，松开自动上屏，上滑取消",
@@ -147,7 +148,7 @@ internal class VoicePanelController(
     fun setCancelPreview(cancelling: Boolean) {
         cancelPreview = cancelling
         if (cancelling) {
-            setMicState(R.drawable.ic_stop, "取消语音输入中，松开将丢弃本次语音")
+            setFaceState(VoiceFaceState.CANCELLING, "取消语音输入中，松开将丢弃本次语音")
             setGestureHint(
                 "上滑取消 · 松开丢弃",
                 "继续上滑取消语音，松开将丢弃本次语音",
@@ -156,7 +157,7 @@ internal class VoicePanelController(
             setModelStatus("取消状态 · 松开将丢弃")
             onInlineState("松开取消", true, false, null)
         } else {
-            setMicState(R.drawable.ic_stop, "语音输入进行中，松开空格结束，上滑取消")
+            setFaceState(VoiceFaceState.LISTENING, "语音输入进行中，松开空格结束，上滑取消")
             setGestureHint(
                 "松开空格上屏 · 上滑取消",
                 "松开空格结束语音并自动上屏，上滑取消",
@@ -207,7 +208,7 @@ internal class VoicePanelController(
 
                     if (stopRequested) {
                         setModelStatus("正在整理识别结果…")
-                        setMicState(R.drawable.ic_stop, "正在整理语音识别结果，请稍候")
+                        setFaceState(VoiceFaceState.THINKING, "正在整理语音识别结果，请稍候")
                         setGestureHint(
                             "整理识别结果…",
                             "正在整理语音识别结果，请稍候",
@@ -215,7 +216,7 @@ internal class VoicePanelController(
                         onInlineState(text.ifBlank { "正在转写已录音频…" }, false, false, null)
                     } else {
                         setModelStatus("正在聆听 · 松开空格结束")
-                        setMicState(R.drawable.ic_stop, "语音输入进行中，松开空格结束，上滑取消")
+                        setFaceState(VoiceFaceState.LISTENING, "语音输入进行中，松开空格结束，上滑取消")
                         setGestureHint(
                             "松开空格上屏 · 上滑取消",
                             "松开空格结束语音并自动上屏，上滑取消",
@@ -241,7 +242,10 @@ internal class VoicePanelController(
                     eventGeneration++
                     if (text.isNotBlank()) recognizedText = text
                     setTranscript(text)
-                    setMicState(R.drawable.ic_mic, "语音状态，已完成识别，仅支持长按空格启动")
+                    setFaceState(
+                        if (text.isBlank()) VoiceFaceState.EMPTY else VoiceFaceState.DONE,
+                        "语音状态，已完成识别，仅支持长按空格启动",
+                    )
                     setGestureHint(
                         "长按空格开始",
                         "长按空格开始语音，松开自动上屏，上滑取消",
@@ -284,6 +288,9 @@ internal class VoicePanelController(
                                 .toInt(),
                         ),
                     )
+                    // The character hops on the onsets of speech, so the level of the
+                    // capture goes to it as well as to the waveform bars.
+                    view?.setVoiceLevel(level)
                     onInlineState(
                         if (modelPrepared) {
                             "正在聆听"
@@ -305,7 +312,7 @@ internal class VoicePanelController(
                     eventGeneration++
                     recognizedText = ""
                     setTranscript(message)
-                    setMicState(R.drawable.ic_mic, "语音状态，识别失败，仅支持长按空格重试")
+                    setFaceState(VoiceFaceState.ERROR, "语音状态，识别失败，仅支持长按空格重试")
                     setGestureHint(
                         "长按空格开始",
                         "长按空格重新开始语音，松开自动上屏，上滑取消",
@@ -332,7 +339,7 @@ internal class VoicePanelController(
                     if (generation != eventGeneration || cancelled) return@post
                     pending = false
                     if (active && !stopRequested) {
-                        setMicState(R.drawable.ic_stop, "语音输入进行中，松开空格结束，上滑取消")
+                        setFaceState(VoiceFaceState.LISTENING, "语音输入进行中，松开空格结束，上滑取消")
                         setGestureHint(
                             "松开空格上屏 · 上滑取消",
                             "松开空格结束语音并自动上屏，上滑取消",
@@ -346,7 +353,7 @@ internal class VoicePanelController(
                             null,
                         )
                     } else {
-                        setMicState(R.drawable.ic_stop, "正在整理语音识别结果，请稍候")
+                        setFaceState(VoiceFaceState.THINKING, "正在整理语音识别结果，请稍候")
                         setGestureHint(
                             "整理识别结果…",
                             "正在整理语音识别结果，请稍候",
@@ -376,7 +383,7 @@ internal class VoicePanelController(
                         return@post
                     }
                     modelPrepared = true
-                    setMicState(R.drawable.ic_stop, "语音输入进行中，松开空格结束，上滑取消")
+                    setFaceState(VoiceFaceState.LISTENING, "语音输入进行中，松开空格结束，上滑取消")
                     setGestureHint(
                         "松开空格上屏 · 上滑取消",
                         "松开空格结束语音并自动上屏，上滑取消",
@@ -402,7 +409,7 @@ internal class VoicePanelController(
     private fun syncViewPresentation() {
         when {
             active && stopRequested -> {
-                setMicState(R.drawable.ic_mic, "正在整理语音识别结果，请稍候")
+                setFaceState(VoiceFaceState.THINKING, "正在整理语音识别结果，请稍候")
                 setGestureHint(
                     "整理识别结果…",
                     "正在整理语音识别结果，请稍候",
@@ -413,7 +420,7 @@ internal class VoicePanelController(
                 )
             }
             active -> {
-                setMicState(R.drawable.ic_stop, "语音输入进行中，松开空格结束，上滑取消")
+                setFaceState(VoiceFaceState.LISTENING, "语音输入进行中，松开空格结束，上滑取消")
                 setGestureHint(
                     "松开空格上屏 · 上滑取消",
                     "松开空格结束语音并自动上屏，上滑取消",
@@ -426,8 +433,8 @@ internal class VoicePanelController(
         }
     }
 
-    private fun setMicState(iconRes: Int, description: String) {
-        view?.setMicState(iconRes, description)
+    private fun setFaceState(state: VoiceFaceState, description: String) {
+        view?.setFaceState(state, description)
     }
 
     private fun setGestureHint(label: String, description: String) {

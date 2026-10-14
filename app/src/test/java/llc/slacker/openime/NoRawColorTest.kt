@@ -8,7 +8,10 @@ class NoRawColorTest {
     @Test
     fun productionKotlinDoesNotDefineRawColorsOutsideDesignTokens() {
         val root = repoRoot()
-        val violations = File(root, "app/src/main/java")
+        // Our own tree only: the vendored GrokBot character under
+        // app/src/main/java/com/lollipop/grokbot carries the artwork's own
+        // palette, which is not the IME's to restyle (see THIRD_PARTY_NOTICES.md).
+        val violations = File(root, "app/src/main/java/llc/slacker/openime")
             .walkTopDown()
             .filter { it.isFile && it.extension == "kt" && it.name != "ImeDesignTokens.kt" }
             .flatMap { file ->

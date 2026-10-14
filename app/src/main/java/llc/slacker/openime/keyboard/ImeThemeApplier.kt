@@ -18,6 +18,7 @@ import llc.slacker.openime.theme.ImeDrawableFactory
 import llc.slacker.openime.theme.ImeGeometryTokens
 import llc.slacker.openime.theme.ImeSurfacePolicy
 import llc.slacker.openime.theme.ImeTheme
+import llc.slacker.openime.voice.VoiceFaceView
 import llc.slacker.openime.widget.ImeKeyView
 
 /**
@@ -588,16 +589,13 @@ internal class ImeThemeApplier(
             tag == "tools-page-dots" ->
                 view.setTextColor(t.keySecondaryText)
 
-            tag == "voice-mic" -> {
-                val onAccent = ImeDrawableFactory.contrastText(t.primary)
-                view.setTextColor(onAccent)
-                view.compoundDrawableTintList = ColorStateList.valueOf(onAccent)
-                view.background = statefulRounded(
-                    t.primary,
-                    ImeSurfacePolicy.primaryPressed(t),
-                    toPx(ImeGeometryTokens.PILL_RADIUS_DP),
-                )
-            }
+            // The disc behind the character, repainted so its tint follows the theme.
+            tag == "voice-mic" -> view.background = ImeDrawableFactory.rounded(
+                ImeDrawableFactory.blend(t.primary, t.keyboardBackground, VoiceFaceView.HALO_MIX),
+                toPx(ImeGeometryTokens.PILL_RADIUS_DP),
+            )
+
+            tag == "voice-face" -> (view as? VoiceFaceView)?.applyTokens(t)
 
             view.parent is LinearLayout &&
                 (
