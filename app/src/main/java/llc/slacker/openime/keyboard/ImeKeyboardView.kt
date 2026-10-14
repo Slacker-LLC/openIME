@@ -2319,7 +2319,9 @@ open class ImeKeyboardView(
      * the visual key wider or adding another persistent label.
      */
     private fun syncModeAccessibility() {
-        val modeKey = findViewWithTag<View>("key:mode") ?: return
+        val modeKey = findViewWithTag<View>("key:mode")
+            ?: findViewWithTag("key:mode-en")
+            ?: return
         val target = when (mode) {
             KeyboardMode.PINYIN_26, KeyboardMode.PINYIN_9, KeyboardMode.STROKE,
             KeyboardMode.WUBI, KeyboardMode.DOUBLE_PINYIN,

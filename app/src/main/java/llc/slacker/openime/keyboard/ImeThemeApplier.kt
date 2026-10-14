@@ -162,6 +162,16 @@ internal class ImeThemeApplier(
                 view.setColors(t.lightKeyText, ImeSurfacePolicy.keyHint(t), t.lightKeyText)
             side ->
                 view.setColors(t.sideKeyText, t.sideKeyText, t.sideKeyText)
+            // The English board's 中/英 key leads back to Chinese, and the
+            // reference tints its wordmark with `keyboard_current_english` —
+            // the accent at 95% on both skins (`cls_button_en2cn`,
+            // `style.xml:897-904`; `values/colors.xml:18`,
+            // `values/dark_colors.xml:17`).
+            view.tag == "key:mode-en" -> view.setColors(
+                ImeSurfacePolicy.accentTextOn(t.primary, t.functionKeyBackground),
+                t.functionKeyText,
+                t.functionKeyText,
+            )
             function ->
                 view.setColors(
                     t.functionKeyText,
@@ -268,18 +278,16 @@ internal class ImeThemeApplier(
                 )
             }
             "nine-symbol-scroll-content", "digits-symbol-scroll-content" -> view.background = null
-            // Tool-style tiles: the icon tile carries the colour, not the card.
-            // A launcher tile is the reference's own rounded card: the whole
-            // cell takes `setting_button_bk` with `bkround="14"`, the accent
-            // when it is the chosen one (`cls_settings_button`, style.xml:626-647).
-            "keyboard-choice" -> view.background = statefulRounded(
+            // The keyboard-switch page's tiles are their own class: the whole
+            // cell is the reference's rounded card (`setting_button_bk` with
+            // `bkround="14"`) and the chosen one keeps that face — its class
+            // declares no selected fill, only an accent label and glyph
+            // (`cls_settings_option_mode_switch_button`, style.xml:649-668),
+            // where the settings page's tiles fill with the accent
+            // (`cls_settings_button`, `:626-647`).
+            "keyboard-choice", "keyboard-choice-selected" -> view.background = statefulRounded(
                 t.toolCardBackground,
                 ImeSurfacePolicy.cardPressed(t),
-                toPx(TileGridPolicy.TILE_RADIUS_DP),
-            )
-            "keyboard-choice-selected" -> view.background = statefulRounded(
-                t.primary,
-                ImeSurfacePolicy.primaryPressed(t),
                 toPx(TileGridPolicy.TILE_RADIUS_DP),
             )
             "segmented-track" -> view.background = ImeDrawableFactory.rounded(
@@ -446,9 +454,13 @@ internal class ImeThemeApplier(
                 )
             }
             view.tag == "tool-icon-selected" -> {
-                // The chosen tile is the accent, so its glyph reads on it
-                // (`setting_button_icon_selected` over a `theme_color` face).
-                view.imageTintList = ColorStateList.valueOf(ImeDrawableFactory.contrastText(t.primary))
+                // The chosen tile's glyph answers in the accent on the plain
+                // card (`ficon_textcolor_selected`, `theme_color`,
+                // `cls_settings_option_mode_switch_button`, style.xml:649-668),
+                // in the same shade as the name beside it.
+                view.imageTintList = ColorStateList.valueOf(
+                    ImeSurfacePolicy.accentTextOn(t.primary, t.toolCardBackground),
+                )
                 view.background = null
             }
             view.tag == "tool-icon" -> {
@@ -737,10 +749,15 @@ internal class ImeThemeApplier(
             // The tile's name is the reference's dimmed one — `keybutton_text_3`,
             // 50% black or 50% white (`values/colors.xml:15`,
             // `values/dark_colors.xml:14`) — drawn in our palette's own secondary
-            // role, which keeps the 4.5:1 our text roles are held to, and white
-            // on the chosen tile (`setting_button_selectedtext`).
+            // role, which keeps the 4.5:1 our text roles are held to. The chosen
+            // tile's name and glyph answer in the accent (`selectedtextcolor` /
+            // `ficon_textcolor_selected` are `theme_color`,
+            // `cls_settings_option_mode_switch_button`, style.xml:649-668),
+            // shaded to that same floor over the card.
             tag == "tool-label" -> view.setTextColor(t.keySecondaryText)
-            tag == "tool-label-selected" -> view.setTextColor(ImeDrawableFactory.contrastText(t.primary))
+            tag == "tool-label-selected" -> view.setTextColor(
+                ImeSurfacePolicy.accentTextOn(t.primary, t.toolCardBackground),
+            )
             tag == "fuzzy-rules" -> view.background = ImeDrawableFactory.rounded(t.toolCardBackground, toPx(16))
             tag == "textedit-spacer" -> view.background = null
             tag == "textedit-center" -> {

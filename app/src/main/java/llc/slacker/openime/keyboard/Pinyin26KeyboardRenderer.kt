@@ -118,7 +118,7 @@ internal class Pinyin26KeyboardRenderer(
                 null,
                 ImeTypographyTokens.BODY_SP,
                 0,
-            ) { onModeSwitch() }.apply { tag = "key:mode" },
+            ) { onModeSwitch() }.apply { tag = modeKeyTag(english) },
             flexKeyParams(weights.rightInner),
         )
         bottom.addView(
@@ -161,7 +161,7 @@ internal class Pinyin26KeyboardRenderer(
             gap()
             addView(createSpaceVoiceKey("空格", onSpace), flexKeyParams(2f))
             addView(fn("。") { onCommitCharacter(if (english) "." else "。") }, flexKeyParams(1f))
-            addView(fn("中/英") { onModeSwitch() }.apply { tag = "key:mode" }, flexKeyParams(1f))
+            addView(fn("中/英") { onModeSwitch() }.apply { tag = modeKeyTag(english) }, flexKeyParams(1f))
             addView(
                 createKey(enterLabel, true, null, ImeTypographyTokens.BODY_SP, 0, onEnter).apply { tag = "key-enter" },
                 flexKeyParams(1f),
@@ -296,6 +296,16 @@ internal class Pinyin26KeyboardRenderer(
 
     private companion object {
         const val SPLIT_GAP = 3.5f
+
+        /**
+         * The 中/英 key names which way it points. The reference draws its own
+         * wordmark in the accent on the English board, where the key leads back
+         * to Chinese (`cls_button_en2cn`'s `keyboard_current_english`,
+         * `style.xml:897-904`), and in the plain key text on the Chinese boards,
+         * where only the corner mark is dimmed (`cls_button_cn2en`,
+         * `style.xml:882-890`). The host's accessibility lookup reads both tags.
+         */
+        fun modeKeyTag(english: Boolean): String = if (english) "key:mode-en" else "key:mode"
 
         /** The reference skin's weight 15 against a letter's 10. */
         const val EDGE_KEY_WEIGHT = 1.5f

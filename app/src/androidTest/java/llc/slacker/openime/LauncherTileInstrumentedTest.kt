@@ -13,6 +13,7 @@ import llc.slacker.openime.keyboard.ImeKeyboardView
 import llc.slacker.openime.panel.TileGridPolicy
 import llc.slacker.openime.theme.ImeAppearance
 import llc.slacker.openime.theme.ImeReferenceSizing
+import llc.slacker.openime.theme.ImeSurfacePolicy
 import llc.slacker.openime.theme.ImeTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -136,20 +137,43 @@ class LauncherTileInstrumentedTest {
     }
 
     @Test
-    fun theChosenKeyboardWearsTheAccentTile() {
+    fun theChosenKeyboardKeepsTheCardAndAnswersInTheAccent() {
         withKeyboard { keyboard ->
             keyboard.showPanel(Panel.KEYBOARD_SELECT)
             val tokens = ImeTheme.IOS.tokens(ImeAppearance.LIGHT)
             val selected = keyboard.findViewWithTag<View>("keyboard-choice-selected")
             assertNotNull("The open keyboard's tile must be drawn selected", selected)
-            assertEquals(
-                "`selectedbkcolor=\"@color/theme_color\"` on cls_settings_button",
-                tokens.primary,
-                faceColor(selected!!),
-            )
+            // `cls_settings_option_mode_switch_button` declares no selected
+            // fill: the chosen tile wears the same card as its neighbours
+            // (`setting_button_bk`, `style.xml:649-668`), where the settings
+            // page's `cls_settings_button` fills with the accent.
             val others = keyboard.findViewWithTag<View>("keyboard-choice")
             assertNotNull("Other keyboards keep the plain tile", others)
-            assertEquals(tokens.toolCardBackground, faceColor(others!!))
+            assertEquals(
+                "The chosen tile keeps the card",
+                tokens.toolCardBackground,
+                faceColor(selected!!),
+            )
+            assertEquals(
+                "Every tile of the page shares that face",
+                faceColor(others!!),
+                faceColor(selected),
+            )
+            // The choice shows in the name: `selectedtextcolor` is
+            // `theme_color`, read here as the accent the palette derives on
+            // the card.
+            val selectedLabel = (selected as ViewGroup).getChildAt(1) as TextView
+            val plainLabel = (others as ViewGroup).getChildAt(1) as TextView
+            assertEquals(
+                "`selectedtextcolor=\"@color/theme_color\"` on cls_settings_option_mode_switch_button",
+                ImeSurfacePolicy.accentTextOn(tokens.primary, tokens.toolCardBackground),
+                selectedLabel.currentTextColor,
+            )
+            assertEquals(
+                "The other names keep the tile's neutral label",
+                tokens.keySecondaryText,
+                plainLabel.currentTextColor,
+            )
         }
     }
 

@@ -140,7 +140,11 @@ internal class NineKeySymbolRailController(
 
         // The reading the pre-edit is showing: the list leads with it and a tap
         // on it cannot change anything. The pre-edit is where the reference
-        // shows which reading is current, so nothing is highlighted here.
+        // shows which reading is current, so nothing is highlighted here. The
+        // skin does carry a first-item class for this list
+        // (`cls_pinyin9_symbol_first_item`, `style.xml:567-573` — accent text
+        // on the candidate fill, face 54 against the items' 46) but no shipped
+        // file names its trigger, so it stays unported rather than guessed at.
         val shown = tail.filter { it in 'a'..'z' }
         val selected = choices.firstOrNull { it.coversAll && it.syllables.joinToString("") == shown }
             ?: choices.firstOrNull { shown.startsWith(it.syllables.joinToString("")) }
