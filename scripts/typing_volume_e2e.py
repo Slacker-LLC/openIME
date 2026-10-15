@@ -43,16 +43,62 @@ import random
 import re
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "build" / "volume-data"
 STROKE_TABLE = ROOT / "app" / "build" / "generated" / "assets" / "prebuildRimeData" / "stroke_table.tsv"
 FLYPY_SCHEMA = ROOT / "app" / "src" / "main" / "assets" / "rime-data" / "double_pinyin_flypy.schema.yaml"
+BUILT_APK = ROOT / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"
 
 # Apps seen taking the front of the shared emulator during a run; they are stopped
 # again when the keyboard has to be brought back.
 INTRUDERS = ("llc.slacker.minis.dev",)
+
+
+def installed_build(dev, package: str) -> dict[str, str]:
+    """The build the device is actually running, as the device itself reports it."""
+    dump = dev.shell("dumpsys", "package", package)
+    found = {}
+    for field in ("versionCode", "versionName", "lastUpdateTime"):
+        match = re.search(rf"{field}=([^\s]+)", dump)
+        if match:
+            found[field] = match.group(1)
+    return found
+
+
+def check_installed_build(dev, package: str, built: Path, allow_stale: bool = False) -> dict[str, str]:
+    """Refuse to measure an APK the run was not asked to measure.
+
+    The 2026-10-15 run typed for eight hours against a build 29-43 commits
+    behind HEAD: an earlier session had left that APK installed and nothing in
+    the run looked at what it was typing into. The device's own install time
+    answers it - an APK installed before the one on disk was built is not that
+    one - and each keyboard re-checks it, so a swap mid-run is caught as well.
+    """
+    running = installed_build(dev, package)
+    if not running:
+        raise SystemExit(f"{package} is not installed on this device")
+    if built.is_file():
+        built_at = datetime.fromtimestamp(built.stat().st_mtime)
+        installed_text = running.get("lastUpdateTime", "")
+        try:
+            installed_at = datetime.strptime(installed_text, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            installed_at = None
+        if installed_at is not None and installed_at < built_at and not allow_stale:
+            raise SystemExit(
+                f"{package} was installed at {installed_text} but {built.name} was built at "
+                f"{built_at:%Y-%m-%d %H:%M:%S}. Install the APK you mean to measure "
+                f"(adb install -r {built.relative_to(ROOT)}) or pass --allow-stale."
+            )
+    print(
+        f"== measuring {package} {running.get('versionName', '?')} "
+        f"({running.get('versionCode', '?')}), installed {running.get('lastUpdateTime', '?')}",
+        flush=True,
+    )
+    return running
 
 T9 = {c: d for d, letters in {"2": "abc", "3": "def", "4": "ghi", "5": "jkl", "6": "mno",
                               "7": "pqrs", "8": "tuv", "9": "wxyz"}.items() for c in letters}
@@ -609,11 +655,14 @@ def main() -> int:
     parser.add_argument("--phases", action="append", default=None,
                         help="run only these phases (random, words, chars, sentences, four)")
     parser.add_argument("--quick", action="store_true", help="small counts, to check the harness itself")
+    parser.add_argument("--allow-stale", action="store_true",
+                        help="measure the installed APK even if it predates the one on disk")
     args = parser.parse_args()
 
     stress = load_stress()
     args.out.mkdir(parents=True, exist_ok=True)
     dev = stress.Device(args.serial, args.out)
+    measured = check_installed_build(dev, stress.PKG, BUILT_APK, args.allow_stale)
     # The run lasts hours, which is longer than the screen timeout: keep the
     # screen on while the device charges and start from a woken device, or the
     # input method goes away with the screen and takes the run with it.
@@ -629,11 +678,20 @@ def main() -> int:
 
     summary = {}
     for name in names:
+        # A reinstall between keyboards would mix two builds into one report.
+        now = installed_build(dev, stress.PKG)
+        if now.get("lastUpdateTime") != measured.get("lastUpdateTime"):
+            raise SystemExit(
+                f"{stress.PKG} was reinstalled during the run "
+                f"({measured.get('lastUpdateTime')} -> {now.get('lastUpdateTime')}); "
+                f"the rows typed so far and the rows still to type come from different builds."
+            )
         plan = plan_all[name]
         started = time.time()
         pid_before = dev.pid(stress.PKG)
         summary[name] = run_keyboard(dev, stress, name, plan, args.out, args.phases)
         summary[name]["seconds"] = round(time.time() - started)
+        summary[name]["build"] = measured.get("lastUpdateTime", "")
         summary[name]["process_kept"] = dev.pid(stress.PKG) == pid_before
         crashes = dev.run("logcat", "-b", "crash", "-d")
         summary[name]["crash"] = stress.PKG in crashes
