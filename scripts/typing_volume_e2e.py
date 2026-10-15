@@ -50,6 +50,10 @@ DATA = ROOT / "build" / "volume-data"
 STROKE_TABLE = ROOT / "app" / "build" / "generated" / "assets" / "prebuildRimeData" / "stroke_table.tsv"
 FLYPY_SCHEMA = ROOT / "app" / "src" / "main" / "assets" / "rime-data" / "double_pinyin_flypy.schema.yaml"
 
+# Apps seen taking the front of the shared emulator during a run; they are stopped
+# again when the keyboard has to be brought back.
+INTRUDERS = ("llc.slacker.minis.dev",)
+
 T9 = {c: d for d, letters in {"2": "abc", "3": "def", "4": "ghi", "5": "jkl", "6": "mno",
                               "7": "pqrs", "8": "tuv", "9": "wxyz"}.items() for c in letters}
 CIRCLED = "ⓆⓌⓇⓉⓎⓊⒾⓄⓅⓈⒹⒻⒼⒽⒿⓀⓁⓏⓍⒸⓋⒷⓃⓂ"
@@ -111,6 +115,28 @@ class Keys:
     def has(self, tag: str) -> bool:
         return tag in self.positions
 
+    def ensure(self, tags: list[str]) -> None:
+        """Make sure every tag of [tags] is on screen, bringing the keyboard back if not.
+
+        A keyboard that was replaced by another layout - or by another app's
+        field - still answers `bounds`, it just has none of these keys, so
+        missing tags are treated as a lost keyboard as well.
+        """
+        if not [tag for tag in tags if tag not in self.positions]:
+            return
+        self.refresh()
+        missing = [tag for tag in tags if tag not in self.positions]
+        if missing and self.on_lost is not None and not self._recovering:
+            self._recovering = True
+            try:
+                self.on_lost()
+                self.refresh()
+            finally:
+                self._recovering = False
+            missing = [tag for tag in tags if tag not in self.positions]
+        if missing:
+            raise RuntimeError(f"keyboard does not offer {missing[:4]}")
+
     def tap(self, tags: list[str], settle: float = 0.0, gap: float = 0.06) -> None:
         """One adb call for the whole sequence, paced on the device.
 
@@ -121,12 +147,7 @@ class Keys:
         """
         if not tags:
             return
-        missing = [tag for tag in tags if tag not in self.positions]
-        if missing:
-            self.refresh()
-            missing = [tag for tag in tags if tag not in self.positions]
-            if missing:
-                raise RuntimeError(f"keyboard does not offer {missing[:4]}")
+        self.ensure(tags)
         taps = [f"input tap {self.positions[tag][0]} {self.positions[tag][1]}" for tag in tags]
         self.dev.shell(f"; sleep {gap}; ".join(taps) if gap else "; ".join(taps))
         if settle:
@@ -141,12 +162,7 @@ class Keys:
         one syllable at a time.
         """
         flat = [tag for group in groups for tag in group]
-        missing = [tag for tag in flat if tag not in self.positions]
-        if missing:
-            self.refresh()
-            missing = [tag for tag in flat if tag not in self.positions]
-            if missing:
-                raise RuntimeError(f"keyboard does not offer {missing[:4]}")
+        self.ensure(flat)
         parts: list[str] = []
         for index, group in enumerate(groups):
             for position, tag in enumerate(group):
@@ -329,9 +345,15 @@ def phase_random(dev, keyboard: Keyboard, taps: int, report: dict) -> None:
 
 def phase_rows(dev, keyboard: Keyboard, rows: list[tuple[str, str, str | None]], expected_of,
                report: dict, label: str, batch: int = 25, settle: float = 0.35) -> None:
-    """Type rows in batches, check each batch in one read, name the wrong ones."""
+    """Type rows in batches, check each batch in one read, name the wrong ones.
+
+    Every row is also recorded on its own in `results`, so the report can split
+    the phase by input shape: the word list is two blocks (2-character words
+    first, 3-character after), and one rate over both hides the step.
+    """
     hits = 0
     misses: list[dict[str, str]] = []
+    results: list[dict[str, object]] = []
     started = time.time()
     for start in range(0, len(rows), batch):
         chunk = rows[start:start + batch]
@@ -345,6 +367,16 @@ def phase_rows(dev, keyboard: Keyboard, rows: list[tuple[str, str, str | None]],
         typed = editor_tail(dev, 600)
         if typed == expected:
             hits += len(chunk)
+            # The batch read matched as a whole; per-row text is not observed,
+            # so the result says so rather than inventing the typed text.
+            for word, pinyin, code in chunk:
+                results.append({
+                    "expected": expected_of((word, pinyin, code)).strip(),
+                    "typed": None,
+                    "hit": True,
+                    "rank": None,
+                    "batch": True,
+                })
         else:
             for word, pinyin, code in chunk:
                 keyboard.keys.refresh()
@@ -359,12 +391,25 @@ def phase_rows(dev, keyboard: Keyboard, rows: list[tuple[str, str, str | None]],
                 time.sleep(0.3)
                 produced = editor_tail(dev, 60)
                 expected = expected_of((word, pinyin, code))
+                target = expected.strip()
+                rank = offered.index(target) if target in offered else None
                 if produced == expected:
                     hits += 1
-                elif len(misses) < 60:
-                    target = expected.strip()
-                    rank = offered.index(target) if target in offered else -1
-                    misses.append({"expected": target, "typed": produced, "rank": rank})
+                    results.append({"expected": target, "typed": produced, "hit": True, "rank": None, "batch": False})
+                else:
+                    if len(misses) < 60:
+                        misses.append({
+                            "expected": target,
+                            "typed": produced,
+                            "rank": -1 if rank is None else rank,
+                        })
+                    results.append({
+                        "expected": target,
+                        "typed": produced,
+                        "hit": False,
+                        "rank": -1 if rank is None else rank,
+                        "batch": False,
+                    })
         done = min(start + batch, len(rows))
         print(f"  {keyboard.name}/{label}: {done}/{len(rows)} ({hits} exact, {time.time() - started:.0f}s)",
               flush=True)
@@ -374,6 +419,7 @@ def phase_rows(dev, keyboard: Keyboard, rows: list[tuple[str, str, str | None]],
         "rate": round(hits / len(rows), 4) if rows else 0.0,
         "misses": misses[:40],
         "miss_count": len(rows) - hits,
+        "results": results,
     }
 
 
@@ -451,10 +497,17 @@ def run_keyboard(dev, stress, name: str, plan: dict, out: Path, phases: list[str
 
     def recover() -> None:
         """A long run outlives foreground changes: wake the screen and put the
-        field back in front."""
+        field back in front.
+
+        Another app can come to the front of a shared emulator and take the
+        keyboard with it - usually one that a second session starts by hand -
+        so it is stopped first, before the field is brought back.
+        """
         for attempt in range(5):
             try:
                 print(f"  {name}: keyboard lost, bringing it back ({attempt + 1})", flush=True)
+                for intruder in INTRUDERS:
+                    dev.shell("am", "force-stop", intruder)
                 dev.shell("input", "keyevent", "KEYCODE_WAKEUP")
                 dev.shell("wm", "dismiss-keyguard")
                 time.sleep(0.5)
