@@ -42,6 +42,7 @@ import llc.slacker.openime.core.Panel
 import llc.slacker.openime.core.LandscapeLayout
 import llc.slacker.openime.core.DoublePinyinScheme
 import llc.slacker.openime.core.OneHandMode
+import llc.slacker.openime.core.PinyinLocation
 import llc.slacker.openime.core.ShiftState
 import llc.slacker.openime.data.HapticStyle
 import llc.slacker.openime.data.ImeSettingsRepository
@@ -142,6 +143,9 @@ open class ImeKeyboardView(
 
         /** 震动手感 or 按键音效 changed; the new value is already saved. */
         fun onFeedbackStyleChanged() {}
+
+        /** 输入拼音显示位置改了（候选栏 ↔ 输入框）；新值已经存好。 */
+        fun onPinyinLocationChanged(location: PinyinLocation) {}
         fun onFloatingStyleChanged(widthPercent: Int, opacityPercent: Int) {}
         fun onLandscapeLayoutChanged(layout: LandscapeLayout) {}
         fun onOpenAbout() {}
@@ -719,6 +723,9 @@ open class ImeKeyboardView(
     private fun panelBodyHeightDp(): Int = layoutMetrics.panelBodyHeightDp
     private var syncingComposition = false
     private var passwordField = false
+
+    /** 输入中的拼音显示在候选栏还是应用的输入框；输入框时键盘不再重复显示。 */
+    private var pinyinLocation = ImeSettingsRepository.loadPinyinLocation(context)
     private var inlineEditTarget: EditText? = null
 
     private lateinit var mainDock: LinearLayout
@@ -848,6 +855,7 @@ open class ImeKeyboardView(
             currentLandscapeLayout = { ImeSettingsRepository.loadLandscapeLayout(context) },
             currentOneHandMode = { oneHandMode },
             currentDoublePinyinScheme = { ImeSettingsRepository.loadDoublePinyinScheme(context) },
+            currentPinyinLocation = { pinyinLocation },
             currentKeySoundStyle = { keySounds.style },
             currentPopup = { popupEnabled },
             currentSwipeUpDigits = { ImeSettingsRepository.loadSwipeUpDigits(context) },
@@ -875,6 +883,7 @@ open class ImeKeyboardView(
             onLandscapeLayoutChanged = ::setLandscapeLayout,
             onOneHandModeChanged = ::setOneHandMode,
             onDoublePinyinSchemeChanged = ::setDoublePinyinScheme,
+            onPinyinLocationChanged = ::setPinyinLocation,
             onKeySoundStyleChanged = ::setKeySoundStyle,
             onFloatingStyleChanged = ::setFloatingStyle,
             onShowFuzzySettings = { showPanel(Panel.FUZZY_SETTINGS) },
@@ -1748,6 +1757,7 @@ open class ImeKeyboardView(
     fun renderState(state: ImeState) {
         val passwordStateChanged = passwordField != state.passwordField
         passwordField = state.passwordField
+        pinyinLocation = state.pinyinLocation
         if (passwordStateChanged) {
             // A recording started in the previous editor must not end in this one.
             if (voiceGestureSession || voicePanelController.active || voicePanelController.pending) {
@@ -1991,6 +2001,16 @@ open class ImeKeyboardView(
         oneHandMode = mode
         ImeSettingsRepository.saveOneHandMode(context, mode)
         if (!floatingKeyboardController.enabled && width > 0) updateResponsiveGeometry(width)
+    }
+
+    /** 输入拼音显示位置（候选栏 / 输入框）；键盘上那行预编辑随之出现或收起。 */
+    internal fun setPinyinLocation(location: PinyinLocation) {
+        if (pinyinLocation == location) return
+        pinyinLocation = location
+        ImeSettingsRepository.savePinyinLocation(context, location)
+        updateTopZone(composition.text?.isNotEmpty() == true)
+        // 服务端要跟着改：写进输入框还是留在键盘上由它决定。
+        listener.onPinyinLocationChanged(location)
     }
 
     /** 双拼键位方案；Rime 每次同步都读取设置，切换后重查当前输入即可生效。 */
@@ -2280,7 +2300,10 @@ open class ImeKeyboardView(
         topZone.renderState(
             state = state,
             showCompositionEditor = (composing || candidateBarController.expandedOpen) &&
-                mode != KeyboardMode.ENGLISH_26,
+                mode != KeyboardMode.ENGLISH_26 &&
+                // 拼音写进输入框时，键盘上不再重复这一行（参考皮肤把两种显示
+                // 位置做成二选一，见 PinyinLocation）。
+                pinyinLocation != PinyinLocation.INPUT_BOX,
         )
     }
 

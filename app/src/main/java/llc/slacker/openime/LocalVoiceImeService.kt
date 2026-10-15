@@ -37,6 +37,7 @@ import llc.slacker.openime.core.EmojiCatalog
 import llc.slacker.openime.core.ImeState
 import llc.slacker.openime.core.KeyboardMode
 import llc.slacker.openime.core.Panel
+import llc.slacker.openime.core.PinyinLocation
 import llc.slacker.openime.core.ShiftState
 import llc.slacker.openime.core.VoiceUiState
 import llc.slacker.openime.core.dropLastCodePointSafe
@@ -48,6 +49,7 @@ import llc.slacker.openime.data.QuickPhraseRepository
 import llc.slacker.openime.data.RimeUserDictionaryArchive
 import llc.slacker.openime.data.SymbolRecentRepository
 import llc.slacker.openime.data.UserPhraseRepository
+import llc.slacker.openime.editor.ComposingTextPolicy
 import llc.slacker.openime.editor.EditorInfoAdapter
 import llc.slacker.openime.editor.InputConnectionGateway
 import llc.slacker.openime.editor.InputMethodSubtypePolicy
@@ -255,6 +257,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             hapticEnabled = ImeSettingsRepository.loadHaptic(this),
             popupEnabled = ImeSettingsRepository.loadPopup(this),
             fuzzyPinyinEnabled = ImeSettingsRepository.loadFuzzy(this),
+            pinyinLocation = ImeSettingsRepository.loadPinyinLocation(this),
         )
     }
 
@@ -511,6 +514,8 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             popup = state.popupEnabled,
             fuzzy = state.fuzzyPinyinEnabled,
         )
+        // 拼音显示位置在设置页也能改；在场的预编辑跟着搬。
+        applyPinyinLocationChange(ImeSettingsRepository.loadPinyinLocation(this))
     }
 
     /** Apply settings changed by standalone Activities on the IME main thread. */
@@ -1397,6 +1402,27 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         state = state.copy(panel = if (open) Panel.CANDIDATE_EXPANDED else Panel.NONE)
     }
 
+    /**
+     * 输入中的拼音改显示位置了（候选栏 ↔ 输入框）。由键盘上的设置页直接调用；
+     * 应用内的设置页走 [reloadPersistedSettings] 里同一条路。
+     */
+    override fun onPinyinLocationChanged(location: PinyinLocation) = applyPinyinLocationChange(location)
+
+    /**
+     * 在场的这段预编辑要跟着搬，否则输入框里会留下半截拼音，或者键盘上少了一行。
+     */
+    private fun applyPinyinLocationChange(location: PinyinLocation) {
+        val previous = state.pinyinLocation
+        state = state.copy(pinyinLocation = location)
+        if (previous == location || lastComposition.isEmpty()) return
+        if (composesInEditor()) {
+            gateway.setComposingText(lastComposition)
+        } else {
+            // 收回输入框里的那段 composing text，改回键盘自己显示。
+            gateway.cancelComposing()
+        }
+    }
+
     override fun onSymbolSelected(symbol: String) = guarded("onSymbolSelected") {
         prepareForManualInput()
         commitPendingComposition()
@@ -1550,14 +1576,30 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             // editor text in many apps. Deleting the final Pinyin character
             // must remove that span instead of leaving a raw letter behind.
             gateway.cancelComposing()
-        } else if (!state.keyboardMode.isChineseLayout) {
+        } else if (!state.keyboardMode.isChineseLayout || composesInEditor()) {
             // Chinese pre-edit (pinyin, nine-key digits, strokes) stays on the
             // keyboard, as on Sogou and iFlytek: written into the app's field it
             // showed "669" or "ni'hao" there and set off the app's own
             // suggestions. An English word is composed in place, as on Gboard.
+            //
+            // 选「显示在输入框」时拼音改走同一个通道，和参考皮肤的做法一致
+            // （`KeyboardJni.UpdatePreedit` → `setComposingRegion` +
+            // `setComposingText`，见 PinyinLocation）。
             gateway.setComposingText(next)
         }
     }
+
+    /**
+     * 拼音是否写进应用自己的输入框。除了用户选的那一项，还要看这个输入框能不能
+     * 收：密码框里写预编辑等于把拼音打进密码，数字框（只收数字）写拼音只会被
+     * 应用丢掉或过滤。
+     */
+    private fun composesInEditor(): Boolean =
+        ComposingTextPolicy.composesInEditor(
+            location = state.pinyinLocation,
+            passwordField = state.passwordField,
+            kind = EditorInfoAdapter.kind(state.editorInfo),
+        )
 
     /**
      * Finish a pending composing string before inserting a non-composing item.

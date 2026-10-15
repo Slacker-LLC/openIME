@@ -23,6 +23,7 @@ import llc.slacker.openime.R
 import llc.slacker.openime.core.LandscapeLayout
 import llc.slacker.openime.core.DoublePinyinScheme
 import llc.slacker.openime.core.OneHandMode
+import llc.slacker.openime.core.PinyinLocation
 import llc.slacker.openime.data.HapticStyle
 import llc.slacker.openime.data.KeySoundStyle
 import llc.slacker.openime.theme.ImeAppearance
@@ -64,6 +65,7 @@ internal class SettingsPanelController(
     private val currentLandscapeLayout: () -> LandscapeLayout,
     private val currentOneHandMode: () -> OneHandMode,
     private val currentDoublePinyinScheme: () -> DoublePinyinScheme,
+    private val currentPinyinLocation: () -> PinyinLocation,
     private val currentKeySoundStyle: () -> KeySoundStyle,
     private val currentPopup: () -> Boolean,
     private val currentSwipeUpDigits: () -> Boolean,
@@ -83,6 +85,7 @@ internal class SettingsPanelController(
     private val onLandscapeLayoutChanged: (LandscapeLayout) -> Unit,
     private val onOneHandModeChanged: (OneHandMode) -> Unit,
     private val onDoublePinyinSchemeChanged: (DoublePinyinScheme) -> Unit,
+    private val onPinyinLocationChanged: (PinyinLocation) -> Unit,
     private val onKeySoundStyleChanged: (KeySoundStyle) -> Unit,
     private val onFloatingStyleChanged: (Int, Int) -> Unit,
     private val onShowFuzzySettings: () -> Unit,
@@ -186,7 +189,10 @@ internal class SettingsPanelController(
             sliderRow(currentKeyboardHeightLabel(), R.drawable.ic_pref_height, ImeGeometryTokens.KEYBOARD_HEIGHT_MIN_PERCENT, ImeGeometryTokens.KEYBOARD_HEIGHT_MAX_PERCENT, currentKeyboardHeightPercent(), ImeGeometryTokens.KEYBOARD_HEIGHT_DEFAULT_PERCENT, onChange = onKeyboardHeightChanged),
         )
         content.addSection("键盘")
-        content.addCard(doublePinyinSchemeRow(R.drawable.ic_kb_double))
+        content.addCard(
+            doublePinyinSchemeRow(R.drawable.ic_kb_double),
+            pinyinLocationRow(R.drawable.ic_pref_cursor),
+        )
         content.addSection("横屏")
         content.addCard(
             landscapeLayoutRow(R.drawable.ic_pref_width),
@@ -593,6 +599,11 @@ internal class SettingsPanelController(
     private fun doublePinyinSchemeRow(iconRes: Int): View =
         choiceRow("双拼方案", iconRes, DoublePinyinScheme.entries.map { it.label }, currentDoublePinyinScheme().label) { label ->
             onDoublePinyinSchemeChanged(DoublePinyinScheme.entries.first { it.label == label })
+        }
+
+    private fun pinyinLocationRow(iconRes: Int): View =
+        choiceRow("输入拼音显示", iconRes, PinyinLocation.entries.map { it.label }, currentPinyinLocation().label) { label ->
+            onPinyinLocationChanged(PinyinLocation.entries.first { it.label == label })
         }
 
     private fun hapticStyleRow(iconRes: Int): View =

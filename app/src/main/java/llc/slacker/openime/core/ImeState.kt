@@ -62,6 +62,8 @@ data class ImeState(
     val fuzzyPinyinEnabled: Boolean = false,
     val editorInfo: EditorInfo? = null,
     val passwordField: Boolean = false,
+    // 输入中的拼音显示在候选栏还是应用的输入框，见 PinyinLocation。
+    val pinyinLocation: PinyinLocation = PinyinLocation.CANDIDATE_BAR,
     val symbolCategory: String = "常用",
     // First real emoji category tab (see ImeData.emojiByCategory order).
     val emojiCategory: String = "笑脸",

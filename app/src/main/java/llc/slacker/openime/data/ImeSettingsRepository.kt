@@ -7,6 +7,7 @@ import llc.slacker.openime.core.DoublePinyinScheme
 import llc.slacker.openime.core.KeyboardMode
 import llc.slacker.openime.core.LandscapeLayout
 import llc.slacker.openime.core.OneHandMode
+import llc.slacker.openime.core.PinyinLocation
 import llc.slacker.openime.theme.ImeAppearance
 import llc.slacker.openime.theme.ImeTheme
 
@@ -40,6 +41,7 @@ object ImeSettingsRepository {
     private const val KEY_SPLIT_MIRRORED = "split_mirrored"
     private const val KEY_SMS_CODE_CHIP = "sms_code_chip"
     private const val KEY_CLIPBOARD_CHIP = "clipboard_chip"
+    private const val KEY_PINYIN_LOCATION = "pinyin_location"
 
     /**
      * The user's preferred Chinese layout (26-key vs 9-key). Only PINYIN_26 and
@@ -70,6 +72,18 @@ object ImeSettingsRepository {
     fun saveOneHandMode(context: Context, mode: OneHandMode) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putString(KEY_ONE_HAND_MODE, mode.key).apply()
+    }
+
+    /** 输入中的拼音显示在候选栏还是输入框；默认候选栏，与参考皮肤一致。 */
+    fun loadPinyinLocation(context: Context): PinyinLocation =
+        PinyinLocation.fromKey(
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_PINYIN_LOCATION, null),
+        )
+
+    fun savePinyinLocation(context: Context, location: PinyinLocation) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY_PINYIN_LOCATION, location.key).apply()
     }
 
     /** 双拼键位方案（小鹤 / 自然码），默认小鹤。 */
