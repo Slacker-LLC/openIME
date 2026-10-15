@@ -86,6 +86,27 @@ internal object ImeGeometryTokens {
     const val NINE_KEY_MARGIN_X_DP = 2.5f
     const val NINE_KEY_MARGIN_Y_DP = 2.75f
     const val KEY_INNER_MARGIN_DP = 8f
+
+    /**
+     * The board area keeps a side inset of its own on top of the key margins,
+     * so the outer columns breathe by the same amount as the gaps between
+     * keys: the 26-key area 2.5 units each side (`cls_input_kbd_inset_adaptive`
+     * `inset="2.5,-4.75,2.5,0"`, `style.xml:727-729`, named `cls_input_kbd` at
+     * `:764-766`), the nine-key area 1.5 (`cls_input_kbd9_inset_adaptive`
+     * `inset="1.5,-2.75,1.5,0"`, `style.xml:736-738`, `cls_input_kbd9` at
+     * `:768-770`) — the class the nine-key, stroke and number layouts carry,
+     * against the 26-key one on the pinyin and English boards
+     * (`layout/input_kbd_pinyin9.xml:3`, `input_kbd_stroke.xml:3`,
+     * `input_kbd_number.xml:3` and `input_kbd_pinyin26.xml:3`,
+     * `input_kbd_english26.xml:3`).
+     *
+     * The vertical half of those insets stays unported: it cancels the key
+     * margin so the first cap row starts flush under the toolbar (`style.xml:726`
+     * — "57 都给了 padding"), and our keyboard keeps its own top and bottom
+     * pads, which are what hold the height that the emulator gates measure.
+     */
+    const val BOARD_SIDE_INSET_DP = 2.5f
+    const val NINE_KEY_SIDE_INSET_DP = 1.5f
     const val KEY_POPUP_HEIGHT_DP = 52
     /**
      * The long-press bubble is rounder than a key and carries no edge of its

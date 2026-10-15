@@ -156,6 +156,48 @@ class KeyMarginsInstrumentedTest {
     }
 
     @Test
+    fun eachBoardAreaKeepsTheReferenceSideInset() {
+        withKeyboard { harness, keyboard ->
+            // The view takes its scale and its centering inset from the
+            // configuration's screen width, not from its own measured width
+            // (`ImeKeyboardView.referenceScale`).
+            val density = keyboard.resources.displayMetrics.density
+            val scale = ImeReferenceSizing.scale(keyboard.context)
+            val unit = density * scale
+            // A wide display pads the board inwards on top of the area's own
+            // inset (`ImeKeyboardView.updateResponsiveGeometry`).
+            val centering = maxOf(0, (keyboard.width - (minOf(600f, 390f * scale) * density).toInt()) / 2)
+            // The area class the reference gives each board: `cls_input_kbd` on
+            // the pinyin and English boards (`input_kbd_pinyin26.xml:3`,
+            // `input_kbd_english26.xml:3`), `cls_input_kbd9` on the nine-key,
+            // stroke and number ones (`input_kbd_pinyin9.xml:3`,
+            // `input_kbd_stroke.xml:3`, `input_kbd_number.xml:3`), 2.5 against
+            // 1.5 units (`style.xml:727-729`, `:736-738`).
+            val areas = listOf(
+                KeyboardMode.PINYIN_26 to ImeGeometryTokens.BOARD_SIDE_INSET_DP,
+                KeyboardMode.ENGLISH_26 to ImeGeometryTokens.BOARD_SIDE_INSET_DP,
+                KeyboardMode.PINYIN_9 to ImeGeometryTokens.NINE_KEY_SIDE_INSET_DP,
+                KeyboardMode.STROKE to ImeGeometryTokens.NINE_KEY_SIDE_INSET_DP,
+                KeyboardMode.DIGITS to ImeGeometryTokens.NINE_KEY_SIDE_INSET_DP,
+            )
+            for ((mode, inset) in areas) {
+                harness.awaitMain { keyboard.setMode(mode); true }
+                val expected = centering + Math.round(inset * unit)
+                val body = harness.awaitMain {
+                    keyboard.findViewWithTag<ViewGroup>("keyboard-body")?.takeIf { it.paddingLeft > 0 }
+                }
+                assertNotNull("$mode lays out a keyboard body", body)
+                assertEquals(
+                    "$mode keeps the reference's board side inset",
+                    expected.toLong(),
+                    body!!.paddingLeft.toLong(),
+                )
+                assertEquals("$mode insets both sides equally", body.paddingLeft, body.paddingRight)
+            }
+        }
+    }
+
+    @Test
     fun aPanelKeepsTheKeyMarginWhateverBoardOpenedIt() {
         withKeyboard { harness, keyboard ->
             harness.awaitMain { keyboard.setMode(KeyboardMode.PINYIN_9); true }

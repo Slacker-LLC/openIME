@@ -1338,8 +1338,9 @@ open class ImeKeyboardView(
         }
         // 单手模式把键面收窄贴向一侧；左右分离布局本身就是两侧的安排，不再叠加。
         val oneHand = if (splitKeyboard()) null else OneHandPolicy.insets(measuredWidthPx, oneHandMode, contentInsetPx)
-        val bodyLeft = oneHand?.first ?: contentInsetPx
-        val bodyRight = oneHand?.second ?: contentInsetPx
+        val boardInsetPx = boardSideInsetPx()
+        val bodyLeft = (oneHand?.first ?: contentInsetPx) + boardInsetPx
+        val bodyRight = (oneHand?.second ?: contentInsetPx) + boardInsetPx
         val panelLeft = oneHand?.first ?: moreCandidatesInsetPx
         val panelRight = oneHand?.second ?: moreCandidatesInsetPx
         keyboardBody.setPadding(
@@ -1380,6 +1381,37 @@ open class ImeKeyboardView(
      * and its ancestors. So once the pass is over, flag the containers that
      * were changed.
      */
+    /**
+     * The boards the reference gives the nine-key area class `cls_input_kbd9` —
+     * nine-key, stroke and the number page — as against the 26-key area class
+     * `cls_input_kbd` on the pinyin and English boards
+     * (`layout/input_kbd_pinyin9.xml:3`, `input_kbd_stroke.xml:3`,
+     * `input_kbd_number.xml:3`; `input_kbd_pinyin26.xml:3`,
+     * `input_kbd_english26.xml:3`). The same split sets their key margins and
+     * their board-side inset.
+     */
+    private fun usesNineKeyBoardArea(): Boolean =
+        mode == KeyboardMode.PINYIN_9 ||
+            mode == KeyboardMode.STROKE ||
+            mode == KeyboardMode.DIGITS
+
+    /**
+     * The board area keeps a side inset of its own, on top of the key margins,
+     * so the outer columns breathe by the same amount as the gaps between keys:
+     * 2.5 units on the 26-key boards, 1.5 on the nine-key ones
+     * (`cls_input_kbd_inset_adaptive`, `style.xml:727-729` and
+     * `cls_input_kbd9_inset_adaptive`, `:736-738`, the classes
+     * [usesNineKeyBoardArea] tells apart). Landscape and the floating window
+     * carry their own side figures, and the one-hand and split layouts arrange
+     * the two sides themselves.
+     */
+    private fun boardSideInsetPx(): Int = when {
+        floatingKeyboardController.enabled -> dp(0)
+        appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE -> dp(0)
+        usesNineKeyBoardArea() -> dp(ImeGeometryTokens.NINE_KEY_SIDE_INSET_DP)
+        else -> dp(ImeGeometryTokens.BOARD_SIDE_INSET_DP)
+    }
+
     private fun scheduleRelayout() {
         if (relayoutPosted) return
         relayoutPosted = true
@@ -2242,10 +2274,11 @@ open class ImeKeyboardView(
                 keyboardHost.layoutParams = it
             }
         }
+        val boardInsetPx = boardSideInsetPx()
         keyboardBody.setPadding(
-            contentInsetPx,
+            contentInsetPx + boardInsetPx,
             dp(ImeGeometryTokens.KEYBOARD_TOP_PAD_DP),
-            contentInsetPx,
+            contentInsetPx + boardInsetPx,
             dp(layoutMetrics.bottomPadDp),
         )
         val state = when {
@@ -2286,9 +2319,7 @@ open class ImeKeyboardView(
         // tighter 2.5 × 2.75 (`cls_keyboard9_button_margin`, `style.xml:373-374`),
         // the 26-key boards 2.25 × 4.75 (`cls_keyboard_button_margin`,
         // `style.xml:289-290`, see ImeGeometryTokens).
-        val nineKeyFamily = mode == KeyboardMode.PINYIN_9 ||
-            mode == KeyboardMode.STROKE ||
-            mode == KeyboardMode.DIGITS
+        val nineKeyFamily = usesNineKeyBoardArea()
         keyMarginX = if (nineKeyFamily) ImeGeometryTokens.NINE_KEY_MARGIN_X_DP else ImeGeometryTokens.KEY_MARGIN_X_DP
         keyMarginY = if (nineKeyFamily) ImeGeometryTokens.NINE_KEY_MARGIN_Y_DP else ImeGeometryTokens.KEY_MARGIN_Y_DP
         when (mode) {
@@ -3728,6 +3759,9 @@ open class ImeKeyboardView(
     }
 
     private fun dp(value: Int): Int = kotlin.math.round(value * resources.displayMetrics.density * referenceScale).toInt()
+
+    /** The reference states a few figures as fractions of a unit (2.25, 4.75). */
+    private fun dp(value: Float): Int = kotlin.math.round(value * resources.displayMetrics.density * referenceScale).toInt()
     private fun gridCellParams(
         heightDp: Int,
         columns: Int,
