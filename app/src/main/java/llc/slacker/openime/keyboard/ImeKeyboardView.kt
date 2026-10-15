@@ -405,6 +405,42 @@ open class ImeKeyboardView(
     private var dismissedSuggestion: String? = null
     private var dismissedSmsCode: String? = null
     private var ownSuggestionsShown = false
+    private var smsObserver: android.database.ContentObserver? = null
+    private val refreshSmsSuggestions = Runnable {
+        if (isAttachedToWindow && isShown) refreshSuggestions()
+    }
+
+    private fun stopObservingSms() {
+        removeCallbacks(refreshSmsSuggestions)
+        smsObserver?.let { context.contentResolver.unregisterContentObserver(it) }
+        smsObserver = null
+    }
+
+    private fun syncSmsObserver() {
+        val enabled = isAttachedToWindow && !standalonePanel &&
+            personalizedLearningAllowed(passwordField, currentImeOptions()) &&
+            ImeSettingsRepository.loadSmsCodeChip(context) &&
+            context.checkSelfPermission(android.Manifest.permission.READ_SMS) ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!enabled) {
+            stopObservingSms()
+        } else if (smsObserver == null) {
+            val observer = object : android.database.ContentObserver(repeatHandler) {
+                override fun onChange(selfChange: Boolean) {
+                    removeCallbacks(refreshSmsSuggestions)
+                    postDelayed(refreshSmsSuggestions, 200L)
+                }
+            }
+            try {
+                context.contentResolver.registerContentObserver(
+                    android.provider.Telephony.Sms.CONTENT_URI, true, observer,
+                )
+                smsObserver = observer
+            } catch (_: SecurityException) {
+                // Permission can be revoked between the check and registration.
+            }
+        }
+    }
 
     /**
      * Toolbar chips for a fresh text-message code and the text just copied. They
@@ -412,6 +448,7 @@ open class ImeKeyboardView(
      */
     internal fun refreshSuggestions() {
         if (standalonePanel || !::topZone.isInitialized) return
+        syncSmsObserver()
         // System autofill chips keep the strip; only this view's own chips are refreshed.
         if (topZone.autofillChipsShown && !ownSuggestionsShown) return
         val found = ToolbarSuggestions.collect(context, allowed = personalizedLearningAllowed(passwordField, currentImeOptions()), skipClip = dismissedSuggestion, skipSms = dismissedSmsCode)
@@ -2278,6 +2315,7 @@ open class ImeKeyboardView(
     }
 
     open fun shutdown() {
+        stopObservingSms()
         keySounds.release()
         // The field these chips belong to is going away.
         clearInlineSuggestions()

@@ -180,19 +180,16 @@ internal class ImeTopZone(
         val undoIcon = toolbarIcon(R.drawable.ic_undo, "撤销", "undo-toolbar") { onUndo() }
         splitIcon = toolbarIcon(R.drawable.ic_keyboard_split, "左右分离键盘", "split-toggle") { onSplitToggle() }
         val toolsIcon = toolbarIcon(R.drawable.ic_grid, "更多", "toolbar", onTools)
-        // The reference's own idle order, for the tools we show: clipboard,
-        // emoji, then the board selector (`input_toolbar_idle.xml:21-25`). Our
-        // own extras follow them. Floating (game) mode keeps the compact set,
-        // where quick phrases take the clipboard's place.
+        // Keep the original toolbar order, including the compact floating row.
         toolbarIcons = listOf(
+            keyboardIcon,
             clipboardIcon,
             emojiIcon,
-            keyboardIcon,
             textEditIcon,
             undoIcon,
             toolsIcon,
         )
-        compactToolbarIcons = listOf(emojiIcon, phraseIcon, keyboardIcon, toolsIcon)
+        compactToolbarIcons = listOf(keyboardIcon, phraseIcon, emojiIcon, toolsIcon)
 
         // The strip scrolls when the tools do not fit, as the reference's own
         // toolbar strip does (`sliderenable="true" sliderstopslowdown="true"`,
@@ -1062,6 +1059,13 @@ internal class ImeTopZone(
         val recent = toolbarMode == ToolbarMode.RECENT_SYMBOLS
         val tip = toolbarMode == ToolbarMode.TIP
         val shown = if (compact) compactToolbarIcons else toolbarIcons
+        val strip = toolbarIconScroll.getChildAt(0) as LinearLayout
+        shown.forEachIndexed { index, icon ->
+            if (strip.indexOfChild(icon) != index) {
+                strip.removeView(icon)
+                strip.addView(icon, index)
+            }
+        }
         (toolbarIcons + compactToolbarIcons).distinct().forEach {
             it.visibility = if (normal && it in shown) View.VISIBLE else View.GONE
         }

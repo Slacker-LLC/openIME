@@ -80,11 +80,12 @@ The app has no `INTERNET` permission, so your text cannot leave the phone.
 ## Install
 
 1. Open [Releases](https://github.com/Slacker-LLC/openIME/releases).
-   Download the latest `openIME-v*-arm64-release.apk`.
+   Download `openIME-llm-v*.apk` for the build that carries the offline voice
+   models, or `openIME-v*.apk` for the smaller build that has none.
 2. Check the SHA-256 checksum that the release notes show:
 
    ```bash
-   sha256sum openIME-v*-arm64-release.apk
+   sha256sum openIME-llm-v*.apk
    ```
 
 3. Install the APK.

@@ -8,6 +8,7 @@ import android.widget.TextView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import llc.slacker.openime.core.KeyboardMode
 import llc.slacker.openime.core.Panel
+import llc.slacker.openime.handwriting.HandwritingFeaturePolicy
 import llc.slacker.openime.handwriting.StrokeMatchHandwritingProvider
 import llc.slacker.openime.keyboard.ImeKeyboardView
 import llc.slacker.openime.panel.TileGridPolicy
@@ -190,11 +191,14 @@ class LauncherTileInstrumentedTest {
                 }
             }
             assertTrue("The switcher keeps the pinyin keyboards", labels.contains("拼音 26 键"))
-            // The handwriting tile follows the strokes table, which only local
-            // builds ship (`StrokeMatchHandwritingProvider.assetPresent`).
+            // The handwriting entry appears only when the pad is offered and the
+            // strokes table is there; local builds ship the table but the pad is
+            // hidden for now (`HandwritingFeaturePolicy.ENTRY_OFFERED`).
             assertEquals(
                 "The switcher carries the handwriting entry with its strokes table",
-                StrokeMatchHandwritingProvider.assetPresent(keyboard.context),
+                HandwritingFeaturePolicy.entryShown(
+                    StrokeMatchHandwritingProvider.assetPresent(keyboard.context),
+                ),
                 labels.contains("手写输入"),
             )
             keyboard.setMode(KeyboardMode.PINYIN_9, notifyListener = false)

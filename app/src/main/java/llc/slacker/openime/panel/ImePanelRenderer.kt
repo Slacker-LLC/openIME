@@ -30,6 +30,7 @@ import llc.slacker.openime.data.ImeSettingsRepository
 import llc.slacker.openime.handwriting.HandwritingPadView
 import llc.slacker.openime.handwriting.HandwritingProvider
 import llc.slacker.openime.handwriting.HandwritingResult
+import llc.slacker.openime.handwriting.HandwritingFeaturePolicy
 import llc.slacker.openime.handwriting.StrokeMatchHandwritingProvider
 import llc.slacker.openime.theme.ImeGeometryTokens
 import llc.slacker.openime.theme.ImeSurfacePolicy
@@ -118,8 +119,9 @@ internal class ImePanelRenderer(
         }
         val tiles = modes.map { (mode, label, iconRes) -> keyboardChoice(mode, label, iconRes) }.toMutableList()
         // Handwriting is an input surface, not a keyboard mode. Give it the
-        // same entry point as the keyboards so it is found in the same place.
-        if (StrokeMatchHandwritingProvider.assetPresent(context)) {
+        // same entry point as the keyboards so it is found in the same place —
+        // while the pad is offered at all.
+        if (HandwritingFeaturePolicy.entryShown(StrokeMatchHandwritingProvider.assetPresent(context))) {
             tiles += TileEntry(
                 label = "手写输入",
                 iconRes = R.drawable.ic_pref_handwriting,
@@ -159,7 +161,9 @@ internal class ImePanelRenderer(
                 "手写输入",
                 Panel.HANDWRITING,
                 R.drawable.ic_pref_handwriting,
-                enabled = StrokeMatchHandwritingProvider.assetPresent(context),
+                enabled = HandwritingFeaturePolicy.entryShown(
+                    StrokeMatchHandwritingProvider.assetPresent(context),
+                ),
             ),
             ToolEntry("文本编辑", Panel.TEXT_EDITOR, R.drawable.ic_pref_cursor),
             ToolEntry("浮动键盘", iconRes = R.drawable.ic_pref_floating, action = onEnableFloatingKeyboard),
@@ -726,13 +730,42 @@ internal class ImePanelRenderer(
         val tileHeight = (fittedRow - 2 * vPad).coerceAtLeast(toPx(ImeGeometryTokens.TOUCH_TARGET_DP))
         val rowHeight = (tileHeight + 2 * vPad).coerceAtLeast(fittedRow)
 
-        val container = LinearLayout(context).apply {
+        val container = object : LinearLayout(context) {
+            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                val availableWidth = MeasureSpec.getSize(widthMeasureSpec)
+                if (MeasureSpec.getMode(widthMeasureSpec) != MeasureSpec.UNSPECIFIED && availableWidth > 0) {
+                    val gridWidth = (availableWidth * TileGridPolicy.WIDTH_FRACTION).toInt()
+                    val innerPadding = (availableWidth * TileGridPolicy.PAD_H_FRACTION).toInt()
+                    val inset = (availableWidth - gridWidth) / 2 + innerPadding
+                    setPadding(inset, padTop, inset, padBottom)
+                    val width = ((availableWidth - 2 * inset) / TileGridPolicy.COLUMNS).coerceAtLeast(1)
+                    val margin = (width * TileGridPolicy.CHILD_PAD_FRACTION).toInt()
+                    for (rowIndex in 0 until childCount) {
+                        val row = getChildAt(rowIndex) as LinearLayout
+                        for (column in 0 until row.childCount) {
+                            val cell = row.getChildAt(column) as LinearLayout
+                            (cell.layoutParams as LinearLayout.LayoutParams).width = width
+                            val tile = cell.getChildAt(0)
+                            (tile.layoutParams as LinearLayout.LayoutParams).apply {
+                                this.width = (width - 2 * margin).coerceAtLeast(1)
+                                leftMargin = margin
+                                rightMargin = margin
+                            }
+                        }
+                    }
+                }
+                super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+            }
+        }.apply {
             orientation = LinearLayout.VERTICAL
             tag = "tile-grid"
             setPadding(padH, padTop, padH, padBottom)
         }
         entries.chunked(TileGridPolicy.COLUMNS).forEach { chunk ->
-            val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_HORIZONTAL
+            }
             chunk.forEach { entry ->
                 val cell = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
                 cell.addView(

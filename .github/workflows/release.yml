@@ -257,11 +257,11 @@ jobs:
             channel_flags=(--prerelease)
             latest_flag=--latest=false
           fi
-          # The full and lite APKs are the assets; their SHA-256 and the signing certificate
+          # The -llm and plain APKs are the assets; their SHA-256 and the signing certificate
           # are in the release notes, and the licenses ship inside the APK.
           gh release create "$GITHUB_REF_NAME" \
-            release-files/openIME-*-arm64-release.apk \
-            release-files/openIME-*-arm64-lite-release.apk \
+            release-files/openIME-llm-v*.apk \
+            release-files/openIME-v*.apk \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
             --draft \
@@ -269,9 +269,12 @@ jobs:
             --title "openIME $GITHUB_REF_NAME" \
             --notes-file release-files/RELEASE_NOTES.md
 
-          count="$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets | length')"
-          if [[ "$count" -ne 1 ]]; then
-            echo "::error::Expected exactly the APK as release asset, found $count; the draft was left unpublished."
+          names="$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | sort)"
+          wanted="$(printf 'openIME-%s.apk\nopenIME-llm-%s.apk\n' "$GITHUB_REF_NAME" "$GITHUB_REF_NAME" | sort)"
+          if [[ "$names" != "$wanted" ]]; then
+            echo "::error::Expected the -llm and the plain APK as release assets; the draft was left unpublished."
+            echo "found:"
+            echo "$names"
             exit 1
           fi
           gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false "$latest_flag"

@@ -104,7 +104,8 @@ The model never changes during a recording.
 
 The app never downloads anything. 「设置 → 语音模型」 imports a local package:
 
-- Archives: `.zip`, `.tar`, `.tar.gz`, `.tgz` (repack `tar.bz2` as zip first).
+- Archives: `.zip`, `.tar`, `.tar.gz`, `.tgz`, `.tar.bz2` / `.tbz2` / `.tbz`.
+  The official sherpa-onnx releases publish their model packages as `tar.bz2`, so those import as they arrive, with no unpacking or renaming.
 - Streaming families (sherpa-onnx online), detected from the file set:
   - transducer: `encoder*.onnx` + `decoder*.onnx` + `joiner*.onnx` + `tokens.txt` — zipformer, zipformer2, conformer, lstm, ebranchformer. The family is inferred from the package name and travels in the manifest `family` field; without it sherpa reads the ONNX metadata.
   - paraformer: `encoder*.onnx` + `decoder*.onnx` + `tokens.txt`.

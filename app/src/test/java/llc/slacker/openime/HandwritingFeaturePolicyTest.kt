@@ -25,4 +25,14 @@ class HandwritingFeaturePolicyTest {
 
         assertTrue(HandwritingFeaturePolicy.entryEnabled(provider))
     }
+
+    /**
+     * The launcher entries are hidden for now even where the strokes table
+     * ships; the switch is the only thing that keeps them out.
+     */
+    @Test
+    fun theLauncherEntryFollowsTheOfferSwitch() {
+        assertFalse(HandwritingFeaturePolicy.entryShown(assetPresent = true))
+        assertFalse(HandwritingFeaturePolicy.entryShown(assetPresent = false))
+    }
 }

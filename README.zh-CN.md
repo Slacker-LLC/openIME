@@ -59,12 +59,12 @@ openIME 是一款独立的 Android 系统输入法。拼音候选、用户词库
 
 ## 下载与安装
 
-1. 在 [Releases](https://github.com/Slacker-LLC/openIME/releases) 下载最新的 `openIME-v*-arm64-release.apk`。
+1. 在 [Releases](https://github.com/Slacker-LLC/openIME/releases) 下载：带离线语音模型的 `openIME-llm-v*.apk`，或是不含模型的小体积版本 `openIME-v*.apk`。
    发布包仅支持 `arm64-v8a` 设备（绝大多数近年的 Android 手机），系统要求 Android 8.0（API 26）及以上。
 2. 对照发布说明里的 SHA-256 校验后再安装：
 
    ```bash
-   sha256sum openIME-v*-arm64-release.apk
+   sha256sum openIME-llm-v*.apk
    ```
 
 3. 打开 openIME，按引导启用输入法并切换到 openIME。

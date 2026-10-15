@@ -237,7 +237,7 @@ enum class ImeTheme(val key: String, val label: String) {
         val panelHeadBackground: Int,
         val destructive: Int = Color.parseColor("#F4212E"),
         val success: Int = Color.parseColor("#1F8A4C"),
-        val onAccent: Int = Color.parseColor("#07131D"),
+        val onAccent: Int = Color.WHITE,
         val textSecondaryRole: Int? = null,
     ) {
         val canvas: Int get() = keyboardBackground
@@ -262,7 +262,7 @@ enum class ImeTheme(val key: String, val label: String) {
         }
         return if (useDark) {
             Tokens(
-                c("#6EC3F7"), c("#1C1C1E"), c("#242426"), c("#242426"), c("#F2F2F7"),
+                c("#2D6FD6"), c("#1C1C1E"), c("#242426"), c("#242426"), c("#F2F2F7"),
                 c("#3A3A3C"), c("#F2F2F7"), c("#AEAEB2"), c("#2C2C2E"), c("#F2F2F7"), c("#4A4A4D"),
                 c("#242426"), c("#48484A"), c("#2C2C2E"), c("#1C1C1E"), c("#242426"),
                 c("#3A3A3C"), c("#F2F2F7"), c("#2C2C2E"), c("#F2F2F7"), c("#303032"), c("#242426"),
@@ -270,7 +270,7 @@ enum class ImeTheme(val key: String, val label: String) {
             )
         } else {
             Tokens(
-                c("#1D9BF0"), c("#D5D8DF"), c("#EFF0F4"), c("#EFF0F4"), c("#1F2023"),
+                c("#1668D0"), c("#D5D8DF"), c("#EFF0F4"), c("#EFF0F4"), c("#1F2023"),
                 c("#FFFFFF"), c("#1C1C1E"), c("#6D6D72"), c("#C5C9D2"), c("#2C2D31"), c("#DDE1E7"),
                 c("#F2F3F5"), c("#B7BCC5"), c("#C5C9D2"), c("#F1F2F4"), c("#F8F9FA"),
                 c("#FFFFFF"), c("#1C1C1E"), c("#C5C9D2"), c("#2C2D31"), c("#FFFFFF"), c("#E4E7EC"),
@@ -438,13 +438,8 @@ internal object ImeSurfacePolicy {
     fun cardPressed(tokens: ImeTheme.Tokens): Int =
         pressedOnGround(tokens.keyboardBackground, tokens)
 
-    /**
-     * An idle-toolbar icon is half of the key text colour, never the key text
-     * itself: `toolbar_idle_button_text` is a mid gray on the light skin and
-     * half white on the dark one (`cls_toolbar_idle_button`,
-     * `style.xml:237-248`, `values/colors.xml:30`, `values/dark_colors.xml:28`).
-     */
-    fun toolbarIcon(tokens: ImeTheme.Tokens): Int = ImeDrawableFactory.withAlpha(tokens.keyText, 128)
+    /** Toolbar actions stay neutral, with enough weight to read on the toolbar. */
+    fun toolbarIcon(tokens: ImeTheme.Tokens): Int = ImeDrawableFactory.withAlpha(tokens.keyText, 217)
 
     /**
      * The panel header's close key. Both pages the reference gives a header —
