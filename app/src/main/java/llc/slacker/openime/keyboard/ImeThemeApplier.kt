@@ -754,6 +754,34 @@ internal class ImeThemeApplier(
                 )
             }
 
+            // 拆词: a word is a card, the selected run of them the panel's
+            // selection face, and a separator carries no face of its own.
+            tag?.startsWith("word-token-selected:") == true -> {
+                view.setTextColor(ImeSurfacePolicy.selectedText(t))
+                view.background = ImeDrawableFactory.rounded(
+                    ImeSurfacePolicy.segmentSelected(t),
+                    toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
+                    ImeSurfacePolicy.selectedText(t),
+                    toPx(1),
+                )
+                view.typeface = android.graphics.Typeface.DEFAULT_BOLD
+            }
+
+            tag?.startsWith("word-token:") == true -> {
+                view.setTextColor(t.keyText)
+                view.background = ImeDrawableFactory.rounded(
+                    t.toolCardBackground,
+                    toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
+                )
+                view.typeface = android.graphics.Typeface.DEFAULT
+            }
+
+            tag?.startsWith("word-token-plain:") == true -> {
+                view.setTextColor(t.keySecondaryText)
+                view.background = null
+                view.typeface = android.graphics.Typeface.DEFAULT
+            }
+
             tag == "segment-selected" -> {
                 view.setTextColor(t.keyText)
                 view.background = if (hasAncestorTag(view, "settings-panel")) {
