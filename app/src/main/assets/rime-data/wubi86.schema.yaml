@@ -50,6 +50,10 @@ speller:
   alphabet: zyxwvutsrqponmlkjihgfedcba
   delimiter: " '"
   max_code_length: 4
+  # 「四码唯一直接上屏」，参考键盘里默认打开：四码打完只剩一个候选时
+  # 立即上屏。参考键盘的「第五码将首选词上屏」默认关闭，但 librime 的
+  # speller 在 max_code_length > 0 时总会做这件事（见 DECISIONS.md）。
+  auto_select: true
 
 translator:
   dictionary: wubi86
