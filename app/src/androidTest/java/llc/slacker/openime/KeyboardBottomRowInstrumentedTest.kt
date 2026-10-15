@@ -70,30 +70,24 @@ class KeyboardBottomRowInstrumentedTest {
     private fun settled(harness: DirectActivityHarness<DebugKeyboardActivity>, keyboard: ImeKeyboardView, tag: String): View =
         harness.awaitMain { keyboard.findViewWithTag<View>(tag)?.takeIf { it.width > 0 } }
 
-    /**
-     * The bottom row carries the reference's own key widths — 123 70.6, the
-     * merged key 37.6, both symbol keys 35.5, the space bar 133.6, 中/英 38.6,
-     * 确定 74.6 (`style.xml:960-978`) — in the order its layout puts them
-     * (`input_kbd_pinyin26.xml:134-158`). The reference's two sides are not
-     * equal, so the space bar sits where its own numbers put it, a hair left of
-     * the keyboard's centre line rather than exactly on it.
-     */
+    /** The original five keys keep their widths and the space bar stays centred. */
     @Test
-    fun theBottomRowCarriesTheReferencesOwnKeyWidths() = withKeyboard { harness, _, keyboard ->
+    fun theBottomRowKeepsTheOriginalFiveKeyWidths() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain { keyboard.setMode(KeyboardMode.PINYIN_26); true }
         val space = settled(harness, keyboard, "key-space")
         val weights = ProductionKeyPolicy.twentySixKeyBottomRowWeights()
         val shares = listOf(
             "key:123" to weights.leftOuter,
-            "key-punctuation" to weights.merged,
-            "key-symbol-comma" to weights.symbol,
+            "key-punctuation" to weights.leftInner,
             "key-space" to weights.space,
-            "key-symbol-period" to weights.symbol,
             "key:mode" to weights.rightInner,
             "key-enter" to weights.rightOuter,
         )
         harness.awaitMain {
             val row = space.parent as ViewGroup
+            assertEquals("the bottom row has five keys", 5, row.childCount)
+            assertNull(keyboard.findViewWithTag<View>("key-symbol-comma"))
+            assertNull(keyboard.findViewWithTag<View>("key-symbol-period"))
             val unit = row.width / shares.sumOf { it.second.toDouble() }.toFloat()
             shares.forEach { (tag, weight) ->
                 val key = keyboard.findViewWithTag<View>(tag)
@@ -108,7 +102,7 @@ class KeyboardBottomRowInstrumentedTest {
             val before = shares.takeWhile { it.first != "key-space" }
                 .sumOf { it.second.toDouble() }.toFloat()
             assertEquals(
-                "the space bar sits where the reference's own weights put it",
+                "the space bar stays centred",
                 (before + weights.space / 2f) * unit,
                 space.centerX(row),
                 2f,
@@ -117,14 +111,15 @@ class KeyboardBottomRowInstrumentedTest {
         }
     }
 
-    /** The reference draws this column as delete, retype and a send key twice as tall. */
     @Test
-    fun theNineKeySideColumnIsDeleteRetypeAndATallSend() = withKeyboard { harness, _, keyboard ->
+    fun theSideColumnsKeepTheirOriginalKeysAndHeights() = withKeyboard { harness, _, keyboard ->
         listOf(KeyboardMode.PINYIN_9, KeyboardMode.STROKE).forEach { mode ->
             harness.awaitMain { keyboard.setMode(KeyboardMode.DIGITS); keyboard.setMode(mode); true }
             settled(harness, keyboard, "key-space")
             val ok = harness.awaitMain {
-                assertNull("$mode has no separate zero key", keyboard.findViewWithTag<View>("key-9:0"))
+                val zero = keyboard.findViewWithTag<View>("key-9:0")
+                if (mode == KeyboardMode.PINYIN_9) assertNotNull("nine-key keeps its separate zero", zero)
+                else assertNull("stroke keeps its three-key side column", zero)
                 val retype = keyboard.findViewWithTag<View>("key-retype")
                 val enter = keyboard.findViewWithTag<View>("key-enter")
                 val backspace = keyboard.findViewWithTag<View>("key-backspace")
@@ -132,25 +127,34 @@ class KeyboardBottomRowInstrumentedTest {
                 assertNotNull("$mode send", enter)
                 assertNotNull("$mode delete", backspace)
                 assertEquals("$mode delete matches retype", retype.height.toFloat(), backspace.height.toFloat(), 2f)
-                assertEquals("$mode send is twice as tall", (retype.height * 2).toFloat(), enter.height.toFloat(), 2f)
+                assertEquals("$mode send keeps the same height", retype.height.toFloat(), enter.height.toFloat(), 2f)
+                if (zero != null) assertEquals("zero matches the other keys", retype.height.toFloat(), zero.height.toFloat(), 2f)
                 true
             }
             check(ok)
         }
     }
 
-    /** The reference widens A and L by half a letter (weight 15 against 10). */
     @Test
-    fun theEdgeLetterKeysAreHalfALetterWider() = withKeyboard { harness, _, keyboard ->
-        harness.awaitMain { keyboard.setMode(KeyboardMode.PINYIN_26); true }
-        settled(harness, keyboard, "key:q")
-        harness.awaitMain {
-            fun width(tag: String) = keyboard.findViewWithTag<View>(tag).width
-            assertEquals("A is half a letter wider", width("key:s") * 1.5f, width("key:a").toFloat(), 2f)
-            assertEquals("L is half a letter wider", width("key:s") * 1.5f, width("key:l").toFloat(), 2f)
-            assertEquals("the middle letters stay equal", width("key:s"), width("key:d"))
-            true
+    fun theIndentedLetterRowKeepsTheTopRowsKeyPitch() = withKeyboard { harness, _, keyboard ->
+        listOf(KeyboardMode.PINYIN_26, KeyboardMode.ENGLISH_26).forEach { mode ->
+            harness.awaitMain { keyboard.setMode(mode); true }
+            settled(harness, keyboard, "key:q")
+            harness.awaitMain<Boolean> {
+                val q = keyboard.findViewWithTag<View>("key:q")
+                val w = keyboard.findViewWithTag<View>("key:w")
+                val a = keyboard.findViewWithTag<View>("key:a")
+                "asdfghjkl".forEach { letter ->
+                    val key = keyboard.findViewWithTag<View>("key:$letter")
+                    assertEquals("$mode $letter keeps the top row's width", q.width.toFloat(), key.width.toFloat(), 2f)
+                }
+                assertEquals("$mode keeps the half-key indent", q.centerX(keyboard) + q.width / 2f, a.centerX(keyboard), 2f)
+                val s = keyboard.findViewWithTag<View>("key:s")
+                assertEquals("$mode keeps the top row's pitch", w.centerX(keyboard) - q.centerX(keyboard), s.centerX(keyboard) - a.centerX(keyboard), 2f)
+                true
+            }
         }
+        true
     }
 
     /**

@@ -67,19 +67,17 @@ internal class Pinyin26KeyboardRenderer(
                 )
             }
 
-            rowText.forEachIndexed { index, character ->
-                // The reference widens A and L by half a letter (weight 15
-                // against 10) and the function keys of the last row likewise.
-                val wide = rowIndex == 1 && (index == 0 || index == rowText.lastIndex)
+            rowText.forEach { character ->
+                // The host already centres the nine-letter row at 90% width.
+                // Equal cells keep its letters on the same pitch as Q–P.
                 row.addView(
                     letterKey(character, english, shiftState),
-                    flexKeyParams(if (wide) EDGE_KEY_WEIGHT else 1f),
+                    flexKeyParams(),
                 )
             }
 
             if (rowIndex == 2) {
-                // The right big key clears the letter column by 8 units on its
-                // inner side (`cls_button_right_big`, `style.xml:911-912`).
+                // Keep the same cap gap as the adjacent letter keys.
                 row.addView(
                     createBackspaceKey().apply {
                         setReferenceMargins(
@@ -101,16 +99,11 @@ internal class Pinyin26KeyboardRenderer(
             createKey("123", true, null, ImeTypographyTokens.BODY_SP, 0, onDigits),
             flexKeyParams(weights.leftOuter),
         )
-        // The merged ，。 key sits left of the space bar, 中/英 right of it.
-        bottom.addView(punctuationKey(punctuation), flexKeyParams(weights.merged))
-        // The reference's two symbol keys bookend the space bar: ，and 。in
-        // Chinese, , and . in English, the address marks in a URL field.
-        bottom.addView(symbolKey("key-symbol-comma", punctuation.comma), flexKeyParams(weights.symbol))
+        bottom.addView(punctuationKey(punctuation), flexKeyParams(weights.leftInner))
         bottom.addView(
             createSpaceVoiceKey("空格", onSpace),
             flexKeyParams(weights.space),
         )
-        bottom.addView(symbolKey("key-symbol-period", punctuation.period), flexKeyParams(weights.symbol))
         bottom.addView(
             createKey(
                 "中/英",
@@ -178,9 +171,7 @@ internal class Pinyin26KeyboardRenderer(
             contentDescription = "${spec.merged}，上滑或长按输入${spec.mergedCorner}"
             setSecondaryVisible(true)
             setSecondaryAlpha(1f)
-            // The key is a mark and a corner in 8.8% of the row: the mark shrinks
-            // rather than showing an ellipsis when the key or the system font
-            // leaves it no room.
+            // Keep the mark visible when the key or system font leaves less room.
             allowLabelShrink()
             // Up swipes the corner mark, as the reference keyboard does.
             onSwipeUp = { onCommitCharacter(spec.mergedCorner) }
@@ -190,20 +181,6 @@ internal class Pinyin26KeyboardRenderer(
             }
         }
     }
-
-    /**
-     * One of the reference's two symbol keys beside the space bar
-     * (`input_kbd_pinyin26.xml:153,156`). It carries no corner mark and no
-     * bubble: the key is its own character.
-     */
-    private fun symbolKey(tag: String, text: String): ImeKeyView =
-        createKey(text, false, null, ImeTypographyTokens.KEY_LETTER_COMPACT_SP, 0) {
-            onCommitCharacter(text)
-        }.apply {
-            this.tag = tag
-            contentDescription = text
-            allowLabelShrink()
-        }
 
     private fun segmentKey(): ImeKeyView =
         createKey("分词", true, null, ImeTypographyTokens.BODY_SP, 0, onPinyinSegment).apply {
@@ -216,8 +193,7 @@ internal class Pinyin26KeyboardRenderer(
     private fun shiftKey(shiftState: ShiftState): ImeKeyView {
         val iconRes = EnglishShiftPolicy.icon(shiftState)
         return createKey("", true, null, null, iconRes, onShift).apply {
-            // The reference's left big key clears the letter column by 8 units
-            // on its inner side (`cls_button_left_big`, `style.xml:907-908`).
+            // Keep the original gap beside the letter column.
             setReferenceMargins(
                 left = ImeGeometryTokens.KEY_MARGIN_X_DP,
                 right = ImeGeometryTokens.KEY_INNER_MARGIN_DP,
@@ -307,8 +283,8 @@ internal class Pinyin26KeyboardRenderer(
          */
         fun modeKeyTag(english: Boolean): String = if (english) "key:mode-en" else "key:mode"
 
-        /** The reference skin's weight 15 against a letter's 10. */
-        const val EDGE_KEY_WEIGHT = 1.5f
+        /** Original Shift and backspace width relative to a letter. */
+        const val EDGE_KEY_WEIGHT = 1.25f
         val ROWS = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
     }
 }

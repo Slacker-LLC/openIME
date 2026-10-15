@@ -9,35 +9,21 @@ internal object ProductionKeyPolicy {
 
     data class BottomRowWeights(
         val leftOuter: Float,
-        val merged: Float,
-        val symbol: Float,
+        val leftInner: Float,
         val space: Float,
         val rightInner: Float,
         val rightOuter: Float,
     )
 
-    /**
-     * Nine-key bottom row: 123 | 空格 | 中/英, in the reference's own weights.
-     * Its nine-key board and its stroke board give that row the same three
-     * figures — 45.5, 134, 45.5 — inside the 225-unit centre column
-     * (`input_kbd_pinyin9.xml:87-100`, `input_kbd_stroke.xml:69-84`).
-     */
+    /** Nine-key bottom row: 123 | 空格 | 中/英. The space bar is the wide key. */
     data class NineKeyBottomRowWeights(val side: Float, val space: Float)
 
-    fun nineKeyBottomRowWeights(): NineKeyBottomRowWeights = NineKeyBottomRowWeights(side = 45.5f, space = 134f)
+    fun nineKeyBottomRowWeights(): NineKeyBottomRowWeights = NineKeyBottomRowWeights(side = 0.7f, space = 1.6f)
 
-    /**
-     * Visual reference geometry for the shared Chinese/English 26-key bottom row:
-     * 123 | ，。 | ， | 空格 | 。 | 中/英 | 确定, in the reference's own weights
-     * (`style.xml:957-978`: 123 70.6, the merged key 37.6, both symbol keys 35.5,
-     * space 133.6, 中/英 38.6, 确定 74.6). The row mirrors around the space key so
-     * the space bar sits on the keyboard's centre line.
-     */
+    /** The original five-key row keeps the space bar centred in either orientation. */
     fun twentySixKeyBottomRowWeights(landscape: Boolean = false): BottomRowWeights {
-        // 横屏按参考键盘的横屏皮肤放大空格键：其空格权重 133.6 -> 182.2（×1.3638），
-        // 其余各键均不变（skin-reference/land/style.xml:115）。
-        val space = if (landscape) 182.2f else 133.6f
-        return BottomRowWeights(70.6f, 37.6f, 35.5f, space, 38.6f, 74.6f)
+        val space = if (landscape) 210f else 154f
+        return BottomRowWeights(70f, 48f, space, 48f, 70f)
     }
 
     /**

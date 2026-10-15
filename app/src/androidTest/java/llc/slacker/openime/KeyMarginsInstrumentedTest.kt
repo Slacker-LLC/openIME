@@ -19,15 +19,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.lang.reflect.Proxy
 
-/**
- * Every key cap is painted inside its cell by that key class's own margins: the
- * 26-key board's keys keep 2.25 units sideways and 4.75 up and down
- * (`cls_keyboard_button_margin`, `style.xml:289-290`), the nine-key family —
- * nine-key, stroke and the number page — 2.5 and 2.75
- * (`cls_keyboard9_button_margin`, `style.xml:373-374`), and the 26-key board's
- * two big side keys clear the letter column by 8 units on their inner side
- * (`cls_button_left_big`, `cls_button_right_big`, `style.xml:907-912`).
- */
+/** Key caps keep their original uniform six-unit gap on every board. */
 @RunWith(AndroidJUnit4::class)
 class KeyMarginsInstrumentedTest {
     private val listener = Proxy.newProxyInstance(
@@ -93,11 +85,12 @@ class KeyMarginsInstrumentedTest {
         bottom: Float,
     ) {
         val unit = unitOf(keyboard)
+        fun pixels(margin: Float): Int = if (margin == 3f) kotlin.math.round(6 * unit).toInt() / 2 else Math.round(margin * unit)
         val insets = capInsets(key)
-        assertEquals("$label keeps the reference's left margin", Math.round(left * unit).toLong(), insets.left.toLong())
-        assertEquals("$label keeps the reference's top margin", Math.round(top * unit).toLong(), insets.top.toLong())
-        assertEquals("$label keeps the reference's right margin", Math.round(right * unit).toLong(), insets.right.toLong())
-        assertEquals("$label keeps the reference's bottom margin", Math.round(bottom * unit).toLong(), insets.bottom.toLong())
+        assertEquals("$label keeps its left margin", pixels(left).toLong(), insets.left.toLong())
+        assertEquals("$label keeps its top margin", pixels(top).toLong(), insets.top.toLong())
+        assertEquals("$label keeps its right margin", pixels(right).toLong(), insets.right.toLong())
+        assertEquals("$label keeps its bottom margin", pixels(bottom).toLong(), insets.bottom.toLong())
     }
 
     private fun allViews(root: View): Sequence<View> = sequence {

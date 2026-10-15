@@ -35,6 +35,7 @@ internal class Pinyin9KeyboardRenderer(
     private val markWhiteKey: (ImeKeyView) -> Unit,
     private val onDigitKeyCreated: (String, ImeKeyView) -> Unit,
     private val onNineKey: (String) -> Unit,
+    private val onPinyinSegment: () -> Unit,
     private val onShowChoicePopup: (View, List<String>) -> Unit,
     private val onShowChoiceRows: (View, List<List<String>>) -> Unit,
     private val swipeUpEnabled: () -> Boolean,
@@ -112,8 +113,7 @@ internal class Pinyin9KeyboardRenderer(
             orientation = LinearLayout.VERTICAL
             tag = "pinyin9-actions"
         }
-        // Delete, retype and send, with send twice as tall, as the reference
-        // keyboard draws this column; the 0 sits on the space bar's corner.
+        // Keep the original four equal cells: delete, retype, zero and enter.
         val quarter = nineBodyHeightDp() / 4
         side.addView(createBackspaceKey().apply { markSideKey(this) }, sideKeyParams(quarter))
         side.addView(
@@ -124,11 +124,19 @@ internal class Pinyin9KeyboardRenderer(
             sideKeyParams(quarter),
         )
         side.addView(
+            createKey("0", true, null, ImeTypographyTokens.KEY_NUMBER_SP) { onCommitCharacter("0") }.apply {
+                tag = "key-9:0"
+                contentDescription = "0"
+                markSideKey(this)
+            },
+            sideKeyParams(quarter),
+        )
+        side.addView(
             createKey(enterLabel, true, null, ImeTypographyTokens.BODY_SP, onEnter).apply {
                 tag = "key-enter"
                 markSideKey(this)
             },
-            sideKeyParams(quarter * 2),
+            sideKeyParams(quarter),
         )
         if (splitLayout()) {
             // Keep all Chinese keys in their familiar three-by-three order.
@@ -220,27 +228,22 @@ internal class Pinyin9KeyboardRenderer(
     }
 
     private fun createNineDigitKey(digit: String): ImeKeyView {
-        // The 1 cell is the reference's `@#` key: the label names the symbols it
-        // offers, and the corner shows the digit a tap and an up swipe type
-        // (`input_kbd_pinyin9.xml:23-28`). The board has no 分词 key: that key
-        // exists on the 26-key row alone.
-        val atSymbol = digit == "1"
+        // Keep the original segment key in the 1 cell; its digit swipe and
+        // symbol choices remain available without changing the key arrangement.
+        val segmentation = digit == "1"
         val labels = NINE_KEYS.flatten().first { it.first == digit }.second
         val key = createKey(
-            labels,
+            if (segmentation) "分词" else labels,
             false,
             digit,
-            // The reference gives the `@#` key its own, larger face
-            // (`key_letter9_at_symbol`, 54 units) and the letters
-            // `key_letter9`, 48 (`input_kbd_pinyin9.xml:23-28`, 32).
-            if (atSymbol) NINE_KEY_SYMBOL_SP else ImeTypographyTokens.NINE_KEY_LETTER_SP,
+            if (segmentation) ImeTypographyTokens.BODY_SP else ImeTypographyTokens.NINE_KEY_LETTER_SP,
         ) {
-            onNineKey(digit)
+            if (segmentation) onPinyinSegment() else onNineKey(digit)
         }.apply {
             tag = "key-9:$digit"
-            contentDescription = if (atSymbol) "@#，角标 1" else digit
+            contentDescription = if (segmentation) "1，分词" else digit
             markWhiteKey(this)
-            if (atSymbol) {
+            if (segmentation) {
                 setOnLongClickListener {
                     onShowChoicePopup(this, NineKeyLongPressPolicy.AT_SYMBOL_CHOICES)
                     true
@@ -282,9 +285,6 @@ internal class Pinyin9KeyboardRenderer(
         )
 
     private companion object {
-        /** The `@#` key's own face: `key_letter9_at_symbol`, 54 units. */
-        const val NINE_KEY_SYMBOL_SP = 18f
-
         val NINE_KEYS = listOf(
             listOf("1" to "@#", "2" to "ABC", "3" to "DEF"),
             listOf("4" to "GHI", "5" to "JKL", "6" to "MNO"),

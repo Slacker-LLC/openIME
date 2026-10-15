@@ -1,7 +1,6 @@
 package llc.slacker.openime.keyboard
 
 import android.content.Context
-import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -12,15 +11,11 @@ import llc.slacker.openime.theme.ImeTypographyTokens
 import llc.slacker.openime.widget.ImeKeyView
 
 /**
- * Concrete first-frame renderer for the number/decimal/phone page.
+ * Concrete first-frame renderer for number/decimal/phone keyboards.
  *
- * The page is the reference's own number layout
- * (`input_kbd_number_from26.xml:5-42`): a symbol rail over the return key on
- * the left, three columns of digits whose last cell is 符号 / 0 / `.`, and a
- * delete / space / send column on the right.
- *
- * Phone remapping and the symbol rail are resolved before the view is attached,
- * so no post-build hierarchy scan is needed.
+ * Keeps the original three-column digit grid, 返回 / 空格 / 0 bottom row,
+ * and delete / . / @ / enter action column. Phone remapping is applied while
+ * constructing each key, before the view is attached.
  */
 internal class NumericKeyboardRenderer(
     private val context: Context,
@@ -60,12 +55,7 @@ internal class NumericKeyboardRenderer(
             tag = "digits-layout"
         }
 
-        // The rail takes three key rows and the return key the fourth, as the
-        // reference splits the column (input_kbd_number_from26.xml:10-15).
-        val left = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.BOTTOM
-        }
+        val left = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         val rail = SymbolRailRenderer.build(
             context = context,
             railTag = DIGITS_RAIL_TAG,
@@ -85,73 +75,101 @@ internal class NumericKeyboardRenderer(
             rail,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(keyRowHeightDp() * NumberPadPolicy.RAIL_ROWS),
+                toPx(keyRowHeightDp() * 3),
             ),
         )
-        // The reference draws this key on its theme colour, not on gray
-        // (`cls_button_back_26key` over `cls_button_back`, style.xml:857-858,
-        // :838-843, and `cls_bk_theme_circle` there is `theme_color`,
-        // :282-286). Its label is our own text: the skin's key carries a glyph
-        // from its icon font (a private-use glyph), which this build has no face for.
         left.addView(
+            createKey("符号", true, ImeTypographyTokens.BODY_SP, onShowSymbols).apply {
+                tag = "key-symbols"
+                markSideKey(this)
+            },
+            sideKeyParams(),
+        )
+        container.addView(left, adaptiveColumnParams(1f))
+
+        val grid = LinearLayout(context).apply {
+            tag = "digits-grid"
+            orientation = LinearLayout.VERTICAL
+        }
+        DIGIT_ROWS.forEach { digits ->
+            val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+            digits.forEach { digit -> row.addView(digitKey(digit), flexKeyParams()) }
+            grid.addView(
+                row,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    toPx(keyRowHeightDp()),
+                ),
+            )
+        }
+        val center = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        center.addView(
+            grid,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                toPx(keyRowHeightDp() * 3),
+            ),
+        )
+        val bottom = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        bottom.addView(
             createKey("返回", true, ImeTypographyTokens.BODY_SP, onReturnToText).apply {
                 tag = "key:mode"
-                markAccentKey(this)
+                markSideKey(this)
             },
-            columnCellParams(keyRowHeightDp() * NumberPadPolicy.BACK_ROWS),
+            flexKeyParams(),
         )
-        container.addView(left, adaptiveColumnParams(NumberPadPolicy.RAIL_COLUMN_WEIGHT))
-
-        // Three digit columns, each closed by the reference's own fourth cell
-        // (input_kbd_number_from26.xml:17-34).
-        val stacks = NumberPadPolicy.DIGIT_COLUMN_TOPS.map { column ->
-            LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                column.forEach { digit -> addView(digitKey(digit), columnCellParams()) }
-            }
-        }
-        val tails = NumberPadPolicy.COLUMN_TAILS
-        stacks[SYMBOL_COLUMN].addView(
-            createKey(literal(SYMBOL_CELL_TAG, tails[SYMBOL_COLUMN]), true, ImeTypographyTokens.BODY_SP) {
-                if (phone) onCommitCharacter(literal(SYMBOL_CELL_TAG, tails[SYMBOL_COLUMN])) else onShowSymbols()
-            }.apply {
-                tag = SYMBOL_CELL_TAG
-                markWhiteKey(this)
+        bottom.addView(
+            if (phone) {
+                val value = literal("key-space", "*")
+                createKey(value, true, ImeTypographyTokens.KEY_NUMBER_SP) { onCommitCharacter(value) }.apply {
+                    tag = "key-space"
+                    markWhiteKey(this)
+                }
+            } else {
+                createSpaceVoiceKey("空格", onSpace)
             },
-            columnCellParams(),
+            flexKeyParams(),
         )
-        stacks[ZERO_COLUMN].addView(
-            digitKey(tails[ZERO_COLUMN], value = literal("key:0", tails[ZERO_COLUMN]), tag = "key:0"),
-            columnCellParams(),
+        bottom.addView(digitKey(literal("key:0", "0"), tag = "key:0"), flexKeyParams())
+        center.addView(
+            bottom,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                toPx(keyRowHeightDp()),
+            ),
         )
-        stacks[PERIOD_COLUMN].addView(
-            digitKey(literal("key:.", tails[PERIOD_COLUMN]), tag = "key:."),
-            columnCellParams(),
-        )
-        stacks.forEach { container.addView(it, adaptiveColumnParams(NumberPadPolicy.DIGIT_COLUMN_WEIGHT)) }
+        container.addView(center, adaptiveColumnParams(25f / 7f))
 
         val side = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             tag = "digits-actions"
         }
+        side.addView(createBackspaceKey().apply { markSideKey(this) }, sideKeyParams())
+        val period = literal("key:.", ".")
         side.addView(
-            createBackspaceKey().apply { markSideKey(this) },
-            columnCellParams(),
+            createKey(period, true, ImeTypographyTokens.KEY_NUMBER_SP) { onCommitCharacter(period) }.apply {
+                tag = "key:."
+                markSideKey(this)
+            },
+            sideKeyParams(),
         )
+        // Keep the existing phone policy's # mapping on the restored @ cell.
+        val at = literal("key:symbol", "@")
         side.addView(
-            createSpaceVoiceKey("空格", onSpace),
-            columnCellParams(),
+            createKey(at, true, ImeTypographyTokens.BODY_SP) { onCommitCharacter(at) }.apply {
+                tag = "key:@"
+                markSideKey(this)
+            },
+            sideKeyParams(),
         )
         side.addView(
             createKey(enterLabel, true, ImeTypographyTokens.BODY_SP, onEnter).apply {
                 tag = "key-enter"
                 markSideKey(this)
             },
-            // The reference draws send twice as tall as the keys above it
-            // (input_kbd_number_from26.xml:38-40).
-            columnCellParams(keyRowHeightDp() * NumberPadPolicy.SEND_ROWS),
+            sideKeyParams(),
         )
-        container.addView(side, adaptiveColumnParams(NumberPadPolicy.SEND_COLUMN_WEIGHT))
+        container.addView(side, adaptiveColumnParams(1f))
 
         keyboardBody.addView(
             container,
@@ -162,9 +180,8 @@ internal class NumericKeyboardRenderer(
         )
     }
 
-    /** A digit cell: the reference draws every digit on a white key (`cls_keyboard_number9_button`). */
-    private fun digitKey(digit: String, value: String = digit, tag: String = "key:$digit"): ImeKeyView =
-        createKey(digit, false, ImeTypographyTokens.KEY_NUMBER_SP) { onCommitCharacter(value) }.apply {
+    private fun digitKey(digit: String, tag: String = "key:$digit"): ImeKeyView =
+        createKey(digit, false, ImeTypographyTokens.KEY_NUMBER_SP) { onCommitCharacter(digit) }.apply {
             this.tag = tag
             markWhiteKey(this)
         }
@@ -192,28 +209,22 @@ internal class NumericKeyboardRenderer(
                     .filter { it.isNotBlank() }
         ).distinct()
 
-    private fun columnCellParams(heightDp: Int = keyRowHeightDp()) =
-        LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            toPx(heightDp),
-        )
+    private fun flexKeyParams(weight: Float = 1f) =
+        LinearLayout.LayoutParams(0, toPx(keyRowHeightDp()), weight)
+
+    private fun sideKeyParams() =
+        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(keyRowHeightDp()))
 
     private fun adaptiveColumnParams(weight: Float) =
-        LinearLayout.LayoutParams(
-            0,
-            toPx(nineBodyHeightDp()),
-            weight,
-        )
+        LinearLayout.LayoutParams(0, toPx(nineBodyHeightDp()), weight)
 
     private companion object {
         const val DIGITS_RAIL_TAG = "digits-symbol-scroll"
         const val DIGITS_CONTENT_TAG = "digits-symbol-scroll-content"
-
-        /** The symbol-page cell of the first column; a phone field puts the dialer's `#` here. */
-        const val SYMBOL_CELL_TAG = "key:symbol"
-
-        const val SYMBOL_COLUMN = 0
-        const val ZERO_COLUMN = 1
-        const val PERIOD_COLUMN = 2
+        val DIGIT_ROWS = listOf(
+            listOf("1", "2", "3"),
+            listOf("4", "5", "6"),
+            listOf("7", "8", "9"),
+        )
     }
 }

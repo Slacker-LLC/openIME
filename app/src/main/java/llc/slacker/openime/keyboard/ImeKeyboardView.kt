@@ -645,13 +645,14 @@ open class ImeKeyboardView(
             },
             createBackspaceKey = ::backspaceKey,
             createSpaceVoiceKey = { label, onTap ->
-                spaceVoiceKey(label, white = true, onTap = onTap, hint = "0")
+                spaceVoiceKey(label, white = true, onTap = onTap)
             },
             createSymbolRail = { requireNineKeySymbolRailController().buildRail() },
             markSideKey = { key -> key.setTag(MARK_SIDE_KEY, true) },
             markWhiteKey = { key -> key.setTag(MARK_WHITE_KEY, true) },
             onDigitKeyCreated = nineKeySegmentRepairController::bindDigitKey,
             onNineKey = ::onNineKey,
+            onPinyinSegment = ::onPinyinSegment,
             onShowChoicePopup = ::showChoicePopup,
             onShowChoiceRows = ::showChoiceRows,
             swipeUpEnabled = { ImeSettingsRepository.loadSwipeUpDigits(context) },
@@ -686,7 +687,7 @@ open class ImeKeyboardView(
             },
             createBackspaceKey = ::backspaceKey,
             createSpaceVoiceKey = { label, onTap ->
-                spaceVoiceKey(label, white = true, onTap = onTap, hint = "0")
+                spaceVoiceKey(label, white = true, onTap = onTap)
             },
             // The nine-key rail: stroke glyphs are not digits, so it stays on symbols.
             createSymbolRail = { requireNineKeySymbolRailController().buildRail() },
