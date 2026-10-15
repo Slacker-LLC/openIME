@@ -43,7 +43,7 @@ class DoublePinyinSchemaTest {
     @Test
     fun schemeLabelsAndIdsMatchTheReferenceProduct() {
         assertEquals("小鹤双拼", DoublePinyinScheme.FLYPY.label)
-        assertEquals("自然码", DoublePinyinScheme.NATURAL.label)
+        assertEquals("自然码双拼", DoublePinyinScheme.NATURAL.label)
         assertEquals("double_pinyin_flypy", DoublePinyinScheme.FLYPY.schemaId)
         assertEquals("double_pinyin", DoublePinyinScheme.NATURAL.schemaId)
         assertEquals(DoublePinyinScheme.FLYPY, DoublePinyinScheme.fromKey(null))

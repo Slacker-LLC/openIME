@@ -597,7 +597,7 @@ internal class SettingsPanelController(
         }
 
     private fun doublePinyinSchemeRow(iconRes: Int): View =
-        choiceRow("双拼方案", iconRes, DoublePinyinScheme.entries.map { it.label }, currentDoublePinyinScheme().label) { label ->
+        choiceRow("26键双拼方案", iconRes, DoublePinyinScheme.entries.map { it.label }, currentDoublePinyinScheme().label) { label ->
             onDoublePinyinSchemeChanged(DoublePinyinScheme.entries.first { it.label == label })
         }
 
