@@ -2,53 +2,46 @@ package llc.slacker.openime
 
 import llc.slacker.openime.keyboard.ProductionKeyPolicy
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Regression coverage for current-main production key geometry. */
+/** Regression coverage for the original production key geometry. */
 class ProductionKeyPolicyTest {
     @Test
-    fun twentySixKeyBottomRowFollowsTheReferenceCanvas() {
+    fun twentySixKeyBottomRowKeepsTheOriginalFiveKeyWidths() {
         val weights = ProductionKeyPolicy.twentySixKeyBottomRowWeights()
-        // 123 | ，。 | 空格 | 中/英 | 确定, in the design's 390 units.
         assertEquals(70f, weights.leftOuter, 0.0001f)
         assertEquals(48f, weights.leftInner, 0.0001f)
         assertEquals(154f, weights.space, 0.0001f)
         assertEquals(48f, weights.rightInner, 0.0001f)
         assertEquals(70f, weights.rightOuter, 0.0001f)
-        assertEquals(
-            390f,
-            weights.leftOuter + weights.leftInner + weights.space + weights.rightInner + weights.rightOuter,
-            0.0001f,
-        )
     }
 
     @Test
-    fun twentySixKeyBottomRowGivesLandscapeASpaceBarLikeTheReference() {
+    fun twentySixKeyBottomRowKeepsTheSpaceBarCentred() {
+        listOf(false, true).forEach { landscape ->
+            val weights = ProductionKeyPolicy.twentySixKeyBottomRowWeights(landscape)
+            assertEquals(weights.leftOuter + weights.leftInner, weights.rightInner + weights.rightOuter, 0.0001f)
+        }
+    }
+
+    @Test
+    fun landscapeKeepsItsWiderSpaceBar() {
         val portrait = ProductionKeyPolicy.twentySixKeyBottomRowWeights()
         val landscape = ProductionKeyPolicy.twentySixKeyBottomRowWeights(landscape = true)
-        // 参考键盘横屏皮肤只放大空格键（133.6 -> 182.2，×1.3638），其余键不动。
         assertEquals(portrait.leftOuter, landscape.leftOuter, 0.0001f)
         assertEquals(portrait.leftInner, landscape.leftInner, 0.0001f)
         assertEquals(portrait.rightInner, landscape.rightInner, 0.0001f)
         assertEquals(portrait.rightOuter, landscape.rightOuter, 0.0001f)
-        assertEquals(210f, landscape.space, 0.2f)
-        assertEquals(182.2f / 133.6f, landscape.space / portrait.space, 0.01f)
+        assertEquals(210f, landscape.space, 0.0001f)
     }
 
     @Test
-    fun twentySixKeyBottomRowIsSymmetricAroundTheSpaceKey() {
-        val weights = ProductionKeyPolicy.twentySixKeyBottomRowWeights()
-        assertEquals(weights.leftOuter, weights.rightOuter, 0.0001f)
-        assertEquals(weights.leftInner, weights.rightInner, 0.0001f)
-    }
-
-    @Test
-    fun nineKeyBottomRowGivesTheSpaceBarMoreRoomThanTheSideKeys() {
+    fun nineKeyBottomRowKeepsTheOriginalWidths() {
         val weights = ProductionKeyPolicy.nineKeyBottomRowWeights()
         assertEquals(0.7f, weights.side, 0.0001f)
         assertEquals(1.6f, weights.space, 0.0001f)
-        // Same total as the former 1:1:1 row, so the grid above is unaffected.
-        assertEquals(3f, weights.side * 2 + weights.space, 0.0001f)
+        assertTrue(weights.space > weights.side * 2)
     }
 
     @Test
@@ -62,5 +55,4 @@ class ProductionKeyPolicyTest {
         assertEquals(balanced.leftOuter, balanced.rightOuter, 0.0001f)
         assertEquals(0.925f, balanced.leftOuter, 0.0001f)
     }
-
 }

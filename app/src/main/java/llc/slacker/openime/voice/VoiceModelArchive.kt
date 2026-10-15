@@ -1,5 +1,6 @@
 package llc.slacker.openime.voice
 
+import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.InputStream
@@ -9,21 +10,30 @@ import java.util.zip.ZipInputStream
 /**
  * Extracts a local voice-model package into a staging directory.
  *
- * Supported forms: .zip, .tar, .tar.gz / .tgz.  Every entry is checked for
- * path traversal and the whole archive is bounded, so a malicious package
- * cannot escape the staging directory or fill the disk. tar.bz2 is not
- * supported (no bzip2 decoder on board): the import UI asks the user to
- * repack it.
+ * Supported forms: .zip, .tar, .tar.gz / .tgz, .tar.bz2 / .tbz2 / .tbz — the
+ * last because the official sherpa-onnx voice-model releases are published as
+ * tar.bz2 (`scripts/apk/generate-asr-apk-script.py` in k2-fsa/sherpa-onnx
+ * builds its APKs from exactly those). Android ships no bzip2 decoder
+ * (`java.util.zip` offers only deflate/gzip), so bzip2 comes from
+ * `BZip2CompressorInputStream` (`commons-compress` 1.27.1,
+ * `org/apache/commons/compress/compressors/bzip2/BZip2CompressorInputStream.java`,
+ * whose `InputStream` constructor is the one used below). Every entry is
+ * checked for path traversal and the whole archive is bounded, so a malicious
+ * package cannot escape the staging directory or fill the disk.
  */
 internal object VoiceModelArchive {
     const val MAX_UNPACKED_BYTES = 1_500L * 1_048_576
 
-    enum class Format { ZIP, TAR, TAR_GZ }
+    enum class Format { ZIP, TAR, TAR_GZ, TAR_BZ2 }
 
     fun formatOf(fileName: String): Format? = when {
         fileName.endsWith(".zip", ignoreCase = true) -> Format.ZIP
         fileName.endsWith(".tar.gz", ignoreCase = true) || fileName.endsWith(".tgz", ignoreCase = true) ->
             Format.TAR_GZ
+        fileName.endsWith(".tar.bz2", ignoreCase = true) ||
+            fileName.endsWith(".tbz2", ignoreCase = true) ||
+            fileName.endsWith(".tbz", ignoreCase = true) ->
+            Format.TAR_BZ2
         fileName.endsWith(".tar", ignoreCase = true) -> Format.TAR
         else -> null
     }
@@ -32,6 +42,15 @@ internal object VoiceModelArchive {
     fun sniff(header: ByteArray): Format? {
         if (header.size >= 4 && header[0] == 'P'.code.toByte() && header[1] == 'K'.code.toByte()) {
             return Format.ZIP
+        }
+        // A bzip2 stream opens with `BZh` and the block size byte '1'..'9'
+        // (`BZip2CompressorInputStream`, the upstream check on those three
+        // bytes), and the official model archives use block size 9.
+        if (header.size >= 4 &&
+            header[0] == 'B'.code.toByte() && header[1] == 'Z'.code.toByte() &&
+            header[2] == 'h'.code.toByte() && header[3].toInt().toChar() in '1'..'9'
+        ) {
+            return Format.TAR_BZ2
         }
         if (header.size >= 2 && header[0] == 0x1f.toByte() && header[1] == 0x8b.toByte()) {
             return Format.TAR_GZ
@@ -57,6 +76,7 @@ internal object VoiceModelArchive {
             Format.ZIP -> extractZip(input, canonicalRoot, maxBytes)
             Format.TAR -> extractTar(input, canonicalRoot, maxBytes)
             Format.TAR_GZ -> GZIPInputStream(input).use { extractTar(it, canonicalRoot, maxBytes) }
+            Format.TAR_BZ2 -> BZip2CompressorInputStream(input).use { extractTar(it, canonicalRoot, maxBytes) }
         }
     }
 

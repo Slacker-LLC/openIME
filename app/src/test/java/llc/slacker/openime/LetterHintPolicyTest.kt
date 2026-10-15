@@ -34,31 +34,31 @@ class LetterHintPolicyTest {
         }
     }
 
+    /** The reference product's English marks, key by key. */
     @Test
-    fun englishUsesAsciiMarks() {
-        assertEquals("!", LetterHintPolicy.hint('s', english = true))
-        assertEquals("$", LetterHintPolicy.hint('g', english = true))
-        assertEquals("?", LetterHintPolicy.hint('l', english = true))
-        assertEquals("(", LetterHintPolicy.hint('z', english = true))
-        assertEquals(")", LetterHintPolicy.hint('x', english = true))
-        assertEquals(":", LetterHintPolicy.hint('b', english = true))
-        assertEquals(";", LetterHintPolicy.hint('n', english = true))
+    fun englishFollowsTheReferenceMarks() {
+        assertEquals(
+            listOf("-", "/", ":", ";", "(", ")", "~", "'", "\"")
+                + listOf("@", "_", "#", "&", "?", "!", "…"),
+            "asdfghjkl".map { LetterHintPolicy.hint(it, english = true) } +
+                "zxcvbnm".map { LetterHintPolicy.hint(it, english = true) },
+        )
     }
 
+    /** The reference product's Chinese marks: the full-width form of the same row. */
     @Test
-    fun chineseUsesFullWidthMarksWhereOneExists() {
-        assertEquals("！", LetterHintPolicy.hint('s', english = false))
-        assertEquals("￥", LetterHintPolicy.hint('g', english = false))
-        assertEquals("？", LetterHintPolicy.hint('l', english = false))
-        assertEquals("（", LetterHintPolicy.hint('z', english = false))
-        assertEquals("）", LetterHintPolicy.hint('x', english = false))
-        assertEquals("：", LetterHintPolicy.hint('b', english = false))
-        assertEquals("；", LetterHintPolicy.hint('n', english = false))
+    fun chineseFollowsTheReferenceMarks() {
+        assertEquals(
+            listOf("-", "/", "：", "；", "（", "）", "～", "“", "”")
+                + listOf("@", ".", "#", "、", "？", "！", "…"),
+            "asdfghjkl".map { LetterHintPolicy.hint(it, english = false) } +
+                "zxcvbnm".map { LetterHintPolicy.hint(it, english = false) },
+        )
     }
 
     @Test
     fun marksWithoutAFullWidthFormAreTheSameInBothLanguages() {
-        "adfhjkcvm".forEach {
+        "aszcm".forEach {
             assertEquals("$it", LetterHintPolicy.hint(it, true), LetterHintPolicy.hint(it, false))
         }
     }
@@ -69,10 +69,17 @@ class LetterHintPolicyTest {
         assertTrue(LetterHintPolicy.hint('1', false) == null)
     }
 
+    /** Every key leads upper, P and L included: one order, not the skin's two. */
     @Test
-    fun longPressOffersTheOtherCaseThenTheHint() {
-        assertEquals(listOf("A", "~"), LetterHintPolicy.longPressChoices('a', english = true, upperShown = false, hintsOn = true))
-        assertEquals(listOf("q", "1"), LetterHintPolicy.longPressChoices('q', english = false, upperShown = true, hintsOn = true))
-        assertEquals(listOf("S"), LetterHintPolicy.longPressChoices('s', english = true, upperShown = false, hintsOn = false))
+    fun longPressOffersTheLetterInBothCasesUpperFirst() {
+        assertEquals(listOf("A", "a"), LetterHintPolicy.caseChoices('a'))
+        assertEquals(listOf("Q", "q"), LetterHintPolicy.caseChoices('q'))
+        assertEquals(listOf("S", "s"), LetterHintPolicy.caseChoices('s'))
+        assertEquals(listOf("P", "p"), LetterHintPolicy.caseChoices('p'))
+        assertEquals(listOf("L", "l"), LetterHintPolicy.caseChoices('l'))
+        assertEquals(
+            letters.size,
+            letters.count { LetterHintPolicy.caseChoices(it).first() == it.toString().uppercase() },
+        )
     }
 }

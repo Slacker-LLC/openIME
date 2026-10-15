@@ -13,7 +13,8 @@
 #   OPENIME_GRADLE_ARGS    extra Gradle arguments, e.g. --offline
 #   ANDROID_HOME           SDK containing build-tools/35.0.0 (apksigner, aapt2)
 #
-# Writes to OPENIME_OUT_DIR: openIME-v<VERSION>-arm64-release.apk, RELEASE_NOTES.md,
+# Writes to OPENIME_OUT_DIR: openIME-llm-v<VERSION>.apk, openIME-v<VERSION>.apk,
+# RELEASE_NOTES.md,
 # apksigner.txt, and SHA256SUMS.txt for the workflow's own check. Only the APK
 # is attached to the GitHub Release; its checksum is printed in the notes.
 # Also appends apk=, version= and cert_sha256= to $GITHUB_OUTPUT when it is set.
@@ -106,10 +107,12 @@ if [[ "${OPENIME_REHEARSAL:-0}" != "1" ]]; then
 fi
 
 # 7. Release files.
-NAME="openIME-v${VERSION}-arm64-release.apk"
+# The APK that carries the offline voice models keeps the -llm name; the
+# plain name is the smaller package the user imports a model into.
+NAME="openIME-llm-v${VERSION}.apk"
 cp "$APK" "$OUT/$NAME"
 rm -f "$FULL_APK"
-LITE_NAME="openIME-v${VERSION}-arm64-lite-release.apk"
+LITE_NAME="openIME-v${VERSION}.apk"
 if [[ -n "${LITE_APK:-}" ]]; then
   "$APKSIGNER" verify --verbose --print-certs "$LITE_APK" > "$OUT/lite-apksigner.txt" || die "lite APK signature check failed"
   LITE_CERT_SHA256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$OUT/lite-apksigner.txt" | head -n 1)"

@@ -65,6 +65,37 @@ class EditorInfoAdapterTest {
     }
 
     @Test
+    fun onlyAddressAndEmailFieldsGetTheUriRail() {
+        listOf(
+            InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
+            InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS,
+            InputType.TYPE_TEXT_VARIATION_URI,
+        ).forEach { variation ->
+            assertTrue(
+                "variation $variation must take the URL rail",
+                EditorInfoAdapter.usesUriRail(
+                    EditorInfoAdapter.kind(info(InputType.TYPE_CLASS_TEXT or variation)),
+                ),
+            )
+        }
+        listOf(
+            InputType.TYPE_TEXT_VARIATION_NORMAL,
+            InputType.TYPE_TEXT_VARIATION_LONG_MESSAGE,
+            InputType.TYPE_TEXT_VARIATION_PERSON_NAME,
+            InputType.TYPE_TEXT_VARIATION_PASSWORD,
+        ).forEach { variation ->
+            assertFalse(
+                "variation $variation keeps the punctuation rail",
+                EditorInfoAdapter.usesUriRail(
+                    EditorInfoAdapter.kind(info(InputType.TYPE_CLASS_TEXT or variation)),
+                ),
+            )
+        }
+        assertFalse(EditorInfoAdapter.usesUriRail(EditorInfoAdapter.kind(info(InputType.TYPE_CLASS_PHONE))))
+        assertFalse(EditorInfoAdapter.usesUriRail(EditorInfoAdapter.kind(null)))
+    }
+
+    @Test
     fun ordinaryTextVariationsAreNotPasswords() {
         listOf(
             InputType.TYPE_TEXT_VARIATION_NORMAL,

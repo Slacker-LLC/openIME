@@ -72,7 +72,9 @@ android {
     ndkVersion = "27.0.12077973"
 
     defaultConfig {
-        applicationId = "llc.slacker.openime"
+        // A side-by-side development build (the owner's phone runs the .dev
+        // variant) passes -PopenimeAppIdSuffix=.dev; release builds never do.
+        applicationId = "llc.slacker.openime" + ((findProperty("openimeAppIdSuffix") as String?) ?: "")
         minSdk = 26
         targetSdk = 36
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -212,6 +214,10 @@ androidComponents {
 
 dependencies {
     implementation(files("libs/sherpa-onnx-1.13.6.aar"))
+    // The official sherpa-onnx voice-model archives ship as tar.bz2, and the
+    // platform ships no bzip2 decoder (`java.util.zip` has zip/gzip only), so
+    // the import needs one from here.
+    implementation("org.apache.commons:commons-compress:1.27.1")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20260814")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")

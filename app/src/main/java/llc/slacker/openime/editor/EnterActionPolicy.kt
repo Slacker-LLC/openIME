@@ -40,3 +40,23 @@ internal fun enterKeyFaceFor(imeOptions: Int?, composing: Boolean): String {
 /** Resolve an editor action for an Enter press, or null when a real Enter is required. */
 internal fun editorActionForEnter(imeOptions: Int): Int? =
     enterKeyPresentationFor(imeOptions).editorAction
+
+/** What a long press on the Enter key does, when it does anything. */
+internal enum class EnterKeyLongPress { Newline }
+
+/**
+ * The long press the reference puts on its 发送 key — 「长按「发送」可换行」, the
+ * subtitle of its own switch for that key (`res/cU.xml` key `enable_key_enter_send_msg`,
+ * default false, titled 「回车键发送消息」, and its confirm dialog repeats the line:
+ * 「…显示「发送」。长按「发送」可换行。」). Only the send face is documented there, so
+ * only that face takes one here; a composition reads 确定 on the key, not 发送, and
+ * keeps its press-only behaviour.
+ */
+internal fun enterKeyLongPressFor(imeOptions: Int, composing: Boolean): EnterKeyLongPress? {
+    if (composing) return null
+    return if (enterKeyPresentationFor(imeOptions).editorAction == EditorInfo.IME_ACTION_SEND) {
+        EnterKeyLongPress.Newline
+    } else {
+        null
+    }
+}

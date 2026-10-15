@@ -11,6 +11,8 @@ import llc.slacker.openime.floating.LongPressDragTarget
  */
 internal class KeyboardHeightDragController(
     private val onDragBy: (Float) -> Unit,
+    /** 手势结束（松手或被系统收走）时收尾：拖动中只预览，最终值这时才落地。 */
+    private val onDragEnd: () -> Unit,
 ) : LongPressDragTarget {
     private var active = false
     private var pointerId = -1
@@ -40,9 +42,16 @@ internal class KeyboardHeightDragController(
                 if (deltaY != 0f) onDragBy(deltaY)
             }
 
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> reset()
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> finish()
         }
         return true
+    }
+
+    /** 拖动收尾：真的拖过（[active]）才报告结束，一次轻点不算。 */
+    private fun finish() {
+        val wasDragging = active
+        reset()
+        if (wasDragging) onDragEnd()
     }
 
     override fun reset() {

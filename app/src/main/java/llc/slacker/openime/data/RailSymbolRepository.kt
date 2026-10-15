@@ -14,6 +14,15 @@ object RailSymbolRepository {
 
     val DEFAULT: List<String> = listOf("，", "。", "？", "！", "、", "：", "；", "“", "”", "……")
 
+    /**
+     * What the rail offers in an address or e-mail field. The reference skin
+     * ships the same eight marks in the nine-key layout's `uri_filter_list`
+     * (skin/default/layout/input_kbd_pinyin9.xml); a URL is typed from these
+     * far more often than from punctuation, and the list is not editable
+     * because it belongs to the field, not to the user's rail.
+     */
+    val URI: List<String> = listOf(".", "/", "www.", ".com", ".cn", "http", "wap.", "ftp:")
+
     /** A rail holds at most this many; each is a short symbol or text. */
     const val MAX_SYMBOLS = 60
     const val MAX_SYMBOL_LENGTH = 8

@@ -1,5 +1,6 @@
 package llc.slacker.openime.keyboard
 
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.text.TextUtils
@@ -171,17 +172,18 @@ internal class KeyPopupController(
         val popupHeight = dp(ImeGeometryTokens.KEY_POPUP_HEIGHT_DP)
         previewPopup.apply {
             this.text = text
+            // The reference's tip is one size (`key_touch_tip`); a whole
+            // function-key label in the same box would run out of the tip, so
+            // only the character keys take it.
             textSize = if (text.length > 1) {
                 ImeTypographyTokens.BODY_SP
             } else {
-                ImeTypographyTokens.DISPLAY_SP
+                ImeTypographyTokens.TOUCH_TIP_SP
             }
             setTextColor(t.keyText)
             background = ImeDrawableFactory.rounded(
-                t.keyBackground,
-                dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                ImeSurfacePolicy.divider(t),
-                dp(1).coerceAtLeast(1),
+                ImeSurfacePolicy.keyPopupBackground(t),
+                dp(ImeGeometryTokens.TOUCH_TIP_RADIUS_DP),
             )
         }
 
@@ -221,10 +223,8 @@ internal class KeyPopupController(
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(dp(POPUP_PAD_DP), dp(POPUP_PAD_DP), dp(POPUP_PAD_DP), dp(POPUP_PAD_DP))
             background = ImeDrawableFactory.rounded(
-                t.keyBackground,
-                dp(ImeGeometryTokens.CONTROL_RADIUS_DP),
-                ImeSurfacePolicy.divider(t),
-                dp(1).coerceAtLeast(1),
+                ImeSurfacePolicy.keyPopupBackground(t),
+                dp(ImeGeometryTokens.KEY_POPUP_RADIUS_DP),
             )
             elevation = dp(2).toFloat()
             contentDescription = "长按符号选择"
@@ -240,19 +240,34 @@ internal class KeyPopupController(
                     TextView(host.context).apply {
                         choiceCells += this to symbol
                         text = symbol
-                        textSize = ImeTypographyTokens.BODY_SP
+                        textSize = ImeTypographyTokens.POPUP_ITEM_SP
                         includeFontPadding = false
                         gravity = Gravity.CENTER
-                        setTextColor(t.keyText)
+                        // A bubble cell fills with the accent under the finger and
+                        // its glyph turns white (`cls_fusiyin_bubble_button`:
+                        // `pushedbkcolor="@color/theme_color"`, `pushedtextcolor`
+                        // white, style.xml:1135-1139, `values/colors.xml:177`).
+                        setTextColor(
+                            ColorStateList(
+                                arrayOf(intArrayOf(android.R.attr.state_pressed), intArrayOf()),
+                                intArrayOf(
+                                    ImeDrawableFactory.contrastText(t.primary),
+                                    t.keyText,
+                                ),
+                            ),
+                        )
                         background = statefulRounded(
                             Color.TRANSPARENT,
-                            ImeSurfacePolicy.pressedSurface(t.keyBackground, t),
+                            t.primary,
                             dp(ImeGeometryTokens.KEY_RADIUS_DP),
                         )
                         isClickable = true
                         isFocusable = true
                         contentDescription = "输入$symbol"
-                        setPadding(dp(11), 0, dp(11), 0)
+                        // One character per cell (the reference's bubble lists a
+                        // key's variants): the padding leaves room for the
+                        // 60-unit face inside the 40dp cell.
+                        setPadding(dp(9), 0, dp(9), 0)
                         setOnClickListener {
                             hide()
                             feedback()

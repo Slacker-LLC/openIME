@@ -15,12 +15,14 @@ import llc.slacker.openime.candidate.CandidatePipeline
 import llc.slacker.openime.candidate.CandidateResolver
 import llc.slacker.openime.candidate.NineKeyReading
 import llc.slacker.openime.data.RailSymbolRepository
+import llc.slacker.openime.editor.EditorInfoAdapter
 
 /**
  * Owns the Chinese 9-key side rail.
  *
  * With no composition it behaves as the normal vertically scrollable symbol
- * rail. During composition, the same rail
+ * rail, or as the URL rail in an address or e-mail field (the reference skin's
+ * `uri_filter_list`). During composition, the same rail
  * becomes a directly selectable Pinyin list. This mirrors mature 9-key IMEs:
  * the user sees all useful spellings at once instead of cycling one hidden
  * option through a single button.
@@ -36,6 +38,7 @@ internal class NineKeySymbolRailController(
     private val onChooseReading: (NineKeyReading) -> Unit,
     private val fixedPrefix: () -> String,
     private val onEditSymbols: () -> Unit,
+    private val fieldKind: () -> EditorInfoAdapter.EditorKind = { EditorInfoAdapter.EditorKind.TEXT },
 ) {
     private enum class RailMode { SYMBOLS, PINYIN }
 
@@ -43,6 +46,8 @@ internal class NineKeySymbolRailController(
     private var railMode = RailMode.SYMBOLS
     private var renderedChoices: List<NineKeyReading> = emptyList()
     private var renderedSelected: NineKeyReading? = null
+    /** The open digits the list was built for: a new tail is a new list, so it starts at the top. */
+    private var renderedDigits: String? = null
 
     init {
         composition.addTextChangedListener(object : TextWatcher {
@@ -71,14 +76,19 @@ internal class NineKeySymbolRailController(
             context = context,
             railTag = NINE_RAIL_TAG,
             contentTag = NINE_CONTENT_TAG,
-            contentDescription = "九键拼音筛选或常用符号，上下滑动查看更多",
-            symbols = commonSymbols(),
+            contentDescription = if (EditorInfoAdapter.usesUriRail(fieldKind())) {
+                "九键网址符号，上下滑动查看更多"
+            } else {
+                "九键拼音筛选或常用符号，上下滑动查看更多"
+            },
+            symbols = railSymbols(),
             cellHeightDp = symbolCellHeightDp(),
             toPx = toPx,
             tagPrefix = "punct:",
             onCommit = onCommit,
             onFeedback = onFeedback,
-            onAdd = onEditSymbols,
+            // The URL list belongs to the field, so it cannot be edited.
+            onAdd = if (EditorInfoAdapter.usesUriRail(fieldKind())) null else onEditSymbols,
         ).also {
             rail = it
             railMode = RailMode.SYMBOLS
@@ -128,13 +138,18 @@ internal class NineKeySymbolRailController(
             return
         }
 
-        // Highlight the reading the visible pinyin shows, so the rail and the
-        // pre-edit text can never disagree.
+        // The reading the pre-edit is showing: the list leads with it and a tap
+        // on it cannot change anything. The pre-edit is where the reference
+        // shows which reading is current, so nothing is highlighted here. The
+        // skin does carry a first-item class for this list
+        // (`cls_pinyin9_symbol_first_item`, `style.xml:567-573` — accent text
+        // on the candidate fill, face 54 against the items' 46) but no shipped
+        // file names its trigger, so it stays unported rather than guessed at.
         val shown = tail.filter { it in 'a'..'z' }
         val selected = choices.firstOrNull { it.coversAll && it.syllables.joinToString("") == shown }
             ?: choices.firstOrNull { shown.startsWith(it.syllables.joinToString("")) }
             ?: choices.first()
-        renderPinyinChoices(choices = choices, selected = selected) { chosen ->
+        renderPinyinChoices(digits = digits, choices = choices, selected = selected) { chosen ->
             onChooseReading(chosen)
         }
     }
@@ -158,26 +173,32 @@ internal class NineKeySymbolRailController(
         val scroll = rail ?: return
         if (railMode == RailMode.SYMBOLS && !force) return
 
+        val uri = EditorInfoAdapter.usesUriRail(fieldKind())
         SymbolRailRenderer.populate(
             scroll = scroll,
-            symbols = commonSymbols(),
+            symbols = railSymbols(),
             cellHeightDp = symbolCellHeightDp(),
             toPx = toPx,
             tagPrefix = "punct:",
             onCommit = onCommit,
             onFeedback = onFeedback,
-            onAdd = onEditSymbols,
+            // The URL list belongs to the field, so it cannot be edited.
+            onAdd = if (uri) null else onEditSymbols,
         )
         railMode = RailMode.SYMBOLS
         renderedChoices = emptyList()
         renderedSelected = null
+        // The next composition builds a new list; it starts at the top.
+        renderedDigits = null
         (scroll.getChildAt(0) as? LinearLayout)?.tag = NINE_CONTENT_TAG
         if (scroll.scrollY != 0) scroll.post { scroll.scrollTo(0, 0) }
-        scroll.contentDescription = "九键常用符号，上下滑动查看更多"
+        scroll.contentDescription =
+            if (uri) "九键网址符号，上下滑动查看更多" else "九键常用符号，上下滑动查看更多"
         onRailChanged(scroll)
     }
 
     private fun renderPinyinChoices(
+        digits: String,
         choices: List<NineKeyReading>,
         selected: NineKeyReading,
         onSelect: (NineKeyReading) -> Unit,
@@ -198,21 +219,21 @@ internal class NineKeySymbolRailController(
             ?.currentTextColor
 
         content.removeAllViews()
-        // One continuous panel with flat items (the theme paints it), not a
-        // stack of separate keys: it reads as a list to pick from.
+        // The same flat list the symbols use: one line per reading, a hairline
+        // between them, nothing highlighted. More readings fit by scrolling
+        // instead of by shrinking the text, and the item under the finger keeps
+        // its place when the list is rebuilt.
         content.tag = PINYIN_PANEL_TAG
         choices.forEachIndexed { index, choice ->
+            if (index > 0) SymbolRailRenderer.addDivider(content, toPx)
             val active = choice == selected
             content.addView(
                 TextView(content.context).apply {
-                    // A break after each apostrophe lets a long reading wrap into
-                    // two lines instead of shrinking to nothing.
-                    text = choice.display.replace("'", "'\u200B")
-                    // Whole readings (ni'hao) can run long: let them wrap to two
-                    // lines and shrink within a readable range.
-                    setAutoSizeTextTypeUniformWithConfiguration(
-                        12, 18, 1, android.util.TypedValue.COMPLEX_UNIT_SP,
-                    )
+                    text = choice.display
+                    textSize = RAIL_ITEM_TEXT_SP
+                    // The reference draws reading items a step heavier than the
+                    // marks (weight 600 against 500) at the same size.
+                    typeface = Typeface.create(RAIL_ITEM_TYPEFACE, Typeface.NORMAL)
                     gravity = Gravity.CENTER
                     tag = if (active) SELECTED_FILTER_TAG else FILTER_TAG
                     contentDescription =
@@ -225,10 +246,9 @@ internal class NineKeySymbolRailController(
                         stateDescription = if (active) "已选择" else "未选择"
                     }
                     isSelected = active
-                    typeface = if (active) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
                     isClickable = true
                     isFocusable = true
-                    maxLines = 2
+                    maxLines = 1
                     includeFontPadding = false
                     setPadding(toPx(4), 0, toPx(4), 0)
                     inheritedTextColor?.let(::setTextColor)
@@ -237,12 +257,7 @@ internal class NineKeySymbolRailController(
                         onSelect(choice)
                     }
                 },
-                SymbolRailRenderer.cellParams(
-                    content.context,
-                    withGap = index < choices.lastIndex,
-                    heightDp = cellHeightDp(),
-                    toPx = toPx,
-                ),
+                SymbolRailRenderer.flatCellParams(heightDp = cellHeightDp(), toPx = toPx),
             )
         }
 
@@ -251,17 +266,12 @@ internal class NineKeySymbolRailController(
         renderedSelected = selected
         scroll.contentDescription = "九键拼音读法，上下滑动查看更多"
         onRailChanged(scroll)
-        val selectedIndex = choices.indexOf(selected).coerceAtLeast(0)
-        scroll.post {
-            val target = content.getChildAt(selectedIndex) ?: return@post
-            val viewport = scroll.height.coerceAtLeast(SymbolRailRenderer.cellHeightPx(content.context))
-            val targetY = (target.top - (viewport - target.height) / 2).coerceAtLeast(0)
-            scroll.scrollTo(0, targetY)
-        }
+        // New digits are a new list: show it from its start. A refresh for the
+        // same digits leaves the scroll position where the user put it.
+        val tailChanged = renderedDigits != digits
+        renderedDigits = digits
+        if (tailChanged && scroll.scrollY != 0) scroll.post { scroll.scrollTo(0, 0) }
     }
-
-    private fun displayPath(path: String): String =
-        path.replace(" ", "'").replace("|", "'")
 
     private fun speakablePath(path: String): String =
         path.replace(" ", "、").replace("|", "、").replace("'", "、")
@@ -272,12 +282,29 @@ internal class NineKeySymbolRailController(
     /** The user's rail (ten common marks until edited), then ＋ to edit it. */
     private fun commonSymbols(): List<String> = RailSymbolRepository.load(context)
 
+    /**
+     * The rail's symbols for this field: the fixed URL list in an address or
+     * e-mail field, the user's own marks everywhere else.
+     */
+    private fun railSymbols(): List<String> =
+        if (EditorInfoAdapter.usesUriRail(fieldKind())) RailSymbolRepository.URI else commonSymbols()
+
     private companion object {
         const val NINE_RAIL_TAG = "nine-punct-stack"
         const val NINE_CONTENT_TAG = "nine-symbol-scroll-content"
         const val FILTER_TAG = "nine-pinyin-path-filter"
         const val SELECTED_FILTER_TAG = "nine-pinyin-path-selected"
         const val PINYIN_PANEL_TAG = "nine-pinyin-panel"
-        const val MAX_VISIBLE_PATHS = 16
+        /**
+         * The rail scrolls and the reference copies its whole filter vector into
+         * the list without cutting it, so this only has to match what
+         * [llc.slacker.openime.candidate.NineKeyLocalDecoder] is willing to
+         * produce for one open tail.
+         */
+        const val MAX_VISIBLE_PATHS = 48
+
+        /** The reference reads and marks the same way: one list, one item font. */
+        const val RAIL_ITEM_TEXT_SP = SymbolRailRenderer.ITEM_TEXT_SP
+        const val RAIL_ITEM_TYPEFACE = "sans-serif-medium"
     }
 }

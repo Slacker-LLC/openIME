@@ -304,14 +304,16 @@ class SpaceCursorAndLetterHintsInstrumentedTest {
         check(harness.awaitMain { true })
     }
 
+    // The reference product's mark map (LetterHintPolicy).
     private val chineseHints = mapOf(
         'q' to "1", 'w' to "2", 'e' to "3", 'r' to "4", 't' to "5", 'y' to "6", 'u' to "7", 'i' to "8",
-        'o' to "9", 'p' to "0", 'a' to "~", 's' to "！", 'd' to "@", 'f' to "#", 'g' to "￥", 'h' to "%",
-        'j' to "&", 'k' to "*", 'l' to "？", 'z' to "（", 'x' to "）", 'c' to "-", 'v' to "_",
-        'b' to "：", 'n' to "；", 'm' to "/",
+        'o' to "9", 'p' to "0", 'a' to "-", 's' to "/", 'd' to "：", 'f' to "；", 'g' to "（", 'h' to "）",
+        'j' to "～", 'k' to "“", 'l' to "”", 'z' to "@", 'x' to ".", 'c' to "#", 'v' to "、",
+        'b' to "？", 'n' to "！", 'm' to "…",
     )
     private val englishHints = chineseHints + mapOf(
-        's' to "!", 'g' to "$", 'l' to "?", 'z' to "(", 'x' to ")", 'b' to ":", 'n' to ";",
+        'd' to ":", 'f' to ";", 'g' to "(", 'h' to ")", 'j' to "~", 'k' to "'", 'l' to "\"",
+        'x' to "_", 'v' to "&", 'b' to "?", 'n' to "!",
     )
 
     @Test
@@ -361,15 +363,17 @@ class SpaceCursorAndLetterHintsInstrumentedTest {
     }
 
     @Test
-    fun longPressOffersTheHintInAPopup() = withKeyboard { harness, recorder, keyboard ->
+    fun longPressOffersTheLetterInBothCases() = withKeyboard { harness, recorder, keyboard ->
         harness.awaitMain { keyboard.setMode(KeyboardMode.PINYIN_26); true }
-        listOf('w' to "2", 'd' to "@", 'k' to "*", 'v' to "_").forEach { (letter, hint) ->
+        listOf('w' to "W", 'd' to "D", 'k' to "K", 'v' to "V").forEach { (letter, upper) ->
             val key = settled(harness, keyboard, "key:$letter")
+            // The popup lists both cases, upper first; a tap on a cell types it.
             assertTrue(harness.awaitMain { key.performLongClick() })
-            // The popup lists the other case, then the hint; a tap on its cell types it.
-            assertTrue("popup cell $hint", harness.awaitMain { chooseFromPopup(keyboard, hint) })
+            assertTrue("popup lower cell $letter", harness.awaitMain { chooseFromPopup(keyboard, letter.toString()) })
+            assertTrue(harness.awaitMain { key.performLongClick() })
+            assertTrue("popup upper cell $upper", harness.awaitMain { chooseFromPopup(keyboard, upper) })
         }
-        assertEquals(listOf("2", "@", "*", "_"), recorder.characters.toList())
+        assertEquals(listOf("w", "W", "d", "D", "k", "K", "v", "V"), recorder.characters.toList())
     }
 
     /** Taps the long-press popup cell showing [text]; false when no such cell is on screen. */
@@ -389,17 +393,54 @@ class SpaceCursorAndLetterHintsInstrumentedTest {
         assertTrue("a tap types the letter, not the hint: ${recorder.characters}", "1" !in recorder.characters)
     }
 
+    /** Keep the digit gesture without moving the original zero key onto the space bar. */
     @Test
-    fun theSwipeSwitchTurnsOffSwipeButNotTheHints() = withKeyboard { harness, recorder, keyboard ->
+    fun spaceKeepsItsOriginalFaceAndRetainsTheZeroSwipe() = withKeyboard { harness, recorder, keyboard ->
+        listOf(KeyboardMode.PINYIN_9, KeyboardMode.STROKE).forEach { mode ->
+            harness.awaitMain { keyboard.setMode(KeyboardMode.DIGITS); keyboard.setMode(mode); true }
+            recorder.characters.clear()
+            recorder.spaces = 0
+            val space = settled(harness, keyboard, "key-space")
+            harness.awaitMain { assertFalse("$mode space keeps its original face", "0" in texts(space)); true }
+            swipeUp(harness, space)
+            assertEquals("$mode up swipe on the space bar types 0", listOf("0"), recorder.characters.toList())
+            recorder.characters.clear()
+            tap(harness, space)
+            assertEquals("$mode the tap still types one space", 1, recorder.spaces)
+            assertEquals("$mode a tap must not type the mark", emptyList<String>(), recorder.characters.toList())
+        }
+    }
+
+    /**
+     * The merged key commits its own mark and hides the other in its corner:
+     * Chinese 逗号 over 句号, English the full stop over the comma
+     * (`input_kbd_english26.xml:154-161`, `input_kbd_pinyin26.xml:145-152`), so
+     * an up swipe types the corner mark — 句号 in Chinese, the comma in English.
+     */
+    @Test
+    fun swipeUpOnTheCommaKeyTypesThePeriod() = withKeyboard { harness, recorder, keyboard ->
+        harness.awaitMain { keyboard.setMode(KeyboardMode.PINYIN_26); true }
+        swipeUp(harness, settled(harness, keyboard, "key-punctuation"))
+        assertEquals(listOf("。"), recorder.characters.toList())
+
+        recorder.characters.clear()
+        harness.awaitMain { keyboard.setMode(KeyboardMode.ENGLISH_26); true }
+        swipeUp(harness, settled(harness, keyboard, "key-punctuation"))
+        assertEquals(listOf(","), recorder.characters.toList())
+    }
+
+    @Test
+    fun theSwipeSwitchTurnsOffSwipeButKeepsTheLongPress() = withKeyboard { harness, recorder, keyboard ->
         ImeSettingsRepository.saveSwipeUpDigits(context, false)
         harness.awaitMain { keyboard.setMode(KeyboardMode.PINYIN_26); true }
         val q = settled(harness, keyboard, "key:q")
         swipeUp(harness, q)
         assertTrue("swipe is off: ${recorder.characters}", recorder.characters.isEmpty())
         harness.awaitMain { assertTrue("1" in texts(q)); true }
+        // The long press offers the two cases; the digit is only on the swipe.
         assertTrue(harness.awaitMain { q.performLongClick() })
-        assertTrue("popup cell 1", harness.awaitMain { chooseFromPopup(keyboard, "1") })
-        assertEquals("long press still works", listOf("1"), recorder.characters.toList())
+        assertTrue("popup cell q", harness.awaitMain { chooseFromPopup(keyboard, "q") })
+        assertEquals("long press still works", listOf("q"), recorder.characters.toList())
     }
 
     @Test
@@ -442,7 +483,7 @@ class SpaceCursorAndLetterHintsInstrumentedTest {
         harness.awaitMain { keyboard.showPanel(Panel.SETTINGS); true }
         val expected = mapOf(
             "数字和符号提示" to ("开启" to { ImeSettingsRepository.loadLetterHints(context) }),
-            "表情联想" to ("开启" to { ImeSettingsRepository.loadEmojiAssociation(context) }),
+            "智能联想" to ("开启" to { ImeSettingsRepository.loadEmojiAssociation(context) }),
             "语音去语气词" to ("开启" to { ImeSettingsRepository.loadVoiceStripFillers(context) }),
             "标点用空格代替" to ("关闭" to { ImeSettingsRepository.loadVoicePunctuationAsSpace(context) }),
         )

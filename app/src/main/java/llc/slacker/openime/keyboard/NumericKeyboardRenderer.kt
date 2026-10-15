@@ -13,15 +13,15 @@ import llc.slacker.openime.widget.ImeKeyView
 /**
  * Concrete first-frame renderer for number/decimal/phone keyboards.
  *
- * Phone remapping and the symbol rail are resolved before the view is attached,
- * so no post-build hierarchy scan is needed.
+ * Keeps the original three-column digit grid, 返回 / 空格 / 0 bottom row,
+ * and delete / . / @ / enter action column. Phone remapping is applied while
+ * constructing each key, before the view is attached.
  */
 internal class NumericKeyboardRenderer(
     private val context: Context,
     private val keyboardBody: LinearLayout,
     private val toPx: (Int) -> Int,
     private val keyRowHeightDp: () -> Int,
-    private val nineGridHeightDp: () -> Int,
     private val nineBodyHeightDp: () -> Int,
     private val createKey: (
         text: String,
@@ -33,6 +33,7 @@ internal class NumericKeyboardRenderer(
     private val createSpaceVoiceKey: (label: String, onTap: () -> Unit) -> ImeKeyView,
     private val markSideKey: (ImeKeyView) -> Unit,
     private val markWhiteKey: (ImeKeyView) -> Unit,
+    private val markAccentKey: (ImeKeyView) -> Unit,
     private val onCommitCharacter: (String) -> Unit,
     private val onFeedback: () -> Unit,
     private val onShowSymbols: () -> Unit,
@@ -74,17 +75,15 @@ internal class NumericKeyboardRenderer(
             rail,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(nineGridHeightDp()),
+                toPx(keyRowHeightDp() * 3),
             ),
         )
         left.addView(
             createKey("符号", true, ImeTypographyTokens.BODY_SP, onShowSymbols).apply {
+                tag = "key-symbols"
                 markSideKey(this)
             },
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(keyRowHeightDp()),
-            ),
+            sideKeyParams(),
         )
         container.addView(left, adaptiveColumnParams(1f))
 
@@ -92,17 +91,9 @@ internal class NumericKeyboardRenderer(
             tag = "digits-grid"
             orientation = LinearLayout.VERTICAL
         }
-        DIGIT_ROWS.forEachIndexed { rowIndex, rowDigits ->
+        DIGIT_ROWS.forEach { digits ->
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            rowDigits.forEach { digit ->
-                row.addView(
-                    createKey(digit, false, ImeTypographyTokens.SYMBOL_SP) { onCommitCharacter(digit) }.apply {
-                        tag = "key:$digit"
-                        markWhiteKey(this)
-                    },
-                    flexKeyParams(),
-                )
-            }
+            digits.forEach { digit -> row.addView(digitKey(digit), flexKeyParams()) }
             grid.addView(
                 row,
                 LinearLayout.LayoutParams(
@@ -111,50 +102,37 @@ internal class NumericKeyboardRenderer(
                 ),
             )
         }
-
         val center = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         center.addView(
             grid,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                toPx(nineGridHeightDp()),
+                toPx(keyRowHeightDp() * 3),
             ),
         )
-        val centerBottom = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-        }
-        centerBottom.addView(
+        val bottom = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        bottom.addView(
             createKey("返回", true, ImeTypographyTokens.BODY_SP, onReturnToText).apply {
                 tag = "key:mode"
                 markSideKey(this)
             },
             flexKeyParams(),
         )
-        centerBottom.addView(
+        bottom.addView(
             if (phone) {
                 val value = literal("key-space", "*")
-                createKey(value, true, ImeTypographyTokens.BODY_SP) { onCommitCharacter(value) }.apply {
+                createKey(value, true, ImeTypographyTokens.KEY_NUMBER_SP) { onCommitCharacter(value) }.apply {
                     tag = "key-space"
                     markWhiteKey(this)
                 }
             } else {
-                createSpaceVoiceKey("空格", onSpace).apply {
-                    markWhiteKey(this)
-                }
+                createSpaceVoiceKey("空格", onSpace)
             },
             flexKeyParams(),
         )
-        centerBottom.addView(
-            createKey(literal("key:0", "0"), false, 24f) {
-                onCommitCharacter(literal("key:0", "0"))
-            }.apply {
-                tag = "key:0"
-                markWhiteKey(this)
-            },
-            flexKeyParams(),
-        )
+        bottom.addView(digitKey(literal("key:0", "0"), tag = "key:0"), flexKeyParams())
         center.addView(
-            centerBottom,
+            bottom,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 toPx(keyRowHeightDp()),
@@ -166,21 +144,19 @@ internal class NumericKeyboardRenderer(
             orientation = LinearLayout.VERTICAL
             tag = "digits-actions"
         }
+        side.addView(createBackspaceKey().apply { markSideKey(this) }, sideKeyParams())
+        val period = literal("key:.", ".")
         side.addView(
-            createBackspaceKey().apply { markSideKey(this) },
-            sideKeyParams(),
-        )
-        side.addView(
-            createKey(".", true, ImeTypographyTokens.KEY_LETTER_SP) { onCommitCharacter(".") }.apply {
+            createKey(period, true, ImeTypographyTokens.KEY_NUMBER_SP) { onCommitCharacter(period) }.apply {
                 tag = "key:."
                 markSideKey(this)
             },
             sideKeyParams(),
         )
+        // Keep the existing phone policy's # mapping on the restored @ cell.
+        val at = literal("key:symbol", "@")
         side.addView(
-            createKey(literal("key:@", "@"), true, ImeTypographyTokens.BODY_SP) {
-                onCommitCharacter(literal("key:@", "@"))
-            }.apply {
+            createKey(at, true, ImeTypographyTokens.BODY_SP) { onCommitCharacter(at) }.apply {
                 tag = "key:@"
                 markSideKey(this)
             },
@@ -203,6 +179,12 @@ internal class NumericKeyboardRenderer(
             ),
         )
     }
+
+    private fun digitKey(digit: String, tag: String = "key:$digit"): ImeKeyView =
+        createKey(digit, false, ImeTypographyTokens.KEY_NUMBER_SP) { onCommitCharacter(digit) }.apply {
+            this.tag = tag
+            markWhiteKey(this)
+        }
 
     fun refreshSymbols() {
         val rail = symbolRail ?: return
@@ -228,24 +210,13 @@ internal class NumericKeyboardRenderer(
         ).distinct()
 
     private fun flexKeyParams(weight: Float = 1f) =
-        LinearLayout.LayoutParams(
-            0,
-            toPx(keyRowHeightDp()),
-            weight,
-        )
+        LinearLayout.LayoutParams(0, toPx(keyRowHeightDp()), weight)
 
     private fun sideKeyParams() =
-        LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            toPx(keyRowHeightDp()),
-        )
+        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(keyRowHeightDp()))
 
     private fun adaptiveColumnParams(weight: Float) =
-        LinearLayout.LayoutParams(
-            0,
-            toPx(nineBodyHeightDp()),
-            weight,
-        )
+        LinearLayout.LayoutParams(0, toPx(nineBodyHeightDp()), weight)
 
     private companion object {
         const val DIGITS_RAIL_TAG = "digits-symbol-scroll"

@@ -56,7 +56,7 @@ class VoiceAudioRouteManager(context: Context) {
         .getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val ownership = VoiceRouteOwnership<RouteBaseline>()
 
-    fun beginSession(): Session {
+    fun beginSession(preferHeadsetMic: Boolean = true): Session {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
             // VOICE_RECOGNITION follows the system-selected wired/SCO route on
             // old Android versions. Do not force SCO and introduce a 500 ms
@@ -65,7 +65,7 @@ class VoiceAudioRouteManager(context: Context) {
             return Session(onClose = {})
         }
 
-        val lease = ownership.acquire { prepareManagedRoute() }
+        val lease = ownership.acquire { prepareManagedRoute(preferHeadsetMic) }
         val activeType = runCatching { audioManager.communicationDevice?.type ?: 0 }.getOrDefault(0)
         Log.i(
             TAG,
@@ -81,10 +81,14 @@ class VoiceAudioRouteManager(context: Context) {
     }
 
     @TargetApi(Build.VERSION_CODES.S)
-    private fun prepareManagedRoute(): RouteBaseline {
+    private fun prepareManagedRoute(preferHeadsetMic: Boolean): RouteBaseline {
         val previousMode = audioManager.mode
         val previousDevice = runCatching { audioManager.communicationDevice }.getOrNull()
-        val preferred = if (previousDevice == null) preferredExternalDevice() else null
+        val previousType = previousDevice?.type
+        val devices = runCatching { audioManager.availableCommunicationDevices }.getOrDefault(emptyList())
+        val preferred = VoiceInputRoutePolicy
+            .preferredType(devices.map { it.type }, previousType, preferHeadsetMic)
+            ?.let { type -> devices.firstOrNull { it.type == type } }
         var changedMode = false
         var changedDevice = false
         if (preferred != null) {
@@ -120,19 +124,6 @@ class VoiceAudioRouteManager(context: Context) {
         if (baseline.changedMode) {
             runCatching { audioManager.mode = baseline.previousMode }
         }
-    }
-
-    @TargetApi(Build.VERSION_CODES.S)
-    private fun preferredExternalDevice(): AudioDeviceInfo? {
-        val priority = listOf(
-            AudioDeviceInfo.TYPE_BLE_HEADSET,
-            AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
-            AudioDeviceInfo.TYPE_WIRED_HEADSET,
-            AudioDeviceInfo.TYPE_USB_HEADSET,
-            AudioDeviceInfo.TYPE_USB_DEVICE,
-        )
-        val devices = runCatching { audioManager.availableCommunicationDevices }.getOrDefault(emptyList())
-        return priority.firstNotNullOfOrNull { type -> devices.firstOrNull { it.type == type } }
     }
 
     class Session internal constructor(private val onClose: () -> Unit) : AutoCloseable {

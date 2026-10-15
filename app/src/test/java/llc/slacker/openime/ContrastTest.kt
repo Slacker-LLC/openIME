@@ -15,8 +15,8 @@ class ContrastTest {
             "#1F2023" to "#F7F8FA",
             "#F2F2F7" to "#3A3A3C",
             "#AEAEB2" to "#242426",
-            "#07131D" to "#1D9BF0",
-            "#07131D" to "#6EC3F7",
+            "#FFFFFF" to "#1668D0",
+            "#FFFFFF" to "#2D6FD6",
         ).forEach { (foreground, background) ->
             val ratio = contrastRatio(foreground, background)
             assertTrue(

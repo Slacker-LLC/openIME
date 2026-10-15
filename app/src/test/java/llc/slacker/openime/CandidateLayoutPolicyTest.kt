@@ -1,5 +1,6 @@
 package llc.slacker.openime
 
+import llc.slacker.openime.keyboard.ExpandedCandidateFilter
 import llc.slacker.openime.keyboard.candidateColumnSpan
 import llc.slacker.openime.keyboard.expandedCandidateRows
 import org.junit.Assert.assertEquals
@@ -21,5 +22,16 @@ class CandidateLayoutPolicyTest {
     fun supplementaryCharactersCountAsOneCharacter() {
         assertEquals(1, candidateColumnSpan("😀😀😀😀"))
         assertTrue(expandedCandidateRows(emptyList()).isEmpty())
+    }
+
+    @Test
+    fun theExpandedFiltersKeepEverythingOrOnlySingleCharacters() {
+        val candidates = listOf("你", "你好", "这是一句用于验证布局的长候选词", "😀")
+        assertEquals(candidates, ExpandedCandidateFilter.ALL.apply(candidates))
+        assertEquals(
+            listOf("你", "😀"),
+            ExpandedCandidateFilter.SINGLE_CHAR.apply(candidates),
+        )
+        assertEquals(listOf("全部", "单字"), ExpandedCandidateFilter.entries.map { it.label })
     }
 }

@@ -3,11 +3,13 @@ package llc.slacker.openime
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
-import android.widget.ScrollView
+import android.widget.TextView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import llc.slacker.openime.core.ImeState
 import llc.slacker.openime.keyboard.ImeKeyboardView
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -50,15 +52,37 @@ class CandidatePresentationInstrumentedTest {
                 keyboard.findViewWithTag<View>("candidate-expand").performClick()
                 val overlay = keyboard.findViewWithTag<ViewGroup>("candidate-overlay")
                 assertEquals(View.GONE, keyboard.findViewWithTag<View>("keyboard-body").visibility)
-                // The expanded overlay is just the scrolling grid (no header row).
-                val scroll = overlay.getChildAt(0) as ScrollView
+                // The expanded overlay is the filter row over the list card.
+                val card = overlay.findViewWithTag<View>("candidate-expanded-card")
+                assertNotNull(card)
                 keyboard.renderState(state)
                 assertSame(first, keyboard.findViewWithTag<View>("candidate-first-row"))
-                assertSame(scroll, overlay.getChildAt(0))
+                assertSame(card, overlay.findViewWithTag<View>("candidate-expanded-card"))
+
+                // 单字 keeps single characters only; this list has none, so the
+                // grid empties while the page stays open.
+                filterChip(overlay, "单字").performClick()
+                assertEquals(View.VISIBLE, overlay.visibility)
+                assertNull(keyboard.findViewWithTag<View>("candidate-grid-first"))
+                filterChip(overlay, "全部").performClick()
+                assertNotNull(keyboard.findViewWithTag<View>("candidate-grid-first"))
+
                 keyboard.renderState(ImeState())
                 assertEquals(View.GONE, overlay.visibility)
                 true
             }
         }
+    }
+
+    private fun filterChip(root: ViewGroup, label: String): View {
+        val found = mutableListOf<View>()
+        fun walk(view: View) {
+            if (view.tag == "candidate-filter-chip" && (view as? TextView)?.text?.toString() == label) {
+                found.add(view)
+            }
+            if (view is ViewGroup) for (index in 0 until view.childCount) walk(view.getChildAt(index))
+        }
+        walk(root)
+        return found.single()
     }
 }

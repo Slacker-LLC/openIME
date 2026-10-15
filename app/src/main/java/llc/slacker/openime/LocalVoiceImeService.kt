@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.text.InputType
 import android.text.TextUtils
 import android.util.Log
@@ -27,16 +28,19 @@ import llc.slacker.openime.candidate.EmojiAssociationIndex
 import llc.slacker.openime.candidate.EnglishLexicon
 import llc.slacker.openime.candidate.NineKeyReading
 import llc.slacker.openime.candidate.PinyinLexicon
+import llc.slacker.openime.candidate.PoemIndex
 import llc.slacker.openime.engine.PinyinEngine
 import llc.slacker.openime.candidate.FuzzyPinyin
 import llc.slacker.openime.candidate.Stroke
 import llc.slacker.openime.candidate.StrokeLexicon
 import llc.slacker.openime.candidate.personalizedLearningAllowed
+import llc.slacker.openime.core.ArithmeticExpressionPolicy
 import llc.slacker.openime.core.CrashGuard
 import llc.slacker.openime.core.EmojiCatalog
 import llc.slacker.openime.core.ImeState
 import llc.slacker.openime.core.KeyboardMode
 import llc.slacker.openime.core.Panel
+import llc.slacker.openime.core.PinyinLocation
 import llc.slacker.openime.core.ShiftState
 import llc.slacker.openime.core.VoiceUiState
 import llc.slacker.openime.core.dropLastCodePointSafe
@@ -46,7 +50,9 @@ import llc.slacker.openime.data.ImeSettingsRepository
 import llc.slacker.openime.data.PersonalizationRepository
 import llc.slacker.openime.data.QuickPhraseRepository
 import llc.slacker.openime.data.RimeUserDictionaryArchive
+import llc.slacker.openime.data.SymbolRecentRepository
 import llc.slacker.openime.data.UserPhraseRepository
+import llc.slacker.openime.editor.ComposingTextPolicy
 import llc.slacker.openime.editor.EditorInfoAdapter
 import llc.slacker.openime.editor.InputConnectionGateway
 import llc.slacker.openime.editor.InputMethodSubtypePolicy
@@ -54,6 +60,8 @@ import llc.slacker.openime.editor.editorActionForEnter
 import llc.slacker.openime.editor.shouldClearCompositionForSelectionUpdate
 import llc.slacker.openime.floating.FloatingWindowController
 import llc.slacker.openime.core.LandscapeLayout
+import llc.slacker.openime.keyboard.AutoCapitalizationPolicy
+import llc.slacker.openime.keyboard.DoubleSpacePeriodPolicy
 import llc.slacker.openime.keyboard.EnglishShiftPolicy
 import llc.slacker.openime.keyboard.HardwareContext
 import llc.slacker.openime.keyboard.HardwareKey
@@ -136,6 +144,12 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     private var landscapeFloatingDeclined = false
     private var voiceComposing = false
     private var voiceAutoCommitOnFinal = true
+    /**
+     * 双击空格键输入句号: when the last space was written, and the character
+     * before it (read before that space was committed), both from the reference.
+     */
+    private var lastSpaceAtMs = 0L
+    private var lastCharBeforeSpace: Char? = null
     private val voiceCorrectionTracker by lazy {
         VoiceCorrectionTracker(
             snapshot = { gateway.absoluteCursorSnapshot() },
@@ -217,6 +231,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
                     ),
                     pinyinEngine = PinyinEngine.obtain(this),
                     fuzzyRules = { ImeSettingsRepository.activeFuzzyRules(this) },
+                    poemIndex = { activePoemIndex() },
                 )
             }
                 .onSuccess { candidatePipeline = it }
@@ -225,6 +240,10 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             runCatching { EnglishLexicon.preload(this) }
             // The emoji panel's full list checks every emoji against the font: do it here, not on first open.
             runCatching { EmojiCatalog.byCategory(this) }
+            // The association table is the reference's full one now; parse it here, not on the first commit.
+            runCatching { EmojiAssociationIndex.preload(this) }
+            // 诗句联想 reads on the first keystroke otherwise.
+            runCatching { PoemIndex.preload(this) }
             // Only someone who uses the 笔画 keyboard pays for its table; the
             // keyboard loads it on first use otherwise.
             if (ImeSettingsRepository.loadPreferredChineseMode(this) == KeyboardMode.STROKE) {
@@ -246,6 +265,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             connection = { currentInputConnection },
             isPassword = { state.passwordField },
             isRawKeys = { EditorInfoAdapter.kind(state.editorInfo) == EditorInfoAdapter.EditorKind.RAW_KEYS },
+            letterDigitSpace = { ImeSettingsRepository.loadLetterDigitSpace(this) },
         )
         state = ImeState(
             theme = ImeSettingsRepository.loadTheme(this),
@@ -254,6 +274,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             hapticEnabled = ImeSettingsRepository.loadHaptic(this),
             popupEnabled = ImeSettingsRepository.loadPopup(this),
             fuzzyPinyinEnabled = ImeSettingsRepository.loadFuzzy(this),
+            pinyinLocation = ImeSettingsRepository.loadPinyinLocation(this),
         )
     }
 
@@ -261,7 +282,19 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         mode: KeyboardMode,
         composition: String,
         fuzzy: Boolean,
-    ): List<String> = candidatePipeline.candidatesFor(mode, composition, fuzzy)
+    ): List<String> {
+        val normal = candidatePipeline.candidatesFor(mode, composition, fuzzy)
+        if (mode != KeyboardMode.PINYIN_26) return normal
+        // The reference's first conversion stage is the user's own dictionary,
+        // ahead of the system one and of every other source it consults
+        // (`ConvertByUserDict`, the first call of the 26-key pipeline;
+        // `doubaoime-teardown/ENGINE-SPEC.md` §3.1). With the built-in engine
+        // owning the 26-key order, librime's userdb can only ever append behind
+        // that order — so the words the user picked for this reading before are
+        // what has to lead it.
+        val learned = learnedPinyinCandidates(composition)
+        return if (learned.isEmpty()) normal else (learned + normal).distinct().take(MAX_CANDIDATES)
+    }
 
     override fun resolveNineKey(
         digits: String,
@@ -342,17 +375,33 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     /**
      * 停靠时键盘占据屏幕底部；浮动时卡片只是浮层。系统按窗口 frame 计算 IME 遮挡区域，
      * 会让应用把整块屏幕当作"被输入法盖住"而把输入框顶上去（resize/pan）。
-     * 浮动时这里报告"没有遮挡内容"，输入框原地不动。
+     * 浮动时这里报告"没有遮挡内容"，输入框原地不动；这份报告还要带上整帧可触摸，
+     * 见 [applyFloatingInsets]。
      */
     override fun onComputeInsets(outInsets: InputMethodService.Insets) {
         super.onComputeInsets(outInsets)
         if (floatingWindow.enabled) {
-            val fullHeight = window?.window?.decorView?.height ?: 0
-            if (fullHeight > 0) {
-                outInsets.contentTopInsets = fullHeight
-                outInsets.visibleTopInsets = fullHeight
-            }
+            applyFloatingInsets(outInsets, window?.window?.decorView?.height ?: 0)
         }
+    }
+
+    /**
+     * 浮动卡片对"身后被遮住多少"的报告：内容顶和可见顶都取卡片自己的下边缘，即窗口之内
+     * 没有任何区域盖住后面的应用，应用既不 resize 也不 pan。
+     *
+     * 这份报告同时决定卡片本身哪一块能接触摸：基类 `onComputeInsets` 设的模式是
+     * `TOUCHABLE_INSETS_VISIBLE`（"the area inside of the visible insets can be touched"，
+     * `ViewTreeObserver.InternalInsetsInfo`），可见顶报成窗口底就等于把可触摸区剪成空集，
+     * 整个浮动键盘收不到任何触摸（beta10 的卡死）。AOSP 全屏分支做同一份报告时正是配
+     * `TOUCHABLE_INSETS_FRAME`（`InputMethodService.onComputeInsets`：
+     * `info.contentInsets.top = info.visibleInsets.top = decor.getHeight();
+     * info.setTouchableInsets(TOUCHABLE_INSETS_FRAME);`），浮动卡片照配。
+     */
+    internal fun applyFloatingInsets(outInsets: InputMethodService.Insets, cardHeightPx: Int) {
+        if (cardHeightPx <= 0) return
+        outInsets.contentTopInsets = cardHeightPx
+        outInsets.visibleTopInsets = cardHeightPx
+        outInsets.touchableInsets = InputMethodService.Insets.TOUCHABLE_INSETS_FRAME
     }
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
@@ -477,6 +526,13 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         rime.clear()
         keyboardView?.clearAssociationCandidates()
         keyboardView?.setShiftState(initialShiftState)
+        // A field the user opened can already hold text: 首字母自动大写 reads it
+        // now rather than waiting for the first letter (off, it keeps the
+        // input-type state above).
+        refreshEnglishAutoCapitalization()
+        // 算式结果 and 候选栏展示 are read from the field and the clipboard, so a
+        // field that opens on a finished expression or a fresh copy shows both.
+        refreshIdleCandidates()
         keyboardView?.setMode(state.keyboardMode, notifyListener = false)
         keyboardView?.renderState(state)
         if (preserve) {
@@ -510,6 +566,8 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             popup = state.popupEnabled,
             fuzzy = state.fuzzyPinyinEnabled,
         )
+        // 拼音显示位置在设置页也能改；在场的预编辑跟着搬。
+        applyPinyinLocationChange(ImeSettingsRepository.loadPinyinLocation(this))
     }
 
     /** Apply settings changed by standalone Activities on the IME main thread. */
@@ -820,6 +878,22 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             Log.i(TAG, "BOUNDS\n${keyboardView?.normalizedBoundsReport().orEmpty()}")
             true
         }
+        // Volume E2E reads: the harness types thousands of words, so it needs
+        // one round trip to check what was committed and what the candidate bar
+        // offers. Both answers go out base64-encoded (no line breaks), because
+        // the editor's text is arbitrary user text. Only the debug-only
+        // receiver can send these commands; the release APK has no receiver.
+        command.startsWith("editor-tail64:") -> runCatching {
+            val size = command.substringAfter("editor-tail64:").toIntOrNull()?.coerceIn(1, 2_000) ?: 400
+            val snapshot = gateway.cursorSnapshot(size) ?: return@runCatching false
+            val committed = snapshot.text.take(snapshot.cursor)
+            Log.i(TAG, "EDITOR ${encodeBase64Utf8(committed.takeLast(size))}")
+            true
+        }.getOrDefault(false)
+        command == "candidates64" -> {
+            Log.i(TAG, "CANDIDATES ${encodeBase64Utf8(state.candidates.take(60).joinToString("\n"))}")
+            true
+        }
         command == "state" -> {
             Log.i(
                 TAG,
@@ -836,6 +910,9 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
 
     private fun decodeBase64Utf8(payload: String): String =
         String(java.util.Base64.getDecoder().decode(payload), Charsets.UTF_8)
+
+    private fun encodeBase64Utf8(text: String): String =
+        java.util.Base64.getEncoder().encodeToString(text.toByteArray(Charsets.UTF_8))
 
     /**
      * Feed text one *code point* per call. Iterating Char-by-Char split every
@@ -906,6 +983,9 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         commitPendingComposition()
         keyboardView?.clearAssociationCandidates()
         gateway.commitText(char)
+        // 算式出结果: the digit that finishes an expression brings its result.
+        refreshIdleCandidates()
+        refreshEnglishAutoCapitalization()
     }
 
     override fun onBackspace() = guarded("onBackspace") {
@@ -933,6 +1013,9 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         } else {
             gateway.deleteBackwards()
             clearImeCompositionState(render = true)
+            // Deleting the sentence mark (or leaving a fresh field) moves the
+            // sentence start, so 首字母自动大写 re-reads the text.
+            refreshEnglishAutoCapitalization()
         }
     }
 
@@ -983,7 +1066,32 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         }
         voiceCorrectionTracker.finalizeIfNeeded()
         keyboardView?.clearAssociationCandidates()
+        commitPlainSpace()
+        refreshEnglishAutoCapitalization()
+    }
+
+    /**
+     * Write the space this key press means — or, with 双击空格键输入句号 on and
+     * a second space inside the reference's 200 ms window, replace the space
+     * just written with 「。」. The gate is the character before that first
+     * space, read then and kept here, exactly as the reference keeps it; a space
+     * after punctuation stays a space.
+     */
+    private fun commitPlainSpace() {
+        val now = SystemClock.uptimeMillis()
+        val elapsed = now - lastSpaceAtMs
+        val previousChar = lastCharBeforeSpace
+        lastSpaceAtMs = 0L
+        lastCharBeforeSpace = null
+        val doubleSpacePeriod = ImeSettingsRepository.loadDoubleSpacePeriod(this)
+        if (doubleSpacePeriod && DoubleSpacePeriodPolicy.converts(elapsed, previousChar)) {
+            gateway.deleteBackwards()
+            gateway.commitText(DoubleSpacePeriodPolicy.PERIOD)
+            return
+        }
+        if (doubleSpacePeriod) lastCharBeforeSpace = gateway.charBeforeCursor()
         gateway.commitText(" ")
+        lastSpaceAtMs = now
     }
 
     override fun onVoiceToggle() {
@@ -1139,6 +1247,25 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         } else {
             gateway.sendKeyDownUp(KeyEvent.KEYCODE_ENTER)
         }
+        // A line break ends the sentence (the policy counts 「\n」 as one).
+        refreshEnglishAutoCapitalization()
+    }
+
+    /**
+     * 长按「发送」：按参考自己的说法（`enable_key_enter_sub_title`「长按「发送」可换行」）
+     * 插入一个换行，走的是没有输入动作时那条同样的路径（真 Enter 键事件），
+     * 而不是再拆一条只写 `\n` 的路。合成中（键面是「确定」）不该有长按，
+     * 真发生也当普通的 Enter 处理，不把没上屏的拼音留在输入框里。
+     */
+    override fun onEnterNewline() = guarded("onEnterNewline") {
+        prepareForManualInput()
+        if (lastComposition.isNotEmpty()) {
+            commitRawComposition()
+            return
+        }
+        voiceCorrectionTracker.finalizeIfNeeded()
+        gateway.sendKeyDownUp(KeyEvent.KEYCODE_ENTER)
+        refreshEnglishAutoCapitalization()
     }
 
     override fun onCompositionChanged(composition: String, candidates: List<String>) = guarded("onCompositionChanged") {
@@ -1319,21 +1446,87 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         prepareForManualInput()
         if (state.passwordField || text.isEmpty()) return
         commitPendingComposition()
+        // 算式出结果 replaces the expression it came from: the reference's
+        // CommitCalculatorCand carries the candidate's own length for exactly that.
+        val calculator = arithmeticCandidate()
+        if (calculator != null && calculator.text == text) {
+            repeat(calculator.expressionLength) { gateway.deleteBackwards() }
+            gateway.commitText(text)
+            gateway.finishComposing()
+            refreshIdleCandidates()
+            return
+        }
+        // 候选栏展示: the chip writes the clip itself, and the row is done with
+        // it — the user took what they copied.
+        if (text == clipboardCandidate()) {
+            gateway.commitText(text)
+            gateway.finishComposing()
+            keyboardView?.clearAssociationCandidates()
+            return
+        }
         gateway.commitText(text)
         gateway.finishComposing()
         keyboardView?.clearAssociationCandidates()
         keyboardView?.setAssociationCandidates(associationsAfterCommit(text))
     }
 
-    private val emojiAssociations: EmojiAssociationIndex by lazy {
-        EmojiAssociationIndex.load(this)
+    /**
+     * 算式出结果 rides the 智能联想 switch, which the reference names the
+     * result under too (`string/associate_close_content` 「关闭联想后，将不会
+     * 推荐诗词、计算结果、emoji表情。」). The result is read from the field at
+     * the cursor, so it follows the expression as it is typed, backspaced or
+     * moved past.
+     */
+    private fun arithmeticCandidate(): ArithmeticExpressionPolicy.Result? {
+        if (state.passwordField) return null
+        if (!ImeSettingsRepository.loadEmojiAssociation(this)) return null
+        val before = gateway.textBeforeCursor(ArithmeticExpressionPolicy.MAX_LOOKBACK)
+        return ArithmeticExpressionPolicy.evaluateTrailing(before)
     }
+
+    /**
+     * What the candidate row offers between words: 算式结果 and, with 候选栏
+     * 展示 on, the clipboard's content — 「可在候选栏快速使用剪切内容」.
+     */
+    private fun refreshIdleCandidates() {
+        keyboardView?.clearAssociationCandidates()
+        val chips = ArrayList<String>(2)
+        arithmeticCandidate()?.let { chips += it.text }
+        clipboardCandidate()?.let { chips += it }
+        if (chips.isNotEmpty()) keyboardView?.setAssociationCandidates(chips)
+    }
+
+    /**
+     * The clipboard's content as a candidate, or null when 候选栏展示 is off,
+     * the field is a password, or the clipboard holds nothing. The chip carries
+     * the whole clip: the row clips it to one line, and a tap writes what was
+     * copied, not what is on screen.
+     */
+    private fun clipboardCandidate(): String? {
+        if (state.passwordField) return null
+        if (!ImeSettingsRepository.loadClipboardCandidate(this)) return null
+        val text = gateway.readClipboard()
+        if (text.isEmpty() || text.isBlank()) return null
+        return text
+    }
+
+    private val emojiAssociations: EmojiAssociationIndex by lazy {
+        EmojiAssociationIndex.obtain(this)
+    }
+
+    /**
+     * 诗句联想 shares the 智能联想 switch, as it does in the reference, whose own
+     * text for that switch is 「关闭联想后，将不会推荐诗词、计算结果、emoji表情。」
+     */
+    private fun activePoemIndex(): PoemIndex =
+        if (ImeSettingsRepository.loadEmojiAssociation(this)) PoemIndex.obtain(this) else PoemIndex.EMPTY
 
     /** Next-word suggestions, with the emoji that go with the committed text first. */
     private fun associationsAfterCommit(committed: String): List<String> {
         val words = candidatePipeline.associationsFor(committed)
-        if (state.passwordField || !ImeSettingsRepository.loadEmojiAssociation(this)) return words
-        return emojiAssociations.emojiFor(committed) + words
+        val calculator = arithmeticCandidate()?.let { listOf(it.text) } ?: emptyList()
+        if (state.passwordField || !ImeSettingsRepository.loadEmojiAssociation(this)) return calculator + words
+        return calculator + emojiAssociations.emojiFor(committed) + words
     }
 
     override fun onCompositionBackspace() {
@@ -1375,6 +1568,12 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
 
     override fun onFuzzyRulesChanged() = syncFuzzyRules()
 
+    /** 首字母自动大写 switched; the field that is up re-reads its text at once. */
+    override fun onAutoCapitalizationChanged() = refreshEnglishAutoCapitalization()
+
+    /** 候选栏展示 switched; the row re-reads the clipboard at once. */
+    override fun onClipboardCandidateChanged() = refreshIdleCandidates()
+
     /**
      * Hand the 模糊音 switches to both candidate sources: the Kotlin fallback
      * reads [FuzzyPinyin.rules]; librime re-deploys when the rules file changes.
@@ -1396,11 +1595,37 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         state = state.copy(panel = if (open) Panel.CANDIDATE_EXPANDED else Panel.NONE)
     }
 
+    /**
+     * 输入中的拼音改显示位置了（候选栏 ↔ 输入框）。由键盘上的设置页直接调用；
+     * 应用内的设置页走 [reloadPersistedSettings] 里同一条路。
+     */
+    override fun onPinyinLocationChanged(location: PinyinLocation) = applyPinyinLocationChange(location)
+
+    /**
+     * 在场的这段预编辑要跟着搬，否则输入框里会留下半截拼音，或者键盘上少了一行。
+     */
+    private fun applyPinyinLocationChange(location: PinyinLocation) {
+        val previous = state.pinyinLocation
+        state = state.copy(pinyinLocation = location)
+        if (previous == location || lastComposition.isEmpty()) return
+        if (composesInEditor()) {
+            gateway.setComposingText(lastComposition)
+        } else {
+            // 收回输入框里的那段 composing text，改回键盘自己显示。
+            gateway.cancelComposing()
+        }
+    }
+
     override fun onSymbolSelected(symbol: String) = guarded("onSymbolSelected") {
         prepareForManualInput()
         commitPendingComposition()
         keyboardView?.clearAssociationCandidates()
+        SymbolRecentRepository.record(this, symbol)
         gateway.commitText(symbol)
+        // 算式出结果: 「)」 or a full-width figure can finish the expression.
+        refreshIdleCandidates()
+        // A 「.」「!」「?」 (or their full-width forms) starts the next sentence.
+        refreshEnglishAutoCapitalization()
     }
 
     override fun onEmojiSelected(emoji: String) = guarded("onEmojiSelected") {
@@ -1548,14 +1773,30 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             // editor text in many apps. Deleting the final Pinyin character
             // must remove that span instead of leaving a raw letter behind.
             gateway.cancelComposing()
-        } else if (!state.keyboardMode.isChineseLayout) {
+        } else if (!state.keyboardMode.isChineseLayout || composesInEditor()) {
             // Chinese pre-edit (pinyin, nine-key digits, strokes) stays on the
             // keyboard, as on Sogou and iFlytek: written into the app's field it
             // showed "669" or "ni'hao" there and set off the app's own
             // suggestions. An English word is composed in place, as on Gboard.
+            //
+            // 选「显示在输入框」时拼音改走同一个通道，和参考皮肤的做法一致
+            // （`KeyboardJni.UpdatePreedit` → `setComposingRegion` +
+            // `setComposingText`，见 PinyinLocation）。
             gateway.setComposingText(next)
         }
     }
+
+    /**
+     * 拼音是否写进应用自己的输入框。除了用户选的那一项，还要看这个输入框能不能
+     * 收：密码框里写预编辑等于把拼音打进密码，数字框（只收数字）写拼音只会被
+     * 应用丢掉或过滤。
+     */
+    private fun composesInEditor(): Boolean =
+        ComposingTextPolicy.composesInEditor(
+            location = state.pinyinLocation,
+            passwordField = state.passwordField,
+            kind = EditorInfoAdapter.kind(state.editorInfo),
+        )
 
     /**
      * Finish a pending composing string before inserting a non-composing item.
@@ -1571,11 +1812,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         composition: String,
         mode: KeyboardMode,
     ): List<String> {
-        val normal = candidatePipeline.candidatesFor(
-            mode,
-            composition,
-            state.fuzzyPinyinEnabled,
-        )
+        val normal = candidatesFor(mode, composition, state.fuzzyPinyinEnabled)
         if (mode == KeyboardMode.STROKE) {
             // Characters the user picked for these strokes before come first.
             val learned = strokeLearningKey(composition)
@@ -1595,6 +1832,10 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         )
         return (quickPhrases + normal).distinct().take(MAX_CANDIDATES)
     }
+
+    /** The words the user picked for this reading before ([candidatesFor] leads with them). */
+    private fun learnedPinyinCandidates(composition: String): List<String> =
+        if (allowsPersonalizedLearning()) UserPhraseRepository.candidatesFor(composition) else emptyList()
 
     /** The extra learner is only a repeated-choice fallback while Rime is unavailable. */
     private fun immediateCandidates(composition: String, fallback: List<String>): List<String> {
@@ -1781,6 +2022,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         state = state.copy(composition = "", candidates = emptyList())
         keyboardView?.clearAssociationCandidates()
         keyboardView?.renderState(state)
+        refreshEnglishAutoCapitalization()
     }
 
     private fun selectCandidate(candidate: String) {
@@ -1870,14 +2112,16 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
 
     private fun finishCandidateCommit(composition: String, committed: String) {
         if (committed.isEmpty()) return
-        // librime owns normal learning through its userdb. Keep the old local
-        // repository only as an offline fallback; never run two unconditional
-        // ranking systems over the same successful native selection.
+        // librime owns learning wherever its own order is the visible one, and
+        // there the local repository stays the offline fallback; never run two
+        // unconditional ranking systems over the same successful selection.
+        // The 26-key engine order is the exception: librime can only append
+        // behind it, so the local learner is the one that ranks there.
         if (state.keyboardMode == KeyboardMode.STROKE) {
             // Stroke input has no librime session, so it always learns locally.
             strokeLearningKey(composition)?.takeIf { allowsPersonalizedLearning() }
                 ?.let { UserPhraseRepository.record(it, committed) }
-        } else if (!rime.isReady && allowsPersonalizedLearning()) {
+        } else if (allowsPersonalizedLearning() && (!rime.isReady || engineOwnsPinyinOrder())) {
             UserPhraseRepository.record(composition, committed)
         }
         // An English word is followed by a space, as space and a suggestion
@@ -1891,6 +2135,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         state = state.copy(composition = "", candidates = emptyList())
         keyboardView?.renderState(state)
         keyboardView?.setAssociationCandidates(associationsAfterCommit(committed))
+        refreshEnglishAutoCapitalization()
     }
 
     /**
@@ -1902,6 +2147,10 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
 
     private fun allowsPersonalizedLearning(): Boolean =
         personalizedLearningAllowed(state.passwordField, state.editorInfo?.imeOptions)
+
+    /** True when the built-in engine's own order is what the 26-key bar shows. */
+    private fun engineOwnsPinyinOrder(): Boolean =
+        state.keyboardMode == KeyboardMode.PINYIN_26 && candidatePipeline.usesPinyinEngine
 
     /** Remove only voice-owned composing text before a manual edit takes ownership. */
     private fun prepareForManualInput() {
@@ -1921,6 +2170,37 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     private fun resetEnglishShiftForEditor() {
         if (state.keyboardMode != KeyboardMode.ENGLISH_26 || state.passwordField || lastComposition.isNotEmpty()) return
         val next = desiredEnglishShiftState(state.editorInfo)
+        if (next != state.shiftState) {
+            state = state.copy(shiftState = next)
+            keyboardView?.setShiftState(next)
+        }
+        // 首字母自动大写 refines the input-type default with the text already
+        // in the field; off, it leaves the default in place.
+        refreshEnglishAutoCapitalization()
+    }
+
+    /**
+     * 首字母自动大写: after an English edit, Shift is up when the text before
+     * the cursor ends a sentence and down inside one. Off by default, exactly
+     * as the reference ships it; a field that demands capitals and the user's
+     * own Caps Lock are left alone.
+     */
+    private fun refreshEnglishAutoCapitalization() {
+        if (state.keyboardMode != KeyboardMode.ENGLISH_26 || state.passwordField) return
+        if (!ImeSettingsRepository.loadFirstLetterCapitalization(this)) return
+        if (state.shiftState == ShiftState.CAPS_LOCK) return
+        val info = state.editorInfo
+        if (info != null &&
+            info.inputType and android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS != 0
+        ) {
+            return
+        }
+        val before = gateway.textBeforeCursor(AutoCapitalizationPolicy.LOOKBACK) ?: return
+        val next = if (AutoCapitalizationPolicy.atSentenceStart(before)) {
+            ShiftState.SHIFT_ONCE
+        } else {
+            ShiftState.LOWERCASE
+        }
         if (next == state.shiftState) return
         state = state.copy(shiftState = next)
         keyboardView?.setShiftState(next)
@@ -1979,7 +2259,15 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         const val TAG = "OpenIme"
         const val CANDIDATE_REFRESH_IDLE_POLL_MS = 16L
         const val MAX_RIME_INPUT_LENGTH = 256
-        const val MAX_RIME_NINE_KEY_PATHS = 6
+
+        /**
+         * Readings handed to librime per key press. The reference enumerates its
+         * whole nine-key lattice with no count limit; each reading here costs one
+         * JNI query, so this stays a bound — but a small one starved the
+         * candidates the owner missed, because the readings a nine-key press
+         * offers run past the two or three a plain split produces.
+         */
+        const val MAX_RIME_NINE_KEY_PATHS = 12
         const val MAX_CANDIDATES = 96
         const val TYPO_CORRECTION_NATIVE_THRESHOLD = 8
         @Volatile

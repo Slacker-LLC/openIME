@@ -68,6 +68,18 @@ class TokenDriftTest {
     }
 
     @Test
+    fun keyboardAndAppPagesShareTheAccentPalette() {
+        val native = source("app/src/main/java/llc/slacker/openime/theme/ImeDesignTokens.kt")
+        val accents = Regex("""Tokens\(\s*c\("(#[0-9A-Fa-f]{6})"\)""")
+            .findAll(native).map { it.groupValues[1] }.toList()
+        val resources = listOf("values-night", "values").map { folder ->
+            Regex("""<color name="setup_primary">(#[0-9A-Fa-f]{6})</color>""")
+                .find(source("app/src/main/res/$folder/colors.xml"))!!.groupValues[1]
+        }
+        assertEquals("Keyboard actions and app controls use the same blues", resources, accents)
+    }
+
+    @Test
     fun setupDimensionsMirrorDesignTokens() {
         val dimens = source("app/src/main/res/values/dimens.xml")
         listOf(

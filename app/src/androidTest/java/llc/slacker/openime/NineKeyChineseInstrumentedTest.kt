@@ -5,6 +5,7 @@ import android.view.ViewGroup
 import android.widget.TextView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -123,6 +124,45 @@ class NineKeyChineseInstrumentedTest {
                 key
             }
         }
+    }
+
+    /**
+     * The reading list is the symbol rail's list with other items in it: one
+     * line per reading at one size (no per-item shrinking), a hairline between
+     * items, and no state drawn on any item — which reading is current shows in
+     * the pre-edit. The reference skin gives the reading item the symbol item's
+     * own style (`cls_pinyin9_filter_button` inherits
+     * `cls_vertical_symbol_list_button`) and draws the marks and the syllables
+     * at one size (`fi_vertical_symbol_list_text`, style.xml:112 and 1023-1032).
+     */
+    @Test
+    fun theReadingRailIsAFlatListOfOneLineReadings() {
+        tapDigits("6464")
+
+        val cells = harness.awaitMain { activity ->
+            val root = activity.findViewById<ViewGroup>(android.R.id.content) ?: return@awaitMain emptyList<TextView>()
+            val content = findView(root) { it.tag == "nine-pinyin-panel" } as? ViewGroup
+                ?: return@awaitMain emptyList()
+            (0 until content.childCount).mapNotNull { content.getChildAt(it) as? TextView }
+        }
+        assertTrue("the rail must list readings: ${cells.map { it.text }}", cells.size >= 4)
+        assertTrue(
+            "every reading is one line: ${cells.map { it.maxLines }}",
+            cells.all { it.maxLines == 1 },
+        )
+        assertEquals(
+            "readings share one text size, so the list never reflows",
+            cells.map { it.textSize }.distinct().single(),
+            cells.first().textSize,
+            0.01f,
+        )
+
+        val dividers = harness.awaitMain { activity ->
+            val root = activity.findViewById<ViewGroup>(android.R.id.content) ?: return@awaitMain -1
+            val content = findView(root) { it.tag == "nine-pinyin-panel" } as? ViewGroup ?: return@awaitMain -1
+            (0 until content.childCount).count { content.getChildAt(it).tag == "rail-divider" }
+        }
+        assertEquals("one hairline between neighbouring readings", cells.size - 1, dividers)
     }
 
     private fun assertComposition(expected: String) {

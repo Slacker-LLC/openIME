@@ -31,8 +31,10 @@ class ArchitectureLayeringTest {
         "engine" to setOf("core"),
         "rime" to setOf("core", "data"),
         "candidate" to setOf("core", "engine", "rime"),
+        // 文本切分：拆词用的分词器与词表。词表就是拼音表的内容面，所以它建在 candidate 之上。
+        "text" to setOf("candidate"),
         "voice" to setOf("data", "editor", "theme"),
-        "panel" to setOf("core", "data", "handwriting", "setup", "theme", "widget"),
+        "panel" to setOf("core", "data", "handwriting", "setup", "text", "theme", "widget"),
         "keyboard" to setOf(
             "candidate", "core", "data", "editor", "floating", "handwriting",
             "panel", "setup", "theme", "voice", "widget",

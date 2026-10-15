@@ -22,6 +22,9 @@ internal object SymbolRailRenderer {
     private const val CELL_HEIGHT_DP = 54
     private const val FADING_EDGE_DP = 18
 
+    /** The rail's one item font: the reference's 47-unit face over its own step of 3. */
+    const val ITEM_TEXT_SP = 15.5f
+
     fun build(
         context: Context,
         railTag: String,
@@ -93,24 +96,13 @@ internal object SymbolRailRenderer {
             inheritedTextColor?.let(preservedHeader::setTextColor)
             content.addView(
                 preservedHeader,
-                cellParams(content.context, withGap = true, heightDp = cellHeightDp, toPx = toPx),
+                cellParams(content.context, heightDp = cellHeightDp, toPx = toPx),
             )
         }
         // One flat list on one panel (the theme draws the panel), hairlines
         // between the items and faded edges: it reads as something to scroll,
         // not a column of separate keys. Three items show, level with the keys.
-        fun divider() {
-            content.addView(
-                View(content.context).apply {
-                    tag = DIVIDER_TAG
-                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                },
-                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1).apply {
-                    marginStart = toPx(DIVIDER_INSET_DP)
-                    marginEnd = toPx(DIVIDER_INSET_DP)
-                },
-            )
-        }
+        fun divider() = addDivider(content, toPx)
         symbols.forEachIndexed { index, symbol ->
             if (index > 0) divider()
             content.addView(
@@ -148,10 +140,30 @@ internal object SymbolRailRenderer {
     const val DIVIDER_TAG = "rail-divider"
     private const val DIVIDER_INSET_DP = 10
 
-    private fun flatCellParams(heightDp: Int, toPx: (Int) -> Int) =
+    /** The hairline between two list items on the rail's panel. */
+    fun addDivider(content: LinearLayout, toPx: (Int) -> Int) {
+        content.addView(
+            View(content.context).apply {
+                tag = DIVIDER_TAG
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            },
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1).apply {
+                marginStart = toPx(DIVIDER_INSET_DP)
+                marginEnd = toPx(DIVIDER_INSET_DP)
+            },
+        )
+    }
+
+
+    /**
+     * One rail list item: full width, the given height, no gap of its own. The
+     * symbol list and the nine-key reading list are the same list, so they use
+     * the same cell.
+     */
+    fun flatCellParams(heightDp: Int, toPx: (Int) -> Int) =
         LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(heightDp))
 
-    fun cellParams(context: Context, withGap: Boolean, heightDp: Int = CELL_HEIGHT_DP, toPx: (Int) -> Int = { dp(context, it) }) = LinearLayout.LayoutParams(
+    fun cellParams(context: Context, heightDp: Int = CELL_HEIGHT_DP, toPx: (Int) -> Int = { dp(context, it) }) = LinearLayout.LayoutParams(
         LinearLayout.LayoutParams.MATCH_PARENT,
         toPx(heightDp),
     ).apply {
@@ -159,8 +171,6 @@ internal object SymbolRailRenderer {
         setMargins(gap, gap, gap, gap)
         height -= gap * 2
     }
-
-    fun cellHeightPx(context: Context): Int = dp(context, CELL_HEIGHT_DP)
 
     private fun symbolCell(
         context: Context,
@@ -171,7 +181,12 @@ internal object SymbolRailRenderer {
         onFeedback: () -> Unit,
     ): TextView = InkCenteredTextView(context).apply {
         text = symbol
-        textSize = when (symbol) { "！", "!", "？", "?" -> 24f; "，", "、", "%", "+", "−", "-" -> 22f; else -> 20f }
+        // One font for the whole list, marks and readings alike: the reference's
+        // item class gives every rail cell `fi_vertical_symbol_list_text`
+        // (`style.xml:1025-1027`), a 47-unit face — 47 ÷ 3, the step between the
+        // reference's own numbers and our sp scale (`key_letter` 57 is our 19,
+        // `comp_font` 40 our 13).
+        textSize = ITEM_TEXT_SP
         gravity = Gravity.CENTER
         tag = "$tagPrefix$symbol"
         contentDescription = symbol

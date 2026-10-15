@@ -9,6 +9,7 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.SystemClock
 import android.util.Log
+import llc.slacker.openime.data.ImeSettingsRepository
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
@@ -247,7 +248,10 @@ class LocalAudioVoiceBackend(
             return
         }
 
-        val routeSession = routeManager.beginSession()
+        // 使用耳机麦克风录音: read per session, so a change takes effect at once.
+        val routeSession = routeManager.beginSession(
+            preferHeadsetMic = ImeSettingsRepository.loadBluetoothHeadsetMic(context),
+        )
         val record = runCatching {
             AudioRecord.Builder()
                 .setAudioSource(MediaRecorder.AudioSource.VOICE_RECOGNITION)

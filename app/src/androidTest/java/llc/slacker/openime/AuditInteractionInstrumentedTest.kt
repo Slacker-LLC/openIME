@@ -32,9 +32,11 @@ import llc.slacker.openime.voice.VoiceRecognitionEvents
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.lang.reflect.Proxy
@@ -653,10 +655,11 @@ class AuditInteractionInstrumentedTest {
             keyboard.showPanel(Panel.TOOLS)
             val card = keyboard.findViewWithTag<View>("tool:表情")
             assertTrue("Tool card must be keyboard-focusable", card.isFocusable)
-            // The column is the target; its icon tile mirrors the column's state.
-            val tile = (card as ViewGroup).getChildAt(0)
-            assertTrue("Tool tile must expose pressed and focus feedback", tile.background is StateListDrawable)
-            assertTrue("Tool tile must follow the card's pressed state", tile.isDuplicateParentStateEnabled)
+            // The whole cell is the reference's own tile: it carries the face and
+            // the press, and its glyph mirrors the tile's state.
+            assertTrue("Tool tile must expose pressed and focus feedback", card.background is StateListDrawable)
+            val icon = (card as ViewGroup).getChildAt(0)
+            assertTrue("Tool glyph must follow the tile's pressed state", icon.isDuplicateParentStateEnabled)
             assertEquals("表情", card.contentDescription)
             val label = card.getChildAt(1)
             assertTrue(
@@ -919,7 +922,8 @@ class AuditInteractionInstrumentedTest {
     @Test
     fun modeSwitchDismissesLongPressChoicePopup() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
-            // 1 is the nine-key segmentation key; its long press offers @ # /.
+            // The nine-key 1 cell is the @# key: its long press offers the
+            // reference's own symbol list.
             keyboard.setMode(KeyboardMode.PINYIN_9, notifyListener = false)
             val segment = keyboard.findViewWithTag<View>("key-9:1")
             val baseline = keyboard.childCount
@@ -1174,6 +1178,7 @@ class AuditInteractionInstrumentedTest {
         var downTime = 0L
         var released = false
         var spaceViewSurvivedRebuildPoll = false
+        var starvedPastLongPress = false
         lateinit var spaceKey: View
         val releaseDelayMs = minOf(
             100L,
@@ -1201,6 +1206,12 @@ class AuditInteractionInstrumentedTest {
             // Give the deferred row rebuild poll several main-loop turns, but
             // release before Android's own long-click can consume this tap.
             keyboard.postDelayed({
+                // 机器卡顿时这个回调会晚到：一旦越过长按阈值，平台就不再把它当点击
+                // （`View.onTouchEvent` 置了 `mHasPerformedLongPress` 后不再发 click），
+                // 这颗键按设计就是语音而空格。这条断言在那种时间线下没有意义，跳过而不是
+                // 报错——否则 CI 越忙越"红"。
+                starvedPastLongPress =
+                    SystemClock.uptimeMillis() - downTime >= ViewConfiguration.getLongPressTimeout().toLong()
                 spaceViewSurvivedRebuildPoll =
                     keyboard.findViewWithTag<View>("key-space") === spaceKey
                 val point = keyPoint(keyboard, "key-space")
@@ -1210,6 +1221,10 @@ class AuditInteractionInstrumentedTest {
             true
         }
         harness.awaitMain(timeoutMs = 3_000L) { if (released) true else null }
+        assumeTrue(
+            "The main thread ran past the long-press deadline, so this press is a voice hold, not a tap",
+            !starvedPastLongPress,
+        )
         harness.awaitMain {
             assertTrue(
                 "The Space view must remain attached while the rebuild poll sees the active touch",
@@ -1220,6 +1235,65 @@ class AuditInteractionInstrumentedTest {
         }
         harness.awaitMain(timeoutMs = 3_000L) { if (recorder.spaces > 0) true else null }
         assertEquals("A rebuild during the press must not swallow the space", 1, recorder.spaces)
+    }
+
+    @Test
+    fun aPressLeftWithoutAFingerOnlyDefersWhileTheFingerIsStillDown() = withKeyboard { harness, _, keyboard ->
+        // Half by half: the deferral (see rebuildWhileSpaceIsHeldDoesNotSwallowTheSpace)
+        // must protect a real gesture and must not outlive it. A press left behind by
+        // an earlier gesture — the rebuild that swallowed it, or a view swapped out
+        // mid-gesture — used to defer every later rebuild and poll for it forever.
+        val releaseDelayMs = minOf(
+            100L,
+            (ViewConfiguration.getLongPressTimeout().toLong() / 2L).coerceAtLeast(1L),
+        )
+        lateinit var staleSpace: View
+        harness.awaitMain {
+            staleSpace = requireNotNull(keyboard.findViewWithTag("key-space"))
+            staleSpace.isPressed = true
+            true
+        }
+        harness.awaitMain {
+            keyboard.setMode(KeyboardMode.ENGLISH_26, notifyListener = false)
+            val rebuilt = keyboard.findViewWithTag<View>("key-space")
+            assertNotNull("The mode switch must rebuild the rows of the new layout", rebuilt)
+            assertNotSame(
+                "A press with no finger on the screen must not defer this rebuild",
+                staleSpace,
+                rebuilt,
+            )
+            assertFalse("The deferred rebuild must let go of the stale key", staleSpace.isAttachedToWindow)
+            true
+        }
+
+        // A finger really on the screen: the deferral still holds, and the rebuild
+        // lands as soon as that finger lifts.
+        var released = false
+        var downTime = 0L
+        lateinit var heldSpace: View
+        harness.awaitMain {
+            val point = keyPoint(keyboard, "key-space")
+            heldSpace = requireNotNull(keyboard.findViewWithTag("key-space"))
+            downTime = SystemClock.uptimeMillis()
+            pointers(keyboard, downTime, MotionEvent.ACTION_DOWN, listOf(point))
+            assertTrue("Space must own the active press", heldSpace.isPressed)
+            keyboard.setMode(KeyboardMode.PINYIN_26, notifyListener = false)
+            assertSame(
+                "A live finger must still defer the rebuild",
+                heldSpace,
+                keyboard.findViewWithTag<View>("key-space"),
+            )
+            keyboard.postDelayed({
+                pointers(keyboard, downTime, MotionEvent.ACTION_UP, listOf(point))
+                released = true
+            }, releaseDelayMs)
+            true
+        }
+        harness.awaitMain(timeoutMs = 3_000L) { if (released) true else null }
+        // The rebuild poll runs on a 40ms cadence; give it a few turns.
+        harness.awaitMain(timeoutMs = 3_000L) {
+            keyboard.findViewWithTag<View>("key-space")?.takeIf { it !== heldSpace }
+        }
     }
 
     @Test

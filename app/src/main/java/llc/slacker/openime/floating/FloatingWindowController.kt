@@ -34,6 +34,7 @@ internal class FloatingWindowController(
     private var baseAlpha: Float? = null
     private val positionMemory = FloatingPositionMemory()
     private var lastOrientation: Int? = null
+    private var appliedOpacityPercent: Int? = null
 
     fun enable(resetPosition: Boolean = x == 0 && y == 0) {
         enabled = true
@@ -116,7 +117,13 @@ internal class FloatingWindowController(
             attrs.width = desiredWidth
             attrs.height = currentHeight
             attrs.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
-            attrs.alpha = floatingOpacityPercent().coerceIn(ImeGeometryTokens.FLOATING_OPACITY_MIN_PERCENT, ImeGeometryTokens.FLOATING_OPACITY_MAX_PERCENT) / 100f
+            val opacityPercent = floatingOpacityPercent()
+                .coerceIn(
+                    ImeGeometryTokens.FLOATING_OPACITY_MIN_PERCENT,
+                    ImeGeometryTokens.FLOATING_OPACITY_MAX_PERCENT,
+                )
+            appliedOpacityPercent = opacityPercent
+            attrs.alpha = opacityPercent / 100f
             attrs.x = x.coerceIn(bounds[0], bounds[1])
             attrs.y = y.coerceIn(bounds[2], bounds[3])
             x = attrs.x
@@ -145,16 +152,39 @@ internal class FloatingWindowController(
         val bounds = bounds(screenWidth, screenHeight, width, height)
         x = x.coerceIn(bounds[0], bounds[1])
         y = y.coerceIn(bounds[2], bounds[3])
+        val alpha = opacityAlpha()
+        // 每个触摸样本都写一次窗口属性就是一次 relayout：手指移动不足一像素的样本
+        // （取整后位置没变）和其余值都没变时，直接不写。
+        if (x == attrs.x && y == attrs.y &&
+            width == attrs.width && height == attrs.height && alpha == attrs.alpha
+        ) {
+            return
+        }
         attrs.gravity = Gravity.TOP or Gravity.START
         attrs.width = width
         attrs.height = height
         attrs.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
-        attrs.alpha = floatingOpacityPercent().coerceIn(ImeGeometryTokens.FLOATING_OPACITY_MIN_PERCENT, ImeGeometryTokens.FLOATING_OPACITY_MAX_PERCENT) / 100f
+        attrs.alpha = alpha
         attrs.x = x
         attrs.y = y
         imeWindow.attributes = attrs
         rememberPosition()
         debugLog("floating-window-drag x=$x y=$y w=$width h=$height")
+    }
+
+    /**
+     * 最近一次写进窗口的不透明度。拖动每个样本都要用它，属性写回读设置没有必要；
+     * [scheduleLayout] 在启用、改样式、转屏时都会重读。
+     */
+    private fun opacityAlpha(): Float {
+        val percent = appliedOpacityPercent
+            ?: floatingOpacityPercent()
+                .coerceIn(
+                    ImeGeometryTokens.FLOATING_OPACITY_MIN_PERCENT,
+                    ImeGeometryTokens.FLOATING_OPACITY_MAX_PERCENT,
+                )
+                .also { appliedOpacityPercent = it }
+        return percent / 100f
     }
 
     private fun rememberPosition() {

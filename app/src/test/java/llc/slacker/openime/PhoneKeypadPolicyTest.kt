@@ -16,4 +16,13 @@ class PhoneKeypadPolicyTest {
         assertTrue("+" in literals)
         assertFalse("＊" in literals)
     }
+
+    /** Each dialer symbol sits on a cell of the number page's own row. */
+    @Test
+    fun theDialerSymbolsSitOnTheNumberPagesOwnCells() {
+        assertEquals(
+            setOf("key-space", "key:.", "key:symbol"),
+            PhoneKeypadPolicy.literalByTag.keys,
+        )
+    }
 }

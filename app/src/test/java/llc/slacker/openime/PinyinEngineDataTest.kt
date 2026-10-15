@@ -71,6 +71,211 @@ class PinyinEngineDataTest {
     }
 
     @Test
+    fun aReadingSplitManyWaysStillFindsItsWord() {
+        val engine = loadEngine()
+        // 乱按/卵鞍 are luan+an; the letters also read as lu+a+nan, and the
+        // split into fewer syllables must be the one that reaches the lookup.
+        assertEquals("卵鞍", engine.candidates("luanan").firstOrNull())
+        assertTrue(engine.candidates("luanan").contains("乱按"))
+    }
+
+    @Test
+    fun thePrefixRangeMatchesAPlainScan() {
+        val lex = engineAsset("lex.bin")
+        assumeTrue("imengine/lex.bin not built", lex != null)
+        val index = LexiconIndex(map(lex!!))
+        // The words that start with a reading sit in the middle of a table
+        // sorted by reading, so the bound has to be the reading's successor,
+        // not a search for "starts with" over the array.
+        for (names in listOf(
+            listOf("ni"),
+            listOf("ni", "hao"),
+            listOf("ji", "tian"),
+            listOf("ji", "tian", "bu"),
+            listOf("a"),
+        )) {
+            val ids = IntArray(names.size) { index.syllables.indexOf(names[it]) }
+            val start = index.lowerBound(ids, ids.size)
+            var scan = start
+            while (scan < index.size && index.startsWith(scan, ids, ids.size)) scan++
+            assertEquals(
+                "prefix range of ${names.joinToString("+")}",
+                scan,
+                index.prefixEnd(ids, ids.size),
+            )
+            assertTrue("no words start with ${names.joinToString("+")}", scan > start)
+        }
+    }
+
+    @Test
+    fun aReadingNoWordSpellsComesBackAsTheSentenceItIs() {
+        val engine = loadEngine()
+        // No lexicon entry spells jintianxingqiwu; 今天 + 星期五 does, and the
+        // bar leads with it the way the reference's candidate column does.
+        assertEquals("今天星期五", engine.candidates("jintianxingqiwu").firstOrNull())
+        assertEquals("我很好谢谢", engine.candidates("wohenhaoxiexie").firstOrNull())
+        // A word the reading does spell keeps the place: the sentence only
+        // fills in where there is no such word.
+        assertEquals("朋克", engine.candidates("pengke").firstOrNull())
+        // Half a syllable at the end is not a sentence: the bar shows the
+        // words the finished syllables already reach.
+        assertEquals(listOf("今天心情", "今天新闻", "今天星期"), engine.candidates("jintianxingqiw").take(3))
+    }
+
+    @Test
+    fun theWordTheReadingSpellsComesBeforeItsCompletions() {
+        val engine = loadEngine()
+        // 朋克 spells pengke exactly; 朋克头/朋克养生 only start with it.
+        assertEquals("朋克", engine.candidates("pengke").firstOrNull())
+        // 要高考 is the word; 要高考了 extends it.
+        assertEquals("要高考", engine.candidates("yaogaokao").firstOrNull())
+    }
+
+    @Test
+    fun aTypedPrefixReachesTheWordsThatContinueIt() {
+        val engine = loadEngine()
+        // The tail is not a syllable yet: 你好 comes from ni + a tail that is
+        // still an h, and it has to be there without the user typing "hao".
+        val partial = engine.candidates("nih")
+        assertTrue("no candidates for a reading with an unfinished syllable: $partial", partial.contains("你好"))
+        // A whole word the reading starts: typing "jintian" offers 今天 first
+        // and the words that continue it behind.
+        val word = engine.candidates("jintian")
+        assertEquals("今天", word.firstOrNull())
+        assertTrue("今天不是 missing from $word", word.contains("今天不是"))
+    }
+
+    @Test
+    fun aLongWordSurvivesTheSplitsThatSpellNothing() {
+        val engine = loadEngine()
+        // a+de+li+an+an+de+lie+fu. The same letters also read a+de+lia+nan+
+        // de+lie+fu — one syllable fewer, so it sorted ahead — and every
+        // syllable here doubles as a single letter, which widened the field
+        // again. Both used to fill the frontier before the real reading got
+        // there, and the bar came up empty for a word the table has.
+        assertEquals("阿德里安安德烈夫", engine.candidates("adelianandeliefu").firstOrNull())
+    }
+
+    @Test
+    fun theVSpellingOfUReachesTheSameWords() {
+        val engine = loadEngine()
+        // Pinyin writes the ü the 26 keys have no letter for as v, and the
+        // reference's syllable trie carries those spellings as ordinary
+        // matches of the syllable (f_syllable-variants.tsv, the rows with both
+        // mask bytes zero): jv/jvan/jve/jvn stand at ju/juan/jue/jun, the same
+        // for q/x/y. Typing jv used to come back empty — the single letters are
+        // syllables of the catalogue, so j+v was a reading, but no word spells
+        // it.
+        for ((spelling, plain) in listOf(
+            "jv" to "ju",
+            "jvan" to "juan",
+            "jve" to "jue",
+            "jvn" to "jun",
+            "qv" to "qu",
+            "qvan" to "quan",
+            "qve" to "que",
+            "qvn" to "qun",
+            "xv" to "xu",
+            "xvan" to "xuan",
+            "xve" to "xue",
+            "xvn" to "xun",
+            "yv" to "yu",
+            "yvan" to "yuan",
+            "yve" to "yue",
+            "yvn" to "yun",
+        )) {
+            assertEquals(
+                "candidates of $spelling differ from $plain",
+                engine.candidates(plain),
+                engine.candidates(spelling),
+            )
+            assertTrue("no candidates for $spelling", engine.candidates(spelling).isNotEmpty())
+        }
+    }
+
+    @Test
+    fun twoFuzzyRulesApplyToTheSameSyllable() {
+        val engine = loadEngine()
+        // The reference's syllable table carries a spelling with two classic
+        // mask bits when one is an initial pair and the other a final one
+        // (ch_c+eng_ong, n_l+in_ing, z_zh+an_ang ...) and never otherwise, so
+        // a spelling one substitution away needs both switches: cheng is 岑
+        // cen (c→ch, then en→eng) and ning is 林 lin (l→n, then in→ing).
+        // One rule at a time answered neither.
+        val cCheng = setOf(FuzzyRule.C_CH, FuzzyRule.EN_ENG)
+        assertTrue(
+            "岑 missing from ${engine.candidates("cheng", fuzzyRules = cCheng).take(8)}",
+            engine.candidates("cheng", fuzzyRules = cCheng).contains("岑"),
+        )
+        assertTrue(
+            "岑 offered from cheng with only ch = c on",
+            engine.candidates("cheng", fuzzyRules = setOf(FuzzyRule.C_CH)).none { it == "岑" },
+        )
+
+        val nLing = setOf(FuzzyRule.N_L, FuzzyRule.IN_ING)
+        assertTrue(
+            "林 missing from ${engine.candidates("ning", fuzzyRules = nLing).take(8)}",
+            engine.candidates("ning", fuzzyRules = nLing).contains("林"),
+        )
+        assertTrue(
+            "林 offered from ning with only n = l on",
+            engine.candidates("ning", fuzzyRules = setOf(FuzzyRule.N_L)).none { it == "林" },
+        )
+
+        // The final pair applies to the syllable the initial pair made: zhang
+        // is 赞 zan with z = zh and an = ang on.
+        val zAng = setOf(FuzzyRule.Z_ZH, FuzzyRule.AN_ANG)
+        assertTrue(
+            "赞 missing from ${engine.candidates("zhang", fuzzyRules = zAng).take(8)}",
+            engine.candidates("zhang", fuzzyRules = zAng).contains("赞"),
+        )
+        assertTrue(
+            "赞 offered from zhang with only z = zh on",
+            engine.candidates("zhang", fuzzyRules = setOf(FuzzyRule.Z_ZH)).none { it == "赞" },
+        )
+    }
+
+    @Test
+    fun aFuzzySpellingNeedNotBeASyllable() {
+        val engine = loadEngine()
+        // cuang is no syllable of the catalogue, but it is what the reference's
+        // trie holds for 床 chuang under ch = c (f_syllable-variants.tsv row
+        // chuang -> cuang, mask C9). Requiring the variant to be a syllable of
+        // its own dropped it, and with it every such spelling.
+        val chC = setOf(FuzzyRule.C_CH)
+        val chuang = engine.candidates("cuang", fuzzyRules = chC)
+        assertTrue("no candidates for cuang: $chuang", chuang.isNotEmpty())
+        assertTrue("床 missing from $chuang", chuang.contains("床"))
+        // The exact spelling keeps the lead.
+        assertEquals(engine.candidates("chuang").first(), engine.candidates("chuang", fuzzyRules = chC).first())
+    }
+
+    @Test
+    fun theFourPairsTheReferenceHasBeyondOurs() {
+        val engine = loadEngine()
+        // The reference's classic layer is fifteen pairs; ours was eleven. The
+        // four it has and we did not are un/ong, ei/ui, huang/wang and eng/ong
+        // (f_syllable-variants.tsv bits D3-D6), and each one reaches the words
+        // of the syllable it points at.
+        for ((reading, rules, fuzzyWord, word) in listOf(
+            Quad("zongjing", setOf(FuzzyRule.UN_ONG), "尊敬", "zunjing"),
+            Quad("dongguang", setOf(FuzzyRule.ENG_ONG), "灯光", "dengguang"),
+            Quad("huiji", setOf(FuzzyRule.EI_UI), "飞机", "feiji"),
+            Quad("wangse", setOf(FuzzyRule.HUANG_WANG), "黄色", "huangse"),
+        )) {
+            val withRule = engine.candidates(reading, fuzzyRules = rules)
+            println("$reading -> ${withRule.take(6)}")
+            assertTrue("$fuzzyWord ($word) missing from $reading: ${withRule.take(8)}", withRule.contains(fuzzyWord))
+            assertTrue(
+                "$fuzzyWord offered without the rule",
+                engine.candidates(reading).none { it == fuzzyWord },
+            )
+        }
+    }
+
+    private data class Quad(val reading: String, val rules: Set<FuzzyRule>, val fuzzyWord: String, val word: String)
+
+    @Test
     fun fuzzyRulesExpandCandidatesAndKeepExactReadingsFirst() {
         val engine = loadEngine()
         val rules = setOf(FuzzyRule.Z_ZH, FuzzyRule.N_L, FuzzyRule.S_SH)

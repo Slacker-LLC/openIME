@@ -7,6 +7,7 @@ import llc.slacker.openime.core.DoublePinyinScheme
 import llc.slacker.openime.core.KeyboardMode
 import llc.slacker.openime.core.LandscapeLayout
 import llc.slacker.openime.core.OneHandMode
+import llc.slacker.openime.core.PinyinLocation
 import llc.slacker.openime.theme.ImeAppearance
 import llc.slacker.openime.theme.ImeTheme
 
@@ -21,14 +22,19 @@ object ImeSettingsRepository {
     private const val KEY_HAPTIC_STRENGTH = "haptic_strength_percent"
     private const val KEY_HAPTIC_STYLE = "haptic_style"
     private const val KEY_SOUND_STYLE = "key_sound_style"
+    private const val KEY_SOUND_VOLUME = "key_sound_volume"
     private const val KEY_POPUP = "popup"
     private const val KEY_FUZZY = "fuzzy"
     private const val KEY_FUZZY_RULES = "fuzzy_rules"
     private const val KEY_SWIPE_UP_DIGITS = "swipe_up_digits"
     private const val KEY_LETTER_HINTS = "letter_hints"
     private const val KEY_EMOJI_ASSOCIATION = "emoji_association"
+    private const val KEY_FIRST_LETTER_CAPITALIZATION = "first_letter_capitalization"
+    private const val KEY_DOUBLE_SPACE_PERIOD = "double_space_period"
+    private const val KEY_LETTER_DIGIT_SPACE = "letter_digit_space"
     private const val KEY_VOICE_STRIP_FILLERS = "voice_strip_fillers"
     private const val KEY_VOICE_PUNCTUATION_AS_SPACE = "voice_punctuation_as_space"
+    private const val KEY_BLUETOOTH_HEADSET_MIC = "bluetooth_headset_mic"
     private const val KEY_PREFERRED_CHINESE_MODE = "preferred_chinese_mode"
     private const val KEY_KEYBOARD_HEIGHT = "keyboard_height_percent"
     private const val KEY_LANDSCAPE_KEYBOARD_HEIGHT = "landscape_keyboard_height_percent"
@@ -40,6 +46,8 @@ object ImeSettingsRepository {
     private const val KEY_SPLIT_MIRRORED = "split_mirrored"
     private const val KEY_SMS_CODE_CHIP = "sms_code_chip"
     private const val KEY_CLIPBOARD_CHIP = "clipboard_chip"
+    private const val KEY_CLIPBOARD_CANDIDATE = "clipboard_candidate"
+    private const val KEY_PINYIN_LOCATION = "pinyin_location"
 
     /**
      * The user's preferred Chinese layout (26-key vs 9-key). Only PINYIN_26 and
@@ -70,6 +78,18 @@ object ImeSettingsRepository {
     fun saveOneHandMode(context: Context, mode: OneHandMode) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putString(KEY_ONE_HAND_MODE, mode.key).apply()
+    }
+
+    /** 输入中的拼音显示在候选栏还是输入框；默认候选栏，与参考皮肤一致。 */
+    fun loadPinyinLocation(context: Context): PinyinLocation =
+        PinyinLocation.fromKey(
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_PINYIN_LOCATION, null),
+        )
+
+    fun savePinyinLocation(context: Context, location: PinyinLocation) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY_PINYIN_LOCATION, location.key).apply()
     }
 
     /** 双拼键位方案（小鹤 / 自然码），默认小鹤。 */
@@ -125,6 +145,25 @@ object ImeSettingsRepository {
 
     fun saveClipboardChip(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_CLIPBOARD_CHIP, enabled).apply()
+    }
+
+    /**
+     * 候选栏展示: the clipboard's content offered as a candidate. The
+     * reference's own title and description for the switch are `string/
+     * clipboard_candidate_bar_show_title` 「候选栏展示」 and `string/
+     * clipboard_candidate_bar_show_description` 「可在候选栏快速使用剪切内容」.
+     * Its `enable_clipboard_candidate_bar_show` is a `BooleanPreference` with
+     * `defaultValue="true"` (`res/cU.xml`, key `0x7f110192`); ours ships off,
+     * because the owner asked for every personalisation feature of this batch
+     * to be off until it is switched on — reading the clipboard is exactly the
+     * kind of thing not to enable on the user's behalf.
+     */
+    fun loadClipboardCandidate(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_CLIPBOARD_CANDIDATE, false)
+
+    fun saveClipboardCandidate(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_CLIPBOARD_CANDIDATE, enabled).apply()
     }
 
     fun loadLandscapeLayout(context: Context): LandscapeLayout =
@@ -239,6 +278,21 @@ object ImeSettingsRepository {
             .edit().putString(KEY_SOUND_STYLE, key).apply()
     }
 
+    /** 按键音量 0-100; the reference's `key_sound_volume` default is 50. */
+    fun loadKeySoundVolume(context: Context): Int =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getInt(KEY_SOUND_VOLUME, SOUND_VOLUME_DEFAULT)
+
+    fun saveKeySoundVolume(context: Context, percent: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putInt(KEY_SOUND_VOLUME, percent.coerceIn(SOUND_VOLUME_MIN, SOUND_VOLUME_MAX)).apply()
+    }
+
+    /** 按键音量's range and the reference default. */
+    const val SOUND_VOLUME_MIN = 0
+    const val SOUND_VOLUME_MAX = 100
+    const val SOUND_VOLUME_DEFAULT = 50
+
     fun loadSwipeUpDigits(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean(KEY_SWIPE_UP_DIGITS, true)
@@ -268,6 +322,45 @@ object ImeSettingsRepository {
             .edit().putBoolean(KEY_EMOJI_ASSOCIATION, enabled).apply()
     }
 
+    /**
+     * 首字母自动大写: English sentence starts capitalize themselves. The
+     * reference's `enable_first_letter_capitalization` defaults to false.
+     */
+    fun loadFirstLetterCapitalization(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_FIRST_LETTER_CAPITALIZATION, false)
+
+    fun saveFirstLetterCapitalization(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_FIRST_LETTER_CAPITALIZATION, enabled).apply()
+    }
+
+    /**
+     * 双击空格键输入句号: a second space within 200 ms becomes 「。」. The
+     * reference's `enable_double_click_space` defaults to false.
+     */
+    fun loadDoubleSpacePeriod(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_DOUBLE_SPACE_PERIOD, false)
+
+    fun saveDoubleSpacePeriod(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_DOUBLE_SPACE_PERIOD, enabled).apply()
+    }
+
+    /**
+     * 数字、英文前后加空格: a space between Chinese and digits/English. The
+     * reference's `enable_letter_digit_space` defaults to false.
+     */
+    fun loadLetterDigitSpace(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_LETTER_DIGIT_SPACE, false)
+
+    fun saveLetterDigitSpace(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_LETTER_DIGIT_SPACE, enabled).apply()
+    }
+
     /** Drop hesitation sounds such as 嗯 / 呃 from voice input. */
     fun loadVoiceStripFillers(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -286,6 +379,23 @@ object ImeSettingsRepository {
     fun saveVoicePunctuationAsSpace(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_VOICE_PUNCTUATION_AS_SPACE, enabled).apply()
+    }
+
+    /**
+     * 使用耳机麦克风录音: record through a headset's microphone when one is
+     * worn. The reference's `enable_bluetooth_input` says exactly that —
+     * `string/enable_bluetooth_input_show` 「使用耳机麦克风录音」 with `string/
+     * enable_bluetooth_input_show_sub` 「默认使用手机录音。佩戴耳机时，使用耳机
+     * 麦克风」 — and it defaults to false: the phone's own microphone is ours
+     * until the user asks otherwise.
+     */
+    fun loadBluetoothHeadsetMic(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_BLUETOOTH_HEADSET_MIC, false)
+
+    fun saveBluetoothHeadsetMic(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_BLUETOOTH_HEADSET_MIC, enabled).apply()
     }
 
     fun loadPopup(context: Context): Boolean =

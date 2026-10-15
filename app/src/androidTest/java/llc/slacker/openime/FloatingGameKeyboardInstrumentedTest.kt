@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.DisplayMetrics
+import android.widget.HorizontalScrollView
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -77,10 +78,56 @@ class FloatingGameKeyboardInstrumentedTest {
     private fun View.visibleByTag(tag: String): Boolean =
         findViewWithTag<View>(tag)?.visibility == View.VISIBLE
 
+    /**
+     * The floating keyboard meets the user with its one-time banner across the
+     * toolbar row (`input_toolbar_tip.xml:44-49`). A test that reads the toolbar
+     * or presses its icons settles the banner first, as the user does.
+     */
+    private fun settleTip(harness: DirectActivityHarness<DebugKeyboardActivity>, keyboard: ImeKeyboardView) {
+        harness.awaitMain {
+            keyboard.findViewWithTag<View>("toolbar-tip-close")?.performClick()
+            true
+        }
+    }
+
+    /** The icons live in the toolbar's own scrolling strip, so search the row's subtree. */
     private fun View.toolbarIconByDescription(description: String): View? {
         val row = findViewWithTag<ViewGroup>("toolbar-row") ?: return null
-        return (0 until row.childCount).map(row::getChildAt)
-            .firstOrNull { it.contentDescription == description }
+        fun find(view: View): View? {
+            if (view.contentDescription == description) return view
+            if (view is ViewGroup) {
+                for (index in 0 until view.childCount) find(view.getChildAt(index))?.let { return it }
+            }
+            return null
+        }
+        return find(row)
+    }
+
+    /**
+     * The idle row keeps our own order in the reference's scrolling strip. The
+     * reference's own row leads with the clipboard, then emoji, then the board
+     * selector (`input_toolbar_idle.xml:21-25`); the owner asked for our order
+     * back on 2026-10-16, so the order here is deliberate, not a drift.
+     */
+    @Test
+    fun theIdleIconsKeepOurOrderInsideAScrollingStrip() = withKeyboard { harness, _, keyboard ->
+        harness.awaitMain {
+            val strip = keyboard.findViewWithTag<ViewGroup>("toolbar-icon-strip") ?: return@awaitMain null
+            val scroll = keyboard.findViewWithTag<View>("toolbar-icon-scroll")
+            assertTrue(
+                "The idle row must scroll like the reference's own strip",
+                scroll is HorizontalScrollView,
+            )
+            val labels = (0 until strip.childCount).map(strip::getChildAt)
+                .filter { it.visibility == View.VISIBLE && it.contentDescription != null }
+                .map { it.contentDescription.toString() }
+            assertEquals(
+                "The idle row keeps our own order, see docs/DECISIONS.md",
+                listOf("切换键盘", "剪贴板", "表情", "文本编辑", "撤销", "更多"),
+                labels,
+            )
+            true
+        }
     }
 
     @Test
@@ -92,6 +139,10 @@ class FloatingGameKeyboardInstrumentedTest {
             assertFalse("Docked toolbar has no quick-phrase shortcut", keyboard.visibleByTag("quick-phrase-toolbar"))
 
             keyboard.setFloatingWindowMode(true)
+            // The floating keyboard meets the user with its tip banner, which
+            // takes the toolbar row (`input_toolbar_tip.xml:44-49`); settling it
+            // gives the row back to the icons.
+            keyboard.findViewWithTag<View>("toolbar-tip-close")?.performClick()
             assertTrue("Floating toolbar exposes quick phrases", keyboard.visibleByTag("quick-phrase-toolbar"))
             assertFalse(keyboard.visibleByTag("clipboard-toolbar"))
             assertFalse(keyboard.visibleByTag("undo-toolbar"))
@@ -134,12 +185,15 @@ class FloatingGameKeyboardInstrumentedTest {
     @Test
     fun longPressOnTopZoneDragsTheFloatingKeyboardWithoutDockingOrClicking() = withKeyboard { harness, recorder, keyboard ->
         harness.awaitMain { keyboard.setFloatingWindowMode(true); true }
+        settleTip(harness, keyboard)
         val topZone = harness.awaitMain { keyboard.findViewWithTag<View>("ime_toolbar") }
         val downTime = SystemClock.uptimeMillis()
         // Press on an icon, so a leaked click would be visible as a panel opening.
         val (x, y) = harness.awaitMain {
             val icon = keyboard.findViewWithTag<View>("quick-phrase-toolbar")
-            val loc = IntArray(2).also { icon.getLocationInWindow(it) }
+            // The row is laid out once the banner has given it back.
+            if (icon?.width == 0) return@awaitMain null
+            val loc = IntArray(2).also { icon!!.getLocationInWindow(it) }
             val zoneLoc = IntArray(2).also { topZone.getLocationInWindow(it) }
             (loc[0] - zoneLoc[0] + icon.width / 2f) to (loc[1] - zoneLoc[1] + icon.height / 2f)
         }
@@ -159,6 +213,49 @@ class FloatingGameKeyboardInstrumentedTest {
             assertEquals(40.0, totalY, 1.0)
             assertTrue("Releasing a drag must not dock the keyboard", recorder.floatingChanges.isEmpty())
             assertEquals("A drag on an icon must not open its panel", Panel.NONE, keyboard.currentPanel())
+            true
+        }
+    }
+
+    @Test
+    fun longPressOnTheBlankStripOfTheTopZoneDragsToo() = withKeyboard { harness, recorder, keyboard ->
+        harness.awaitMain { keyboard.setFloatingWindowMode(true); true }
+        settleTip(harness, keyboard)
+        val topZone = harness.awaitMain { keyboard.findViewWithTag<View>("ime_toolbar") }
+        // 工具栏那一行自己就是顶栏的高度（`ImeTopZone` 给 toolbarRow 的高度就是
+        // COMPOSED_TOP_ZONE_HEIGHT_DP），48dp 的图标条在它里面居中，上下各留一条空带。
+        // 空带里没有任何子视图消费按下，而一条没有 touch target 的手势之后框架不再回头
+        // 问拦截器：只能由顶栏自己认领（ImeTopZone.onTouchEvent）。
+        val (x, y) = harness.awaitMain {
+            val icons = topZone.findViewWithTag<View>("toolbar-icon-strip")
+            if (icons?.height == 0 || topZone.height == 0) return@awaitMain null
+            val zoneLocation = IntArray(2).also { topZone.getLocationInWindow(it) }
+            val iconsLocation = IntArray(2).also { icons.getLocationInWindow(it) }
+            val iconsBottom = iconsLocation[1] - zoneLocation[1] + icons.height
+            val strip = topZone.height - iconsBottom
+            if (strip < 4) return@awaitMain null
+            (topZone.width / 2f) to (iconsBottom + strip / 2f)
+        }
+        val downTime = SystemClock.uptimeMillis()
+        harness.awaitMain { touch(topZone, MotionEvent.ACTION_DOWN, downTime, x, y); true }
+        SystemClock.sleep(android.view.ViewConfiguration.getLongPressTimeout() + 250L)
+        harness.awaitMain {
+            touch(topZone, MotionEvent.ACTION_MOVE, downTime, x + 30f, y + 20f)
+            touch(topZone, MotionEvent.ACTION_MOVE, downTime, x + 90f, y + 60f)
+            touch(topZone, MotionEvent.ACTION_UP, downTime, x + 90f, y + 60f)
+            true
+        }
+        harness.awaitMain {
+            assertTrue("Long-press drag must move the window from blank top-zone space", recorder.drags.isNotEmpty())
+            assertEquals(
+                "Drag deltas follow the finger after the grab point",
+                60.0,
+                recorder.drags.sumOf { it.first.toDouble() },
+                1.0,
+            )
+            assertEquals(40.0, recorder.drags.sumOf { it.second.toDouble() }, 1.0)
+            assertTrue("Releasing a drag must not dock the keyboard", recorder.floatingChanges.isEmpty())
+            assertEquals("A drag on blank space must not open a panel", Panel.NONE, keyboard.currentPanel())
             true
         }
     }

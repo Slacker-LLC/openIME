@@ -10,6 +10,7 @@ import android.widget.FrameLayout
 import android.window.OnBackInvokedCallback
 import llc.slacker.openime.core.KeyboardMode
 import llc.slacker.openime.core.Panel
+import llc.slacker.openime.core.PinyinLocation
 import llc.slacker.openime.core.ShiftState
 import llc.slacker.openime.data.ImeSettingsRepository
 import llc.slacker.openime.keyboard.ImeKeyboardView
@@ -210,6 +211,15 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
     override fun onHapticStrengthChanged(percent: Int) {
         refreshLiveIme()
     }
+    override fun onKeySoundVolumeChanged(percent: Int) {
+        refreshLiveIme()
+    }
+    override fun onAutoCapitalizationChanged() {
+        refreshLiveIme()
+    }
+    override fun onClipboardCandidateChanged() {
+        refreshLiveIme()
+    }
     override fun onFeedbackStyleChanged() {
         refreshLiveIme()
     }
@@ -224,6 +234,11 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
     override fun onFloatingStyleChanged(widthPercent: Int, opacityPercent: Int) {
         ImeSettingsRepository.saveFloatingWidthPercent(this, widthPercent)
         ImeSettingsRepository.saveFloatingOpacityPercent(this, opacityPercent)
+        refreshLiveIme()
+    }
+
+    /** 拼音显示位置由服务决定写不写输入框，改完要让它读到新值（双拼那种每次同步自读的不用）。 */
+    override fun onPinyinLocationChanged(location: PinyinLocation) {
         refreshLiveIme()
     }
 

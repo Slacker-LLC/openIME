@@ -85,15 +85,20 @@ internal class Pinyin9KeyboardRenderer(
         )
         val centerBottom = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         val weights = ProductionKeyPolicy.nineKeyBottomRowWeights()
+        // This row's two outer keys are white circles in the reference, not the
+        // grey function keys: 123 takes `cls_keyboard9_button_func_white_circle`
+        // (`input_kbd_pinyin9.xml:88`) and 中/英 the `cls_bk_white_circle` beside
+        // its `cls_button_cn2en` colours (`:98`), so they match the space bar
+        // between them and the letter keys above.
         centerBottom.addView(
-            createKey("123", true, null, ImeTypographyTokens.BODY_SP, onDigits).apply { markSideKey(this) },
+            createKey("123", true, null, ImeTypographyTokens.BODY_SP, onDigits).apply { markWhiteKey(this) },
             flexKeyParams(weights.side),
         )
         centerBottom.addView(createSpaceVoiceKey("空格", onSpace), flexKeyParams(weights.space))
         centerBottom.addView(
             createKey("中/英", true, null, ImeTypographyTokens.BODY_SP, onModeSwitch).apply {
                 tag = "key:mode"
-                markSideKey(this)
+                markWhiteKey(this)
             },
             flexKeyParams(weights.side),
         )
@@ -108,29 +113,30 @@ internal class Pinyin9KeyboardRenderer(
             orientation = LinearLayout.VERTICAL
             tag = "pinyin9-actions"
         }
-        // Keep the zero key separate from retype and enter, as on the phone keypad.
-        side.addView(createBackspaceKey().apply { markSideKey(this) }, sideKeyParams(nineBodyHeightDp() / 4))
+        // Keep the original four equal cells: delete, retype, zero and enter.
+        val quarter = nineBodyHeightDp() / 4
+        side.addView(createBackspaceKey().apply { markSideKey(this) }, sideKeyParams(quarter))
         side.addView(
             createKey("重输", true, null, ImeTypographyTokens.BODY_SP, onRetranslate).apply {
                 tag = "key-retype"
                 markSideKey(this)
             },
-            sideKeyParams(nineBodyHeightDp() / 4),
+            sideKeyParams(quarter),
         )
         side.addView(
-            createKey("0", true, null, ImeTypographyTokens.KEY_LETTER_SP) { onCommitCharacter("0") }.apply {
+            createKey("0", true, null, ImeTypographyTokens.KEY_NUMBER_SP) { onCommitCharacter("0") }.apply {
                 tag = "key-9:0"
                 contentDescription = "0"
                 markSideKey(this)
             },
-            sideKeyParams(nineBodyHeightDp() / 4),
+            sideKeyParams(quarter),
         )
         side.addView(
             createKey(enterLabel, true, null, ImeTypographyTokens.BODY_SP, onEnter).apply {
                 tag = "key-enter"
                 markSideKey(this)
             },
-            sideKeyParams(nineBodyHeightDp() / 4),
+            sideKeyParams(quarter),
         )
         if (splitLayout()) {
             // Keep all Chinese keys in their familiar three-by-three order.
@@ -190,7 +196,7 @@ internal class Pinyin9KeyboardRenderer(
                 LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
                     digits.forEach { digit ->
-                        addView(createKey(digit.toString(), false, null, ImeTypographyTokens.KEY_LETTER_SP) {
+                        addView(createKey(digit.toString(), false, null, ImeTypographyTokens.KEY_NUMBER_SP) {
                             onCommitCharacter(digit.toString())
                         }.apply {
                             tag = "key-split-number:$digit"
@@ -208,7 +214,7 @@ internal class Pinyin9KeyboardRenderer(
                 addView(createKey("，", true, null, ImeTypographyTokens.BODY_SP) {
                     onCommitCharacter("，")
                 }.apply { tag = "key-punctuation"; markSideKey(this) }, flexKeyParams())
-                addView(createKey("0", false, null, ImeTypographyTokens.KEY_LETTER_SP) {
+                addView(createKey("0", false, null, ImeTypographyTokens.KEY_NUMBER_SP) {
                     onCommitCharacter("0")
                 }.apply { tag = "key-split-number:0"; markWhiteKey(this) }, flexKeyParams())
                 addView(createKey("互换", true, null, ImeTypographyTokens.BODY_SP, onMirror).apply {
@@ -222,13 +228,15 @@ internal class Pinyin9KeyboardRenderer(
     }
 
     private fun createNineDigitKey(digit: String): ImeKeyView {
+        // Keep the original segment key in the 1 cell; its digit swipe and
+        // symbol choices remain available without changing the key arrangement.
         val segmentation = digit == "1"
         val labels = NINE_KEYS.flatten().first { it.first == digit }.second
         val key = createKey(
             if (segmentation) "分词" else labels,
             false,
             digit,
-            if (segmentation) ImeTypographyTokens.BODY_SP else ImeTypographyTokens.CANDIDATE_SP,
+            if (segmentation) ImeTypographyTokens.BODY_SP else ImeTypographyTokens.NINE_KEY_LETTER_SP,
         ) {
             if (segmentation) onPinyinSegment() else onNineKey(digit)
         }.apply {
@@ -237,7 +245,7 @@ internal class Pinyin9KeyboardRenderer(
             markWhiteKey(this)
             if (segmentation) {
                 setOnLongClickListener {
-                    onShowChoicePopup(this, listOf("@", "#", "/"))
+                    onShowChoicePopup(this, NineKeyLongPressPolicy.AT_SYMBOL_CHOICES)
                     true
                 }
             } else {

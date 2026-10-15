@@ -3,6 +3,7 @@ package llc.slacker.openime.widget
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.text.TextPaint
 import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
@@ -14,6 +15,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
 import llc.slacker.openime.R
+import llc.slacker.openime.theme.ImeGeometryTokens
 import llc.slacker.openime.theme.ImeTypographyTokens
 
 /**
@@ -105,7 +107,53 @@ class ImeKeyView(
     private var touchFeedbackPending = false
     private var touchGeneration = 0L
     private val baseMainTextSize = mainTextSize
-    private val fitMain = fitMainText
+    private var fitMain = fitMainText
+
+    /**
+     * True when the label must be shrunk to the width the cap really has — a key
+     * whose whole label is one wide glyph (the marks beside the space bar). The
+     * platform's autosize cannot do this: it rejects a candidate size only when
+     * the text needs more lines than `maxLines` or more height than the view has
+     * (`TextView#suggestedSizeFitsInSpace`,
+     * `frameworks/base/core/java/android/widget/TextView.java:11549-11577`), so a
+     * single line that is simply too wide keeps the largest size and runs out of
+     * the key. [fitMainLabelToWidth] shrinks it instead.
+     */
+    private var shrinkToWidth = false
+
+    /** The size the label asks for before any shrinking, and the floor below it. */
+    private var wantedMainTextPx = 0f
+    private var smallestMainTextPx = 0f
+    private val fitPaint = TextPaint()
+
+    /**
+     * The key's own margins in reference units: the cap is painted inside the
+     * cell by this much, as the reference's key classes give every key its own
+     * margin (`cls_keyboard_button_margin`, `style.xml:289-290`;
+     * `cls_keyboard9_button_margin`, `style.xml:373-374`). The theme applier
+     * reads them; a board sets its family's values on the keys it builds.
+     */
+    var marginLeftDp = ImeGeometryTokens.KEY_MARGIN_X_DP
+        private set
+    var marginTopDp = ImeGeometryTokens.KEY_MARGIN_Y_DP
+        private set
+    var marginRightDp = ImeGeometryTokens.KEY_MARGIN_X_DP
+        private set
+    var marginBottomDp = ImeGeometryTokens.KEY_MARGIN_Y_DP
+        private set
+
+    /** Sets the margins a board family paints its keys with. */
+    fun setReferenceMargins(
+        left: Float = marginLeftDp,
+        top: Float = marginTopDp,
+        right: Float = marginRightDp,
+        bottom: Float = marginBottomDp,
+    ) {
+        marginLeftDp = left
+        marginTopDp = top
+        marginRightDp = right
+        marginBottomDp = bottom
+    }
 
     /**
      * Key labels follow the system font size only up to [MAX_LABEL_FONT_SCALE].
@@ -215,7 +263,8 @@ class ImeKeyView(
                 }
             }.apply {
                 this.text = text
-                setTextSize(TypedValue.COMPLEX_UNIT_PX, labelPx(mainTextSize))
+                setWantedMainText(mainTextSize)
+                setTextSize(TypedValue.COMPLEX_UNIT_PX, wantedMainTextPx)
                 gravity = Gravity.CENTER
                 isAllCaps = false
                 includeFontPadding = false
@@ -308,6 +357,22 @@ class ImeKeyView(
         returnIcon?.imageTintList = ColorStateList.valueOf(mainColor)
     }
 
+    /**
+     * The key's own face in two states. The reference's action key is the one
+     * that changes its label when the finger is down — the white press fill
+     * takes a dark label (`action_button_pushedtext`, `values/colors.xml:38`) —
+     * so its text and icon swap together with the cap.
+     */
+    fun setLabelColors(normalColor: Int, pressedColor: Int) {
+        val colors = ColorStateList(
+            arrayOf(intArrayOf(android.R.attr.state_pressed), intArrayOf()),
+            intArrayOf(pressedColor, normalColor),
+        )
+        mainTextView?.setTextColor(colors)
+        iconView?.imageTintList = colors
+        returnIcon?.imageTintList = colors
+    }
+
     val currentMainText: String
         get() = mainTextView?.text?.toString().orEmpty()
 
@@ -329,24 +394,62 @@ class ImeKeyView(
     /** Update key typography without rebuilding the keyboard hierarchy. */
     fun applyMainTextScale(scale: Float) {
         val sp = baseMainTextSize * scale.coerceAtLeast(0.4f)
+        setWantedMainText(sp)
         mainTextView?.apply {
             if (fitMain) {
                 // Function labels ("中/英", "完成") must keep shrinking to fit their key.
                 setAutoSizeTextTypeUniformWithConfiguration(
-                    labelPx((sp * 0.68f).coerceAtLeast(10f)).toInt(),
-                    labelPx(sp.coerceAtLeast(12f)).toInt(),
+                    smallestMainTextPx.toInt(),
+                    wantedMainTextPx.toInt(),
                     1,
                     TypedValue.COMPLEX_UNIT_PX,
                 )
             } else {
                 setAutoSizeTextTypeWithDefaults(TextView.AUTO_SIZE_TEXT_TYPE_NONE)
-                setTextSize(TypedValue.COMPLEX_UNIT_PX, labelPx(sp))
+                setTextSize(TypedValue.COMPLEX_UNIT_PX, wantedMainTextPx)
             }
         }
         secondaryTextView?.setTextSize(
             TypedValue.COMPLEX_UNIT_PX,
             labelPx(ImeTypographyTokens.CAPTION_SP) * (toPx(100) / (100f * density)),
         )
+        if (shrinkToWidth) fitMainLabelToWidth()
+    }
+
+    /** The size the label asks for at [sp], and the smallest it may be shrunk to. */
+    private fun setWantedMainText(sp: Float) {
+        wantedMainTextPx = labelPx(sp)
+        smallestMainTextPx = labelPx((sp * 0.68f).coerceAtLeast(10f))
+    }
+
+    /**
+     * Shrinks a single-line label until it fits the cap it is drawn in, never
+     * below [smallestMainTextPx]. Idempotent: a pass that finds the label
+     * already fitting (or already at the size it computes) changes nothing, so
+     * the extra layout a size change asks for settles after one round.
+     */
+    private fun fitMainLabelToWidth() {
+        val view = mainTextView ?: return
+        val available = view.width - view.paddingLeft - view.paddingRight
+        if (available <= 0 || wantedMainTextPx <= 0f) return
+        val label = view.text?.toString().orEmpty()
+        if (label.isEmpty()) return
+        fitPaint.set(view.paint)
+        fitPaint.textSize = wantedMainTextPx
+        val needed = fitPaint.measureText(label)
+        // A hair under the width: the glyph then sits inside its cap even after
+        // the platform's own rounding of a pixel.
+        val target = if (needed <= available) {
+            wantedMainTextPx
+        } else {
+            (wantedMainTextPx * (available - 0.5f) / needed).coerceAtLeast(smallestMainTextPx)
+        }
+        if (view.textSize != target) view.setTextSize(TypedValue.COMPLEX_UNIT_PX, target)
+    }
+
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        super.onLayout(changed, left, top, right, bottom)
+        if (shrinkToWidth) fitMainLabelToWidth()
     }
 
     /** True when the main label is fully visible (no ellipsis, nothing clipped). Used by tests. */
@@ -377,6 +480,25 @@ class ImeKeyView(
 
     fun allowTwoLineLabel() {
         mainTextView?.maxLines = 2
+    }
+
+    /**
+     * Let a wide single glyph shrink to its key instead of turning into "…".
+     *
+     * The reference gives the bottom row's punctuation keys their own fonts so
+     * the mark always fits (`text_comma_cn` is 72 units for the merged key
+     * against `key_letter`'s 57, `style.xml:127`, `:4`); our one shared size
+     * would ellipsize the mark in a key that is only 8% of the row. The key
+     * keeps its label either way, as it does for the function keys.
+     */
+    fun allowLabelShrink() {
+        shrinkToWidth = true
+        mainTextView?.apply {
+            ellipsize = null
+            setAutoSizeTextTypeWithDefaults(TextView.AUTO_SIZE_TEXT_TYPE_NONE)
+            setTextSize(TypedValue.COMPLEX_UNIT_PX, wantedMainTextPx)
+        }
+        requestLayout()
     }
 
     fun setIcon(value: Int) {

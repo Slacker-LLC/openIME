@@ -25,6 +25,15 @@ class PinyinEngine internal constructor(
     private val plainSegmenter = PinyinSegmenter(lexicon.syllables)
     private val fuzzySegmenters = HashMap<Set<FuzzyRule>, PinyinSegmenter>()
 
+    /**
+     * A reading only pays off if some word starts with it, so a split that no
+     * word continues is dropped instead of taking a slot in the lattice: the
+     * reference enumerates every path of the lattice (ENGINE-SPEC §1.3) and
+     * can afford to, but our capped frontier cannot — bogus splits that spell
+     * nothing (`a+de+lia+nan+...` for 阿德里安安德烈夫) would otherwise fill it.
+     */
+    private val wordPrefix: (IntArray) -> Boolean = { ids -> lexicon.hasPrefix(ids, ids.size) }
+
     val wordCount: Int get() = lexicon.size
 
     /** Candidate words for [input] (raw pinyin letters), best first. */
@@ -36,47 +45,96 @@ class PinyinEngine internal constructor(
         val letters = normalize(input)
         if (letters.isEmpty() || letters.length > MAX_INPUT) return emptyList()
         val segmenter = segmenterFor(fuzzyRules)
-        val found = HashMap<String, Int>()
+        val found = HashMap<String, Candidate>()
         val budget = Budget()
 
-        for (split in 0..letters.length) {
+        // The reading in full first: those words are what the typing spells,
+        // and the fragment passes below are a fallback — running them first
+        // let them spend the budget, and the word the user actually typed
+        // never made it into the list.
+        val spellings = segmenter.segment(letters, maxPaths = HEAD_PATHS, alive = wordPrefix)
+        for (path in spellings) {
+            collectExact(found, path.ids, path.fuzzy, budget, COMPLETE)
+            // A word that only starts with the reading is a completion, not a
+            // match: 朋克头 spells pengke and three more letters the user has
+            // not typed, so it follows 朋克/澎客/彭可.
+            collectPrefix(found, path.ids, path.fuzzy, budget, COMPLETION_WORDS, FRAGMENT)
+        }
+
+        // Then the readings with an unfinished tail, longest head first: the
+        // closer the head is to the whole reading, the fewer letters it leaves
+        // for the tail to guess.
+        for (split in letters.length - 1 downTo 0) {
             if (budget.exhausted()) break
             val tail = letters.substring(split)
             if (tail.length > PinyinSegmenter.MAX_SYLLABLE_LENGTH) continue
             val headPaths = if (split == 0) {
                 listOf(PinyinSegmenter.SegmentPath(IntArray(0), intArrayOf(0), fuzzy = false))
             } else {
-                segmenter.segment(letters.substring(0, split), maxPaths = HEAD_PATHS)
+                segmenter.segment(
+                    letters.substring(0, split),
+                    maxPaths = HEAD_PATHS,
+                    alive = wordPrefix,
+                )
             }
             if (headPaths.isEmpty()) continue
             for (path in headPaths) {
                 if (budget.exhausted()) break
-                if (tail.isEmpty()) {
-                    collectExact(found, path.ids, path.fuzzy, budget)
-                    collectPrefix(found, path.ids, path.fuzzy, budget, COMPLETION_WORDS)
-                } else {
-                    // Words that already match the settled prefix stay candidates
-                    // while the next syllable is still being typed. An empty
-                    // prefix would match from the top of the table: skip it.
-                    if (path.ids.isNotEmpty()) {
-                        collectPrefix(found, path.ids, path.fuzzy, budget, FRAGMENT_WORDS)
-                    }
-                    for (edge in segmenter.syllablesStartingWith(tail, TAIL_SYLLABLES)) {
-                        if (budget.exhausted()) break
-                        val ids = path.ids.copyOf(path.ids.size + 1)
-                        ids[ids.size - 1] = edge.id
-                        collectPrefix(found, ids, path.fuzzy || edge.fuzzy, budget, FRAGMENT_WORDS)
-                        budget.lookups++
-                    }
+                // Words that already match the settled prefix stay candidates
+                // while the next syllable is still being typed. An empty
+                // prefix would match from the top of the table: skip it.
+                if (path.ids.isNotEmpty()) {
+                    collectPrefix(found, path.ids, path.fuzzy, budget, FRAGMENT_WORDS, FRAGMENT)
+                }
+                for (edge in segmenter.syllablesStartingWith(tail, TAIL_SYLLABLES)) {
+                    if (budget.exhausted()) break
+                    val ids = path.ids.copyOf(path.ids.size + 1)
+                    ids[ids.size - 1] = edge.id
+                    collectPrefix(found, ids, path.fuzzy || edge.fuzzy, budget, FRAGMENT_WORDS, FRAGMENT)
+                    budget.lookups++
                 }
             }
         }
-        if (found.isEmpty()) return emptyList()
-        return found.entries
-            .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
-            .take(limit)
+        // A reading whose every letter is a syllable but which no single word
+        // spells is still a reading: the reference composes it from the words
+        // it holds (`jintianxingqiwu` → 今天 + 星期五) and its bar leads with
+        // that, so a user who typed a whole sentence sees the sentence and not
+        // a word that merely starts the same way. The words must come up empty
+        // (the reading spells none) and the tail must be typed in full — a
+        // reading that still ends mid-syllable has its own pass above.
+        val sentences = if (found.values.none { it.coverage == COMPLETE } && isTypedInFull(letters)) {
+            decode(letters, limit = SENTENCE_LIMIT, fuzzyRules = fuzzyRules)
+        } else {
+            emptyList()
+        }
+
+        val ranked = found.entries
+            .sortedWith(
+                compareBy<Map.Entry<String, Candidate>> { it.value.coverage }
+                    .thenByDescending { it.value.score }
+                    .thenBy { it.key },
+            )
             .map { it.key }
+        if (ranked.isEmpty() && sentences.isEmpty()) return emptyList()
+        return (sentences + ranked).distinct().take(limit)
     }
+
+    /**
+     * Whether [letters] reads as whole syllables, i.e. whether some reading of
+     * it uses no single letter as a syllable of its own.
+     *
+     * A tail that is still half a syllable leaves only readings that end in a
+     * single letter (every letter is a syllable of the catalogue), so this is
+     * the line between `jintianxingqiwu` — five syllables, no word spells them,
+     * a sentence does — and `jintianxingqiw`, which the fragment pass above
+     * already answers for and which no sentence can cover.
+     */
+    private fun isTypedInFull(letters: String): Boolean =
+        plainSegmenter.segment(letters, maxPaths = HEAD_PATHS).any { path ->
+            (0 until path.ids.size).all { index ->
+                path.starts[index + 1] - path.starts[index] >= SPELLED_SYLLABLE
+            }
+        }
 
     /** Top sentence readings for [input]; each result is the joined words. */
     fun decode(
@@ -86,29 +144,39 @@ class PinyinEngine internal constructor(
     ): List<String> {
         val letters = normalize(input)
         if (letters.isEmpty() || letters.length > MAX_INPUT) return emptyList()
-        val paths = segmenterFor(fuzzyRules).segment(letters, maxPaths = PATH_LIMIT)
-        if (paths.isEmpty()) return emptyList()
         val length = letters.length
 
+        // Words are read off the lattice, one start position at a time, the way
+        // the reference walks its own: every reading of the next up to
+        // MAX_WORD_SYLLABLES syllables is a word lookup, and a reading is
+        // followed only as far as the lattice carries it. (Reading words off
+        // whole paths instead looks the same window up once per path that
+        // crosses it, and the paths a sentence spans run into the hundreds.)
+        val lattice = segmenterFor(fuzzyRules).lattice(letters)
+        if (lattice.isEmpty()) return emptyList()
         val edges = Array(length + 1) { ArrayList<Edge>(8) }
-        for (path in paths) {
-            val syllables = path.ids.size
-            for (from in 0 until syllables) {
-                val charFrom = path.starts[from]
-                var to = from
-                while (to < syllables && to - from < MAX_WORD_SYLLABLES) {
-                    val charTo = path.starts[to + 1]
-                    val span = path.ids.copyOfRange(from, to + 1)
-                    val start = lexicon.lowerBound(span, span.size)
-                    val end = lexicon.exactEnd(span, span.size)
-                    var taken = 0
-                    for (word in start until end) {
-                        if (taken >= WORDS_PER_SPAN) break
-                        taken++
-                        edges[charFrom].add(Edge(charTo, word, path.fuzzy))
+        for (start in 0 until length) {
+            var readings = listOf(Reading(START_IDS, start, fuzzy = false))
+            for (depth in 1..MAX_WORD_SYLLABLES) {
+                val next = ArrayList<Reading>(readings.size * 2)
+                for (reading in readings) {
+                    if (reading.end >= length) continue
+                    for (edge in lattice[reading.end]) {
+                        val ids = reading.ids.copyOf(reading.ids.size + 1)
+                        ids[ids.size - 1] = edge.id
+                        val first = lexicon.lowerBound(ids, ids.size)
+                        val last = lexicon.exactEnd(ids, ids.size)
+                        var taken = 0
+                        for (word in first until last) {
+                            if (taken >= WORDS_PER_SPAN) break
+                            taken++
+                            edges[start].add(Edge(edge.end, word, reading.fuzzy || edge.fuzzy))
+                        }
+                        next.add(Reading(ids, edge.end, reading.fuzzy || edge.fuzzy))
                     }
-                    to++
                 }
+                if (next.isEmpty()) break
+                readings = next
             }
         }
 
@@ -148,23 +216,30 @@ class PinyinEngine internal constructor(
         }
     }
 
-    private fun collectExact(found: HashMap<String, Int>, ids: IntArray, fuzzy: Boolean, budget: Budget) {
+    private fun collectExact(
+        found: HashMap<String, Candidate>,
+        ids: IntArray,
+        fuzzy: Boolean,
+        budget: Budget,
+        coverage: Int,
+    ) {
         val start = lexicon.lowerBound(ids, ids.size)
         val end = lexicon.exactEnd(ids, ids.size)
         var taken = 0
         for (word in start until end) {
             if (taken >= EXACT_WORDS) break
             taken++
-            add(found, word, fuzzy, budget)
+            add(found, word, fuzzy, budget, coverage)
         }
     }
 
     private fun collectPrefix(
-        found: HashMap<String, Int>,
+        found: HashMap<String, Candidate>,
         ids: IntArray,
         fuzzy: Boolean,
         budget: Budget,
         cap: Int,
+        coverage: Int,
     ) {
         val start = lexicon.lowerBound(ids, ids.size)
         val end = lexicon.prefixEnd(ids, ids.size)
@@ -172,11 +247,17 @@ class PinyinEngine internal constructor(
         for (word in start until end) {
             if (taken >= cap || budget.exhausted()) break
             taken++
-            add(found, word, fuzzy, budget)
+            add(found, word, fuzzy, budget, coverage)
         }
     }
 
-    private fun add(found: HashMap<String, Int>, word: Int, fuzzy: Boolean, budget: Budget) {
+    private fun add(
+        found: HashMap<String, Candidate>,
+        word: Int,
+        fuzzy: Boolean,
+        budget: Budget,
+        coverage: Int,
+    ) {
         val text = lexicon.textOf(word)
         if (text.isEmpty()) return
         // A fuzzy reading carries a moderate penalty: a frequent fuzzy word can
@@ -184,7 +265,12 @@ class PinyinEngine internal constructor(
         // solid literal match of similar frequency.
         val adjusted = lexicon.scoreOf(word) - if (fuzzy) FUZZY_SCORE_PENALTY else 0
         val current = found[text]
-        if (current == null || adjusted > current) found[text] = adjusted
+        if (current == null) {
+            found[text] = Candidate(coverage, adjusted)
+        } else if (coverage < current.coverage || (coverage == current.coverage && adjusted > current.score)) {
+            current.coverage = coverage
+            current.score = adjusted
+        }
         budget.words++
     }
 
@@ -228,6 +314,15 @@ class PinyinEngine internal constructor(
 
     private class Edge(val to: Int, val word: Int, val fuzzy: Boolean)
 
+    /** A reading of the letters from one start position to [end]. */
+    private class Reading(val ids: IntArray, val end: Int, val fuzzy: Boolean)
+
+    /**
+     * One candidate: how much of the typed input the reading explains
+     * ([coverage], COMPLETE beats FRAGMENT) and the word's frequency score.
+     */
+    private class Candidate(var coverage: Int, var score: Int)
+
     private class State(
         val score: Double,
         val word: Int,
@@ -240,17 +335,25 @@ class PinyinEngine internal constructor(
         private const val CANDIDATE_LIMIT = 60
         private const val SENTENCE_LIMIT = 3
         private const val MAX_INPUT = 64
-        private const val HEAD_PATHS = 4
+        private const val HEAD_PATHS = 64
         private const val TAIL_SYLLABLES = 32
-        private const val PATH_LIMIT = 32
         private const val MAX_WORD_SYLLABLES = 6
         private const val EXACT_WORDS = 48
+        /** Coverage ranks first: a word whose reading spells out every typed
+         *  letter (dang -> 当) always beats a more frequent word that only
+         *  matches a prefix of it (dang -> 打, from da + a tail that never
+         *  becomes a syllable). */
+        private const val COMPLETE = 0
+        private const val FRAGMENT = 1
         private const val COMPLETION_WORDS = 64
-        private const val FRAGMENT_WORDS = 64
+        private const val FRAGMENT_WORDS = 16
         private const val WORDS_PER_SPAN = 24
         private const val TOTAL_WORDS = 1500
         private const val TOTAL_LOOKUPS = 600
         private const val STATE_K = 3
+        private val START_IDS = IntArray(0)
+        /** Shortest syllable that still says the tail was typed in full. */
+        private const val SPELLED_SYLLABLE = 2
         /** Fuzzy candidates keep their frequency but pay this much score
          *  (below the 6571-vs-4655 gap of 师傅/私服, so a clearly more common
          *  fuzzy word still wins against a mediocre literal one). */

@@ -2,13 +2,17 @@ package llc.slacker.openime
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
+import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
 import android.text.InputType
 import android.view.Gravity
 import android.view.WindowInsets
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -21,6 +25,7 @@ import llc.slacker.openime.theme.ImeGeometryTokens
 import llc.slacker.openime.theme.ImeSpacingTokens
 import llc.slacker.openime.theme.ImeTypographyTokens
 import llc.slacker.openime.voice.VoiceHotwordProvider
+import llc.slacker.openime.voice.VoiceModelDownloads
 import llc.slacker.openime.voice.VoiceModelManifest
 import llc.slacker.openime.voice.VoiceModelRepository
 import llc.slacker.openime.voice.VoiceModelSelection
@@ -28,7 +33,7 @@ import java.io.File
 import llc.slacker.openime.voice.VoiceModelArchive
 
 /**
- * 语音模型: 查看当前使用的模型，导入自己的 paraformer 流式模型包（zip），
+ * 语音模型: 查看当前使用的模型，获取下载地址或导入兼容的流式模型包，
  * 在内置与已导入模型之间切换，或删除已导入的模型。
  *
  * 精简版 APK 不带内置模型，这里是唯一的来源；完整版也可以在这里换成自己的模型。
@@ -48,6 +53,7 @@ class VoiceModelActivity : Activity() {
         UserPhraseRepository.configure(this)
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            tag = "voice-model-content"
             setPadding(dp(ImeSpacingTokens.LG_DP), 0, dp(ImeSpacingTokens.LG_DP), dp(ImeSpacingTokens.XXL_DP))
         }
         setContentView(
@@ -67,7 +73,22 @@ class VoiceModelActivity : Activity() {
                     }
                     insets
                 }
-                addView(content)
+                addView(content, FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP or Gravity.CENTER_HORIZONTAL,
+                ))
+                addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
+                    val width = minOf(
+                        (view.width - view.paddingLeft - view.paddingRight).coerceAtLeast(0),
+                        dp(600),
+                    )
+                    val params = content.layoutParams as FrameLayout.LayoutParams
+                    if (params.width != width) {
+                        params.width = width
+                        content.layoutParams = params
+                    }
+                }
             },
         )
         render()
@@ -76,21 +97,27 @@ class VoiceModelActivity : Activity() {
     private fun render() {
         content.removeAllViews()
         content.addView(
-            SetupUi.activityTopBar(context = this, title = "语音模型", onBack = ::finish),
+            SetupUi.activityTopBar(context = this, title = "语音模型", onBack = ::finish).apply {
+                // Keep the title centered even though only the start side has a back button.
+                (getChildAt(1) as TextView).apply {
+                    gravity = Gravity.CENTER
+                    (layoutParams as LinearLayout.LayoutParams).marginEnd = dp(ImeGeometryTokens.TOUCH_TARGET_DP)
+                }
+            },
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(ImeGeometryTokens.TOP_BAR_HEIGHT_DP))
-                .apply { marginStart = -dp(16); marginEnd = -dp(16) },
+                .apply { marginStart = -dp(ImeSpacingTokens.LG_DP); marginEnd = -dp(ImeSpacingTokens.LG_DP) },
         )
 
         val selection = repository.selectAvailable()
         val current = selection.manifest
         val currentBody = when {
             current == null -> selection.reason.ifBlank { "尚未安装语音模型。" } +
-                "\n导入一个 paraformer 流式模型包即可使用语音输入，拼音输入不受影响。"
+                "\n可从下方复制兼容模型的下载地址，下载后导入即可使用语音输入。"
             selection.source == VoiceModelSelection.Source.BUILT_IN -> "内置模型：${current.modelId}\n版本 ${current.modelVersion}，语言 ${current.language}"
             else -> "已导入：${current.modelId}\n版本 ${current.modelVersion}，语言 ${current.language}"
         }
         content.addView(
-            SetupUi.infoCard(this, "当前使用", currentBody, R.drawable.ic_pref_waveform),
+            infoCard("当前使用", currentBody),
             wrap().apply { topMargin = dp(ImeSpacingTokens.SM_DP) },
         )
 
@@ -133,23 +160,74 @@ class VoiceModelActivity : Activity() {
         }
 
         content.addView(
-            SetupUi.infoCard(
-                this, "导入模型",
-                "选择一个模型包（zip / tar / tar.gz / tgz），支持 sherpa-onnx 的流式模型：" +
-                    "transducer（zipformer / zipformer2 / conformer / lstm 等）、paraformer、zipformer2-ctc、nemo-ctc、t-one-ctc。" +
-                    "官方发布的压缩包可以直接导入，会自动识别文件（含可选的 silero_vad.onnx 端点模型）；" +
-                    "也可以自带 manifest.json 声明 family / modelingUnit / bpeVocab / hotwords / vad。" +
+            infoCard(
+                "导入模型",
+                "选择 ZIP、TAR、TAR.GZ 或 TGZ 模型包。支持 sherpa-onnx 的流式 transducer、paraformer、" +
+                    "zipformer2-ctc、nemo-ctc、t-one-ctc。\n" +
+                    "Paraformer 和 transducer 可自动识别模型文件；单文件 CTC 模型需要附带 manifest.json 声明类型和文件角色。" +
                     "导入前会校验文件完整性，并让你确认一次。",
-                R.drawable.ic_pref_data,
             ).also { card ->
                 card.addView(
-                    SetupUi.primaryButton(this, "选择模型包") { pickZip() },                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44))
-                        .apply { topMargin = dp(12); marginStart = dp(44) },
+                    SetupUi.primaryButton(this, "选择模型包") { pickZip() },
+                    actionParams(),
                 )
             },
             wrap().apply { topMargin = dp(ImeSpacingTokens.LG_DP) },
         )
+        content.addView(
+            infoCard("模型下载", VoiceModelDownloads.IMPORT_INSTRUCTIONS),
+            wrap().apply { topMargin = dp(ImeSpacingTokens.LG_DP) },
+        )
+        VoiceModelDownloads.models.forEach { model ->
+            content.addView(downloadCard(model), wrap().apply { topMargin = dp(ImeSpacingTokens.SM_DP) })
+        }
     }
+
+    /** All cards share one text and action column instead of mixing icon and non-icon indents. */
+    private fun infoCard(title: String, body: String): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        tag = "voice-model-card"
+        val pad = dp(ImeSpacingTokens.LG_DP)
+        setPadding(pad, pad, pad, pad)
+        background = SetupUi.cardBackground(this@VoiceModelActivity)
+        addView(TextView(this@VoiceModelActivity).apply {
+            text = title
+            textSize = ImeTypographyTokens.ROW_SP
+            setTextColor(getColor(R.color.setup_title))
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            if (android.os.Build.VERSION.SDK_INT >= 28) isAccessibilityHeading = true
+        }, wrap())
+        addView(bodyText(body), wrap().apply { topMargin = dp(ImeSpacingTokens.XS_DP) })
+    }
+
+    private fun bodyText(value: String): TextView = TextView(this).apply {
+        text = value
+        textSize = ImeTypographyTokens.DETAIL_SP
+        setTextColor(getColor(R.color.setup_body))
+        gravity = Gravity.START
+        setLineSpacing(0f, 1.3f)
+    }
+
+    private fun actionParams() = wrap().apply {
+        topMargin = dp(ImeSpacingTokens.MD_DP)
+    }
+
+    private fun downloadCard(model: VoiceModelDownloads.Model): LinearLayout =
+        infoCard(model.title, model.downloadDescription).apply {
+            tag = "voice-model-download-${model.id}"
+            addView(bodyText(model.url).apply {
+                tag = "voice-model-url-${model.id}"
+                setTextIsSelectable(true)
+            }, wrap().apply { topMargin = dp(ImeSpacingTokens.SM_DP) })
+            addView(
+                SetupUi.secondaryButton(this@VoiceModelActivity, "复制下载地址") {
+                    val clipboard = getSystemService(ClipboardManager::class.java)
+                    clipboard.setPrimaryClip(ClipData.newPlainText(model.title, model.url))
+                    Toast.makeText(this@VoiceModelActivity, "下载地址已复制", Toast.LENGTH_SHORT).show()
+                }.apply { contentDescription = "复制${model.title}下载地址" },
+                actionParams(),
+            )
+        }
 
     /** 「语音热词」卡片：手动词表只有 transducer 模型会用到。 */
     private fun hotwordCard(selection: VoiceModelSelection): LinearLayout {
@@ -169,11 +247,10 @@ class VoiceModelActivity : Activity() {
                 },
             )
         }
-        return SetupUi.infoCard(this, "语音热词", body, R.drawable.ic_pref_waveform).apply {
+        return infoCard("语音热词", body).apply {
             addView(
                 SetupUi.secondaryButton(this@VoiceModelActivity, "编辑热词") { editHotwords() },
-                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(40))
-                    .apply { topMargin = dp(12); marginStart = dp(44) },
+                actionParams(),
             )
         }
     }
@@ -247,38 +324,31 @@ class VoiceModelActivity : Activity() {
         active: Boolean,
         onUse: () -> Unit,
         onDelete: (() -> Unit)?,
-    ): LinearLayout = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        setPadding(dp(16), dp(12), dp(16), dp(12))
+    ): LinearLayout = infoCard(if (active) "$title（使用中）" else title, subtitle).apply {
         tag = "voice-model-row"
-        addView(TextView(this@VoiceModelActivity).apply {
-            text = if (active) "$title（使用中）" else title
-            textSize = ImeTypographyTokens.TITLE_SP
-        })
-        addView(TextView(this@VoiceModelActivity).apply { text = subtitle; textSize = ImeTypographyTokens.SMALL_SP; alpha = 0.7f })
         val buttons = LinearLayout(this@VoiceModelActivity).apply { orientation = LinearLayout.HORIZONTAL }
         if (!active) {
             buttons.addView(
                 SetupUi.secondaryButton(this@VoiceModelActivity, "使用") { onUse() },
-                LinearLayout.LayoutParams(0, dp(40), 1f).apply { marginEnd = dp(8) },
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(8) },
             )
         }
         if (onDelete != null) {
             buttons.addView(
                 SetupUi.secondaryButton(this@VoiceModelActivity, "删除") { onDelete() },
-                LinearLayout.LayoutParams(0, dp(40), 1f),
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
             )
         }
         if (buttons.childCount > 0) {
-            addView(buttons, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(40)).apply { topMargin = dp(8) })
+            addView(buttons, actionParams())
         }
     }
 
     private fun sectionTitle(text: String) = TextView(this).apply {
         this.text = text
         textSize = ImeTypographyTokens.SMALL_SP
-        alpha = 0.7f
-        setPadding(dp(4), 0, 0, 0)
+        setTextColor(getColor(R.color.setup_body))
+        setPadding(dp(ImeSpacingTokens.LG_DP), 0, dp(ImeSpacingTokens.LG_DP), 0)
     }
 
     private fun pickZip() {
@@ -294,6 +364,11 @@ class VoiceModelActivity : Activity() {
                         "application/gzip",
                         "application/x-gzip",
                         "application/x-tar",
+                        // The official model archives are tar.bz2, and a SAF
+                        // picker filters on the provider's MIME type, not on the
+                        // file name.
+                        "application/x-bzip2",
+                        "application/x-bzip",
                         "application/octet-stream",
                     ),
                 )
@@ -325,7 +400,7 @@ class VoiceModelActivity : Activity() {
                     buffered.reset()
                     val format = VoiceModelArchive.formatOf(name)
                         ?: VoiceModelArchive.sniff(if (read > 0) header.copyOf(read) else ByteArray(0))
-                        ?: error("无法识别的压缩格式（支持 zip / tar / tar.gz / tgz；tar.bz2 请先重新打包为 zip）")
+                        ?: error("无法识别的压缩格式（支持 zip / tar / tar.gz / tgz / tar.bz2）")
                     VoiceModelArchive.extract(buffered, format, staging)
                 }
                 val root = findPackageRoot(staging) ?: error("压缩包里找不到模型文件")

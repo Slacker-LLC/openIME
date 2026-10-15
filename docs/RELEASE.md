@@ -11,8 +11,8 @@ Branch protection, tag protection and merge rules are in [REPOSITORY.md](REPOSIT
 - The project uses semantic versions.
   A stable version is `MAJOR.MINOR.PATCH`. A beta version is `MAJOR.MINOR.PATCH-beta.N`, and `N` starts at 1.
   No other suffix (`-rc`, `-alpha`) is allowed.
-  The project is in the `0.0.x` beta phase.
-  We release `1.0.0` only when features and stability are good enough for daily use.
+  `1.0.0` (2026-10-16) is the first stable release; the betas before it were the `0.0.x` line.
+  Every later release follows the same rules.
 - `VERSION` is one line of text, for example `0.0.1-beta.1`.
   `app/build.gradle.kts` reads it:
   `versionName = VERSION` and `versionCode = (MAJOR × 10000 + MINOR × 100 + PATCH) × 100 + stage`.
@@ -62,12 +62,12 @@ We maintain only the newest MINOR line. Security fixes ship as PATCH versions.
 The pipeline builds two `arm64-v8a` release APKs from the same source:
 
 ```text
-openIME-v{VERSION}-arm64-release.apk
-openIME-v{VERSION}-arm64-lite-release.apk
+openIME-llm-v{VERSION}.apk
+openIME-v{VERSION}.apk
 ```
 
-The full APK carries the offline voice models.
-The lite APK leaves them out (`OPENIME_LITE=1`), so it is much smaller; the user imports a model in 设置 → 语音模型.
+The `-llm` APK carries the offline voice models.
+The plain-named APK leaves them out (`OPENIME_LITE=1`), so it is much smaller; the user imports a model in 设置 → 语音模型.
 Both APKs use the same signing key, so they install over each other and keep the user data.
 `scripts/release_build.sh` builds both, checks that the lite APK is smaller and holds no `.onnx` model, and signs both.
 

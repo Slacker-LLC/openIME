@@ -39,9 +39,29 @@ internal enum class ImeTopZoneState {
  * The host supplies data/actions. This view owns construction and visibility
  * of the toolbar, composition/candidate surface, and inline voice surface.
  */
-/** Composing strip: a short pinyin line over the candidate row, 60dp in all. */
-private const val COMPOSITION_LINE_DP = 18
-private const val CANDIDATE_ROW_DP = 42
+/**
+ * Composing strip: a short pinyin line over the candidate row, 60dp in all.
+ * The reference splits its own strip 20 : 36 and leaves a 2-unit gap under it
+ * (`input_toolbar_typing.xml:4-30`); our zone keeps that gap inside itself, so
+ * the pinyin line takes the larger part of it than ours used to: 21 and 37.
+ */
+private const val COMPOSITION_LINE_DP = 21
+private const val CANDIDATE_ROW_DP = 37
+
+/**
+ * The reference's candidate strip is `[4] 候选列表(308) [1] [3] 更多候选(40) [4]`
+ * (`input_toolbar_typing.xml:23-32`, weights from `style.xml:530-534`, 506 and 468):
+ * a small inset at each end, a hairline split before the expand key and a 3-unit
+ * gap ahead of it.
+ */
+private const val CANDIDATE_EDGE_UNITS = 4
+private const val CANDIDATE_BUTTON_GAP_UNITS = 3
+
+/**
+ * One idle-toolbar button: `cls_toolbar_idle_button` is 40 units wide and as
+ * tall as the row, with its own pill face (`style.xml:237-248`).
+ */
+private const val TOOLBAR_BUTTON_UNITS = 40
 
 internal class ImeTopZone(
     context: Context,
@@ -81,6 +101,8 @@ internal class ImeTopZone(
     private lateinit var compactToolbarIcons: List<View>
     private var compact = false
     private lateinit var keyboardHide: View
+    private lateinit var toolbarIconScroll: HorizontalScrollView
+    private val toolbarStripSpacer = View(context)
     private lateinit var associationScroll: HorizontalScrollView
     private var toolbarMode = ToolbarMode.NORMAL
     private var associationsShown = false
@@ -96,13 +118,44 @@ internal class ImeTopZone(
     /** Chips from the system autofill service, hosted in a strip of their own. */
     private lateinit var autofillScroll: HorizontalScrollView
     private val autofillRow = LinearLayout(context)
+    private lateinit var autofillClose: ImageView
+    /** True while the strip carries this app's own suggestion rows rather than the system's chips. */
+    private var autofillOwn = false
 
-    /** What the toolbar row shows; icons, autofill chips and associations are exclusive. */
-    private enum class ToolbarMode { NORMAL, AUTOFILL, ASSOCIATION }
+    /**
+     * The symbol history the symbol board shows in the toolbar
+     * (`input_toolbar_quickinput.xml:4-18`, see [RecentSymbolStripPolicy]).
+     */
+    private val recentSymbolStrip = LinearLayout(context)
+    private val recentSymbolRow = LinearLayout(context)
+    private lateinit var recentSymbolClose: ImageView
+    private var recentSymbolsShown = false
+
+    /**
+     * The tip banner the reference shows in the toolbar row while the floating
+     * keyboard is up (`input_toolbar_tip.xml:44-49`, see [ToolbarTipPolicy]).
+     */
+    private val tipStrip = LinearLayout(context)
+    private val tipLead = View(context)
+    private lateinit var tipLabel: TextView
+    private lateinit var tipClose: ImageView
+    private var tipShown = false
+    /** True while the zone draws the landscape strip, where the pre-edit sits beside the candidates. */
+    private var landscapeStrip = false
+
+    /**
+     * What the toolbar row shows; icons, autofill chips, associations, the
+     * symbol history and the tip are exclusive. The history takes the row while
+     * the symbol board is open, as the reference's own symbol toolbar does; the
+     * tip gives to every strip that has something to say while the user types.
+     */
+    private enum class ToolbarMode { NORMAL, AUTOFILL, ASSOCIATION, RECENT_SYMBOLS, TIP }
 
     private fun idleToolbarMode(): ToolbarMode = when {
+        recentSymbolsShown -> ToolbarMode.RECENT_SYMBOLS
         associationsShown -> ToolbarMode.ASSOCIATION
         autofillShown -> ToolbarMode.AUTOFILL
+        tipShown -> ToolbarMode.TIP
         else -> ToolbarMode.NORMAL
     }
 
@@ -119,21 +172,53 @@ internal class ImeTopZone(
             setPadding(toPx(6), 0, toPx(6), 0)
             minimumHeight = toPx(ImeGeometryTokens.TOOLBAR_HEIGHT_DP)
         }
-        val keyboardIcon = toolbarIcon(R.drawable.ic_keyboard, "切换键盘", "keyboard-selector", onKeyboardSelect)
         val clipboardIcon = toolbarIcon(R.drawable.ic_clipboard, "剪贴板", "clipboard-toolbar", onClipboard)
-        val phraseIcon = toolbarIcon(R.drawable.ic_bubble, "常用语", "quick-phrase-toolbar", onQuickPhrases)
         val emojiIcon = toolbarIcon(R.drawable.ic_emoji, "表情", "toolbar", onEmoji)
+        val phraseIcon = toolbarIcon(R.drawable.ic_bubble, "常用语", "quick-phrase-toolbar", onQuickPhrases)
+        val keyboardIcon = toolbarIcon(R.drawable.ic_keyboard, "切换键盘", "keyboard-selector", onKeyboardSelect)
         val textEditIcon = toolbarIcon(R.drawable.ic_text_cursor, "文本编辑", "toolbar", onTextEditor)
         val undoIcon = toolbarIcon(R.drawable.ic_undo, "撤销", "undo-toolbar") { onUndo() }
         splitIcon = toolbarIcon(R.drawable.ic_keyboard_split, "左右分离键盘", "split-toggle") { onSplitToggle() }
         val toolsIcon = toolbarIcon(R.drawable.ic_grid, "更多", "toolbar", onTools)
-        // Docked keeps the full toolbar. Floating (game) mode drops text editing
-        // and undo and puts quick phrases one tap away.
-        toolbarIcons = listOf(keyboardIcon, clipboardIcon, emojiIcon, textEditIcon, undoIcon, toolsIcon)
+        // Keep the original toolbar order, including the compact floating row.
+        toolbarIcons = listOf(
+            keyboardIcon,
+            clipboardIcon,
+            emojiIcon,
+            textEditIcon,
+            undoIcon,
+            toolsIcon,
+        )
         compactToolbarIcons = listOf(keyboardIcon, phraseIcon, emojiIcon, toolsIcon)
-        (toolbarIcons + phraseIcon + splitIcon).distinct().forEach {
-            toolbarRow.addView(it, LinearLayout.LayoutParams(0, toPx(48), 1f))
+
+        // The strip scrolls when the tools do not fit, as the reference's own
+        // toolbar strip does (`sliderenable="true" sliderstopslowdown="true"`,
+        // `input_toolbar_idle.xml:14`), and its slack sits in a spacer at the end
+        // of the strip (`toolbar_right_spacer`, line 34).
+        val strip = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            tag = "toolbar-icon-strip"
         }
+        (toolbarIcons + compactToolbarIcons + splitIcon).distinct().forEach {
+            strip.addView(it, LinearLayout.LayoutParams(toPx(TOOLBAR_BUTTON_UNITS), toPx(48)))
+        }
+        toolbarStripSpacer.apply { tag = "toolbar-strip-spacer" }
+        strip.addView(toolbarStripSpacer, LinearLayout.LayoutParams(0, 1, 1f))
+        toolbarIconScroll = HorizontalScrollView(context).apply {
+            tag = "toolbar-icon-scroll"
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            isFillViewport = true
+            addView(
+                strip,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    toPx(48),
+                ),
+            )
+        }
+        toolbarRow.addView(toolbarIconScroll, LinearLayout.LayoutParams(0, toPx(48), 1f))
 
         // Association state: "‹  words…  ∨". The back control and the hide
         // control are fixed-width; the words take the rest of the row.
@@ -201,9 +286,37 @@ internal class ImeTopZone(
             autofillScroll,
             LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f),
         )
+        // Our own quick-input rows end with the reference's own close key
+        // (`btn_quickinput_close` over `cls_history_close_button`, the 40-unit box
+        // the symbol history's close uses; `input_toolbar_quickinput.xml:48-49` for
+        // the clipboard row, `:31-32` for the message row). The system's autofill
+        // chips keep the strip's back control instead.
+        autofillClose = ImageView(context).apply {
+            tag = "autofill-close"
+            setImageResource(R.drawable.ic_close)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            contentDescription = "关闭建议"
+            visibility = View.GONE
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                onFeedback()
+                dismissAutofillChips()
+            }
+        }
+        toolbarRow.addView(autofillClose, touchTargetParams())
 
+        // The reference keeps the icons at a fixed 40 units and leaves the slack
+        // of the strip empty: `btn_hide` stays its own button on the right
+        // (`input_toolbar_idle.xml:41-43`, `cls_toolbar_idle_button` width 40,
+        // `style.xml:237-248`).
+        buildRecentSymbolStrip()
+        buildTipStrip()
         keyboardHide = toolbarIcon(R.drawable.ic_chevron_down, "收起键盘", "keyboard-hide", onHideKeyboard)
-        toolbarRow.addView(keyboardHide, LinearLayout.LayoutParams(0, toPx(48), 1f))
+        toolbarRow.addView(
+            keyboardHide,
+            LinearLayout.LayoutParams(toPx(TOOLBAR_BUTTON_UNITS), toPx(48)),
+        )
 
         addView(
             toolbarRow,
@@ -221,7 +334,7 @@ internal class ImeTopZone(
         composition.apply {
             tag = "pinyin-composition-editor"
             contentDescription = "可编辑拼音预编辑"
-            textSize = ImeTypographyTokens.BODY_SP
+            textSize = ImeTypographyTokens.COMPOSITION_SP
             letterSpacing = 0.04f
             typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
             gravity = Gravity.CENTER_VERTICAL or Gravity.START
@@ -236,7 +349,10 @@ internal class ImeTopZone(
             setSelectAllOnFocus(false)
             background = null
             includeFontPadding = false
-            setPadding(toPx(14), toPx(3), toPx(14), 0)
+            // The block's own insets: a 5-unit lead and the row's 3-unit top
+            // (`input_toolbar_typing.xml:5,7`); the row leaves its right side to
+            // the surface beside it (line 18) and the string scrolls inside it.
+            setPadding(toPx(CompositionPolicy.LEAD_UNITS), toPx(3), 0, 0)
             minimumHeight = toPx(COMPOSITION_LINE_DP)
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -260,8 +376,13 @@ internal class ImeTopZone(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             tag = "candidate-field"
-            setPadding(toPx(6), 0, toPx(0), 0)
+            setPadding(0, 0, 0, 0)
         }
+        // The reference's strip opens with a 4-unit inset.
+        candidateField.addView(
+            View(context).apply { tag = "candidate-strip-lead" },
+            LinearLayout.LayoutParams(toPx(CANDIDATE_EDGE_UNITS), LinearLayout.LayoutParams.MATCH_PARENT),
+        )
         candidateRow.apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -312,7 +433,24 @@ internal class ImeTopZone(
                 onExpandCandidates()
             }
         }
+        // The hairline split sits between the list and the expand key, and the
+        // expand key keeps a 3-unit gap from it.
+        candidateField.addView(
+            View(context).apply { tag = "candidate-strip-split" },
+            LinearLayout.LayoutParams(toPx(1).coerceAtLeast(1), LinearLayout.LayoutParams.MATCH_PARENT),
+        )
+        candidateField.addView(
+            View(context).apply { tag = "candidate-strip-gap" },
+            LinearLayout.LayoutParams(
+                toPx(CANDIDATE_BUTTON_GAP_UNITS),
+                LinearLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
         candidateField.addView(candidateExpandButton, touchTargetParams())
+        candidateField.addView(
+            View(context).apply { tag = "candidate-strip-tail" },
+            LinearLayout.LayoutParams(toPx(CANDIDATE_EDGE_UNITS), LinearLayout.LayoutParams.MATCH_PARENT),
+        )
         composeZone.addView(
             candidateField,
             LinearLayout.LayoutParams(
@@ -418,9 +556,15 @@ internal class ImeTopZone(
     /**
      * Shows the autofill [chips] (already inflated by the system) in the toolbar
      * row, or the normal toolbar again when the list is empty. Associations keep
-     * priority for as long as they are showing.
+     * priority for as long as they are showing. [own] marks the rows this app
+     * built for its own suggestions, which close with the reference's own key.
      */
-    fun setAutofillChips(chips: List<View>, chipWidthPx: Int = 0, chipHeightPx: Int = 0) {
+    fun setAutofillChips(
+        chips: List<View>,
+        chipWidthPx: Int = 0,
+        chipHeightPx: Int = 0,
+        own: Boolean = false,
+    ) {
         autofillRow.removeAllViews()
         chips.forEach { chip ->
             (chip.parent as? ViewGroup)?.removeView(chip)
@@ -436,6 +580,7 @@ internal class ImeTopZone(
             )
         }
         autofillShown = chips.isNotEmpty()
+        autofillOwn = chips.isNotEmpty() && own
         autofillScroll.scrollTo(0, 0)
         toolbarMode = idleToolbarMode()
         refreshToolbar()
@@ -446,15 +591,288 @@ internal class ImeTopZone(
         onAutofillDismissed?.invoke()
         autofillRow.removeAllViews()
         autofillShown = false
+        autofillOwn = false
         toolbarMode = idleToolbarMode()
         refreshToolbar()
     }
+
+    /**
+     * Lays out the symbol history as the reference's symbol toolbar does: a
+     * 4-unit lead inset, the scrolling list of the symbols the user has typed,
+     * the same hairline split its candidate strip uses, a 3-unit gap, the close
+     * key and a 4-unit tail (`input_toolbar_quickinput.xml:4-18`). The close key
+     * keeps our 48dp touch target where the reference's box is 40 units.
+     */
+    private fun buildRecentSymbolStrip() {
+        recentSymbolStrip.apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            tag = "recent-symbol-strip"
+            visibility = View.GONE
+        }
+        recentSymbolStrip.addView(
+            View(context).apply { tag = "recent-symbol-lead" },
+            LinearLayout.LayoutParams(
+                toPx(RecentSymbolStripPolicy.LEAD_UNITS),
+                LinearLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
+        recentSymbolRow.apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            tag = "recent-symbol-row"
+        }
+        recentSymbolStrip.addView(
+            HorizontalScrollView(context).apply {
+                tag = "recent-symbol-scroll"
+                isHorizontalScrollBarEnabled = false
+                overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+                addView(
+                    recentSymbolRow,
+                    ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        toPx(ImeGeometryTokens.TOUCH_TARGET_DP),
+                    ),
+                )
+            },
+            LinearLayout.LayoutParams(0, toPx(ImeGeometryTokens.TOUCH_TARGET_DP), 1f),
+        )
+        recentSymbolStrip.addView(
+            View(context).apply { tag = "recent-symbol-split" },
+            LinearLayout.LayoutParams(toPx(1).coerceAtLeast(1), LinearLayout.LayoutParams.MATCH_PARENT),
+        )
+        recentSymbolStrip.addView(
+            View(context).apply { tag = "recent-symbol-gap" },
+            LinearLayout.LayoutParams(
+                toPx(RecentSymbolStripPolicy.GAP_UNITS),
+                LinearLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
+        recentSymbolClose = ImageView(context).apply {
+            tag = "recent-symbol-close"
+            setImageResource(R.drawable.ic_close)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            contentDescription = "关闭最近符号"
+            setPadding(toPx(7), 0, toPx(7), 0)
+            isClickable = true
+            isFocusable = true
+        }
+        recentSymbolStrip.addView(recentSymbolClose, touchTargetParams())
+        recentSymbolStrip.addView(
+            View(context).apply { tag = "recent-symbol-tail" },
+            LinearLayout.LayoutParams(
+                toPx(RecentSymbolStripPolicy.TAIL_UNITS),
+                LinearLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
+        toolbarRow.addView(recentSymbolStrip, LinearLayout.LayoutParams(0, toPx(48)))
+    }
+
+    /**
+     * Shows [symbols] — the symbols the user has typed, most recent first — in
+     * the toolbar row, or the normal toolbar when there are none. [onClose]
+     * ends the strip's own visit: the board stays open.
+     */
+    fun showRecentSymbols(
+        symbols: List<String>,
+        onPick: (String) -> Unit,
+        onClose: () -> Unit,
+    ) {
+        recentSymbolRow.removeAllViews()
+        symbols.forEachIndexed { index, symbol ->
+            recentSymbolRow.addView(
+                recentSymbolCell(symbol, onPick),
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                ).apply {
+                    if (index < symbols.lastIndex) {
+                        marginEnd = toPx(RecentSymbolStripPolicy.CELL_GAP_UNITS)
+                    }
+                },
+            )
+        }
+        recentSymbolClose.setOnClickListener {
+            onFeedback()
+            onClose()
+        }
+        recentSymbolsShown = symbols.isNotEmpty()
+        toolbarMode = idleToolbarMode()
+        refreshToolbar()
+    }
+
+    /** Takes the symbol history out of the toolbar row (panel closed, or its close key tapped). */
+    fun hideRecentSymbols() {
+        if (!recentSymbolsShown) return
+        recentSymbolsShown = false
+        toolbarMode = idleToolbarMode()
+        refreshToolbar()
+    }
+
+    /**
+     * Lays out the reference's tip banner: one pill across the toolbar row, a
+     * lead space, the label at the left of the rest and a round close key
+     * (`input_toolbar_tip.xml:44-49`, `style.xml:442`, `:1267-1270`, `:1307-1313`). The strip
+     * is the row's full 48 units and the pill is painted inside it, as
+     * [ToolbarTipPolicy.PILL_UNITS] describes.
+     */
+    private fun buildTipStrip() {
+        tipStrip.apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            tag = "toolbar-tip"
+            visibility = View.GONE
+        }
+        tipLead.apply { tag = "toolbar-tip-lead" }
+        tipStrip.addView(
+            tipLead,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT),
+        )
+        tipLabel = TextView(context).apply {
+            tag = "toolbar-tip-label"
+            textSize = ImeTypographyTokens.BODY_SP
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            gravity = Gravity.CENTER_VERTICAL or Gravity.START
+            includeFontPadding = false
+            isClickable = false
+        }
+        tipStrip.addView(
+            tipLabel,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f),
+        )
+        tipClose = ImageView(context).apply {
+            tag = "toolbar-tip-close"
+            setImageResource(R.drawable.ic_close)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            contentDescription = "关闭提示"
+            isClickable = true
+            isFocusable = true
+        }
+        tipStrip.addView(tipClose, touchTargetParams())
+        toolbarRow.addView(tipStrip, LinearLayout.LayoutParams(0, toPx(48)))
+    }
+
+    /**
+     * Shows the tip banner with [text] in the toolbar row, or the normal toolbar
+     * again when [hideTooltip] runs. The label is left-aligned and ellipsized
+     * (`cls_toolbar_tip_label`, `style.xml:1267-1270`), and the close key is the
+     * same 48dp touch target as every other toolbar control.
+     */
+    fun showTooltip(text: String, onClose: () -> Unit) {
+        tipLabel.text = text
+        tipClose.setOnClickListener {
+            onFeedback()
+            onClose()
+        }
+        val changed = !tipShown
+        tipShown = true
+        if (changed) {
+            toolbarMode = idleToolbarMode()
+            refreshToolbar()
+        }
+    }
+
+    /** Takes the tip banner out of the toolbar row (floating mode ended, or its close key tapped). */
+    fun hideTooltip() {
+        if (!tipShown) return
+        tipShown = false
+        toolbarMode = idleToolbarMode()
+        refreshToolbar()
+    }
+
+    /**
+     * The banner's own fractions of the row width: the container's 3.333%
+     * horizontal padding, its 3.571% lead space and the 1.2% the label keeps
+     * before its text (`style.xml:442`, `:1265`, `:1278`).
+     */
+    private fun applyTipGeometry(rowWidth: Int) {
+        fun units(fraction: Float): Int = (rowWidth * fraction).toInt().coerceAtLeast(0)
+        val pad = units(ToolbarTipPolicy.CONTAINER_PAD_FRACTION)
+        tipStrip.setPadding(pad, 0, pad, 0)
+        (tipLead.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+            params.width = units(ToolbarTipPolicy.LEAD_WEIGHT)
+            tipLead.layoutParams = params
+        }
+        tipLabel.setPadding(units(ToolbarTipPolicy.LABEL_PAD_FRACTION), 0, 0, 0)
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        if (w > 0 && w != oldw) {
+            applyTipGeometry(w)
+            applyCompositionGeometry(w)
+        }
+    }
+
+    /**
+     * The pre-edit's own cap: half the page (`maxwidth="halfMaxWidth"` on the
+     * composition's wrapper, `input_toolbar_typing.xml:6`). The row above the
+     * candidates gives the other half back to the surface beside it, and a long
+     * string scrolls inside the cap the way the reference's own block does
+     * (`sliderenable="true"` on `cls_comp_container`, `style.xml:575-577`).
+     */
+    private fun compositionMaxWidthPx(): Int = CompositionPolicy.maxWidthPx(
+        if (width > 0) width else resources.displayMetrics.widthPixels,
+    )
+
+    private fun applyCompositionGeometry(zoneWidth: Int) {
+        val cap = CompositionPolicy.maxWidthPx(zoneWidth)
+        composition.maxWidth = cap
+        (composition.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+            val desired = if (landscapeStrip) LinearLayout.LayoutParams.WRAP_CONTENT else cap
+            if (params.width != desired) {
+                params.width = desired
+                composition.layoutParams = params
+            }
+        }
+    }
+
+    /** One history cell: the reference's 36-unit box over candidate-sized text. */
+    private fun recentSymbolCell(symbol: String, onPick: (String) -> Unit): View =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            tag = "recent-symbol-cell"
+            isClickable = true
+            isFocusable = true
+            minimumWidth = toPx(RecentSymbolStripPolicy.CELL_UNITS)
+            contentDescription = "最近符号:$symbol"
+            addView(
+                TextView(context).apply {
+                    text = symbol
+                    textSize = ImeTypographyTokens.CANDIDATE_SP
+                    maxLines = 1
+                    ellipsize = TextUtils.TruncateAt.END
+                    includeFontPadding = false
+                    tag = "recent-symbol-label"
+                    isClickable = false
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                    setPadding(
+                        toPx(RecentSymbolStripPolicy.CELL_PAD_DP),
+                        0,
+                        toPx(RecentSymbolStripPolicy.CELL_PAD_DP),
+                        0,
+                    )
+                },
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+            setOnClickListener {
+                onFeedback()
+                onPick(symbol)
+            }
+        }
 
     private var longPressDrag: LongPressDragTarget? = null
     /** 停靠键盘的高度调节只允许在顶栏范围起手，避免抢候选/输入区的长按。 */
     private var longPressToolbarOnly = false
     private var longPressArmed = false
     private var longPressDragging = false
+    /** 这一次手势被拦下来了（顶栏内的按下）：[onTouchEvent] 据此认领空白处的手势。 */
+    private var longPressEngaged = false
     private var pressRawX = 0f
     private var pressRawY = 0f
     private val longPressRunnable = Runnable {
@@ -476,15 +894,42 @@ internal class ImeTopZone(
         removeCallbacks(longPressRunnable)
         longPressArmed = false
         longPressDragging = false
+        longPressEngaged = false
     }
 
-    /** 手指是否落在顶栏（工具条）范围内；用窗口坐标比较，兼容嵌套层级。 */
+    /**
+     * 手指是否落在顶栏（工具条）范围内：`raw` 是屏幕坐标（"the original location of
+     * the event on the screen, before it had been adjusted for the containing window"，
+     * `MotionEvent.getRawX`），所以这里也用屏幕坐标取行框——和候选项滑选
+     * （[KeyPopupController.trackChoiceTouch]）一个取法。输入法窗口不在屏幕原点
+     * （实测 `frame=[0,1731][1080,2400]`），拿 `getLocationInWindow` 的行框
+     * （窗口内 y=0..）去比屏幕上的 `rawY`（≈1731+）永远不成立，停靠键盘的高度调节
+     * 因此根本起不了手。
+     */
     private fun isInsideToolbar(rawX: Float, rawY: Float): Boolean {
         if (toolbarRow.width == 0 || toolbarRow.height == 0) return false
         val location = IntArray(2)
-        toolbarRow.getLocationInWindow(location)
+        toolbarRow.getLocationOnScreen(location)
         return rawX >= location[0] && rawX <= location[0] + toolbarRow.width &&
             rawY >= location[1] && rawY <= location[1] + toolbarRow.height
+    }
+
+    /** 长按还没成立就移动超过阈值：取消这次长按，滑动不该被当成拖动。 */
+    private fun cancelLongPressIfMoved(event: MotionEvent) {
+        val slop = ViewConfiguration.get(context).scaledTouchSlop
+        if (kotlin.math.abs(event.rawX - pressRawX) > slop ||
+            kotlin.math.abs(event.rawY - pressRawY) > slop
+        ) {
+            removeCallbacks(longPressRunnable)
+        }
+    }
+
+    /** 长按已成立：起手拖动。两条派发路径（拦截器与 [onTouchEvent]）共用。 */
+    private fun beginDragIfArmed(drag: LongPressDragTarget, event: MotionEvent): Boolean {
+        if (!longPressArmed) return false
+        drag.begin(event)
+        longPressDragging = true
+        return true
     }
 
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
@@ -493,23 +938,15 @@ internal class ImeTopZone(
             MotionEvent.ACTION_DOWN -> {
                 resetLongPress()
                 if (longPressToolbarOnly && !isInsideToolbar(ev.rawX, ev.rawY)) return false
+                longPressEngaged = true
                 pressRawX = ev.rawX
                 pressRawY = ev.rawY
                 postDelayed(longPressRunnable, ViewConfiguration.getLongPressTimeout().toLong())
             }
 
             MotionEvent.ACTION_MOVE -> {
-                if (longPressArmed) {
-                    drag.begin(ev)
-                    longPressDragging = true
-                    return true
-                }
-                val slop = ViewConfiguration.get(context).scaledTouchSlop
-                if (kotlin.math.abs(ev.rawX - pressRawX) > slop ||
-                    kotlin.math.abs(ev.rawY - pressRawY) > slop
-                ) {
-                    removeCallbacks(longPressRunnable)
-                }
+                if (beginDragIfArmed(drag, ev)) return true
+                cancelLongPressIfMoved(ev)
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -522,24 +959,44 @@ internal class ImeTopZone(
         return false
     }
 
+    /**
+     * 顶栏里的空白处（图标之间、空闲时那一行输入区）没有任何子视图消费这次按下，
+     * 框架此后就不再回头问 [onInterceptTouchEvent]，长按成立也起不了手——按下落在
+     * 工具栏图标上时能拖正是因为那个图标消费了它。所以被拦下的这次手势由这里认领：
+     * 吞掉 DOWN 保住整条流，长按成立后在 MOVE 上起手。
+     */
     override fun onTouchEvent(event: MotionEvent): Boolean {
         val drag = longPressDrag
-        if (drag == null || !longPressDragging) return super.onTouchEvent(event)
-        drag.onTouch(event)
-        if (event.actionMasked == MotionEvent.ACTION_UP ||
-            event.actionMasked == MotionEvent.ACTION_CANCEL
-        ) {
-            resetLongPress()
+        if (drag == null || (!longPressEngaged && !longPressDragging)) return super.onTouchEvent(event)
+        if (longPressDragging) {
+            drag.onTouch(event)
+            if (event.actionMasked == MotionEvent.ACTION_UP ||
+                event.actionMasked == MotionEvent.ACTION_CANCEL
+            ) {
+                resetLongPress()
+            }
+            return true
+        }
+        when (event.actionMasked) {
+            MotionEvent.ACTION_MOVE -> {
+                if (beginDragIfArmed(drag, event)) {
+                    drag.onTouch(event)
+                } else {
+                    cancelLongPressIfMoved(event)
+                }
+            }
+
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> resetLongPress()
         }
         return true
     }
 
-    /** Floating (game) mode: a slimmer toolbar without text editing and undo. */
     /**
      * Landscape strip: the zone is one key row plus a little, and while composing
      * the pinyin sits at the left of the candidates instead of above them.
      */
     fun setLandscapeStrip(on: Boolean) {
+        landscapeStrip = on
         val height = toPx(
             if (on) ImeGeometryTokens.LANDSCAPE_TOP_ZONE_HEIGHT_DP else ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP,
         )
@@ -558,12 +1015,12 @@ internal class ImeTopZone(
                 it.width = LinearLayout.LayoutParams.WRAP_CONTENT
                 it.height = LinearLayout.LayoutParams.MATCH_PARENT
             } else {
-                it.width = LinearLayout.LayoutParams.MATCH_PARENT
+                it.width = compositionMaxWidthPx()
                 it.height = toPx(COMPOSITION_LINE_DP)
             }
             composition.layoutParams = it
         }
-        composition.maxWidth = if (on) toPx(160) else Int.MAX_VALUE
+        composition.maxWidth = compositionMaxWidthPx()
         composition.gravity = Gravity.CENTER_VERTICAL or Gravity.START
         (candidateField.layoutParams as? LinearLayout.LayoutParams)?.let {
             if (on) {
@@ -588,6 +1045,7 @@ internal class ImeTopZone(
         refreshToolbar()
     }
 
+    /** Floating (game) mode: a slimmer toolbar without text editing and undo. */
     fun setCompactToolbar(value: Boolean) {
         if (compact == value) return
         compact = value
@@ -598,30 +1056,57 @@ internal class ImeTopZone(
         val normal = toolbarMode == ToolbarMode.NORMAL
         val association = toolbarMode == ToolbarMode.ASSOCIATION
         val autofill = toolbarMode == ToolbarMode.AUTOFILL
+        val recent = toolbarMode == ToolbarMode.RECENT_SYMBOLS
+        val tip = toolbarMode == ToolbarMode.TIP
         val shown = if (compact) compactToolbarIcons else toolbarIcons
+        val strip = toolbarIconScroll.getChildAt(0) as LinearLayout
+        shown.forEachIndexed { index, icon ->
+            if (strip.indexOfChild(icon) != index) {
+                strip.removeView(icon)
+                strip.addView(icon, index)
+            }
+        }
         (toolbarIcons + compactToolbarIcons).distinct().forEach {
             it.visibility = if (normal && it in shown) View.VISIBLE else View.GONE
         }
         splitIcon.visibility = if (normal && splitToggleShown) View.VISIBLE else View.GONE
-        associationBack.visibility = if (association || autofill) View.VISIBLE else View.GONE
+        associationBack.visibility =
+            if (association || (autofill && !autofillOwn)) View.VISIBLE else View.GONE
+        autofillClose.visibility = if (autofill && autofillOwn) View.VISIBLE else View.GONE
         associationScroll.visibility = if (association) View.VISIBLE else View.GONE
         autofillScroll.visibility = if (autofill) View.VISIBLE else View.GONE
+        recentSymbolStrip.visibility = if (recent) View.VISIBLE else View.GONE
+        tipStrip.visibility = if (tip) View.VISIBLE else View.GONE
         keyboardHide.visibility = View.VISIBLE
-        (keyboardHide.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
-            if (association || autofill) {
-                params.width = toPx(ImeGeometryTokens.TOUCH_TARGET_DP)
-                params.weight = 0f
-            } else {
-                params.width = 0
-                params.weight = 1f
-            }
-            keyboardHide.layoutParams = params
+        // The icons keep the reference's own width and their own row takes the
+        // slack; a suggestion strip, the autofill chips or the symbol history
+        // take it instead.
+        (toolbarIconScroll.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+            val flexible = normal
+            params.width = 0
+            params.weight = if (flexible) 1f else 0f
+            toolbarIconScroll.layoutParams = params
+        }
+        (recentSymbolStrip.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+            params.width = 0
+            params.weight = if (recent) 1f else 0f
+            recentSymbolStrip.layoutParams = params
+        }
+        (tipStrip.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+            params.width = 0
+            params.weight = if (tip) 1f else 0f
+            tipStrip.layoutParams = params
         }
     }
 
     fun setContentInset(contentInsetPx: Int) {
         toolbarRow.setPadding(contentInsetPx + toPx(6), 0, contentInsetPx + toPx(6), 0)
-        composition.setPadding(contentInsetPx + toPx(14), toPx(3), contentInsetPx + toPx(14), 0)
+        composition.setPadding(
+            contentInsetPx + toPx(CompositionPolicy.LEAD_UNITS),
+            toPx(3),
+            contentInsetPx,
+            0,
+        )
     }
 
     fun renderState(

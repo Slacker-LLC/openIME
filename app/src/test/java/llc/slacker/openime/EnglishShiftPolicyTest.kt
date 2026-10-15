@@ -49,4 +49,13 @@ class EnglishShiftPolicyTest {
         assertEquals(ShiftState.CAPS_LOCK, EnglishShiftPolicy.afterLongPress(ShiftState.SHIFT_ONCE))
         assertEquals(ShiftState.LOWERCASE, EnglishShiftPolicy.afterLongPress(ShiftState.CAPS_LOCK))
     }
+
+    @Test
+    fun theGuideTextAnnouncesTheDoubleTapWhereItLocks() {
+        // The reference's own string/caps_lock_guide_text, kept out of the state
+        // that already says what it is.
+        assertEquals("大写，双击锁定大写输入", EnglishShiftPolicy.description(ShiftState.LOWERCASE))
+        assertEquals("大写一次，双击锁定大写输入", EnglishShiftPolicy.description(ShiftState.SHIFT_ONCE))
+        assertEquals("大写锁定", EnglishShiftPolicy.description(ShiftState.CAPS_LOCK))
+    }
 }

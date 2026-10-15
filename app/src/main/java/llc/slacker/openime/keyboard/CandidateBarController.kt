@@ -12,11 +12,13 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
+import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import llc.slacker.openime.R
 import llc.slacker.openime.setup.SetupUi
 import llc.slacker.openime.theme.ImeGeometryTokens
 import llc.slacker.openime.theme.ImeMotionTokens
@@ -51,11 +53,14 @@ internal class CandidateBarController(
     private val onFeedback: () -> Unit,
     private val onCandidateSelected: (String) -> Unit,
     private val onCandidateLongPressed: (String) -> Unit,
+    private val onExpandedBackspace: () -> Unit,
 ) {
     private var renderedCandidates: List<String>? = null
     private var renderedComposition: String? = null
     private var renderedExpandedCandidates: List<String>? = null
     private var renderedExpandedComposition: String? = null
+    private var renderedExpandedFilter: ExpandedCandidateFilter? = null
+    private var expandedFilter = ExpandedCandidateFilter.ALL
     private var candidateTouchDownX = 0f
     private var candidateTouchDownY = 0f
     private var candidateTouchActive = false
@@ -212,6 +217,8 @@ internal class CandidateBarController(
             expandedOpen = false
             renderedExpandedCandidates = null
             renderedExpandedComposition = null
+            renderedExpandedFilter = null
+            expandedFilter = ExpandedCandidateFilter.ALL
             syncExpandControl(candidates.isNotEmpty())
             return
         }
@@ -220,19 +227,21 @@ internal class CandidateBarController(
             expandedOpen &&
             overlay.visibility == View.VISIBLE &&
             renderedExpandedCandidates == candidates &&
-            renderedExpandedComposition == compositionPreview
+            renderedExpandedComposition == compositionPreview &&
+            renderedExpandedFilter == expandedFilter
         ) {
             return
         }
 
         val previousScroll = if (renderedExpandedComposition == compositionPreview) {
-            (overlay.getChildAt(0) as? ScrollView)?.scrollY ?: 0
+            overlay.findViewWithTag<ScrollView>(EXPANDED_SCROLL_TAG)?.scrollY ?: 0
         } else {
             0
         }
 
         renderedExpandedCandidates = candidates.toList()
         renderedExpandedComposition = compositionPreview
+        renderedExpandedFilter = expandedFilter
         expandedOpen = true
         expandButton.rotation = 180f
         expandButton.contentDescription = "收起候选"
@@ -246,11 +255,121 @@ internal class CandidateBarController(
         overlay.alpha = 0f
         overlay.translationY = toPx(8).toFloat()
         overlay.removeAllViews()
-        val scroll = ScrollView(context)
+        val scroll = expandedCandidateList(expandedFilter.apply(candidates))
+        val card = expandedCard(scroll)
+        val page = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(
+                createFilterRow(),
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    toPx(FILTER_ROW_HEIGHT_UNITS),
+                ),
+            )
+            addView(
+                card,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    0,
+                    1f,
+                ),
+            )
+        }
+        overlay.addView(
+            page,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
+
+        applyTheme()
+        if (previousScroll > 0) {
+            scroll.post { scroll.scrollTo(0, previousScroll) }
+        }
+        overlay.animate()
+            .alpha(1f)
+            .translationY(0f)
+            .setDuration(ImeMotionTokens.STANDARD_TRANSITION_MS)
+            .setInterpolator(DecelerateInterpolator(1.5f))
+            .start()
+    }
+
+    fun resetExpandedState() {
+        expandedOpen = false
+        renderedExpandedCandidates = null
+        renderedExpandedComposition = null
+        renderedExpandedFilter = null
+        expandedFilter = ExpandedCandidateFilter.ALL
+        expandButton.rotation = 0f
+        expandButton.contentDescription = "展开更多候选"
+    }
+
+    /**
+     * 全部 / 单字, right-aligned above the list (`input_more_cand.xml:7-14`).
+     * The chips repaint through their tags, so only their selected state is
+     * set here.
+     */
+    private fun createFilterRow(): LinearLayout =
+        LinearLayout(context).apply {
+            tag = EXPANDED_FILTER_ROW_TAG
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL or Gravity.END
+            val container = LinearLayout(context).apply {
+                tag = EXPANDED_FILTER_CONTAINER_TAG
+                orientation = LinearLayout.HORIZONTAL
+                val inset = toPx(FILTER_CONTAINER_INSET_UNITS)
+                setPadding(inset, inset, inset, inset)
+            }
+            ExpandedCandidateFilter.entries.forEach { filter ->
+                container.addView(
+                    createFilterChip(filter),
+                    LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f),
+                )
+            }
+            addView(
+                container,
+                LinearLayout.LayoutParams(
+                    toPx(FILTER_CONTAINER_WIDTH_UNITS),
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                ),
+            )
+        }
+
+    private fun createFilterChip(filter: ExpandedCandidateFilter): TextView =
+        TextView(context).apply {
+            tag = EXPANDED_FILTER_CHIP_TAG
+            text = filter.label
+            textSize = ImeTypographyTokens.BODY_SP
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            isClickable = true
+            isFocusable = true
+            isSelected = filter == expandedFilter
+            contentDescription = "筛选${filter.label}"
+            if (Build.VERSION.SDK_INT >= 30) {
+                stateDescription = if (isSelected) "已选择" else "未选择"
+            }
+            setOnClickListener {
+                if (expandedFilter == filter) return@setOnClickListener
+                onFeedback()
+                expandedFilter = filter
+                // The whole page is rebuilt, so the chips are handed their new
+                // selected state with it; the cache key includes the filter.
+                renderExpanded(
+                    open = true,
+                    candidates = renderedExpandedCandidates.orEmpty(),
+                    compositionPreview = renderedExpandedComposition.orEmpty(),
+                )
+            }
+        }
+
+    private fun expandedCandidateList(shown: List<String>): ScrollView {
+        val scroll = ScrollView(context).apply { tag = EXPANDED_SCROLL_TAG }
         val column = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
         }
-        if (candidates.isEmpty()) {
+        if (shown.isEmpty()) {
             column.addView(
                 createEmptyLabel(),
                 LinearLayout.LayoutParams(
@@ -259,14 +378,14 @@ internal class CandidateBarController(
                 ),
             )
         } else {
-            expandedCandidateRows(candidates).forEach { chunk ->
+            expandedCandidateRows(shown).forEach { chunk ->
                 val rowView = LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
                 }
                 chunk.forEach { candidate ->
                     rowView.addView(
                         createExpandedCandidate(candidate).apply {
-                            tag = if (candidate == candidates.first()) "candidate-grid-first" else "candidate-grid"
+                            tag = if (candidate == shown.first()) "candidate-grid-first" else "candidate-grid"
                         },
                         LinearLayout.LayoutParams(
                             0,
@@ -298,33 +417,59 @@ internal class CandidateBarController(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
             ),
         )
-        overlay.addView(
-            scroll,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1f,
-            ),
-        )
-
-        applyTheme()
-        if (previousScroll > 0) {
-            scroll.post { scroll.scrollTo(0, previousScroll) }
-        }
-        overlay.animate()
-            .alpha(1f)
-            .translationY(0f)
-            .setDuration(ImeMotionTokens.STANDARD_TRANSITION_MS)
-            .setInterpolator(DecelerateInterpolator(1.5f))
-            .start()
+        return scroll
     }
 
-    fun resetExpandedState() {
-        expandedOpen = false
-        renderedExpandedCandidates = null
-        renderedExpandedComposition = null
-        expandButton.rotation = 0f
-        expandButton.contentDescription = "展开更多候选"
+    /**
+     * The rounded list the candidates sit in, with the reference's own
+     * backspace key floating in the bottom-right corner of that list
+     * (`input_more_cand.xml:18-26`).
+     */
+    private fun expandedCard(list: ScrollView): FrameLayout {
+        val card = FrameLayout(context).apply {
+            tag = EXPANDED_CARD_TAG
+            clipToOutline = true
+            addView(
+                list,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                ),
+            )
+            addView(
+                ImageView(context).apply {
+                    tag = EXPANDED_BACKSPACE_TAG
+                    setImageResource(R.drawable.ic_backspace)
+                    scaleType = ImageView.ScaleType.CENTER_INSIDE
+                    contentDescription = "退格"
+                    isClickable = true
+                    isFocusable = true
+                    setPadding(toPx(6), toPx(6), toPx(6), toPx(6))
+                    setOnClickListener {
+                        onFeedback()
+                        onExpandedBackspace()
+                    }
+                },
+                FrameLayout.LayoutParams(0, 0, Gravity.BOTTOM or Gravity.END),
+            )
+        }
+        // Fractions of the list, not fixed dp: the key keeps its share of the
+        // panel in both orientations and at every keyboard height.
+        card.addOnLayoutChangeListener { view, left, top, right, bottom, _, _, _, _ ->
+            sizeCornerBackspace(view, right - left, bottom - top)
+        }
+        return card
+    }
+
+    private fun sizeCornerBackspace(card: View, width: Int, height: Int) {
+        val key = card.findViewWithTag<View>(EXPANDED_BACKSPACE_TAG) ?: return
+        val keyParams = key.layoutParams as? FrameLayout.LayoutParams ?: return
+        val targetWidth = (width * BACKSPACE_WIDTH_FRACTION).toInt()
+        val targetHeight = (height * BACKSPACE_HEIGHT_FRACTION).toInt()
+        if (keyParams.width == targetWidth && keyParams.height == targetHeight) return
+        keyParams.width = targetWidth
+        keyParams.height = targetHeight
+        key.layoutParams = keyParams
     }
 
     private fun createItem(index: Int, candidate: String): LinearLayout =
@@ -340,7 +485,9 @@ internal class CandidateBarController(
                     textSize = ImeTypographyTokens.CANDIDATE_SP
                     maxLines = 1
                     includeFontPadding = false
-                    setPadding(toPx(12), 0, toPx(12), 0)
+                    // The reference item pads 2.7% of the strip per side and
+                    // adds 4 units between items; 8dp keeps that rhythm.
+                    setPadding(toPx(8), 0, toPx(8), 0)
                     isClickable = false
                     importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                 },
@@ -361,21 +508,28 @@ internal class CandidateBarController(
         val word = item.getChildAt(0) as TextView
         if (word.text.toString() != candidate) word.text = candidate
         word.tag = if (index == 0) "candidate-first" else "candidate-word"
-        word.typeface = if (index == 0) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+        // The first candidate is the same size in the accent colour one weight
+        // heavier, with no tile behind it: the reference's own first-item class
+        // (skin-full/assets/skin/default/style.xml:551-554) names
+        // first_cand_font (weight 500 against 400, style.xml:83,98) and
+        // first_cand_text_color (rgba(79,132,255,1), values/colors.xml:4).
+        word.typeface = if (index == 0) MEDIUM_WEIGHT else Typeface.DEFAULT
 
         val palette = tokens()
-        val normalBackground =
-            if (index == 0) palette.keyBackground else Color.TRANSPARENT
         word.setTextColor(
-            palette.candidateText,
-        )
-        item.background = statefulBackground(
-            normalBackground,
             if (index == 0) {
-                ImeSurfacePolicy.pressedSurface(normalBackground, palette)
+                ImeSurfacePolicy.firstCandidateText(palette)
             } else {
-                ImeSurfacePolicy.pressedSurface(palette.candidateBackground, palette)
+                palette.candidateText
             },
+        )
+        // Every candidate cell, first or not, presses to the reference's one
+        // candidate fill: `canditem_pushedbk`, white (`style.xml:1076-1080`,
+        // `values/colors.xml:81`) or white at 8% on the dark skin
+        // (`values/dark_colors.xml:79`).
+        item.background = statefulBackground(
+            Color.TRANSPARENT,
+            ImeSurfacePolicy.candidatePressed(palette),
             toPx(ImeGeometryTokens.KEY_RADIUS_DP),
         )
         item.setOnTouchListener { _, event ->
@@ -412,8 +566,25 @@ internal class CandidateBarController(
     }
 
     private companion object {
+        /** The reference's 500 weight: one step above the regular candidate. */
+        val MEDIUM_WEIGHT: Typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         const val STRIP_LIMIT = 24
         const val CANDIDATE_EXPAND_SWIPE_DP = 36
         const val SCROLL_SETTLE_WINDOW_MS = 96L
+
+        // The expanded page of the reference skin (`input_more_cand.xml`), in
+        // its own 390-unit canvas: the filter group is 150 wide with a 3 inset,
+        // and the corner backspace takes 25.2% by 20.2% of the list.
+        const val EXPANDED_SCROLL_TAG = "candidate-expanded-scroll"
+        const val EXPANDED_CARD_TAG = "candidate-expanded-card"
+        const val EXPANDED_FILTER_ROW_TAG = "candidate-filter-row"
+        const val EXPANDED_FILTER_CONTAINER_TAG = "candidate-filter-container"
+        const val EXPANDED_FILTER_CHIP_TAG = "candidate-filter-chip"
+        const val EXPANDED_BACKSPACE_TAG = "candidate-expanded-backspace"
+        const val FILTER_ROW_HEIGHT_UNITS = 40
+        const val FILTER_CONTAINER_WIDTH_UNITS = 150
+        const val FILTER_CONTAINER_INSET_UNITS = 3
+        const val BACKSPACE_WIDTH_FRACTION = 0.252f
+        const val BACKSPACE_HEIGHT_FRACTION = 0.202f
     }
 }

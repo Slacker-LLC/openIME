@@ -1,19 +1,38 @@
 package llc.slacker.openime.keyboard
 
 /**
- * Content of the comma/period key beside the 26-key space bar.
+ * Content of the three punctuation keys on the 26-key bottom row.
  *
- * Tap commits [comma]; long press commits [period], which is also the corner
- * hint. Chinese mode uses the full-width marks.
+ * [Spec.merged] is the wide key left of the space bar, the reference's
+ * `ButtonPeriodComma`: Chinese draws `text="，"` with the always-visible corner
+ * `ficon_text="。"` (`input_kbd_pinyin26.xml:145-152`), English draws `text="."`
+ * with the corner `","` (`input_kbd_english26.xml:154-161`). An up swipe and a
+ * long press commit that corner mark in both modes.
+ *
+ * [Spec.comma] and [Spec.period] are the two symbol keys the reference ships
+ * visible either side of the space bar (`input_kbd_pinyin26.xml:153,156`;
+ * `input_kbd_english26.xml:162-164,174-175`). Each shows its class's own text:
+ * full-width `，` and `。` in Chinese (`style.xml:335-356`), `,` and `.` in
+ * English. In an address or e-mail field the class's `uri_adapter_symbol`
+ * replaces the pair with `"/"` and `"."`.
  */
 internal object PunctuationKeyPolicy {
     data class Spec(
+        val merged: String,
+        val mergedCorner: String,
         val comma: String,
         val period: String,
     )
 
-    private val CHINESE = Spec(comma = "，", period = "。")
-    private val ENGLISH = Spec(comma = ",", period = ".")
+    private val CHINESE = Spec(merged = "，", mergedCorner = "。", comma = "，", period = "。")
+    private val ENGLISH = Spec(merged = ".", mergedCorner = ",", comma = ",", period = ".")
 
-    fun spec(english: Boolean): Spec = if (english) ENGLISH else CHINESE
+    /** The address-field marks, from `uri_adapter_symbol` on both symbol keys. */
+    private const val URI_COMMA = "/"
+
+    fun spec(english: Boolean, uriField: Boolean = false): Spec {
+        val base = if (english) ENGLISH else CHINESE
+        // The merged key carries no uri_adapter_symbol, so it keeps its marks.
+        return if (uriField) base.copy(comma = URI_COMMA, period = ".") else base
+    }
 }

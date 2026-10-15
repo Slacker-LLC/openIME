@@ -35,6 +35,24 @@ Replacement rules ("replace whatever can be replaced", add-only coverage):
 7. ``english-words.tsv``
    English completion word list from the decoded auxiliary table
    (lower / word / rank, sorted by lower; unranked rows are dropped).
+8. ``emoji/follow-keywords.tsv``
+   Association symbols per committed word from the reference's follow table
+   (word / symbol / symbol ..., tab separated).  The curated
+   ``emoji/keywords.tsv`` stays first in the app's merge, so it is never
+   overwritten.
+9. ``pinyin_reading_fixes.tsv``
+   Readings for words the reference's misread-word table (its
+   ``incorrectsyllable`` dictionary) reads differently from the merged base
+   table, one row per corrected reading (pinyin / text / weight).  Only the
+   differences are written: the table's other words already carry the right
+   reading.  The app loads this small file next to ``pinyin_phrases.tsv``,
+   so a correction never has to wait for the large local merge.
+10. ``poem/lines.tsv``
+   Lines of the reference's poetry dictionary (its ``sys_poem_gram`` table,
+   whose own UI text is 「关闭联想后，将不会推荐诗词、计算结果、emoji表情。」),
+   one row per line (pinyin syllables / line / the line that follows it in
+   its poem).  Lines shorter than four characters are dropped, and the app
+   only offers a line once the typed pinyin spells three of its syllables.
 
 Originals are backed up once to ``.local/doubao-import/originals/`` and a
 report is written to ``.local/doubao-import/report.json``.
@@ -47,6 +65,7 @@ import os
 import re
 import statistics
 import sys
+import unicodedata
 from pathlib import Path
 
 HAN_RE = re.compile(
@@ -64,6 +83,9 @@ STROKE_CODE_RE = re.compile(r"^[hspnz]{1,64}$")
 ENGLISH_WORD_RE = re.compile(r"^[A-Za-z][A-Za-z'\-]{0,31}$")
 MAX_SYLLABLES = 10
 MAX_WEIGHT = 20_000_000
+# A poetry line shorter than this is not worth recommending: two or three
+# characters are ordinary words, and every one of them would match.
+POEM_MIN_CHARS = 4
 
 
 def parse_rime(path: Path):
@@ -165,6 +187,101 @@ def write_rows(path: Path, header, rows):
         for row in rows:
             f.write(row[3] + "\n")
     os.replace(tmp, path)
+
+
+def toneless(syllable: str) -> str:
+    """`nuó` -> `nuo`, the spelling the Rime tables use.
+
+    A front rounded vowel keeps its diaeresis in the tonic vowel, but the
+    tables spell that syllable with ``v`` (``lǚ`` is ``lv``, never ``lu``),
+    so the diaeresis has to survive the tone marks.
+    """
+    out = []
+    for character in syllable:
+        if character in "üǖǘǚǜ":  # ü ǖ ǘ ǚ ǜ
+            out.append("v")
+            continue
+        out.append("".join(c for c in unicodedata.normalize("NFD", character)
+                           if not unicodedata.combining(c)))
+    return "".join(out)
+
+
+def build_reading_fixes(src: Path, base_entries, assets: Path, report):
+    """Write pinyin_reading_fixes.tsv from the reference's misread-word table.
+
+    ``incorrectsyllable-decoded.tsv`` names a word and, per annotated
+    position, the reading that word needs.  Most of those words already carry
+    that reading in the merged base table; only the ones that do not are
+    written out, as the word's existing pinyin with the annotated positions
+    replaced.  The app reads this file directly, so the corrections reach
+    candidates without a rerun of the large tables.
+    """
+    path = src / "incorrectsyllable-decoded.tsv"
+    if not path.is_file():
+        report["reading_fixes"] = {"skipped": "incorrectsyllable-decoded.tsv not found"}
+        return
+    entries_by_word = {}
+    for text, pinyin, weight, _ in base_entries:
+        if len(text) < 2:
+            continue
+        syllables = tuple(pinyin.split())
+        if len(syllables) == len(text):
+            entries_by_word.setdefault(text, []).append((syllables, weight))
+
+    rows = {}
+    records = satisfied = unknown = 0
+    with io.open(path, encoding="utf-8") as f:
+        next(f)
+        for line in f:
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) < 4:
+                continue
+            word, notes = parts[2], parts[3]
+            wanted = {}
+            for token in notes.split():
+                position, reading = token.split(":", 1)
+                wanted[int(position)] = toneless(reading)
+            if not HAN_RE.match(word) or not wanted or len(word) < 2:
+                continue
+            records += 1
+            entries = entries_by_word.get(word)
+            if not entries:
+                unknown += 1
+                continue
+            if any(all(syllables[i] == reading for i, reading in wanted.items())
+                   for syllables, _ in entries):
+                satisfied += 1
+                continue
+            syllables, weight = max(entries, key=lambda e: e[1])
+            fixed = [syllables[i] if i < len(syllables) else "" for i in range(len(syllables))]
+            for position, reading in wanted.items():
+                if position < len(fixed):
+                    fixed[position] = reading
+            text = " ".join(fixed)
+            if not PINYIN_RE.match(text):
+                continue
+            key = (text, word)
+            rows[key] = max(rows.get(key, 0), weight)
+
+    if not rows:
+        report["reading_fixes"] = {"records": records, "written": 0}
+        return
+    out = assets / "pinyin_reading_fixes.tsv"
+    tmp = out.with_suffix(out.suffix + ".tmp")
+    with io.open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        f.write("# Readings from the reference's misread-word table, where the merged\n")
+        f.write("# tables read the word differently.  Generated by scripts/import_doubao_data.py.\n")
+        for (pinyin, word), weight in sorted(rows.items()):
+            f.write("%s\t%s\t%d\n" % (pinyin.replace(" ", ""), word, weight))
+    os.replace(tmp, out)
+    report["reading_fixes"] = {
+        "records": records,
+        "already_correct": satisfied,
+        "word_not_in_base": unknown,
+        "written": len(rows),
+    }
+    print("reading fixes: %d rows written (%d records, %d already correct, %d words unknown)"
+          % (len(rows), records, satisfied, unknown))
 
 
 def build_wubi_dict(src: Path, rime: Path, report):
@@ -292,6 +409,158 @@ def build_english_asset(src: Path, assets: Path, report):
     report["english"] = {"entries": len(best), "source_rows": total}
 
 
+def build_emoji_association_asset(src: Path, assets: Path, report):
+    """Generate emoji/follow-keywords.tsv: word <tab> symbol <tab> symbol ...
+
+    follow_dict.dat holds the association lists the reference shows after a
+    word is committed: the key is the committed word, the first list is the
+    symbols that go with it (中国 -> 🇨🇳, 火 -> 🔥).  The decoded TSV in the
+    teardown joins that list with '|', which the file itself does not treat as
+    a separator — one of its rows *is* the '|' symbol — so read the raw table
+    out of the APK instead (structure: DECODE-BATCH-C.md §3).
+
+    Items are tab separated here so a kaomoji with a space in it survives as
+    one chip. The curated emoji/keywords.tsv stays the first table the app
+    reads, so a keyword both files carry keeps its curated emoji.
+    """
+    apk = src / "base.apk"
+    if not apk.is_file():
+        report["emoji_association"] = {"skipped": "base.apk not found"}
+        return
+    import struct
+    import zipfile
+
+    with zipfile.ZipFile(apk) as archive:
+        blob = archive.read("assets/dict/84ac6a563f50")
+    head = struct.unpack("<16I", blob[:64])
+    if head[0] != 12037 or head[2] != 0x30 or head[3] != len(blob):
+        report["emoji_association"] = {"skipped": "unexpected follow_dict header"}
+        return
+    count = head[4]
+    index = blob[head[5]:head[5] + head[6]]
+    data = blob[head[8]:head[8] + head[9]]
+    nodes = [struct.unpack("<HII", index[i * 10:i * 10 + 10]) for i in range(count)]
+
+    # Breadth-first node order: a node's children are the index rows between
+    # its own first_child and the next node's, so one forward pass writes
+    # every key as the parent's key plus the node's UTF-16 code unit.
+    keys = {0: ""}
+    for i in range(count - 1):
+        begin, end = nodes[i][1], nodes[i + 1][1]
+        parent = keys.get(i)
+        if parent is None or begin >= end:
+            continue
+        for child in range(begin, min(end, count)):
+            keys[child] = parent + chr(nodes[child][0])
+
+    rows = {}
+    bad = 0
+    for i in range(1, count):
+        word = keys.get(i)
+        if word is None:  # the last index row is the trie's sentinel
+            continue
+        offset = nodes[i][2]
+        stop = nodes[i + 1][2] if i + 1 < count else len(data)
+        block = data[offset:stop]
+        if not block:
+            continue
+        cursor = 4
+        symbols = []
+        (n1,) = struct.unpack("<H", block[cursor:cursor + 2])
+        cursor += 2
+        for _ in range(n1):
+            (length,) = struct.unpack("<H", block[cursor:cursor + 2])
+            cursor += length + 2
+            if length % 2 or cursor > len(block):
+                bad += 1
+                break
+            symbols.append(block[cursor - length:cursor].decode("utf-16-le"))
+        if not symbols:
+            continue
+        rows[word] = [item for item in symbols if item and "\t" not in item]
+
+    out = assets / "emoji" / "follow-keywords.tsv"
+    tmp = out.with_suffix(".tsv.tmp")
+    with io.open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        f.write("# Association symbols per committed word, from the reference's follow_dict.dat\n")
+        f.write("# (local build data). First column is the word, the rest are its symbols,\n")
+        f.write("# tab separated so a symbol may contain a space. See DECODE-BATCH-C.md §3.\n")
+        for word in sorted(rows):
+            f.write("%s\t%s\n" % (word, "\t".join(rows[word])))
+    os.replace(tmp, out)
+    report["emoji_association"] = {
+        "entries": len(rows),
+        "symbols": sum(len(v) for v in rows.values()),
+        "bad_blocks": bad,
+    }
+
+
+def build_poems(src: Path, assets: Path, report):
+    """Write poem/lines.tsv from the reference's poetry dictionary.
+
+    ``poem-decoded.tsv`` carries every line of the reference's ``sys_poem_gram``
+    table (5,966 lines) with the syllables it is typed by, and
+    ``poem-assoc.tsv`` the line that follows it in its own poem.  The app
+    offers a line as a candidate as soon as the typed pinyin spells three of
+    its syllables, so only lines that read cleanly are useful: four Han
+    characters or more, one syllable per character, no punctuation inside.
+
+    The following line is written next to its own line so a whole line the
+    user typed out can be continued (`春眠不觉晓` -> `处处闻啼鸟`).
+    """
+    decoded, assoc = src / "poem-decoded.tsv", src / "poem-assoc.tsv"
+    if not decoded.is_file():
+        report["poems"] = {"skipped": "poem-decoded.tsv not found"}
+        return
+
+    texts, rows, by_id = {}, {}, {}
+    with io.open(decoded, encoding="utf-8") as f:
+        next(f)
+        for line in f:
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) < 8:
+                continue
+            _, _, line_id, nchar, nsyl, _, syllables, text = parts[:8]
+            syllables = syllables.strip('"').split()
+            texts[int(line_id)] = text
+            if (int(nchar) < POEM_MIN_CHARS or len(syllables) != int(nchar)
+                    or not all(s.isalpha() for s in syllables) or not HAN_RE.match(text)):
+                continue
+            key = (tuple(syllables), text)
+            rows[key] = ""
+            by_id[int(line_id)] = key
+
+    if assoc.is_file():
+        with io.open(assoc, encoding="utf-8") as f:
+            next(f)
+            for line in f:
+                parts = line.rstrip("\n").split("\t")
+                if len(parts) < 8 or parts[4] != "0":
+                    continue  # one entry per group is enough: the nearest line
+                key = by_id.get(int(parts[2]))
+                refs = [int(x) for x in parts[6].split()]
+                follow = texts.get(refs[0]) if refs else None
+                if key is not None and follow and HAN_RE.match(follow):
+                    rows[key] = follow
+
+    if not rows:
+        report["poems"] = {"written": 0}
+        return
+    out = assets / "poem" / "lines.tsv"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_suffix(out.suffix + ".tmp")
+    with io.open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        f.write("# Lines of the reference's poetry dictionary (sys_poem_gram), the\n")
+        f.write("# syllables they are typed by, and the line that follows each one.\n")
+        f.write("# Generated by scripts/import_doubao_data.py.\n")
+        for (syllables, text), follow in sorted(rows.items()):
+            f.write("%s\t%s\t%s\n" % (" ".join(syllables), text, follow))
+    os.replace(tmp, out)
+    report["poems"] = {"lines": len(rows), "continued": sum(1 for v in rows.values() if v)}
+    print("poems: %d lines written (%d with a following line)"
+          % (len(rows), sum(1 for v in rows.values() if v)))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--repo", default=str(Path(__file__).resolve().parent.parent))
@@ -299,6 +568,10 @@ def main():
     ap.add_argument("--min-phrase-weight", type=int, default=100_000)
     ap.add_argument("--max-phrases", type=int, default=120_000)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--reading-fixes-only", action="store_true",
+                    help="write pinyin_reading_fixes.tsv and stop, without rewriting the tables")
+    ap.add_argument("--poems-only", action="store_true",
+                    help="write poem/lines.tsv and stop, without rewriting the tables")
     args = ap.parse_args()
 
     repo = Path(args.repo)
@@ -335,6 +608,22 @@ def main():
     char_pairs = set((t, p) for t, p, _, _ in char_entries)
     report["ice_base_entries"] = len(base_entries)
     report["ice_char_entries"] = len(char_entries)
+
+    print("[1b/5] write reading fixes ...")
+    if not args.dry_run:
+        build_reading_fixes(src, base_entries, assets, report)
+    if args.reading_fixes_only:
+        (repo / ".local" / "doubao-import" / "report.json").write_text(
+            json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        return
+
+    print("[1c/5] write poem lines ...")
+    if not args.dry_run:
+        build_poems(src, assets, report)
+    if args.poems_only:
+        (repo / ".local" / "doubao-import" / "report.json").write_text(
+            json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        return
 
     print("[2/5] read Doubao lexicon ...")
     doubao = []  # (text, pinyin, score)
@@ -458,12 +747,14 @@ def main():
                 f.write("%s\t%s\n" % (py, "".join(sorted(existing[py], key=ord))))
         os.replace(tmp, chars_path)
 
-    print("[6/8] build wubi86 dictionary ...")
+    print("[6/9] build wubi86 dictionary ...")
     build_wubi_dict(src, rime, report)
-    print("[7/8] build handwriting stroke asset ...")
+    print("[7/9] build handwriting stroke asset ...")
     build_handwriting_asset(src, assets, doubao, report)
-    print("[8/8] build English word list ...")
+    print("[8/9] build English word list ...")
     build_english_asset(src, assets, report)
+    print("[9/9] build emoji association keywords ...")
+    build_emoji_association_asset(src, assets, report)
 
     sample = {}
     for probe in ("上海", "伤害", "你好", "我想", "微信"):
@@ -489,6 +780,9 @@ def main():
               % (report["handwriting"]["codes"], report["handwriting"]["entries"]))
     if "entries" in report.get("english", {}):
         print("english: %d words" % report["english"]["entries"])
+    if "entries" in report.get("emoji_association", {}):
+        print("emoji association: %d words / %d symbols"
+              % (report["emoji_association"]["entries"], report["emoji_association"]["symbols"]))
     print("mapped sanity:", sample)
     print("report: %s" % report_path)
     if args.dry_run:

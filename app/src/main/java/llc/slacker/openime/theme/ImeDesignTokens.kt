@@ -33,7 +33,16 @@ internal object ImeGeometryTokens {
 
     /** Portrait key row height on the reference design's 390-unit canvas. */
     const val KEY_ROW_HEIGHT_DP = 54
-    const val KEY_RADIUS_DP = 8
+
+    /**
+     * A key cap's corner radius. Every key class in the reference asks for the
+     * same round: `cls_bk_white_circle` and `cls_bk_gray_circle` both set
+     * `bkround="6"` (`style.xml:224-227`, `:276-281`), the symbol and history
+     * cells round at 6 (`style.xml:1065`, `:1082`, `:1111`), the three back keys
+     * spell out 6 as well (`style.xml:848`, `:854`, `:858`), and so does the
+     * long-press bubble's own button (`style.xml:1137`).
+     */
+    const val KEY_RADIUS_DP = 6
     const val CONTROL_RADIUS_DP = 12
     const val CARD_RADIUS_DP = 16
     const val BADGE_RADIUS_DP = 8
@@ -47,7 +56,6 @@ internal object ImeGeometryTokens {
     const val FIELD_HEIGHT_DP = 56
     const val PRIMARY_ROW_HEIGHT_DP = 52
     const val SETTING_ROW_HEIGHT_DP = 56
-    const val TOOL_CARD_HEIGHT_DP = 80
     const val VOICE_CONTROL_HEIGHT_DP = TOUCH_TARGET_DP
     // iOS switch geometry: a 51x31 track and a 27 knob, so the knob sits 2
     // from every edge, on and off alike.
@@ -63,7 +71,37 @@ internal object ImeGeometryTokens {
     const val KEY_GAP_DP = 6
     const val KEY_ROW_GAP_DP = KEY_GAP_DP
     const val KEY_SIDE_MARGIN_DP = 2
+
+    /** All boards keep the original six-unit gap between key caps. */
+    const val KEY_MARGIN_X_DP = 3f
+    const val KEY_MARGIN_Y_DP = 3f
+    const val NINE_KEY_MARGIN_X_DP = 3f
+    const val NINE_KEY_MARGIN_Y_DP = 3f
+    const val KEY_INNER_MARGIN_DP = 3f
+
+    /**
+     * The expanded candidates page insets its content 2.5 units a side,
+     * whatever board opened it (`cls_input_kbd_morecand_inset_adaptive`
+     * `inset="2.5,0,2.5,0"`, `style.xml:731-733`, on the page itself at
+     * `layout/input_more_cand.xml:3`), and draws no top or bottom inset at all.
+     * The board area's own insets (`cls_input_kbd_inset_adaptive`, style.xml:727-729,
+     * and `cls_input_kbd9_inset_adaptive`, :736-738) are deliberately not ported:
+     * they resize the portrait keys, which the owner wants unchanged.
+     */
+    const val MORE_CAND_SIDE_INSET_DP = 2.5f
     const val KEY_POPUP_HEIGHT_DP = 52
+    /**
+     * The long-press bubble is rounder than a key and carries no edge of its
+     * own: `cls_fusiyin_bubble_container` rounds at 8 and sets only a shadow
+     * (`style.xml:1128-1133`).
+     */
+    const val KEY_POPUP_RADIUS_DP = 8
+    /**
+     * The tip that shows the pressed key enlarged is a class of its own, and
+     * rounder: `cls_touch_tip_button` rounds at 12 with its own small shadow
+     * (`style.xml:1168-1173`).
+     */
+    const val TOUCH_TIP_RADIUS_DP = 12
     const val KEY_POPUP_MIN_WIDTH_DP = 40
     const val KEY_POPUP_WIDTH_SCALE = 1.08f
     const val KEY_POPUP_VERTICAL_GAP_DP = 8
@@ -115,12 +153,35 @@ internal object ImeTypographyTokens {
     const val CAPTION_SP = 11f
     const val SMALL_SP = 12f
     const val BODY_SP = 14f
+
+    /** The open Pinyin string above the candidates (`comp_font` size 40). */
+    const val COMPOSITION_SP = 13f
+
+    /** The pressed key shown enlarged: `key_touch_tip`, 87 units (`style.xml:129`). */
+    const val TOUCH_TIP_SP = 29f
+
+    /** One choice inside the long-press bubble: `fi_fusiyin_bubble_button`, 60 units. */
+    const val POPUP_ITEM_SP = 20f
     const val TITLE_SP = 16f
     const val CANDIDATE_SP = 18f
     const val GLYPH_SP = 20f
     const val KEY_LETTER_SP = 21f
     /** Letters on the 26-key surface, one step below [KEY_LETTER_SP]. */
     const val KEY_LETTER_COMPACT_SP = 19f
+
+    /**
+     * English letters on the 26-key surface keep a face of their own: the
+     * reference sets `key_letter_english` (60 units) on the lowercase rows and
+     * the pinyin face `key_letter` (57) on the shifted ones
+     * (`input_kbd_english26.xml:51`).
+     */
+    const val KEY_LETTER_ENGLISH_SP = 20f
+
+    /** Nine-key letters: `key_letter9`, 48 units over the reference's step of 3. */
+    const val NINE_KEY_LETTER_SP = 16f
+
+    /** Every digit the reference draws, nine-key or numeric: `key_number9`, 54 units. */
+    const val KEY_NUMBER_SP = 18f
     const val SYMBOL_SP = 24f
     const val DISPLAY_SP = 28f
 
@@ -176,7 +237,7 @@ enum class ImeTheme(val key: String, val label: String) {
         val panelHeadBackground: Int,
         val destructive: Int = Color.parseColor("#F4212E"),
         val success: Int = Color.parseColor("#1F8A4C"),
-        val onAccent: Int = Color.parseColor("#07131D"),
+        val onAccent: Int = Color.WHITE,
         val textSecondaryRole: Int? = null,
     ) {
         val canvas: Int get() = keyboardBackground
@@ -201,7 +262,7 @@ enum class ImeTheme(val key: String, val label: String) {
         }
         return if (useDark) {
             Tokens(
-                c("#6EC3F7"), c("#1C1C1E"), c("#242426"), c("#242426"), c("#F2F2F7"),
+                c("#2D6FD6"), c("#1C1C1E"), c("#242426"), c("#242426"), c("#F2F2F7"),
                 c("#3A3A3C"), c("#F2F2F7"), c("#AEAEB2"), c("#2C2C2E"), c("#F2F2F7"), c("#4A4A4D"),
                 c("#242426"), c("#48484A"), c("#2C2C2E"), c("#1C1C1E"), c("#242426"),
                 c("#3A3A3C"), c("#F2F2F7"), c("#2C2C2E"), c("#F2F2F7"), c("#303032"), c("#242426"),
@@ -209,7 +270,7 @@ enum class ImeTheme(val key: String, val label: String) {
             )
         } else {
             Tokens(
-                c("#1D9BF0"), c("#D5D8DF"), c("#EFF0F4"), c("#EFF0F4"), c("#1F2023"),
+                c("#1668D0"), c("#D5D8DF"), c("#EFF0F4"), c("#EFF0F4"), c("#1F2023"),
                 c("#FFFFFF"), c("#1C1C1E"), c("#6D6D72"), c("#C5C9D2"), c("#2C2D31"), c("#DDE1E7"),
                 c("#F2F3F5"), c("#B7BCC5"), c("#C5C9D2"), c("#F1F2F4"), c("#F8F9FA"),
                 c("#FFFFFF"), c("#1C1C1E"), c("#C5C9D2"), c("#2C2D31"), c("#FFFFFF"), c("#E4E7EC"),
@@ -271,6 +332,145 @@ internal object ImeSurfacePolicy {
             base,
             if (isDark(tokens)) 0.12f else 0.08f,
         )
+
+    /**
+     * The 1-unit line a key cap sits on: every key class in the reference sets
+     * `shadow_y_offset="1"` with `keybutton_white_shadow` or
+     * `keybutton_gray_shadow` — black at 30% on the light skin, black at 40% on
+     * the dark one (`style.xml:224-227`, `:276-281`;
+     * `values/colors.xml:27-28`, `values/dark_colors.xml:23-24`).
+     */
+    /**
+     * A candidate cell fills with white when it is pressed: `canditem_pushedbk`
+     * is opaque white on the light skin and white at 8% on the dark one
+     * (`values/colors.xml:81`, `values/dark_colors.xml:79`). The cell under the
+     * finger brightens, the way the key classes brighten a pressed key.
+     */
+    fun candidatePressed(tokens: ImeTheme.Tokens): Int =
+        if (isDark(tokens)) {
+            ImeDrawableFactory.blend(tokens.keyText, tokens.candidateBackground, 0.08f)
+        } else {
+            tokens.lightKeyBackground
+        }
+
+    /**
+     * An expanded-candidate cell presses the other way: `morecands_button_pushedbk`
+     * is black at 6% on the light skin and black at 4% on the dark one — a shade
+     * both ways, never a lift (`values/colors.xml:117`,
+     * `values/dark_colors.xml:111`).
+     */
+    fun moreCandsPressed(tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.blend(
+            Color.BLACK,
+            tokens.candidateBackground,
+            if (isDark(tokens)) 0.04f else 0.06f,
+        )
+
+    /**
+     * A symbol-category tab is a neutral pill, never an accent-tinted one: the
+     * reference's own tab class wears no fill at rest and takes
+     * `symbol_option_pushedbk` when it is pressed or chosen — black at 6% on the
+     * light skin, white at 9% on the dark one (`cls_input_kbd_symbol_option`,
+     * `style.xml:715-724`, `values/colors.xml:105`,
+     * `values/dark_colors.xml:100`). The fill is translucent in the reference,
+     * so it is handed over translucent here and lies on whatever the tab row
+     * sits on.
+     */
+    fun symbolTabFill(tokens: ImeTheme.Tokens): Int =
+        if (isDark(tokens)) Color.parseColor("#17FFFFFF") else Color.parseColor("#0F000000")
+
+    /** The tab's label: 60% at rest, 85% when chosen (`symbol_option_text` /
+     *  `symbol_option_selectedtext`, `values/colors.xml:16-17`). */
+    fun symbolTabText(tokens: ImeTheme.Tokens, selected: Boolean): Int =
+        ImeDrawableFactory.withAlpha(tokens.keyText, if (selected) 217 else 153)
+
+    /**
+     * A row of the reading or symbol rail sits flat on the rail's gray panel and
+     * fills with the white key's own colour when pressed: the reference's
+     * `cls_vertical_symbol_list_button` asks for `keybutton_bk`
+     * (`style.xml:1025-1030`, `values/colors.xml:19`,
+     * `values/dark_colors.xml:18`).
+     */
+    fun railItemPressed(tokens: ImeTheme.Tokens): Int = tokens.lightKeyBackground
+
+    /**
+     * The accent key — 确定/发送/搜索 — presses the way a white key looks: the
+     * reference fills its action key with `theme_color` and swaps that for
+     * `action_button_pushedbk` under the finger, white on the light skin and
+     * white at 12% on the dark one, with the label moving to
+     * `action_button_pushedtext` (black at 85%) on the light skin
+     * (`cls_button_enter`, `style.xml:810-818`, `values/colors.xml:35-38`,
+     * `values/dark_colors.xml:34-36`). Its rounded back key presses the same
+     * way through `cls_bk_theme_circle` (`style.xml:282-287`).
+     */
+    fun actionKeyPressed(tokens: ImeTheme.Tokens): Int =
+        if (isDark(tokens)) {
+            ImeDrawableFactory.blend(tokens.keyText, tokens.keyboardBackground, 0.12f)
+        } else {
+            tokens.lightKeyBackground
+        }
+
+    /**
+     * The corner glyph on a key — `keybutton_text_2`, black at 40% on the light
+     * skin and white at 40% on the dark one (`cls_keybutton_fusiyin`,
+     * `style.xml:207-212`; `values/colors.xml:14`, `values/dark_colors.xml:13`).
+     */
+    fun keyHint(tokens: ImeTheme.Tokens): Int = ImeDrawableFactory.withAlpha(tokens.keyText, 102)
+
+    /**
+     * A face that presses the way every surface in the reference does: the skin
+     * writes each press colour as black at 6% on the light skin and white at 4%
+     * on the dark one, laid over the ground the face sits on
+     * (`toolbar_idle_button_pushedbk`, `values/colors.xml:45`,
+     * `values/dark_colors.xml:43`; `setting_button_pushedbk`,
+     * `values/colors.xml:89`, `values/dark_colors.xml:87`). A pressed tile or
+     * toolbar key therefore sinks toward its page on both skins, where a shade
+     * derived from the resting colour brightens it on the dark one.
+     */
+    fun pressedOnGround(ground: Int, tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.blend(
+            if (isDark(tokens)) Color.WHITE else Color.BLACK,
+            ground,
+            if (isDark(tokens)) 0.04f else 0.06f,
+        )
+
+    /** A card or tile that presses onto the page it lies on. */
+    fun cardPressed(tokens: ImeTheme.Tokens): Int =
+        pressedOnGround(tokens.keyboardBackground, tokens)
+
+    /** Toolbar actions stay neutral, with enough weight to read on the toolbar. */
+    fun toolbarIcon(tokens: ImeTheme.Tokens): Int = ImeDrawableFactory.withAlpha(tokens.keyText, 217)
+
+    /**
+     * The panel header's close key. Both pages the reference gives a header —
+     * the tools page and the keyboard switcher — open with one, drawn as a
+     * circle filled `toolbar_idle_button_bk`: white at 80% on the light skin
+     * and white at 12% on the dark one (`cld_toolbar_close_button`,
+     * `style.xml:266-273`; `input_settings.xml:6`, `input_switch_keyboard.xml:6`;
+     * `values/colors.xml:43`, `values/dark_colors.xml:41`). Its press is the
+     * skin's usual one — `toolbar_idle_button_pushedbk`, black at 6% on the
+     * light skin and white at 4% on the dark one (`values/colors.xml:45`,
+     * `values/dark_colors.xml:43`) — the same shade [cardPressed] lays on the
+     * header ground.
+     */
+    fun headerCloseKey(tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.blend(
+            Color.WHITE,
+            tokens.keyboardBackground,
+            if (isDark(tokens)) 0.12f else 0.8f,
+        )
+
+    /**
+     * The close key's glyph is `action_button_pushedtext`: black at 85% on the
+     * light skin and full white on the dark one, darker than the idle toolbar's
+     * own icon grey (`cld_toolbar_close_button`, `style.xml:266-273`;
+     * `values/colors.xml:38`, `values/dark_colors.xml:36`).
+     */
+    fun headerCloseIcon(tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.withAlpha(tokens.keyText, 217)
+
+    fun keyShadow(tokens: ImeTheme.Tokens): Int =
+        if (isDark(tokens)) Color.parseColor("#66000000") else Color.parseColor("#4D000000")
 
     fun primaryPressed(tokens: ImeTheme.Tokens): Int =
         adjustHslLightness(
@@ -344,6 +544,44 @@ internal object ImeSurfacePolicy {
     fun switchKnob(tokens: ImeTheme.Tokens): Int =
         if (isDark(tokens)) Color.parseColor("#F2F3F5") else Color.WHITE
 
+    /**
+     * The tip banner's pill: the reference fills it with `keybutton_bk`, opaque
+     * white on the light skin and white at 28% over the keyboard on the dark one
+     * (`values/colors.xml:19`, `values/dark_colors.xml:18`).
+     */
+    fun tipBackground(tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.blend(
+            Color.WHITE,
+            tokens.keyboardBackground,
+            if (isDark(tokens)) 0.28f else 1f,
+        )
+
+    /** The tip's close key, `toolbar_tip_close_button_bk` (black 4% / white 7% over the pill). */
+    fun tipCloseBackground(tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.blend(
+            if (isDark(tokens)) Color.WHITE else Color.BLACK,
+            tipBackground(tokens),
+            if (isDark(tokens)) 0.07f else 0.04f,
+        )
+
+    /** Its pressed face, `toolbar_tip_close_button_pushedbk` (black 14% / white 17%). */
+    fun tipClosePressed(tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.blend(
+            if (isDark(tokens)) Color.WHITE else Color.BLACK,
+            tipBackground(tokens),
+            if (isDark(tokens)) 0.17f else 0.14f,
+        )
+
+    /**
+     * The long-press bubble's fill, `fusiyin_bubble_container_bk`: an opaque
+     * white on the light skin and an opaque gray (96,96,96) on the dark one —
+     * not the keyboard's translucent white, which would let the key behind the
+     * bubble show through the letter on it (`values/colors.xml:172`,
+     * `values/dark_colors.xml:162`).
+     */
+    fun keyPopupBackground(tokens: ImeTheme.Tokens): Int =
+        if (isDark(tokens)) Color.parseColor("#606060") else Color.WHITE
+
     /** Inset separator between rows of one grouped card. */
     fun hairline(tokens: ImeTheme.Tokens): Int =
         ImeDrawableFactory.blend(tokens.keyText, tokens.toolCardBackground, if (isDark(tokens)) 0.10f else 0.08f)
@@ -367,6 +605,65 @@ internal object ImeSurfacePolicy {
         if (isDark(tokens)) ImeDrawableFactory.blend(tokens.keyText, controlTrack(tokens), 0.18f)
         else tokens.toolCardBackground
 
+    /**
+     * The expanded page's list sheet, laid over the page it opens on: the
+     * reference names it `morecands_list_bk` — white at 40% on the light skin
+     * and white at 6% on the dark one — with its 2-unit edge
+     * `morecands_list_border` (black 6% / white 10%) (`cls_morecand_bk`,
+     * `style.xml:1162-1166`, `values/colors.xml:121-123`,
+     * `values/dark_colors.xml:115-117`). Each candidate cell's hairline is the
+     * same border colour at 1 unit (`cls_morecands_button`, `style.xml:1141-1149`).
+     */
+    fun moreCandsSheet(ground: Int, tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.blend(Color.WHITE, ground, if (isDark(tokens)) 0.06f else 0.4f)
+
+    fun moreCandsSheetEdge(sheet: Int, tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.blend(
+            if (isDark(tokens)) Color.WHITE else Color.BLACK,
+            sheet,
+            if (isDark(tokens)) 0.10f else 0.06f,
+        )
+
+    /**
+     * The 全部 / 单字 group's own pill, `morecands_filter_container_bk`: black
+     * at 4% on the light skin and white at 6% on the dark one
+     * (`cls_morecand_filter_containder`, `style.xml:1157-1159`,
+     * `values/colors.xml:124`, `values/dark_colors.xml:118`).
+     */
+    fun filterTrack(ground: Int, tokens: ImeTheme.Tokens): Int =
+        ImeDrawableFactory.blend(
+            if (isDark(tokens)) Color.WHITE else Color.BLACK,
+            ground,
+            if (isDark(tokens)) 0.06f else 0.04f,
+        )
+
+    /**
+     * The chosen option inside that group: opaque white on the light skin, and
+     * black at 24% over the group's pill on the dark one, where the reference's
+     * chosen chip sinks into its track (`filter_button_selectedbk`,
+     * `values/colors.xml:125`, `values/dark_colors.xml:119`).
+     */
+    fun filterChip(track: Int, tokens: ImeTheme.Tokens): Int =
+        if (isDark(tokens)) ImeDrawableFactory.blend(Color.BLACK, track, 0.24f)
+        else Color.WHITE
+
+    /** The chosen option's label: near-black on the light skin, white on the dark one. */
+    fun filterChipText(tokens: ImeTheme.Tokens): Int =
+        if (isDark(tokens)) Color.WHITE else Color.parseColor("#141414")
+
+    /**
+     * The expanded page's corner backspace: the reference gives that key its own
+     * opaque greys, `morecands_backspace_bk` — rgb(233,233,233) on the light
+     * skin, rgb(59,59,59) on the dark one — pressing to rgb(193,193,193) /
+     * rgb(42,42,42) (`input_more_cand.xml:22-26`, `values/colors.xml:127-128`,
+     * `values/dark_colors.xml:121-122`).
+     */
+    fun moreCandsBackspace(tokens: ImeTheme.Tokens): Int =
+        if (isDark(tokens)) Color.parseColor("#3B3B3B") else Color.parseColor("#E9E9E9")
+
+    fun moreCandsBackspacePressed(tokens: ImeTheme.Tokens): Int =
+        if (isDark(tokens)) Color.parseColor("#2A2A2A") else Color.parseColor("#C1C1C1")
+
     fun destructiveText(tokens: ImeTheme.Tokens): Int {
         val surface = destructiveSurface(tokens)
         return if (ImeContrastPolicy.contrastRatio(tokens.destructive, surface) >= 4.5) {
@@ -381,6 +678,26 @@ internal object ImeSurfacePolicy {
             tokens.border,
             if (isDark(tokens)) 150 else 180,
         )
+
+    /**
+     * The first candidate's own colour. The light skin gives it an accent blue
+     * (`first_cand_text_color`, `values/colors.xml:4`), but the dark skin's
+     * entry for the same name is white at 95% — exactly `canditem_text`
+     * (`values/dark_colors.xml:4`, `:75`) — so there the first candidate is set
+     * apart by its weight alone, not by a tint.
+     */
+    fun firstCandidateText(tokens: ImeTheme.Tokens): Int =
+        if (isDark(tokens)) tokens.candidateText else selectedText(tokens)
+
+    /**
+     * The line between the composing strip and the keys. The reference does not
+     * stroke it with a key colour: `cls_candidate_split` is filled with
+     * `@color/canditem_split` (`style.xml:504-506`), which is black at 12% on the
+     * light skin (`values/colors.xml:83`) and white at 16% on the dark one
+     * (`values/dark_colors.xml:81`), so it reads as a gap in the surface.
+     */
+    fun candidateSplit(tokens: ImeTheme.Tokens): Int =
+        if (isDark(tokens)) Color.parseColor("#29FFFFFF") else Color.parseColor("#1F000000")
 }
 
 /** Shared WCAG contrast decisions for every native surface. */

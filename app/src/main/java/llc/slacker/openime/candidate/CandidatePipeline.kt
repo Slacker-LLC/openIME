@@ -70,6 +70,8 @@ class CandidatePipeline internal constructor(
     private val pinyinEngine: PinyinEngine? = null,
     /** 当前启用的模糊音规则（关掉时为空集），引擎按规则展开候选。 */
     private val fuzzyRules: () -> Set<FuzzyRule> = { emptySet() },
+    /** 诗句联想；关掉联想时为空索引（见 [PoemIndex]）。 */
+    private val poemIndex: () -> PoemIndex = { PoemIndex.EMPTY },
 ) : CandidateResolver {
 
     /** True when the 26-key pinyin flow is served by the built-in engine. */
@@ -103,11 +105,14 @@ class CandidatePipeline internal constructor(
         fuzzy: Boolean,
     ): List<String> = when (mode) {
         KeyboardMode.PINYIN_26 -> if (pinyinEngine == null) {
-            pinyin26Candidates(composition, fuzzy)
+            withPoemLines(pinyin26Candidates(composition, fuzzy), composition)
         } else {
             // The built-in engine serves full pinyin and honours the enabled
             // fuzzy switches itself; exact readings rank above fuzzy ones.
-            pinyinEngine.candidates(composition, fuzzyRules = fuzzyRules())
+            withPoemLines(
+                pinyinEngine.candidates(composition, fuzzyRules = fuzzyRules()),
+                composition,
+            )
         }
         KeyboardMode.ENGLISH_26 -> englishCandidates(composition)
         KeyboardMode.PINYIN_9 -> if (composition.length <= 32) {
@@ -121,6 +126,18 @@ class CandidatePipeline internal constructor(
         // Double pinyin rides the Rime schema (chords expand to full pinyin there).
         KeyboardMode.DOUBLE_PINYIN -> engine.getCandidates(composition, fuzzy).take(MAX_CANDIDATES)
         KeyboardMode.DIGITS -> emptyList()
+    }
+
+    /**
+     * The poetry lines the composition spells, behind the engine's own
+     * candidates: a line never displaces a word, and a composition that
+     * happens to be a line often has no candidate at all, which is exactly
+     * where the line belongs.
+     */
+    private fun withPoemLines(candidates: List<String>, composition: String): List<String> {
+        val poems = poemIndex().suggestionsFor(composition)
+        if (poems.isEmpty()) return candidates
+        return (candidates + poems).distinct().take(MAX_CANDIDATES + PoemIndex.MAX_SUGGESTIONS)
     }
 
     private fun pinyin26Candidates(

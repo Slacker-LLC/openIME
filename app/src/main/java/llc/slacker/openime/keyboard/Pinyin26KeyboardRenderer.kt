@@ -5,6 +5,7 @@ import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
 import llc.slacker.openime.core.ShiftState
+import llc.slacker.openime.theme.ImeGeometryTokens
 import llc.slacker.openime.theme.ImeTypographyTokens
 import llc.slacker.openime.widget.ImeKeyView
 
@@ -43,6 +44,7 @@ internal class Pinyin26KeyboardRenderer(
     private val onEnter: () -> Unit,
     private val onSymbols: () -> Unit = {},
     private val splitLayout: () -> Boolean = { false },
+    private val uriField: () -> Boolean = { false },
 ) {
     fun render(
         english: Boolean,
@@ -61,11 +63,13 @@ internal class Pinyin26KeyboardRenderer(
             if (rowIndex == 2) {
                 row.addView(
                     shiftKey(shiftState),
-                    flexKeyParams(1.25f),
+                    flexKeyParams(EDGE_KEY_WEIGHT),
                 )
             }
 
             rowText.forEach { character ->
+                // The host already centres the nine-letter row at 90% width.
+                // Equal cells keep its letters on the same pitch as Q–P.
                 row.addView(
                     letterKey(character, english, shiftState),
                     flexKeyParams(),
@@ -73,20 +77,29 @@ internal class Pinyin26KeyboardRenderer(
             }
 
             if (rowIndex == 2) {
-                row.addView(createBackspaceKey(), flexKeyParams(1.25f))
+                // Keep the same cap gap as the adjacent letter keys.
+                row.addView(
+                    createBackspaceKey().apply {
+                        setReferenceMargins(
+                            left = ImeGeometryTokens.KEY_INNER_MARGIN_DP,
+                            right = ImeGeometryTokens.KEY_MARGIN_X_DP,
+                        )
+                    },
+                    flexKeyParams(EDGE_KEY_WEIGHT),
+                )
             }
             keyboardBody.addView(row, rowParams())
         }
 
         val weights = ProductionKeyPolicy.twentySixKeyBottomRowWeights(landscape)
+        val punctuation = PunctuationKeyPolicy.spec(english, uriField())
 
         val bottom = rowHost()
         bottom.addView(
             createKey("123", true, null, ImeTypographyTokens.BODY_SP, 0, onDigits),
             flexKeyParams(weights.leftOuter),
         )
-        // ，。 sits left of space and 中/英 right of it, next to the enter key.
-        bottom.addView(punctuationKey(english), flexKeyParams(weights.leftInner))
+        bottom.addView(punctuationKey(punctuation), flexKeyParams(weights.leftInner))
         bottom.addView(
             createSpaceVoiceKey("空格", onSpace),
             flexKeyParams(weights.space),
@@ -98,7 +111,7 @@ internal class Pinyin26KeyboardRenderer(
                 null,
                 ImeTypographyTokens.BODY_SP,
                 0,
-            ) { onModeSwitch() }.apply { tag = "key:mode" },
+            ) { onModeSwitch() }.apply { tag = modeKeyTag(english) },
             flexKeyParams(weights.rightInner),
         )
         bottom.addView(
@@ -136,12 +149,12 @@ internal class Pinyin26KeyboardRenderer(
         row {
             addView(fn("符") { onSymbols() }.apply { tag = "key-symbols" }, flexKeyParams(1f))
             addView(fn("123", onDigits), flexKeyParams(1f))
-            addView(punctuationKey(english), flexKeyParams(1f))
+            addView(punctuationKey(PunctuationKeyPolicy.spec(english, uriField())), flexKeyParams(1f))
             addView(createSpaceVoiceKey("空格", onSpace), flexKeyParams(2f))
             gap()
             addView(createSpaceVoiceKey("空格", onSpace), flexKeyParams(2f))
             addView(fn("。") { onCommitCharacter(if (english) "." else "。") }, flexKeyParams(1f))
-            addView(fn("中/英") { onModeSwitch() }.apply { tag = "key:mode" }, flexKeyParams(1f))
+            addView(fn("中/英") { onModeSwitch() }.apply { tag = modeKeyTag(english) }, flexKeyParams(1f))
             addView(
                 createKey(enterLabel, true, null, ImeTypographyTokens.BODY_SP, 0, onEnter).apply { tag = "key-enter" },
                 flexKeyParams(1f),
@@ -149,36 +162,42 @@ internal class Pinyin26KeyboardRenderer(
         }
     }
 
-    private fun punctuationKey(english: Boolean): ImeKeyView {
-        val spec = PunctuationKeyPolicy.spec(english)
+    private fun punctuationKey(spec: PunctuationKeyPolicy.Spec): ImeKeyView {
         // A character key, not a function key: only character keys carry corner hints.
-        return createKey(spec.comma, false, spec.period, ImeTypographyTokens.KEY_LETTER_COMPACT_SP, 0) {
-            onCommitCharacter(spec.comma)
+        return createKey(spec.merged, false, spec.mergedCorner, ImeTypographyTokens.KEY_LETTER_COMPACT_SP, 0) {
+            onCommitCharacter(spec.merged)
         }.apply {
             tag = "key-punctuation"
-            contentDescription = "${spec.comma}，长按输入${spec.period}"
+            contentDescription = "${spec.merged}，上滑或长按输入${spec.mergedCorner}"
             setSecondaryVisible(true)
             setSecondaryAlpha(1f)
+            // Keep the mark visible when the key or system font leaves less room.
+            allowLabelShrink()
+            // Up swipes the corner mark, as the reference keyboard does.
+            onSwipeUp = { onCommitCharacter(spec.mergedCorner) }
             setOnLongClickListener {
-                onCommitCharacter(spec.period)
+                onCommitCharacter(spec.mergedCorner)
                 true
             }
         }
     }
 
     private fun segmentKey(): ImeKeyView =
-        createKey("分词", true, "@#/", ImeTypographyTokens.BODY_SP, 0, onPinyinSegment).apply {
+        createKey("分词", true, null, ImeTypographyTokens.BODY_SP, 0, onPinyinSegment).apply {
+            // `cls_button_shift` draws the label alone: the reference's 分词 key
+            // carries no corner mark and no bubble (`style.xml:915-920`).
             tag = "key-segment"
-            contentDescription = "分词，长按输入@井号或斜杠"
-            setOnLongClickListener {
-                onShowChoicePopup(this, listOf("@", "#", "/"))
-                true
-            }
+            contentDescription = "分词"
         }
 
     private fun shiftKey(shiftState: ShiftState): ImeKeyView {
         val iconRes = EnglishShiftPolicy.icon(shiftState)
         return createKey("", true, null, null, iconRes, onShift).apply {
+            // Keep the original gap beside the letter column.
+            setReferenceMargins(
+                left = ImeGeometryTokens.KEY_MARGIN_X_DP,
+                right = ImeGeometryTokens.KEY_INNER_MARGIN_DP,
+            )
             tag = when (shiftState) {
                 ShiftState.LOWERCASE -> "key-shift"
                 ShiftState.SHIFT_ONCE -> "key-shift-active"
@@ -206,7 +225,14 @@ internal class Pinyin26KeyboardRenderer(
         }
         // The corner hint is a digit or symbol; swipe up or long press types it.
         val secondary = if (hintsEnabled()) LetterHintPolicy.hint(character, english) else null
-        return createKey(main, false, secondary, ImeTypographyTokens.KEY_LETTER_COMPACT_SP, 0) {
+        // English wears its own face while it is lowercase; the shift turns the
+        // key into the pinyin one, as the reference's two fonts do.
+        val textSize = if (english && shiftState == ShiftState.LOWERCASE) {
+            ImeTypographyTokens.KEY_LETTER_ENGLISH_SP
+        } else {
+            ImeTypographyTokens.KEY_LETTER_COMPACT_SP
+        }
+        return createKey(main, false, secondary, textSize, 0) {
             onLetter(base)
         }.apply {
             tag = "key:$base"
@@ -216,12 +242,10 @@ internal class Pinyin26KeyboardRenderer(
                 onSwipeUp = { onCommitCharacter(secondary) }
                 swipeUpEnabled = this@Pinyin26KeyboardRenderer.swipeUpEnabled
             }
-            // Long press opens a popup (other case, digit or mark): slide to one and
-            // lift to type it, as the Sogou and iFlytek keyboards do.
+            // Long press opens the letter in both cases: slide to one and lift to
+            // type it, as the reference keyboard does.
             setOnLongClickListener {
-                val upperShown = currentMainText.firstOrNull()?.isUpperCase() == true
-                val choices = LetterHintPolicy.longPressChoices(character, english, upperShown, hintsEnabled())
-                onShowChoicePopup(this, choices)
+                onShowChoicePopup(this, LetterHintPolicy.caseChoices(character))
                 true
             }
         }
@@ -248,6 +272,19 @@ internal class Pinyin26KeyboardRenderer(
 
     private companion object {
         const val SPLIT_GAP = 3.5f
+
+        /**
+         * The 中/英 key names which way it points. The reference draws its own
+         * wordmark in the accent on the English board, where the key leads back
+         * to Chinese (`cls_button_en2cn`'s `keyboard_current_english`,
+         * `style.xml:897-904`), and in the plain key text on the Chinese boards,
+         * where only the corner mark is dimmed (`cls_button_cn2en`,
+         * `style.xml:882-890`). The host's accessibility lookup reads both tags.
+         */
+        fun modeKeyTag(english: Boolean): String = if (english) "key:mode-en" else "key:mode"
+
+        /** Original Shift and backspace width relative to a letter. */
+        const val EDGE_KEY_WEIGHT = 1.25f
         val ROWS = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
     }
 }

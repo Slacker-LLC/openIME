@@ -161,8 +161,11 @@ class DisplayEnvironmentInstrumentedTest {
                 ) { keyboard ->
                     val clipped = allViews(keyboard)
                         .filterIsInstance<ImeKeyView>()
+                        // Only what the user can see counts: a key inside a panel
+                        // that is closed keeps whatever layout it was last given.
+                        .filter { it.isShown }
                         .filter { !it.mainLabelFits() }
-                        .map { "'${it.currentMainText}'" }
+                        .map { "${it.tag}'${it.currentMainText}'" }
                         .toList()
                     assertEquals("labels cut off at font scale $fontScale in $mode", emptyList<String>(), clipped)
                 }

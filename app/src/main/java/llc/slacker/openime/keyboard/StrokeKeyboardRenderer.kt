@@ -1,18 +1,17 @@
 package llc.slacker.openime.keyboard
 
 import android.content.Context
+import android.view.View
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import llc.slacker.openime.candidate.Stroke
 import llc.slacker.openime.theme.ImeTypographyTokens
 import llc.slacker.openime.widget.ImeKeyView
 
 /**
  * The 笔画 keyboard. It keeps the nine-key frame (symbol rail over 符号,
  * 删除/重输/确定 column, 123 · 空格 · 中/英 row) so switching between the two moves nothing
- * the user already knows, and puts the five strokes and 通配 in two rows of
- * large keys in their usual order: 一 丨 丿 / 丶 乛 通配, numbered 1–5 as in
- * other stroke keyboards.
+ * the user already knows. The original six cells stay in two rows:
+ * 一 丨 丿 / 丶 折 通配. Corner-digit gestures remain on those cells.
  */
 internal class StrokeKeyboardRenderer(
     private val context: Context,
@@ -31,6 +30,7 @@ internal class StrokeKeyboardRenderer(
     private val createBackspaceKey: () -> ImeKeyView,
     private val createSpaceVoiceKey: (label: String, onTap: () -> Unit) -> ImeKeyView,
     private val createSymbolRail: () -> ScrollView,
+    private val onShowChoicePopup: (View, List<String>) -> Unit,
     private val markSideKey: (ImeKeyView) -> Unit,
     private val markWhiteKey: (ImeKeyView) -> Unit,
     private val onStroke: (String) -> Unit,
@@ -75,15 +75,19 @@ internal class StrokeKeyboardRenderer(
         )
         val bottom = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         val weights = ProductionKeyPolicy.nineKeyBottomRowWeights()
+        // White circles either side of the space bar, as the nine-key row draws
+        // them: `cls_keyboard9_button_func_white_circle` for 123
+        // (`input_kbd_stroke.xml:70`) and `cls_bk_white_circle` under
+        // `cls_button_stroke2en` for 中/英 (`:82`).
         bottom.addView(
-            createKey("123", true, null, ImeTypographyTokens.BODY_SP, onDigits).apply { markSideKey(this) },
+            createKey("123", true, null, ImeTypographyTokens.BODY_SP, onDigits).apply { markWhiteKey(this) },
             keyParams(keyRowHeightDp(), weights.side),
         )
         bottom.addView(createSpaceVoiceKey("空格", onSpace), keyParams(keyRowHeightDp(), weights.space))
         bottom.addView(
             createKey("中/英", true, null, ImeTypographyTokens.BODY_SP, onModeSwitch).apply {
                 tag = "key:mode"
-                markSideKey(this)
+                markWhiteKey(this)
             },
             keyParams(keyRowHeightDp(), weights.side),
         )
@@ -97,20 +101,22 @@ internal class StrokeKeyboardRenderer(
             orientation = LinearLayout.VERTICAL
             tag = "stroke-actions"
         }
-        side.addView(createBackspaceKey().apply { markSideKey(this) }, sideKeyParams())
+        // The original stroke layout gives these three actions equal height.
+        val sideHeightDp = bodyHeightDp() / 3
+        side.addView(createBackspaceKey().apply { markSideKey(this) }, sideKeyParams(sideHeightDp))
         side.addView(
             createKey("重输", true, null, ImeTypographyTokens.BODY_SP, onRetype).apply {
                 tag = "key-retype"
                 markSideKey(this)
             },
-            sideKeyParams(),
+            sideKeyParams(sideHeightDp),
         )
         side.addView(
             createKey(enterLabel, true, null, ImeTypographyTokens.BODY_SP, onEnter).apply {
                 tag = "key-enter"
                 markSideKey(this)
             },
-            sideKeyParams(),
+            sideKeyParams(sideHeightDp),
         )
         container.addView(side, columnParams(1f))
 
@@ -121,51 +127,77 @@ internal class StrokeKeyboardRenderer(
     }
 
     private fun buildStrokeGrid(): LinearLayout {
-        val rowHeightDp = gridHeightDp() / ROWS.size
+        val rows = StrokeGridPolicy.ROWS.take(2)
+        val rowHeightDp = gridHeightDp() / rows.size
         val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        ROWS.forEach { strokes ->
+        rows.forEach { cells ->
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            strokes.forEach { stroke ->
-                val key = if (stroke == null) {
-                    createKey("通配", false, null, ImeTypographyTokens.BODY_SP) {
-                        onStroke(Stroke.WILDCARD_GLYPH)
-                    }.apply {
-                        tag = "key-stroke:wildcard"
-                        contentDescription = "通配，代替一笔"
-                    }
-                } else {
-                    createKey(stroke.glyph, false, stroke.digit.toString(), ImeTypographyTokens.SYMBOL_SP) {
-                        onStroke(stroke.glyph)
-                    }.apply {
-                        tag = "key-stroke:${stroke.code}"
-                        contentDescription = "${stroke.digit}，${stroke.label}"
-                        // Swipe up types the key's digit, as on the nine-key keyboard.
-                        onSwipeUp = { onCommitCharacter(stroke.digit.toString()) }
-                        swipeUpEnabled = this@StrokeKeyboardRenderer.swipeUpEnabled
-                    }
-                }
-                markWhiteKey(key)
-                row.addView(key, keyParams(rowHeightDp))
-            }
+            cells.forEach { cell -> row.addView(strokeCellKey(cell), keyParams(rowHeightDp)) }
             grid.addView(row, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(rowHeightDp)))
         }
         return grid
     }
 
+    /** One cell of the grid: a stroke, 通配, or a mark the cell commits itself. */
+    private fun strokeCellKey(cell: StrokeGridPolicy.Cell): ImeKeyView {
+        val stroke = cell.stroke
+        val textSize = strokeTextSize(cell)
+        val key = if (stroke != null) {
+            createKey(cell.label, false, cell.corner, textSize) { onStroke(stroke) }
+        } else {
+            val commit = cell.commit.orEmpty()
+            createKey(cell.label, false, cell.corner, textSize) { onCommitCharacter(commit) }
+        }
+        return key.apply {
+            tag = cell.tag
+            contentDescription = if (stroke != null && cell.label == WILDCARD_LABEL) {
+                "${cell.corner}，通配，代替一笔"
+            } else if (stroke != null) {
+                "${cell.corner}，${cell.label}"
+            } else {
+                "${cell.label}，角标 ${cell.corner}"
+            }
+            // Swipe up types the key's digit, as on the nine-key keyboard.
+            val digit = cell.corner
+            onSwipeUp = { onCommitCharacter(digit) }
+            swipeUpEnabled = this@StrokeKeyboardRenderer.swipeUpEnabled
+            if (cell.tag == AT_SYMBOL_TAG) {
+                setOnLongClickListener {
+                    onShowChoicePopup(this, StrokeGridPolicy.AT_SYMBOL_CHOICES)
+                    true
+                }
+            }
+            markWhiteKey(this)
+        }
+    }
+
+    /** The reference's 笔画 faces: one per kind of cell (`style.xml:9-13`). */
+    private fun strokeTextSize(cell: StrokeGridPolicy.Cell): Float = when {
+        // `key_stroke_wildcard`, 44 units — the same 44 its function keys use.
+        cell.label == WILDCARD_LABEL -> ImeTypographyTokens.BODY_SP
+        // `key_stroke_at_symbol` / `key_stroke_punctuation`, both 54.
+        cell.commit != null -> STROKE_MARK_SP
+        // The five strokes themselves: `key_stroke`, 60 units.
+        else -> STROKE_SP
+    }
+
     private fun keyParams(heightDp: Int, weight: Float = 1f) =
         LinearLayout.LayoutParams(0, toPx(heightDp), weight)
 
-    private fun sideKeyParams() =
-        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(bodyHeightDp() / 3))
+    private fun sideKeyParams(heightDp: Int) =
+        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, toPx(heightDp))
 
     private fun columnParams(weight: Float) =
         LinearLayout.LayoutParams(0, toPx(bodyHeightDp()), weight)
 
     private companion object {
-        /** null is 通配. */
-        val ROWS: List<List<Stroke?>> = listOf(
-            listOf(Stroke.HENG, Stroke.SHU, Stroke.PIE),
-            listOf(Stroke.DIAN, Stroke.ZHE, null),
-        )
+        const val WILDCARD_LABEL = "通配"
+        const val AT_SYMBOL_TAG = "key-stroke:at"
+
+        /** `key_stroke`, 60 units over the reference's step of 3. */
+        const val STROKE_SP = 20f
+
+        /** `key_stroke_at_symbol` and `key_stroke_punctuation`, both 54 units. */
+        const val STROKE_MARK_SP = 18f
     }
 }
