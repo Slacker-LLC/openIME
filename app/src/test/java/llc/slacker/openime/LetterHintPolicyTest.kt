@@ -75,4 +75,15 @@ class LetterHintPolicyTest {
         assertEquals(listOf("Q", "q"), LetterHintPolicy.caseChoices('q'))
         assertEquals(listOf("S", "s"), LetterHintPolicy.caseChoices('s'))
     }
+
+    /** The reference skin lists P and L lower first in both of its layouts. */
+    @Test
+    fun onlyPAndLLeadWithTheLowerCase() {
+        assertEquals(listOf("p", "P"), LetterHintPolicy.caseChoices('p'))
+        assertEquals(listOf("l", "L"), LetterHintPolicy.caseChoices('l'))
+        assertEquals(
+            listOf('l', 'p'),
+            letters.filter { LetterHintPolicy.caseChoices(it).first() == it.toString() },
+        )
+    }
 }

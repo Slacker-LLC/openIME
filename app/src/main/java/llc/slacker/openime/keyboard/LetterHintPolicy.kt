@@ -8,8 +8,7 @@ package llc.slacker.openime.keyboard
  * mark exists.
  *
  * Swipe up on the key commits the hint. A long press opens the letter in both
- * cases, upper first, as the reference keyboard does — it does not offer the
- * hint.
+ * cases, in the reference keyboard's own order — it does not offer the hint.
  */
 internal object LetterHintPolicy {
     private val DIGITS = mapOf(
@@ -40,8 +39,16 @@ internal object LetterHintPolicy {
 
     /**
      * What a long press on a letter key offers, in popup order: the letter in
-     * both cases, upper first.
+     * both cases, upper first — except on P and L, where the reference's own
+     * long-press list reads lower first (`p P`, `l L`, in both its Chinese and
+     * its English layout). No other key or layout leads with the lower case,
+     * so this is the reference's order on those two keys and not a rule.
      */
-    fun caseChoices(letter: Char): List<String> =
-        listOf(letter.uppercaseChar().toString(), letter.lowercaseChar().toString())
+    private val LOWER_FIRST = setOf('p', 'l')
+
+    fun caseChoices(letter: Char): List<String> {
+        val lower = letter.lowercaseChar().toString()
+        val upper = letter.uppercaseChar().toString()
+        return if (letter.lowercaseChar() in LOWER_FIRST) listOf(lower, upper) else listOf(upper, lower)
+    }
 }
