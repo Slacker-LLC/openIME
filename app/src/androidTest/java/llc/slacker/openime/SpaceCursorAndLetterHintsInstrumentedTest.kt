@@ -483,7 +483,7 @@ class SpaceCursorAndLetterHintsInstrumentedTest {
         harness.awaitMain { keyboard.showPanel(Panel.SETTINGS); true }
         val expected = mapOf(
             "数字和符号提示" to ("开启" to { ImeSettingsRepository.loadLetterHints(context) }),
-            "表情联想" to ("开启" to { ImeSettingsRepository.loadEmojiAssociation(context) }),
+            "智能联想" to ("开启" to { ImeSettingsRepository.loadEmojiAssociation(context) }),
             "语音去语气词" to ("开启" to { ImeSettingsRepository.loadVoiceStripFillers(context) }),
             "标点用空格代替" to ("关闭" to { ImeSettingsRepository.loadVoicePunctuationAsSpace(context) }),
         )

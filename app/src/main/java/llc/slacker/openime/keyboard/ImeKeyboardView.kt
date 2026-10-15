@@ -2761,7 +2761,7 @@ open class ImeKeyboardView(
         "短信验证码" -> ImeSettingsRepository.loadSmsCodeChip(context) &&
             context.checkSelfPermission(android.Manifest.permission.READ_SMS) == android.content.pm.PackageManager.PERMISSION_GRANTED
         "数字和符号提示" -> ImeSettingsRepository.loadLetterHints(context)
-        "表情联想" -> ImeSettingsRepository.loadEmojiAssociation(context)
+        "智能联想" -> ImeSettingsRepository.loadEmojiAssociation(context)
         "语音去语气词" -> ImeSettingsRepository.loadVoiceStripFillers(context)
         "标点用空格代替" -> ImeSettingsRepository.loadVoicePunctuationAsSpace(context)
         else -> true
@@ -2810,7 +2810,7 @@ open class ImeKeyboardView(
                 renderedMode = null
                 if (panel == Panel.NONE) renderModeBody()
             }
-            "表情联想" -> ImeSettingsRepository.saveEmojiAssociation(context, enabled)
+            "智能联想" -> ImeSettingsRepository.saveEmojiAssociation(context, enabled)
             "语音去语气词" -> ImeSettingsRepository.saveVoiceStripFillers(context, enabled)
             "标点用空格代替" -> ImeSettingsRepository.saveVoicePunctuationAsSpace(context, enabled)
         }

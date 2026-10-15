@@ -226,7 +226,7 @@ internal class SettingsPanelController(
         content.addSection("智能输入")
         content.addCard(
             navigationRow("模糊音与智能纠错", "z/zh、c/ch、s/sh 等规则", R.drawable.ic_pref_fuzzy, onShowFuzzySettings),
-            toggleRow("表情联想", "选词后在联想栏先给出相关表情", R.drawable.ic_pref_emoji),
+            toggleRow("智能联想", "选词后按上文给出接续词、表情和颜文字", R.drawable.ic_pref_emoji),
         )
         content.addSection("语音输入")
         content.addCard(
@@ -278,7 +278,7 @@ internal class SettingsPanelController(
             toggleRow("上滑输入数字", null, 0),
             toggleRow("复制内容提示", null, 0),
             toggleRow("短信验证码", null, 0),
-            toggleRow("表情联想", null, 0),
+            toggleRow("智能联想", null, 0),
             navigationRow("模糊音与智能纠错", null, 0, onShowFuzzySettings),
         )
         content.addSection("语音")
