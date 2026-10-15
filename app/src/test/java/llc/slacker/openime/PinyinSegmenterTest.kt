@@ -58,4 +58,18 @@ class PinyinSegmenterTest {
             }
         }
     }
+
+    @Test
+    fun aSplitNoWordContinuesDoesNotTakeASlot() {
+        val segmenter = PinyinSegmenter(syllables)
+        // The caller's lookup only asks for readings a word starts with, so the
+        // paths it can use are the ones the lattice should keep: here only
+        // luan+an leads anywhere, and the four-slot cap must not lose it.
+        val alive = { ids: IntArray ->
+            ids.size == 1 || (syllables[ids[0]] == "luan" && syllables[ids[1]] == "an")
+        }
+        val kept = segmenter.segment("luanan", maxPaths = 4, alive = alive)
+            .map { path -> path.ids.joinToString("+") { syllables[it] } }
+        assertEquals(listOf("luan+an"), kept)
+    }
 }

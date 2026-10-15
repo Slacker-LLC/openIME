@@ -15,6 +15,11 @@ import llc.slacker.openime.core.FuzzyRule
  * syllable pair (z/zh, n/l, an/ang...): the typed spelling may stand for a
  * syllable it is not literally; such edges carry `fuzzy = true` so callers
  * can rank exact readings first.
+ *
+ * [segment] takes an optional [alive] test: a path the caller cannot use is
+ * dropped before it takes a slot in the next node. The caller's word lookup
+ * only ever asks for readings that a word starts with, so a path that no word
+ * starts with can never contribute and must not crowd out one that can.
  */
 internal class PinyinSegmenter(
     syllables: List<String>,
@@ -83,6 +88,7 @@ internal class PinyinSegmenter(
         letters: String,
         maxPaths: Int = 32,
         maxSyllables: Int = MAX_SYLLABLES,
+        alive: ((IntArray) -> Boolean)? = null,
     ): List<SegmentPath> {
         val length = letters.length
         if (length == 0) return emptyList()
@@ -105,6 +111,7 @@ internal class PinyinSegmenter(
                     for (index in targets.indices) {
                         val ids = path.ids.copyOf(path.ids.size + 1)
                         ids[ids.size - 1] = targets[index]
+                        if (alive != null && !alive(ids)) continue
                         val starts = path.starts.copyOf(path.starts.size + 1)
                         starts[starts.size - 1] = position + edge
                         addPath(next, SegmentPath(ids, starts, path.fuzzy || flags[index]), maxPaths)

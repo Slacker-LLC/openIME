@@ -25,6 +25,15 @@ class PinyinEngine internal constructor(
     private val plainSegmenter = PinyinSegmenter(lexicon.syllables)
     private val fuzzySegmenters = HashMap<Set<FuzzyRule>, PinyinSegmenter>()
 
+    /**
+     * A reading only pays off if some word starts with it, so a split that no
+     * word continues is dropped instead of taking a slot in the lattice: the
+     * reference enumerates every path of the lattice (ENGINE-SPEC §1.3) and
+     * can afford to, but our capped frontier cannot — bogus splits that spell
+     * nothing (`a+de+lia+nan+...` for 阿德里安安德烈夫) would otherwise fill it.
+     */
+    private val wordPrefix: (IntArray) -> Boolean = { ids -> lexicon.hasPrefix(ids, ids.size) }
+
     val wordCount: Int get() = lexicon.size
 
     /** Candidate words for [input] (raw pinyin letters), best first. */
@@ -39,35 +48,49 @@ class PinyinEngine internal constructor(
         val found = HashMap<String, Candidate>()
         val budget = Budget()
 
-        for (split in 0..letters.length) {
+        // The reading in full first: those words are what the typing spells,
+        // and the fragment passes below are a fallback — running them first
+        // let them spend the budget, and the word the user actually typed
+        // never made it into the list.
+        for (path in segmenter.segment(letters, maxPaths = HEAD_PATHS, alive = wordPrefix)) {
+            collectExact(found, path.ids, path.fuzzy, budget, COMPLETE)
+            // A word that only starts with the reading is a completion, not a
+            // match: 朋克头 spells pengke and three more letters the user has
+            // not typed, so it follows 朋克/澎客/彭可.
+            collectPrefix(found, path.ids, path.fuzzy, budget, COMPLETION_WORDS, FRAGMENT)
+        }
+
+        // Then the readings with an unfinished tail, longest head first: the
+        // closer the head is to the whole reading, the fewer letters it leaves
+        // for the tail to guess.
+        for (split in letters.length - 1 downTo 0) {
             if (budget.exhausted()) break
             val tail = letters.substring(split)
             if (tail.length > PinyinSegmenter.MAX_SYLLABLE_LENGTH) continue
             val headPaths = if (split == 0) {
                 listOf(PinyinSegmenter.SegmentPath(IntArray(0), intArrayOf(0), fuzzy = false))
             } else {
-                segmenter.segment(letters.substring(0, split), maxPaths = HEAD_PATHS)
+                segmenter.segment(
+                    letters.substring(0, split),
+                    maxPaths = HEAD_PATHS,
+                    alive = wordPrefix,
+                )
             }
             if (headPaths.isEmpty()) continue
             for (path in headPaths) {
                 if (budget.exhausted()) break
-                if (tail.isEmpty()) {
-                    collectExact(found, path.ids, path.fuzzy, budget, COMPLETE)
-                    collectPrefix(found, path.ids, path.fuzzy, budget, COMPLETION_WORDS, COMPLETE)
-                } else {
-                    // Words that already match the settled prefix stay candidates
-                    // while the next syllable is still being typed. An empty
-                    // prefix would match from the top of the table: skip it.
-                    if (path.ids.isNotEmpty()) {
-                        collectPrefix(found, path.ids, path.fuzzy, budget, FRAGMENT_WORDS, FRAGMENT)
-                    }
-                    for (edge in segmenter.syllablesStartingWith(tail, TAIL_SYLLABLES)) {
-                        if (budget.exhausted()) break
-                        val ids = path.ids.copyOf(path.ids.size + 1)
-                        ids[ids.size - 1] = edge.id
-                        collectPrefix(found, ids, path.fuzzy || edge.fuzzy, budget, FRAGMENT_WORDS, FRAGMENT)
-                        budget.lookups++
-                    }
+                // Words that already match the settled prefix stay candidates
+                // while the next syllable is still being typed. An empty
+                // prefix would match from the top of the table: skip it.
+                if (path.ids.isNotEmpty()) {
+                    collectPrefix(found, path.ids, path.fuzzy, budget, FRAGMENT_WORDS, FRAGMENT)
+                }
+                for (edge in segmenter.syllablesStartingWith(tail, TAIL_SYLLABLES)) {
+                    if (budget.exhausted()) break
+                    val ids = path.ids.copyOf(path.ids.size + 1)
+                    ids[ids.size - 1] = edge.id
+                    collectPrefix(found, ids, path.fuzzy || edge.fuzzy, budget, FRAGMENT_WORDS, FRAGMENT)
+                    budget.lookups++
                 }
             }
         }
@@ -268,7 +291,7 @@ class PinyinEngine internal constructor(
         private const val CANDIDATE_LIMIT = 60
         private const val SENTENCE_LIMIT = 3
         private const val MAX_INPUT = 64
-        private const val HEAD_PATHS = 16
+        private const val HEAD_PATHS = 64
         private const val TAIL_SYLLABLES = 32
         private const val PATH_LIMIT = 32
         private const val MAX_WORD_SYLLABLES = 6

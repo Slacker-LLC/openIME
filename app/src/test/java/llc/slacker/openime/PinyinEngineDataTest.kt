@@ -80,6 +80,68 @@ class PinyinEngineDataTest {
     }
 
     @Test
+    fun thePrefixRangeMatchesAPlainScan() {
+        val lex = engineAsset("lex.bin")
+        assumeTrue("imengine/lex.bin not built", lex != null)
+        val index = LexiconIndex(map(lex!!))
+        // The words that start with a reading sit in the middle of a table
+        // sorted by reading, so the bound has to be the reading's successor,
+        // not a search for "starts with" over the array.
+        for (names in listOf(
+            listOf("ni"),
+            listOf("ni", "hao"),
+            listOf("ji", "tian"),
+            listOf("ji", "tian", "bu"),
+            listOf("a"),
+        )) {
+            val ids = IntArray(names.size) { index.syllables.indexOf(names[it]) }
+            val start = index.lowerBound(ids, ids.size)
+            var scan = start
+            while (scan < index.size && index.startsWith(scan, ids, ids.size)) scan++
+            assertEquals(
+                "prefix range of ${names.joinToString("+")}",
+                scan,
+                index.prefixEnd(ids, ids.size),
+            )
+            assertTrue("no words start with ${names.joinToString("+")}", scan > start)
+        }
+    }
+
+    @Test
+    fun theWordTheReadingSpellsComesBeforeItsCompletions() {
+        val engine = loadEngine()
+        // 朋克 spells pengke exactly; 朋克头/朋克养生 only start with it.
+        assertEquals("朋克", engine.candidates("pengke").firstOrNull())
+        // 要高考 is the word; 要高考了 extends it.
+        assertEquals("要高考", engine.candidates("yaogaokao").firstOrNull())
+    }
+
+    @Test
+    fun aTypedPrefixReachesTheWordsThatContinueIt() {
+        val engine = loadEngine()
+        // The tail is not a syllable yet: 你好 comes from ni + a tail that is
+        // still an h, and it has to be there without the user typing "hao".
+        val partial = engine.candidates("nih")
+        assertTrue("no candidates for a reading with an unfinished syllable: $partial", partial.contains("你好"))
+        // A whole word the reading starts: typing "jintian" offers 今天 first
+        // and the words that continue it behind.
+        val word = engine.candidates("jintian")
+        assertEquals("今天", word.firstOrNull())
+        assertTrue("今天不是 missing from $word", word.contains("今天不是"))
+    }
+
+    @Test
+    fun aLongWordSurvivesTheSplitsThatSpellNothing() {
+        val engine = loadEngine()
+        // a+de+li+an+an+de+lie+fu. The same letters also read a+de+lia+nan+
+        // de+lie+fu — one syllable fewer, so it sorted ahead — and every
+        // syllable here doubles as a single letter, which widened the field
+        // again. Both used to fill the frontier before the real reading got
+        // there, and the bar came up empty for a word the table has.
+        assertEquals("阿德里安安德烈夫", engine.candidates("adelianandeliefu").firstOrNull())
+    }
+
+    @Test
     fun fuzzyRulesExpandCandidatesAndKeepExactReadingsFirst() {
         val engine = loadEngine()
         val rules = setOf(FuzzyRule.Z_ZH, FuzzyRule.N_L, FuzzyRule.S_SH)

@@ -93,15 +93,33 @@ internal class LexiconIndex(private val buffer: ByteBuffer) {
         return low
     }
 
-    /** First word after every word whose sequence starts with [ids]. */
+    /**
+     * Whether any word starts with [ids], i.e. whether a reading that spelled
+     * [ids] so far still has somewhere to go. One binary search: the first word
+     * that is >= [ids] is the first word that can start with it.
+     */
+    fun hasPrefix(ids: IntArray, length: Int): Boolean {
+        val at = lowerBound(ids, length)
+        return at < wordCount && startsWith(at, ids, length)
+    }
+
+    /**
+     * First word after every word whose sequence starts with [ids].
+     *
+     * The words that start with [ids] are one run in the *middle* of the table
+     * (below it are the sequences that are smaller at some syllable, above it
+     * the ones that are greater), so searching for "starts with [ids]" as if it
+     * were a prefix of the array walks away from the run: it answered 0 for
+     * every reading and no prefix of a typed reading ever reached a word. The
+     * probe is instead the sequence's successor — [ids] with its last syllable
+     * incremented: every word that starts with [ids] sorts before it, every
+     * word that does not sorts at or after it, and that bound is monotone.
+     */
     fun prefixEnd(ids: IntArray, length: Int): Int {
-        var low = 0
-        var high = wordCount
-        while (low < high) {
-            val middle = (low + high) ushr 1
-            if (startsWith(middle, ids, length)) low = middle + 1 else high = middle
-        }
-        return low
+        if (length == 0) return wordCount
+        val probe = ids.copyOf(length)
+        probe[length - 1] = probe[length - 1] + 1
+        return lowerBound(probe, length)
     }
 
     internal fun compare(word: Int, ids: IntArray, length: Int): Int {
