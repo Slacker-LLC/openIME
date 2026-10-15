@@ -67,6 +67,7 @@ internal class SettingsPanelController(
     private val currentDoublePinyinScheme: () -> DoublePinyinScheme,
     private val currentPinyinLocation: () -> PinyinLocation,
     private val currentKeySoundStyle: () -> KeySoundStyle,
+    private val currentKeySoundVolume: () -> Int,
     private val currentPopup: () -> Boolean,
     private val currentSwipeUpDigits: () -> Boolean,
     /** State of the toggles added after the first four, looked up by their label. */
@@ -87,6 +88,7 @@ internal class SettingsPanelController(
     private val onDoublePinyinSchemeChanged: (DoublePinyinScheme) -> Unit,
     private val onPinyinLocationChanged: (PinyinLocation) -> Unit,
     private val onKeySoundStyleChanged: (KeySoundStyle) -> Unit,
+    private val onKeySoundVolumeChanged: (Int) -> Unit,
     private val onFloatingStyleChanged: (Int, Int) -> Unit,
     private val onShowFuzzySettings: () -> Unit,
     /** A 模糊音 pair was switched; the new set is already saved. */
@@ -211,6 +213,7 @@ internal class SettingsPanelController(
         content.addCard(
             toggleRow("按键音效", "按键时播放提示音", R.drawable.ic_pref_sound),
             soundStyleRow(NESTED_ROW),
+            sliderRow("按键音量", NESTED_ROW, ImeSettingsRepository.SOUND_VOLUME_MIN, ImeSettingsRepository.SOUND_VOLUME_MAX, currentKeySoundVolume(), ImeSettingsRepository.SOUND_VOLUME_DEFAULT, onChange = onKeySoundVolumeChanged),
             toggleRow("触感震动", "清脆短促，按下即停", R.drawable.ic_pref_haptic),
             hapticStyleRow(NESTED_ROW),
             sliderRow("震动强度", NESTED_ROW, ImeGeometryTokens.HAPTIC_STRENGTH_MIN_PERCENT, ImeGeometryTokens.HAPTIC_STRENGTH_MAX_PERCENT, currentHapticStrengthPercent(), ImeGeometryTokens.HAPTIC_STRENGTH_DEFAULT_PERCENT, onChange = onHapticStrengthChanged),
@@ -218,9 +221,16 @@ internal class SettingsPanelController(
             toggleRow("数字和符号提示", "字母键右上角显示数字和符号", R.drawable.ic_pref_hints),
             toggleRow("上滑输入数字", "按键上滑输入右上角的数字或符号", R.drawable.ic_pref_swipe_up),
         )
+        content.addSection("快捷格式输入")
+        content.addCard(
+            toggleRow("数字、英文前后加空格", "中文和数字、英文之间自动加空格，打字和语音都生效", R.drawable.ic_pref_space),
+            toggleRow("首字母自动大写", "英文句子开头自动切换到大写", R.drawable.ic_pref_case),
+            toggleRow("双击空格键输入句号", "连按两次空格键输入句号", R.drawable.ic_pref_symbols),
+        )
         content.addSection("工具栏提示")
         content.addCard(
             toggleRow("复制内容提示", "刚复制的文字显示在工具栏，点一下输入", R.drawable.ic_pref_clipboard),
+            toggleRow("候选栏展示", "可在候选栏快速使用剪切内容", R.drawable.ic_pref_clipboard),
             toggleRow("短信验证码", "最近 5 分钟的验证码显示在工具栏，需要短信权限", R.drawable.ic_pref_shield),
         )
         content.addSection("智能输入")
@@ -232,6 +242,7 @@ internal class SettingsPanelController(
         content.addCard(
             toggleRow("语音去语气词", "去掉“嗯”“呃”等口头停顿", R.drawable.ic_pref_waveform),
             toggleRow("标点用空格代替", "语音里的逗号、句号等写成空格", R.drawable.ic_pref_space),
+            toggleRow("使用耳机麦克风录音", "默认使用手机录音。佩戴耳机时，使用耳机麦克风", R.drawable.ic_pref_mic),
         )
         content.addSection("关于与数据")
         content.addCard(
@@ -260,6 +271,7 @@ internal class SettingsPanelController(
         content.addSection("按键反馈")
         content.addCard(
             soundStyleRow(0),
+            sliderRow("按键音量", 0, ImeSettingsRepository.SOUND_VOLUME_MIN, ImeSettingsRepository.SOUND_VOLUME_MAX, currentKeySoundVolume(), ImeSettingsRepository.SOUND_VOLUME_DEFAULT, onChange = onKeySoundVolumeChanged),
             hapticStyleRow(0),
         )
         content.addSection("横屏")
@@ -276,7 +288,11 @@ internal class SettingsPanelController(
         content.addSection("输入")
         content.addCard(
             toggleRow("上滑输入数字", null, 0),
+            toggleRow("首字母自动大写", null, 0),
+            toggleRow("数字、英文前后加空格", null, 0),
+            toggleRow("双击空格键输入句号", null, 0),
             toggleRow("复制内容提示", null, 0),
+            toggleRow("候选栏展示", null, 0),
             toggleRow("短信验证码", null, 0),
             toggleRow("智能联想", null, 0),
             navigationRow("模糊音与智能纠错", null, 0, onShowFuzzySettings),
@@ -285,6 +301,7 @@ internal class SettingsPanelController(
         content.addCard(
             toggleRow("语音去语气词", null, 0),
             toggleRow("标点用空格代替", null, 0),
+            toggleRow("使用耳机麦克风录音", null, 0),
         )
         content.addSection("关于与数据")
         content.addCard(

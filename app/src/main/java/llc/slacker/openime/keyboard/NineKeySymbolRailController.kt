@@ -295,7 +295,13 @@ internal class NineKeySymbolRailController(
         const val FILTER_TAG = "nine-pinyin-path-filter"
         const val SELECTED_FILTER_TAG = "nine-pinyin-path-selected"
         const val PINYIN_PANEL_TAG = "nine-pinyin-panel"
-        const val MAX_VISIBLE_PATHS = 16
+        /**
+         * The rail scrolls and the reference copies its whole filter vector into
+         * the list without cutting it, so this only has to match what
+         * [llc.slacker.openime.candidate.NineKeyLocalDecoder] is willing to
+         * produce for one open tail.
+         */
+        const val MAX_VISIBLE_PATHS = 48
 
         /** The reference reads and marks the same way: one list, one item font. */
         const val RAIL_ITEM_TEXT_SP = SymbolRailRenderer.ITEM_TEXT_SP

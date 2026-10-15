@@ -137,11 +137,11 @@ internal class ImeThemeApplier(
             keyRadius,
             toPx(1),
         )
-        // The cap is painted inside the cell by the key's own margins, as the
-        // reference's key classes set them (2.25 × 4.75 on the 26-key board,
-        // 2.5 × 2.75 on the nine-key family, 8 on a big side key's inner side).
-        val unit = view.resources.displayMetrics.density * referenceScale()
-        fun cap(dp: Float): Int = Math.round(dp * unit)
+        // Keep the original cap spacing on every board, including rounding.
+        val halfGap = toPx(ImeGeometryTokens.KEY_GAP_DP) / 2
+        fun cap(dp: Float): Int = if (dp == ImeGeometryTokens.KEY_GAP_DP / 2f) halfGap else {
+            Math.round(dp * view.resources.displayMetrics.density * referenceScale())
+        }
         view.background = InsetDrawable(
             keyCap,
             cap(view.marginLeftDp),
@@ -525,15 +525,11 @@ internal class ImeThemeApplier(
                     },
                 )
                 if (view.isClickable) {
-                    // Every idle-toolbar key wears its own pill face at rest
-                    // (`cls_toolbar_idle_button`: `bkcolor="@color/toolbar_idle_button_bk"`,
-                    // `bkround="999"`, `pushedbkcolor`, style.xml:237-248), which on the
-                    // toolbar surface is the key cap colour, and presses to the
-                    // reference's own shade instead of a derived one.
+                    // Keep the original bare icons; only a press paints a face.
                     view.background = statefulRounded(
-                        t.keyBackground,
+                        Color.TRANSPARENT,
                         ImeSurfacePolicy.pressedOnGround(t.toolbarBackground, t),
-                        toPx(ImeGeometryTokens.PILL_RADIUS_DP),
+                        toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
                     )
                 }
             }
@@ -752,6 +748,34 @@ internal class ImeThemeApplier(
                 view.background = ImeDrawableFactory.rounded(
                     t.panelHeadBackground, toPx(8), destructiveText, toPx(1),
                 )
+            }
+
+            // 拆词: a word is a card, the selected run of them the panel's
+            // selection face, and a separator carries no face of its own.
+            tag?.startsWith("word-token-selected:") == true -> {
+                view.setTextColor(ImeSurfacePolicy.selectedText(t))
+                view.background = ImeDrawableFactory.rounded(
+                    ImeSurfacePolicy.segmentSelected(t),
+                    toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
+                    ImeSurfacePolicy.selectedText(t),
+                    toPx(1),
+                )
+                view.typeface = android.graphics.Typeface.DEFAULT_BOLD
+            }
+
+            tag?.startsWith("word-token:") == true -> {
+                view.setTextColor(t.keyText)
+                view.background = ImeDrawableFactory.rounded(
+                    t.toolCardBackground,
+                    toPx(ImeGeometryTokens.CONTROL_RADIUS_DP),
+                )
+                view.typeface = android.graphics.Typeface.DEFAULT
+            }
+
+            tag?.startsWith("word-token-plain:") == true -> {
+                view.setTextColor(t.keySecondaryText)
+                view.background = null
+                view.typeface = android.graphics.Typeface.DEFAULT
             }
 
             tag == "segment-selected" -> {

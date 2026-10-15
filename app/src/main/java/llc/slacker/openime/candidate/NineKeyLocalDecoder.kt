@@ -1,5 +1,6 @@
 package llc.slacker.openime.candidate
 
+import llc.slacker.openime.core.FuzzyRule
 import llc.slacker.openime.core.ImeData
 import kotlin.math.ln
 import kotlin.math.roundToInt
@@ -26,6 +27,16 @@ internal class NineKeyLocalDecoder(
         val candidates: List<String>,
         val phrase: Boolean,
         val weight: Int,
+        /**
+         * Fuzzy rules a reader must have switched on for this reading. Empty
+         * for a plain spelling. The reference keeps the same field on every
+         * syllable record (`syllable.dat` data3, `fuzzy` u16 — n↔l 0x0008,
+         * f↔h 0x0010, an↔ang 0x0040, zh↔z 0x0001, ian↔iang 0x0200) and lets a
+         * record in only when `mask ⊆ 用户fuzzy` (pass2 of CreateLattice9Key
+         * 0x5b962c): node "64" carries `li` with 0x0008, node "426" carries
+         * `fang` with 0x0050.
+         */
+        val mask: Set<FuzzyRule> = emptySet(),
     )
 
     private data class Decode(
@@ -73,9 +84,14 @@ internal class NineKeyLocalDecoder(
     private var previousDigits = ""
     private var previousPreview = ""
 
+    /** Plain spellings -> their characters, for the fuzzy variants that copy a reading. */
+    private val plainValuesByPinyin = LinkedHashMap<String, List<String>>()
+
     init {
         val entries = buildEntries()
-        entries.forEach(::insert)
+        val variants = fuzzyVariantEntries(entries)
+        val all = entries + variants
+        all.forEach(::insert)
         sortTrie(root)
         buildReadings(entries)
         entries.forEach { entry ->
@@ -109,8 +125,8 @@ internal class NineKeyLocalDecoder(
         }
 
         val node = nodeFor(bounded)
-        val exactEntries = node?.exact.orEmpty().take(MAX_PATHS)
-        val decoded = decodePaths(bounded)
+        val exactEntries = usableEntries(node, fuzzy).take(MAX_PATHS)
+        val decoded = decodePaths(bounded, fuzzy)
         val preferred = preferredSuffix
             ?.lowercase()
             ?.trim()
@@ -366,7 +382,10 @@ internal class NineKeyLocalDecoder(
             for (end in start until minOf(n, start + MAX_SYLLABLE_LENGTH)) {
                 node = node.children[bounded[end]] ?: break
                 val chunk = bounded.substring(start, end + 1)
-                val whole = node.exact.filter(::isSyllableEntry).sortedByDescending(::entryScore).take(SPELL_BRANCHES)
+                val whole = node.exact
+                    .filter { it.mask.isEmpty() && isSyllableEntry(it) }
+                    .sortedByDescending(::entryScore)
+                    .take(SPELL_BRANCHES)
                 for (before in from) {
                     for (entry in whole) {
                         val parts = before.parts + entry.pinyin
@@ -450,7 +469,7 @@ internal class NineKeyLocalDecoder(
             var node = root
             for (end in start until minOf(digits.length, start + MAX_SYLLABLE_LENGTH)) {
                 node = node.children[digits[end]] ?: break
-                if (node.exact.any(::isSyllableEntry)) reachable[end + 1] = true
+                if (node.exact.any { it.mask.isEmpty() && isSyllableEntry(it) }) reachable[end + 1] = true
             }
         }
         return reachable[digits.length]
@@ -478,7 +497,10 @@ internal class NineKeyLocalDecoder(
             var node = root
             for (end in start until minOf(n, start + MAX_SYLLABLE_LENGTH)) {
                 node = node.children[digits[end]] ?: break
-                val syllables = node.exact.filter(::isSyllableEntry)
+                // The rail the reference builds carries plain spellings only
+                // (its left builder takes records with mask == 0, 0x5ba378);
+                // masked readings reach the candidate lattice, not this list.
+                val syllables = node.exact.filter { it.mask.isEmpty() && isSyllableEntry(it) }
                 if (syllables.isEmpty()) continue
                 val target = states[end + 1]
                 for (entry in syllables) {
@@ -532,7 +554,7 @@ internal class NineKeyLocalDecoder(
         for (depth in 1..minOf(bounded.length, MAX_SYLLABLE_LENGTH)) {
             node = node.children[bounded[depth - 1]] ?: break
             node.exact.forEach { entry ->
-                if (isSyllableEntry(entry) && entry.pinyin.length == depth) {
+                if (entry.mask.isEmpty() && isSyllableEntry(entry) && entry.pinyin.length == depth) {
                     found += Option(entry.pinyin, depth, entryScore(entry))
                 }
             }
@@ -552,14 +574,18 @@ internal class NineKeyLocalDecoder(
             .map { it.pinyin }
             .distinct()
             .toMutableList()
-        if (bounded.length == 1) {
-            ImeData.keypad9Map[bounded]
-                .orEmpty()
-                .filter { it.length == 1 && it[0] in 'a'..'z' }
-                // A bare letter no syllable starts with (i, u, v) is a dead end.
-                .filter { letter -> completeSyllables.any { it.startsWith(letter) } }
-                .forEach { if (it !in ordered) ordered += it }
-        }
+        // The letters of the first open key follow the syllables, for any tail
+        // length: the reference's left list always carries them (its builder
+        // pushes every letter of the open head key both ways, 0x5ba608-0x5ba704
+        // `add w8, w8, #0x20`), and tapping one fixes the first letter the way a
+        // syllable does. A bare letter no syllable starts with (i, u, v) is a
+        // dead end and stays out; the upper-case twins only matter for the
+        // nine-key English the owner ruled out, so we keep the lower one.
+        ImeData.keypad9Map[bounded.first().toString()]
+            .orEmpty()
+            .filter { it.length == 1 && it[0] in 'a'..'z' }
+            .filter { letter -> completeSyllables.any { it.startsWith(letter) } }
+            .forEach { if (it !in ordered) ordered += it }
         return ordered.take(limit)
     }
 
@@ -576,6 +602,8 @@ internal class NineKeyLocalDecoder(
         PinyinLexicon.current().forEach { (pinyin, values) ->
             merged.getOrPut(pinyin) { mutableListOf() }.addAll(values)
         }
+
+        merged.forEach { (pinyin, values) -> plainValuesByPinyin[pinyin] = values.distinct() }
 
         return merged.flatMap { (pinyin, rawValues) ->
             val digits = digitsForPinyin(pinyin) ?: return@flatMap emptyList<Entry>()
@@ -600,6 +628,74 @@ internal class NineKeyLocalDecoder(
         }
     }
 
+    /**
+     * The masked readings the reference keeps beside every plain one: a spelling
+     * a reader reaches by confusing two sounds (n↔l, f↔h, an↔ang ...), filed
+     * under the plain syllable's digits, so a key press that means `ni` can also
+     * offer `li` once n↔l is on. Each copy carries the rules it needs, like the
+     * reference's data3 records, and a query lets it in only when all of them
+     * are switched on.
+     */
+    private fun fuzzyVariantEntries(entries: List<Entry>): List<Entry> {
+        val rules = FuzzyRule.entries.toList()
+        val variants = LinkedHashMap<Pair<String, String>, Entry>()
+        entries.forEach { entry ->
+            if (!isSyllableEntry(entry)) return@forEach
+            fuzzyVariantsOf(entry.pinyin, rules).forEach { (variant, mask) ->
+                val values = plainValuesByPinyin[variant].orEmpty()
+                if (values.isEmpty()) return@forEach
+                val known = variants[variant to entry.digits]
+                if (known == null || mask.size < known.mask.size) {
+                    variants[variant to entry.digits] = Entry(
+                        pinyin = variant,
+                        digits = entry.digits,
+                        candidates = values,
+                        phrase = false,
+                        weight = values.maxOfOrNull { value -> PinyinLexicon.weightFor(variant, value) } ?: 0,
+                        mask = mask,
+                    )
+                }
+            }
+        }
+        return variants.values.toList()
+    }
+
+    /**
+     * Every spelling reachable from [syllable] by applying [rules], each with the
+     * smallest set of rules that produces it. Two rules together cover the
+     * combined masks the reference carries (zang = zh↔z + an↔ang, fang = f↔h +
+     * an↔ang), so a second pass applies one more rule to each first result.
+     */
+    private fun fuzzyVariantsOf(syllable: String, rules: List<FuzzyRule>): List<Pair<String, Set<FuzzyRule>>> {
+        val out = LinkedHashMap<String, Set<FuzzyRule>>()
+        rules.forEach { rule ->
+            val variant = rule.variant(syllable) ?: return@forEach
+            if (variant != syllable) out.putIfAbsent(variant, setOf(rule))
+        }
+        out.toList().forEach { (single, mask) ->
+            rules.forEach { rule ->
+                if (rule in mask) return@forEach
+                val variant = rule.variant(single) ?: return@forEach
+                if (variant != syllable) out.putIfAbsent(variant, mask + rule)
+            }
+        }
+        return out.map { it.key to it.value }
+    }
+
+    /**
+     * The readings a query may use: every plain spelling, and the masked ones
+     * whose rules are on — the reference's `mask ⊆ 用户fuzzy` gate. One spelling
+     * can arrive both ways (plain and through a rule); the plain one leads.
+     */
+    private fun usableEntries(node: TrieNode?, fuzzy: Boolean): List<Entry> {
+        val entries = node?.exact.orEmpty()
+        if (entries.isEmpty()) return emptyList()
+        val enabled = if (fuzzy) FuzzyPinyin.rules else emptySet()
+        return entries
+            .filter { it.mask.isEmpty() || it.mask.all { rule -> rule in enabled } }
+            .distinctBy { it.pinyin }
+    }
+
     private fun insert(entry: Entry) {
         var node = root
         entry.digits.forEach { digit ->
@@ -615,7 +711,9 @@ internal class NineKeyLocalDecoder(
                 .thenBy { it.pinyin },
         )
         val childBest = node.children.values.mapNotNull(::sortTrie)
-        node.bestDescendant = (node.exact.asSequence() + childBest.asSequence())
+        // The guess a preview falls back on is always a plain spelling: a masked
+        // reading has no business deciding the pre-edit while its rule is off.
+        node.bestDescendant = (node.exact.filter { it.mask.isEmpty() }.asSequence() + childBest.asSequence())
             .maxWithOrNull(
                 compareBy<Entry>(::entryScore)
                     .thenByDescending { it.pinyin },
@@ -627,7 +725,7 @@ internal class NineKeyLocalDecoder(
         if (node == null) return null
         var best = node.exact
             .asSequence()
-            .filter { it.pinyin.startsWith(pinyinPrefix) }
+            .filter { it.mask.isEmpty() && it.pinyin.startsWith(pinyinPrefix) }
             .maxWithOrNull(compareBy<Entry>(::entryScore).thenByDescending { it.pinyin })
         node.children.values.forEach { child ->
             val candidate = bestDescendantStartingWith(child, pinyinPrefix) ?: return@forEach
@@ -650,7 +748,7 @@ internal class NineKeyLocalDecoder(
     }
 
     /** Beam DP over the digit trie; boundaries are retained as spaces. */
-    private fun decodePaths(digits: String): List<Decode> {
+    private fun decodePaths(digits: String, fuzzy: Boolean): List<Decode> {
         val states = Array(digits.length + 1) { mutableListOf<Decode>() }
         states[0] += Decode(pinyin = "", text = "", score = 0, parts = 0)
 
@@ -660,8 +758,9 @@ internal class NineKeyLocalDecoder(
             var node = root
             for (end in start until digits.length) {
                 node = node.children[digits[end]] ?: break
-                if (node.exact.isEmpty()) continue
-                node.exact.take(MAX_BRANCHES).forEach { entry ->
+                val entries = usableEntries(node, fuzzy).take(MAX_BRANCHES)
+                if (entries.isEmpty()) continue
+                entries.forEach { entry ->
                     previous.forEach { before ->
                         val candidate = Decode(
                             pinyin = if (before.pinyin.isEmpty()) {
@@ -734,11 +833,25 @@ internal class NineKeyLocalDecoder(
 
     companion object {
         const val MAX_DIGITS = 64
-        const val MAX_SYLLABLE_OPTIONS = 12
+
+        /**
+         * The rail is a scrolling list and the reference copies its whole vector
+         * into it without a `take` (left builder 0x5ba1e0 reserves, never cuts),
+         * so this only bounds what a prefix can turn up: a long tail lists its
+         * first syllables, their letters and nothing else.
+         */
+        const val MAX_SYLLABLE_OPTIONS = 48
         private const val READING_BEAM = 24
         private const val MAX_PHRASE_SYLLABLES = 6
         private const val MAX_SYLLABLE_LENGTH = 6
-        private const val MAX_PATHS = 12
+
+        /**
+         * Readings turned into candidates. The reference enumerates its lattice
+         * without a count limit; we keep a bound because every reading costs a
+         * librime query, but it has to leave room for the masked readings an
+         * open fuzzy set adds (9426 grows from 19 to 32 of them).
+         */
+        private const val MAX_PATHS = 24
         private const val MAX_BEAM = 12
         private const val SPELL_BEAM = 8
         private const val SPELL_BRANCHES = 8

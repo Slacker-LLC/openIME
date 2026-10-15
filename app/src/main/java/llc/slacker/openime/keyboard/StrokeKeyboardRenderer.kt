@@ -10,9 +10,8 @@ import llc.slacker.openime.widget.ImeKeyView
 /**
  * The 笔画 keyboard. It keeps the nine-key frame (symbol rail over 符号,
  * 删除/重输/确定 column, 123 · 空格 · 中/英 row) so switching between the two moves nothing
- * the user already knows, and lays the strokes out as the reference does: a
- * 3x3 grid whose last row carries 通配, @# and the two punctuation cells
- * (`input_kbd_stroke.xml:16-66`, see [StrokeGridPolicy]).
+ * the user already knows. The original six cells stay in two rows:
+ * 一 丨 丿 / 丶 折 通配. Corner-digit gestures remain on those cells.
  */
 internal class StrokeKeyboardRenderer(
     private val context: Context,
@@ -102,23 +101,22 @@ internal class StrokeKeyboardRenderer(
             orientation = LinearLayout.VERTICAL
             tag = "stroke-actions"
         }
-        // Delete, retype and send, with send twice as tall, as the reference
-        // keyboard draws this column (the nine-key column has the same shape).
-        val sideQuarterDp = bodyHeightDp() / 4
-        side.addView(createBackspaceKey().apply { markSideKey(this) }, sideKeyParams(sideQuarterDp))
+        // The original stroke layout gives these three actions equal height.
+        val sideHeightDp = bodyHeightDp() / 3
+        side.addView(createBackspaceKey().apply { markSideKey(this) }, sideKeyParams(sideHeightDp))
         side.addView(
             createKey("重输", true, null, ImeTypographyTokens.BODY_SP, onRetype).apply {
                 tag = "key-retype"
                 markSideKey(this)
             },
-            sideKeyParams(sideQuarterDp),
+            sideKeyParams(sideHeightDp),
         )
         side.addView(
             createKey(enterLabel, true, null, ImeTypographyTokens.BODY_SP, onEnter).apply {
                 tag = "key-enter"
                 markSideKey(this)
             },
-            sideKeyParams(sideQuarterDp * 2),
+            sideKeyParams(sideHeightDp),
         )
         container.addView(side, columnParams(1f))
 
@@ -129,7 +127,7 @@ internal class StrokeKeyboardRenderer(
     }
 
     private fun buildStrokeGrid(): LinearLayout {
-        val rows = StrokeGridPolicy.ROWS
+        val rows = StrokeGridPolicy.ROWS.take(2)
         val rowHeightDp = gridHeightDp() / rows.size
         val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         rows.forEach { cells ->

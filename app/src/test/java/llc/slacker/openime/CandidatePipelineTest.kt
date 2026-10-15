@@ -4,6 +4,7 @@ import llc.slacker.openime.candidate.CandidateEngine
 import llc.slacker.openime.candidate.CandidatePipeline
 import llc.slacker.openime.candidate.NineKeyLocalDecoder
 import llc.slacker.openime.candidate.NineKeyPresets
+import llc.slacker.openime.candidate.PoemIndex
 import llc.slacker.openime.core.KeyboardMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -223,6 +224,26 @@ class CandidatePipelineTest {
         assertTrue(pipeline.nineKeyReadingsFor("", null).isEmpty())
     }
 
+    /**
+     * The reference pushes the letters of the open head key into the left list
+     * for every tail, not only for a single key press (left builder 0x5ba608 -
+     * 0x5ba704, one push per letter and one for its `+0x20` twin; 64 -> 10 items
+     * = o mi ni + g h i G H I + the digit). We keep the lower-case letter only,
+     * because the upper-case twin exists for the nine-key English the owner
+     * ruled out, and drop a letter no syllable can start (i, u, v).
+     */
+    @Test
+    fun theHeadsLettersFollowTheSyllablesForAnyOpenTail() {
+        val short = pipeline.nineKeyReadingsFor("64", null).map { it.display }
+        assertTrue("m and n must follow mi/ni: $short", short.takeLast(2) == listOf("m", "n"))
+        assertTrue("i cannot start a syllable and stays out: $short", "i" !in short)
+        val letters = mapOf("94" to listOf("w", "x", "y", "z"), "5426" to listOf("j", "k", "l"))
+        letters.forEach { (digits, expected) ->
+            val shown = pipeline.nineKeyReadingsFor(digits, null).map { it.display }
+            assertTrue("$digits must end with $expected: $shown", shown.takeLast(expected.size) == expected)
+        }
+    }
+
     @Test
     fun previewReadingFollowsTheWordNotTheDecoderGuess() {
         // The unit environment only has the compact lexicon; the full sentence
@@ -251,5 +272,35 @@ class CandidatePipelineTest {
         assertEquals(listOf("你好"), pipeline.preferExactNineKeyMatches("64", listOf("你好")))
         assertEquals(listOf("你好", "你敢好"), pipeline.preferExactNineKeyMatches("9", listOf("你好", "你敢好")))
         assertEquals(listOf("a", "b"), pipeline.preferExactNineKeyMatches(null, listOf("a", "b")))
+    }
+
+    @Test
+    fun poemLinesComeBehindTheEnginesOwnCandidates() {
+        val poems = PoemIndex.parse(
+            sequenceOf("chun mian bu jue xiao\t春眠不觉晓\t处处闻啼鸟"),
+        )
+        val local = CandidateEngine(linkedMapOf("chunmianbu" to listOf("纯棉布")))
+        val withPoems = CandidatePipeline(local, poemIndex = { poems })
+        assertEquals(
+            listOf("纯棉布", "春眠不觉晓"),
+            withPoems.candidatesFor(KeyboardMode.PINYIN_26, "chunmianbu", false)
+                .filter { it in setOf("纯棉布", "春眠不觉晓") },
+        )
+        // A whole line also brings the line that follows it.
+        assertEquals(
+            listOf("春眠不觉晓", "处处闻啼鸟"),
+            withPoems.candidatesFor(KeyboardMode.PINYIN_26, "chunmianbujuexiao", false)
+                .filter { it in setOf("春眠不觉晓", "处处闻啼鸟") },
+        )
+        // A composition no line spells is the engine's own, poem index or not.
+        assertEquals(
+            CandidatePipeline(local).candidatesFor(KeyboardMode.PINYIN_26, "nihao", false),
+            withPoems.candidatesFor(KeyboardMode.PINYIN_26, "nihao", false),
+        )
+        // Nine-key speaks digits; the poem lookup is a pinyin one.
+        assertTrue(
+            withPoems.candidatesFor(KeyboardMode.PINYIN_9, "chunmianbujuexiao", false)
+                .none { it == "春眠不觉晓" },
+        )
     }
 }

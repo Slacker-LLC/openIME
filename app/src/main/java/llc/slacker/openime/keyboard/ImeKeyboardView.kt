@@ -51,7 +51,9 @@ import llc.slacker.openime.data.QuickPhrase
 import llc.slacker.openime.data.QuickPhraseRepository
 import llc.slacker.openime.data.SymbolRecentRepository
 import llc.slacker.openime.editor.EditorInfoAdapter
+import llc.slacker.openime.editor.EnterKeyLongPress
 import llc.slacker.openime.editor.enterKeyFaceFor
+import llc.slacker.openime.editor.enterKeyLongPressFor
 import llc.slacker.openime.editor.enterKeyPresentationFor
 import llc.slacker.openime.floating.FloatingKeyboardController
 import llc.slacker.openime.panel.ClipboardPanelController
@@ -102,6 +104,14 @@ open class ImeKeyboardView(
         }
         fun onVoiceCommit() {}
         fun onEnter()
+
+        /**
+         * A long press on a send key inserts a line break instead of sending
+         * ([enterKeyLongPressFor]). Views that only display the keyboard take no
+         * long press, so the default is empty.
+         */
+        fun onEnterNewline() {}
+
         fun onCompositionChanged(composition: String, candidates: List<String>)
         fun onNineKeyCompositionChanged(
             composition: String,
@@ -141,8 +151,17 @@ open class ImeKeyboardView(
         fun onKeyboardHeightChanged(percent: Int) {}
         fun onHapticStrengthChanged(percent: Int) {}
 
+        /** 按键音量 changed; the new percent is already saved and in effect. */
+        fun onKeySoundVolumeChanged(percent: Int) {}
+
         /** 震动手感 or 按键音效 changed; the new value is already saved. */
         fun onFeedbackStyleChanged() {}
+
+        /** 首字母自动大写 changed; the new value is already saved. */
+        fun onAutoCapitalizationChanged() {}
+
+        /** 候选栏展示 changed; the new value is already saved. */
+        fun onClipboardCandidateChanged() {}
 
         /** 输入拼音显示位置改了（候选栏 ↔ 输入框）；新值已经存好。 */
         fun onPinyinLocationChanged(location: PinyinLocation) {}
@@ -326,13 +345,28 @@ open class ImeKeyboardView(
         modeBodyRebuildPosted = false
         renderModeBody()
     }
+    /** The poll has seen the finger lift and is waiting one turn for the release's click. */
+    private var rebuildSettling = false
     private val pendingRowRebuildPoll = object : Runnable {
         override fun run() {
-            if (!pendingRowRebuild) return
+            if (!pendingRowRebuild) {
+                rebuildSettling = false
+                return
+            }
             if (hasPressedKey()) {
+                rebuildSettling = false
                 postDelayed(this, ROW_REBUILD_POLL_MS)
                 return
             }
+            // `View.onTouchEvent` posts the click on ACTION_UP, and detaching the
+            // view cancels that post. This poll can be due before the post, so
+            // yield once: the click is then queued ahead of the rebuild.
+            if (!rebuildSettling) {
+                rebuildSettling = true
+                post(this)
+                return
+            }
+            rebuildSettling = false
             pendingRowRebuild = false
             renderModeBody()
         }
@@ -386,6 +420,42 @@ open class ImeKeyboardView(
     private var dismissedSuggestion: String? = null
     private var dismissedSmsCode: String? = null
     private var ownSuggestionsShown = false
+    private var smsObserver: android.database.ContentObserver? = null
+    private val refreshSmsSuggestions = Runnable {
+        if (isAttachedToWindow && isShown) refreshSuggestions()
+    }
+
+    private fun stopObservingSms() {
+        removeCallbacks(refreshSmsSuggestions)
+        smsObserver?.let { context.contentResolver.unregisterContentObserver(it) }
+        smsObserver = null
+    }
+
+    private fun syncSmsObserver() {
+        val enabled = isAttachedToWindow && !standalonePanel &&
+            personalizedLearningAllowed(passwordField, currentImeOptions()) &&
+            ImeSettingsRepository.loadSmsCodeChip(context) &&
+            context.checkSelfPermission(android.Manifest.permission.READ_SMS) ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!enabled) {
+            stopObservingSms()
+        } else if (smsObserver == null) {
+            val observer = object : android.database.ContentObserver(repeatHandler) {
+                override fun onChange(selfChange: Boolean) {
+                    removeCallbacks(refreshSmsSuggestions)
+                    postDelayed(refreshSmsSuggestions, 200L)
+                }
+            }
+            try {
+                context.contentResolver.registerContentObserver(
+                    android.provider.Telephony.Sms.CONTENT_URI, true, observer,
+                )
+                smsObserver = observer
+            } catch (_: SecurityException) {
+                // Permission can be revoked between the check and registration.
+            }
+        }
+    }
 
     /**
      * Toolbar chips for a fresh text-message code and the text just copied. They
@@ -393,6 +463,7 @@ open class ImeKeyboardView(
      */
     internal fun refreshSuggestions() {
         if (standalonePanel || !::topZone.isInitialized) return
+        syncSmsObserver()
         // System autofill chips keep the strip; only this view's own chips are refreshed.
         if (topZone.autofillChipsShown && !ownSuggestionsShown) return
         val found = ToolbarSuggestions.collect(context, allowed = personalizedLearningAllowed(passwordField, currentImeOptions()), skipClip = dismissedSuggestion, skipSms = dismissedSmsCode)
@@ -522,6 +593,7 @@ open class ImeKeyboardView(
     private var lastStrengthPreviewMs = 0L
     private val keySounds = KeySounds(context).apply {
         style = KeySoundStyle.fromKey(ImeSettingsRepository.loadKeySoundStyle(context))
+        volume = ImeSettingsRepository.loadKeySoundVolume(context) / 100f
     }
     private var popupEnabled = ImeSettingsRepository.loadPopup(context)
     private var fuzzyEnabled = ImeSettingsRepository.loadFuzzy(context)
@@ -625,13 +697,14 @@ open class ImeKeyboardView(
             },
             createBackspaceKey = ::backspaceKey,
             createSpaceVoiceKey = { label, onTap ->
-                spaceVoiceKey(label, white = true, onTap = onTap, hint = "0")
+                spaceVoiceKey(label, white = true, onTap = onTap)
             },
             createSymbolRail = { requireNineKeySymbolRailController().buildRail() },
             markSideKey = { key -> key.setTag(MARK_SIDE_KEY, true) },
             markWhiteKey = { key -> key.setTag(MARK_WHITE_KEY, true) },
             onDigitKeyCreated = nineKeySegmentRepairController::bindDigitKey,
             onNineKey = ::onNineKey,
+            onPinyinSegment = ::onPinyinSegment,
             onShowChoicePopup = ::showChoicePopup,
             onShowChoiceRows = ::showChoiceRows,
             swipeUpEnabled = { ImeSettingsRepository.loadSwipeUpDigits(context) },
@@ -666,7 +739,7 @@ open class ImeKeyboardView(
             },
             createBackspaceKey = ::backspaceKey,
             createSpaceVoiceKey = { label, onTap ->
-                spaceVoiceKey(label, white = true, onTap = onTap, hint = "0")
+                spaceVoiceKey(label, white = true, onTap = onTap)
             },
             // The nine-key rail: stroke glyphs are not digits, so it stays on symbols.
             createSymbolRail = { requireNineKeySymbolRailController().buildRail() },
@@ -867,6 +940,7 @@ open class ImeKeyboardView(
             currentDoublePinyinScheme = { ImeSettingsRepository.loadDoublePinyinScheme(context) },
             currentPinyinLocation = { pinyinLocation },
             currentKeySoundStyle = { keySounds.style },
+            currentKeySoundVolume = { (keySounds.volume * 100).toInt() },
             currentPopup = { popupEnabled },
             currentSwipeUpDigits = { ImeSettingsRepository.loadSwipeUpDigits(context) },
             currentExtraToggle = ::onState,
@@ -895,6 +969,7 @@ open class ImeKeyboardView(
             onDoublePinyinSchemeChanged = ::setDoublePinyinScheme,
             onPinyinLocationChanged = ::setPinyinLocation,
             onKeySoundStyleChanged = ::setKeySoundStyle,
+            onKeySoundVolumeChanged = ::setKeySoundVolume,
             onFloatingStyleChanged = ::setFloatingStyle,
             onShowFuzzySettings = { showPanel(Panel.FUZZY_SETTINGS) },
             onFuzzyRulesChanged = listener::onFuzzyRulesChanged,
@@ -1836,7 +1911,7 @@ open class ImeKeyboardView(
         candidateBarController.syncExpandControl(
             hasCandidates = currentCandidates.isNotEmpty(),
         )
-        syncEnterKeyPresentation(state.editorInfo?.imeOptions)
+        syncEnterKeyPresentation(state.editorInfo?.imeOptions ?: currentImeOptions())
     }
 
     /**
@@ -1858,10 +1933,26 @@ open class ImeKeyboardView(
         val options = imeOptions ?: return
         val enter = findViewWithTag<ImeKeyView>("key-enter") ?: return
         val composing = composition.text?.isNotEmpty() == true
+        val longPress = enterKeyLongPressFor(options, composing)
         enter.setMainText(enterKeyFaceFor(options, composing))
         enter.applyMainTextScale(referenceScale)
-        enter.contentDescription = if (composing) "确定" else enterKeyPresentationFor(options).label
+        enter.contentDescription = when {
+            composing -> "确定"
+            // 长按按参考自己的说法换行，跟着键面一起念出来（同「，上滑或长按输入X」的写法）。
+            longPress == EnterKeyLongPress.Newline -> "${enterKeyPresentationFor(options).label}，长按换行"
+            else -> enterKeyPresentationFor(options).label
+        }
         themeApplier.apply(enter, currentThemeTokens())
+        enter.setOnLongClickListener(
+            if (longPress == EnterKeyLongPress.Newline) {
+                View.OnLongClickListener {
+                    listener.onEnterNewline()
+                    true
+                }
+            } else {
+                null
+            },
+        )
     }
 
     private var inlineAutofillController: InlineAutofillController? = null
@@ -1962,6 +2053,23 @@ open class ImeKeyboardView(
         if (now - lastStrengthPreviewMs >= STRENGTH_PREVIEW_INTERVAL_MS) {
             lastStrengthPreviewMs = now
             keyHaptics.click(this)
+        }
+    }
+
+    /** Save 按键音量 and click once at the new loudness, rate-limited like the strength preview. */
+    private fun setKeySoundVolume(percent: Int) {
+        val bounded = percent.coerceIn(
+            ImeSettingsRepository.SOUND_VOLUME_MIN,
+            ImeSettingsRepository.SOUND_VOLUME_MAX,
+        )
+        if ((keySounds.volume * 100).toInt() == bounded) return
+        keySounds.volume = bounded / 100f
+        ImeSettingsRepository.saveKeySoundVolume(context, bounded)
+        listener.onKeySoundVolumeChanged(bounded)
+        val now = SystemClock.uptimeMillis()
+        if (now - lastStrengthPreviewMs >= STRENGTH_PREVIEW_INTERVAL_MS) {
+            lastStrengthPreviewMs = now
+            keySounds.play()
         }
     }
 
@@ -2156,6 +2264,7 @@ open class ImeKeyboardView(
         keyHaptics.strengthPercent = ImeSettingsRepository.loadHapticStrengthPercent(context)
         keyHaptics.style = HapticStyle.fromKey(ImeSettingsRepository.loadHapticStyle(context))
         keySounds.style = KeySoundStyle.fromKey(ImeSettingsRepository.loadKeySoundStyle(context))
+        keySounds.volume = ImeSettingsRepository.loadKeySoundVolume(context) / 100f
         if (heightChanged) {
             keyboardHeightPercent = persistedHeight
             renderedMode = null
@@ -2221,6 +2330,7 @@ open class ImeKeyboardView(
     }
 
     open fun shutdown() {
+        stopObservingSms()
         keySounds.release()
         // The field these chips belong to is going away.
         clearInlineSuggestions()
@@ -2360,7 +2470,7 @@ open class ImeKeyboardView(
             composing -> ImeTopZoneState.COMPOSING
             else -> ImeTopZoneState.IDLE
         }
-        syncEnterKeyPresentation((context as? android.inputmethodservice.InputMethodService)?.currentInputEditorInfo?.imeOptions)
+        syncEnterKeyPresentation(currentImeOptions())
         findViewWithTag<View>("key-enter")?.let(::applyThemeToSubtree)
         topZone.renderState(
             state = state,
@@ -2831,12 +2941,17 @@ open class ImeKeyboardView(
         "按键气泡" -> popupEnabled
         "上滑输入数字" -> ImeSettingsRepository.loadSwipeUpDigits(context)
         "复制内容提示" -> ImeSettingsRepository.loadClipboardChip(context)
+        "候选栏展示" -> ImeSettingsRepository.loadClipboardCandidate(context)
         "短信验证码" -> ImeSettingsRepository.loadSmsCodeChip(context) &&
             context.checkSelfPermission(android.Manifest.permission.READ_SMS) == android.content.pm.PackageManager.PERMISSION_GRANTED
         "数字和符号提示" -> ImeSettingsRepository.loadLetterHints(context)
+        "首字母自动大写" -> ImeSettingsRepository.loadFirstLetterCapitalization(context)
         "智能联想" -> ImeSettingsRepository.loadEmojiAssociation(context)
+        "数字、英文前后加空格" -> ImeSettingsRepository.loadLetterDigitSpace(context)
+        "双击空格键输入句号" -> ImeSettingsRepository.loadDoubleSpacePeriod(context)
         "语音去语气词" -> ImeSettingsRepository.loadVoiceStripFillers(context)
         "标点用空格代替" -> ImeSettingsRepository.loadVoicePunctuationAsSpace(context)
+        "使用耳机麦克风录音" -> ImeSettingsRepository.loadBluetoothHeadsetMic(context)
         else -> true
         }
 
@@ -2883,9 +2998,25 @@ open class ImeKeyboardView(
                 renderedMode = null
                 if (panel == Panel.NONE) renderModeBody()
             }
+            // Read at commit time, so both of these need no listener round trip.
+            "数字、英文前后加空格" -> ImeSettingsRepository.saveLetterDigitSpace(context, enabled)
+            "双击空格键输入句号" -> ImeSettingsRepository.saveDoubleSpacePeriod(context, enabled)
+            "候选栏展示" -> {
+                ImeSettingsRepository.saveClipboardCandidate(context, enabled)
+                // The row is the service's; it re-reads the clipboard right away.
+                listener.onClipboardCandidateChanged()
+            }
             "智能联想" -> ImeSettingsRepository.saveEmojiAssociation(context, enabled)
+            "首字母自动大写" -> {
+                ImeSettingsRepository.saveFirstLetterCapitalization(context, enabled)
+                // The Shift key is the service's to paint; it re-reads the text
+                // around the cursor for the field that is up right now.
+                listener.onAutoCapitalizationChanged()
+            }
             "语音去语气词" -> ImeSettingsRepository.saveVoiceStripFillers(context, enabled)
             "标点用空格代替" -> ImeSettingsRepository.saveVoicePunctuationAsSpace(context, enabled)
+            // Read when the next recording starts, so it needs no listener.
+            "使用耳机麦克风录音" -> ImeSettingsRepository.saveBluetoothHeadsetMic(context, enabled)
         }
     }
 
@@ -3602,11 +3733,7 @@ open class ImeKeyboardView(
                 ShiftState.CAPS_LOCK -> "key-shift-caps"
             }
             setIcon(EnglishShiftPolicy.icon(shiftState))
-            contentDescription = when (shiftState) {
-                ShiftState.LOWERCASE -> "大写"
-                ShiftState.SHIFT_ONCE -> "大写一次"
-                ShiftState.CAPS_LOCK -> "大写锁定"
-            }
+            contentDescription = EnglishShiftPolicy.description(shiftState)
         }
         applyShiftTheme(shift)
     }

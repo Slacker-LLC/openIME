@@ -1,7 +1,9 @@
 package llc.slacker.openime
 
 import android.view.inputmethod.EditorInfo
+import llc.slacker.openime.editor.EnterKeyLongPress
 import llc.slacker.openime.editor.editorActionForEnter
+import llc.slacker.openime.editor.enterKeyLongPressFor
 import llc.slacker.openime.editor.enterKeyFaceFor
 import llc.slacker.openime.editor.enterKeyPresentationFor
 import org.junit.Assert.assertEquals
@@ -56,6 +58,37 @@ class EnterActionPolicyTest {
             assertEquals("回车", presentation.label)
             assertNull(presentation.editorAction)
         }
+    }
+
+    /** 参考自己的设置文案：`enable_key_enter_sub_title`「长按「发送」可换行。开关支持App范围」。 */
+    @Test
+    fun theSendFaceTakesALongPressThatInsertsALineBreak() {
+        assertEquals(
+            EnterKeyLongPress.Newline,
+            enterKeyLongPressFor(EditorInfo.IME_ACTION_SEND, composing = false),
+        )
+    }
+
+    @Test
+    fun noOtherEnterFaceTakesALongPressTheReferenceDoesNotDocument() {
+        listOf(
+            EditorInfo.IME_ACTION_DONE,
+            EditorInfo.IME_ACTION_SEARCH,
+            EditorInfo.IME_ACTION_GO,
+            EditorInfo.IME_ACTION_NEXT,
+            EditorInfo.IME_ACTION_PREVIOUS,
+            EditorInfo.IME_ACTION_NONE,
+            EditorInfo.IME_ACTION_UNSPECIFIED,
+            // The editor keeps the key on its raw-Enter face even though it asked for SEND.
+            EditorInfo.IME_ACTION_SEND or EditorInfo.IME_FLAG_NO_ENTER_ACTION,
+        ).forEach { options ->
+            assertNull("options=$options", enterKeyLongPressFor(options, composing = false))
+        }
+    }
+
+    @Test
+    fun aCompositionReadsDeterminateAndTakesNoLongPress() {
+        assertNull(enterKeyLongPressFor(EditorInfo.IME_ACTION_SEND, composing = true))
     }
 
     @Test

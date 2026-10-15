@@ -393,15 +393,15 @@ class SpaceCursorAndLetterHintsInstrumentedTest {
         assertTrue("a tap types the letter, not the hint: ${recorder.characters}", "1" !in recorder.characters)
     }
 
-    /** The reference prints 0 on the nine-key and stroke space bar and types it on an up swipe. */
+    /** Keep the digit gesture without moving the original zero key onto the space bar. */
     @Test
-    fun swipeUpOnTheNineKeySpaceTypesZero() = withKeyboard { harness, recorder, keyboard ->
+    fun spaceKeepsItsOriginalFaceAndRetainsTheZeroSwipe() = withKeyboard { harness, recorder, keyboard ->
         listOf(KeyboardMode.PINYIN_9, KeyboardMode.STROKE).forEach { mode ->
             harness.awaitMain { keyboard.setMode(KeyboardMode.DIGITS); keyboard.setMode(mode); true }
             recorder.characters.clear()
             recorder.spaces = 0
             val space = settled(harness, keyboard, "key-space")
-            harness.awaitMain { assertTrue("$mode space carries the 0 mark", "0" in texts(space)); true }
+            harness.awaitMain { assertFalse("$mode space keeps its original face", "0" in texts(space)); true }
             swipeUp(harness, space)
             assertEquals("$mode up swipe on the space bar types 0", listOf("0"), recorder.characters.toList())
             recorder.characters.clear()

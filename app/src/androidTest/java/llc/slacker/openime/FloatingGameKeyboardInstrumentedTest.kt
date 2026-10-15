@@ -103,9 +103,14 @@ class FloatingGameKeyboardInstrumentedTest {
         return find(row)
     }
 
-    /** The idle row is the reference's own order, in the reference's own scrolling strip. */
+    /**
+     * The idle row keeps our own order in the reference's scrolling strip. The
+     * reference's own row leads with the clipboard, then emoji, then the board
+     * selector (`input_toolbar_idle.xml:21-25`); the owner asked for our order
+     * back on 2026-10-16, so the order here is deliberate, not a drift.
+     */
     @Test
-    fun theIdleIconsFollowTheReferencesOrderInsideAScrollingStrip() = withKeyboard { harness, _, keyboard ->
+    fun theIdleIconsKeepOurOrderInsideAScrollingStrip() = withKeyboard { harness, _, keyboard ->
         harness.awaitMain {
             val strip = keyboard.findViewWithTag<ViewGroup>("toolbar-icon-strip") ?: return@awaitMain null
             val scroll = keyboard.findViewWithTag<View>("toolbar-icon-scroll")
@@ -116,13 +121,10 @@ class FloatingGameKeyboardInstrumentedTest {
             val labels = (0 until strip.childCount).map(strip::getChildAt)
                 .filter { it.visibility == View.VISIBLE && it.contentDescription != null }
                 .map { it.contentDescription.toString() }
-            listOf("剪贴板", "表情", "切换键盘").forEach {
-                assertTrue("$it must keep its key in the idle row, got $labels", it in labels)
-            }
-            assertTrue(
-                "The reference puts the clipboard first, then emoji, then the board selector: $labels",
-                labels.indexOf("剪贴板") < labels.indexOf("表情") &&
-                    labels.indexOf("表情") < labels.indexOf("切换键盘"),
+            assertEquals(
+                "The idle row keeps our own order, see docs/DECISIONS.md",
+                listOf("切换键盘", "剪贴板", "表情", "文本编辑", "撤销", "更多"),
+                labels,
             )
             true
         }

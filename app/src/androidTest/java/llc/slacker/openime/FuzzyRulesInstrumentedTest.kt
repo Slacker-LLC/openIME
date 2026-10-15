@@ -71,11 +71,13 @@ class FuzzyRulesInstrumentedTest {
             assertTrue("huang = wang: wang offers 黄", "黄" in rime.candidates("wang").take(40))
             assertTrue("ei = ui: hui offers 飞", "飞" in rime.candidates("hui").take(40))
 
-            // Back to the shipped defaults: nothing fuzzy even with 模糊音 on.
+            // Back to the shipped defaults: the reference's own six pairs stay on
+            // (z = zh among them), and the nine it does not default to fall away.
             ImeSettingsRepository.saveFuzzyRules(context, FuzzyRule.DEFAULTS)
             redeploy(rime)
             assertEquals(FuzzyRule.rimeYaml(FuzzyRule.DEFAULTS), userRules.readText())
-            assertFalse("defaults: zi does not offer 知", "知" in rime.candidates("zi").take(30))
+            assertTrue("defaults: zi offers 知", "知" in rime.candidates("zi").take(30))
+            assertFalse("defaults: hui does not offer 飞", "飞" in rime.candidates("hui").take(40))
 
             // 模糊音 off: the plain schema, nothing fuzzy.
             ImeSettingsRepository.saveFuzzy(context, false)

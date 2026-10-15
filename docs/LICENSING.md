@@ -48,13 +48,15 @@ The license files ship in the APK.
   Its model card states Apache License 2.0.
   The APK contains `ct-transformer-Apache-2.0.txt`.
   The file hashes are part of the voice model manifest.
+- The voice-model importer reads `.tar.bz2` packages, which Android's own `java.util.zip` cannot decode, so it uses `org.apache.commons:commons-compress:1.27.1` (Apache-2.0).
+  The APK contains `commons-compress-Apache-2.0.txt`.
 
 Git LFS only stores the files. It does not change their licenses.
 
 ## Licenses in the APK
 
 The release APK carries the main third-party license texts in `assets/licenses/`.
-These are librime, OpenCC, Snappy, Rime Ice, the sherpa-onnx runtime, the Paraformer and CT-Transformer models and Fluent Emoji.
+These are librime, OpenCC, Snappy, Rime Ice, the sherpa-onnx runtime, Apache Commons Compress, the Paraformer and CT-Transformer models and Fluent Emoji.
 
 `THIRD_PARTY_NOTICES.md` lists each component, its source, its version or pinned commit and its file location.
 The release notes link to this file, so you can read it outside the APK.

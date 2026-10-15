@@ -45,4 +45,16 @@ internal object EnglishShiftPolicy {
         ShiftState.SHIFT_ONCE -> R.drawable.ic_shift_on
         ShiftState.CAPS_LOCK -> R.drawable.ic_caps_lock
     }
+
+    /**
+     * The accessible name of the Shift key. The tap gesture is ours to draw but
+     * the reference announces it, so the unlocked states carry its own guide
+     * text 「双击大写键锁定大写输入」 (`string/caps_lock_guide_text`,
+     * 0x7f1100de) the way the enter key announces 「发送，长按换行」.
+     */
+    fun description(state: ShiftState): String = when (state) {
+        ShiftState.LOWERCASE -> "大写，双击锁定大写输入"
+        ShiftState.SHIFT_ONCE -> "大写一次，双击锁定大写输入"
+        ShiftState.CAPS_LOCK -> "大写锁定"
+    }
 }

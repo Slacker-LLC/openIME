@@ -2,7 +2,9 @@ package llc.slacker.openime
 
 import llc.slacker.openime.candidate.CandidateEngine
 import llc.slacker.openime.candidate.CandidatePipeline
+import llc.slacker.openime.candidate.FuzzyPinyin
 import llc.slacker.openime.candidate.NineKeyLocalDecoder
+import llc.slacker.openime.core.FuzzyRule
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -113,6 +115,34 @@ class NineKeyChineseTest {
         assertEquals(null, pipeline.nineKeyReadingFor("4", "啊"))
         // More than one key keeps requiring complete syllables.
         assertEquals(null, pipeline.nineKeyReadingFor("44", "和"))
+    }
+
+    /**
+     * The reference keeps a masked reading beside every plain one and lets it in
+     * when its rule is on: node "64" of syllable.dat carries `li` with the n↔l
+     * mask 0x0008 (data3[275]; pass2 0x5b962c gates on `mask ⊆ 用户fuzzy`), so a
+     * press of 64 offers 里 once n = l is switched on and never before.
+     */
+    @Test
+    fun aFuzzyRuleAddsTheReadingsItCoversAndNothingWhileOff() {
+        val previous = FuzzyPinyin.rules
+        try {
+            FuzzyPinyin.rules = setOf(FuzzyRule.N_L)
+            val on = pipeline.resolveNineKey("64", "", null, fuzzy = true)
+            assertTrue("li must read 64 under n = l: ${on.displayPinyinPaths}", "li" in on.displayPinyinPaths)
+            assertTrue("里 must be offered for 64: ${on.candidates}", "里" in on.candidates)
+            val off = pipeline.resolveNineKey("64", "", null, fuzzy = false)
+            assertFalse("no li while fuzzy is off: ${off.displayPinyinPaths}", "li" in off.displayPinyinPaths)
+            // The rail carries plain spellings only, exactly like the reference's
+            // left builder, which takes records whose mask is zero (0x5ba378).
+            assertTrue(
+                "a masked reading stays out of the rail: " +
+                    pipeline.nineKeyReadingsFor("64", null).map { it.display },
+                "li" !in pipeline.nineKeyReadingsFor("64", null).map { it.display },
+            )
+        } finally {
+            FuzzyPinyin.rules = previous
+        }
     }
 
     private fun resolve(digits: String): CandidatePipeline.NineKeyResolution =

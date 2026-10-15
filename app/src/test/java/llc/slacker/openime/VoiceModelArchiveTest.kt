@@ -1,6 +1,7 @@
 package llc.slacker.openime
 
 import llc.slacker.openime.voice.VoiceModelArchive
+import org.apache.commons.compress.compressors.bzip2.BZip2CompressorOutputStream
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -88,12 +89,13 @@ class VoiceModelArchiveTest {
     }
 
     @Test
-    fun extractsPlainAndGzippedTar() {
+    fun extractsPlainGzippedAndBzip2Tar() {
         val payload = "tokens\n".toByteArray()
         val tar = tarOf("pkg/tokens.txt" to payload, "pkg/joiner.onnx" to ByteArray(3) { 2 })
         for ((format, bytes) in listOf(
             VoiceModelArchive.Format.TAR to tar,
             VoiceModelArchive.Format.TAR_GZ to gzip(tar),
+            VoiceModelArchive.Format.TAR_BZ2 to bzip2(tar),
         )) {
             val dir = staging()
             try {
@@ -127,6 +129,13 @@ class VoiceModelArchiveTest {
         assertEquals(VoiceModelArchive.Format.ZIP, VoiceModelArchive.sniff(zipOf("a" to ByteArray(1))))
         assertEquals(VoiceModelArchive.Format.TAR_GZ, VoiceModelArchive.sniff(gzip(ByteArray(512))))
         assertEquals(VoiceModelArchive.Format.TAR, VoiceModelArchive.sniff(tarOf("a" to ByteArray(1))))
+        // `BZh9` is how the official model archives open; a name-less SAF pick
+        // must still recognise them.
+        assertEquals(
+            VoiceModelArchive.Format.TAR_BZ2,
+            VoiceModelArchive.sniff("BZh9".toByteArray(Charsets.US_ASCII) + ByteArray(508)),
+        )
+        assertEquals(null, VoiceModelArchive.sniff("BZh0".toByteArray(Charsets.US_ASCII) + ByteArray(508)))
         assertEquals(null, VoiceModelArchive.sniff("not an archive".toByteArray()))
     }
 
@@ -136,12 +145,53 @@ class VoiceModelArchiveTest {
         assertEquals(VoiceModelArchive.Format.TAR_GZ, VoiceModelArchive.formatOf("m.tgz"))
         assertEquals(VoiceModelArchive.Format.TAR_GZ, VoiceModelArchive.formatOf("m.tar.gz"))
         assertEquals(VoiceModelArchive.Format.TAR, VoiceModelArchive.formatOf("m.tar"))
-        assertEquals(null, VoiceModelArchive.formatOf("m.tar.bz2"))
+        // The official sherpa-onnx voice-model releases are published as tar.bz2.
+        for (name in listOf("m.tar.bz2", "m.tbz2", "m.tbz", "m.TAR.BZ2")) {
+            assertEquals(name, VoiceModelArchive.Format.TAR_BZ2, VoiceModelArchive.formatOf(name))
+        }
+    }
+
+    /** The decompressor for the format the official model releases ship. */
+    @Test
+    fun bzip2ImportKeepsTheArchivesSecurityChecks() {
+        val dir = staging()
+        try {
+            val escape = tarOf("../escaped.txt" to "x".toByteArray())
+            try {
+                VoiceModelArchive.extract(
+                    bzip2(escape).inputStream(),
+                    VoiceModelArchive.Format.TAR_BZ2,
+                    dir,
+                )
+                fail("expected the traversal check to trip")
+            } catch (expected: IllegalArgumentException) {
+                assertTrue(expected.message!!.contains("非法路径"))
+            }
+            try {
+                VoiceModelArchive.extract(
+                    bzip2(tarOf("big.onnx" to ByteArray(4096))).inputStream(),
+                    VoiceModelArchive.Format.TAR_BZ2,
+                    dir,
+                    maxBytes = 1024,
+                )
+                fail("expected the size cap to trip")
+            } catch (expected: IllegalArgumentException) {
+                assertTrue(expected.message!!.contains("上限"))
+            }
+        } finally {
+            dir.deleteRecursively()
+        }
     }
 
     private fun gzip(bytes: ByteArray): ByteArray {
         val out = ByteArrayOutputStream()
         GZIPOutputStream(out).use { it.write(bytes) }
+        return out.toByteArray()
+    }
+
+    private fun bzip2(bytes: ByteArray): ByteArray {
+        val out = ByteArrayOutputStream()
+        BZip2CompressorOutputStream(out).use { it.write(bytes) }
         return out.toByteArray()
     }
 }

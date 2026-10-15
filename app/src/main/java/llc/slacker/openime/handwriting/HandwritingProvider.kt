@@ -25,7 +25,20 @@ sealed class HandwritingResult {
 }
 
 internal object HandwritingFeaturePolicy {
+    /**
+     * Hidden on the owner's request on 2026-10-16, while the pad is still
+     * rough. The provider, the pad and the strokes table stay in the build, so
+     * the entry comes back by flipping this on — nothing else has to change.
+     */
+    const val ENTRY_OFFERED = false
+
     fun entryEnabled(provider: HandwritingProvider): Boolean = provider.isAvailable
+
+    /**
+     * Whether the keyboard switcher and the tools page list the pad at all.
+     * [assetPresent] is the table's own check, which local builds pass.
+     */
+    fun entryShown(assetPresent: Boolean): Boolean = ENTRY_OFFERED && assetPresent
 }
 
 object UnavailableHandwritingProvider : HandwritingProvider {

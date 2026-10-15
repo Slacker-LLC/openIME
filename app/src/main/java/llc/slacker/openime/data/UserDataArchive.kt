@@ -48,6 +48,15 @@ internal data class ArchiveSettings(
     val emojiAssociation: Boolean = true,
     val voiceStripFillers: Boolean = true,
     val voicePunctuationAsSpace: Boolean = false,
+    val bluetoothHeadsetMic: Boolean = false,
+    /** 快捷格式输入: the three switches the reference keeps on its own page. */
+    val firstLetterCapitalization: Boolean = false,
+    val letterDigitSpace: Boolean = false,
+    val doubleSpacePeriod: Boolean = false,
+    /** 候选栏展示. */
+    val clipboardCandidate: Boolean = false,
+    /** 按键音量, the reference's `key_sound_volume` default. */
+    val keySoundVolume: Int = 50,
     val hapticStrengthPercent: Int = 100,
     val hapticStyle: String = "crisp",
     val keySoundStyle: String = "system",
@@ -205,6 +214,12 @@ internal object UserDataArchiveCodec {
             .put("emoji_association", value.emojiAssociation)
             .put("voice_strip_fillers", value.voiceStripFillers)
             .put("voice_punctuation_as_space", value.voicePunctuationAsSpace)
+            .put("bluetooth_headset_mic", value.bluetoothHeadsetMic)
+            .put("first_letter_capitalization", value.firstLetterCapitalization)
+            .put("letter_digit_space", value.letterDigitSpace)
+            .put("double_space_period", value.doubleSpacePeriod)
+            .put("clipboard_candidate", value.clipboardCandidate)
+            .put("key_sound_volume", value.keySoundVolume)
             .apply { value.railSymbols?.let { put("rail_symbols", JSONArray(it)) } }
             .apply { value.fuzzyRules?.let { put("fuzzy_rules", JSONArray(it)) } }
 
@@ -247,6 +262,15 @@ internal object UserDataArchiveCodec {
             voiceStripFillers = value.optBoolean("voice_strip_fillers", true),
             voicePunctuationAsSpace =
                 value.optBoolean("voice_punctuation_as_space", false),
+            bluetoothHeadsetMic = value.optBoolean("bluetooth_headset_mic", false),
+            firstLetterCapitalization = value.optBoolean("first_letter_capitalization", false),
+            letterDigitSpace = value.optBoolean("letter_digit_space", false),
+            doubleSpacePeriod = value.optBoolean("double_space_period", false),
+            clipboardCandidate = value.optBoolean("clipboard_candidate", false),
+            keySoundVolume = value.optInt(
+                "key_sound_volume",
+                ImeSettingsRepository.SOUND_VOLUME_DEFAULT,
+            ),
             railSymbols = value.optJSONArray("rail_symbols")?.let { array ->
                 RailSymbolRepository.normalize((0 until array.length()).map { array.optString(it) })
             },
@@ -389,6 +413,14 @@ internal object UserDataRepository {
                 voiceStripFillers = ImeSettingsRepository.loadVoiceStripFillers(context),
                 voicePunctuationAsSpace =
                     ImeSettingsRepository.loadVoicePunctuationAsSpace(context),
+                bluetoothHeadsetMic =
+                    ImeSettingsRepository.loadBluetoothHeadsetMic(context),
+                firstLetterCapitalization =
+                    ImeSettingsRepository.loadFirstLetterCapitalization(context),
+                letterDigitSpace = ImeSettingsRepository.loadLetterDigitSpace(context),
+                doubleSpacePeriod = ImeSettingsRepository.loadDoubleSpacePeriod(context),
+                clipboardCandidate = ImeSettingsRepository.loadClipboardCandidate(context),
+                keySoundVolume = ImeSettingsRepository.loadKeySoundVolume(context),
                 railSymbols = RailSymbolRepository.load(context)
                     .takeIf { RailSymbolRepository.isCustomized(context) },
                 fuzzyRules = FuzzyRule.entries
@@ -503,6 +535,12 @@ internal object UserDataRepository {
             context,
             value.voicePunctuationAsSpace,
         )
+        ImeSettingsRepository.saveBluetoothHeadsetMic(context, value.bluetoothHeadsetMic)
+        ImeSettingsRepository.saveFirstLetterCapitalization(context, value.firstLetterCapitalization)
+        ImeSettingsRepository.saveLetterDigitSpace(context, value.letterDigitSpace)
+        ImeSettingsRepository.saveDoubleSpacePeriod(context, value.doubleSpacePeriod)
+        ImeSettingsRepository.saveClipboardCandidate(context, value.clipboardCandidate)
+        ImeSettingsRepository.saveKeySoundVolume(context, value.keySoundVolume)
         // Backups from before the editable rail carry none; keep the current one.
         value.railSymbols?.let { RailSymbolRepository.save(context, it) }
         value.fuzzyRules?.let { keys ->
