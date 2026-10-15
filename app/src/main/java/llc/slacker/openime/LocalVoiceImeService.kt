@@ -228,6 +228,8 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             runCatching { EnglishLexicon.preload(this) }
             // The emoji panel's full list checks every emoji against the font: do it here, not on first open.
             runCatching { EmojiCatalog.byCategory(this) }
+            // The association table is the reference's full one now; parse it here, not on the first commit.
+            runCatching { EmojiAssociationIndex.preload(this) }
             // Only someone who uses the 笔画 keyboard pays for its table; the
             // keyboard loads it on first use otherwise.
             if (ImeSettingsRepository.loadPreferredChineseMode(this) == KeyboardMode.STROKE) {
@@ -1363,7 +1365,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     }
 
     private val emojiAssociations: EmojiAssociationIndex by lazy {
-        EmojiAssociationIndex.load(this)
+        EmojiAssociationIndex.obtain(this)
     }
 
     /** Next-word suggestions, with the emoji that go with the committed text first. */

@@ -35,6 +35,11 @@ Replacement rules ("replace whatever can be replaced", add-only coverage):
 7. ``english-words.tsv``
    English completion word list from the decoded auxiliary table
    (lower / word / rank, sorted by lower; unranked rows are dropped).
+8. ``emoji/follow-keywords.tsv``
+   Association symbols per committed word from the reference's follow table
+   (word / symbol / symbol ..., tab separated).  The curated
+   ``emoji/keywords.tsv`` stays first in the app's merge, so it is never
+   overwritten.
 
 Originals are backed up once to ``.local/doubao-import/originals/`` and a
 report is written to ``.local/doubao-import/report.json``.
@@ -292,6 +297,92 @@ def build_english_asset(src: Path, assets: Path, report):
     report["english"] = {"entries": len(best), "source_rows": total}
 
 
+def build_emoji_association_asset(src: Path, assets: Path, report):
+    """Generate emoji/follow-keywords.tsv: word <tab> symbol <tab> symbol ...
+
+    follow_dict.dat holds the association lists the reference shows after a
+    word is committed: the key is the committed word, the first list is the
+    symbols that go with it (中国 -> 🇨🇳, 火 -> 🔥).  The decoded TSV in the
+    teardown joins that list with '|', which the file itself does not treat as
+    a separator — one of its rows *is* the '|' symbol — so read the raw table
+    out of the APK instead (structure: DECODE-BATCH-C.md §3).
+
+    Items are tab separated here so a kaomoji with a space in it survives as
+    one chip. The curated emoji/keywords.tsv stays the first table the app
+    reads, so a keyword both files carry keeps its curated emoji.
+    """
+    apk = src / "base.apk"
+    if not apk.is_file():
+        report["emoji_association"] = {"skipped": "base.apk not found"}
+        return
+    import struct
+    import zipfile
+
+    with zipfile.ZipFile(apk) as archive:
+        blob = archive.read("assets/dict/84ac6a563f50")
+    head = struct.unpack("<16I", blob[:64])
+    if head[0] != 12037 or head[2] != 0x30 or head[3] != len(blob):
+        report["emoji_association"] = {"skipped": "unexpected follow_dict header"}
+        return
+    count = head[4]
+    index = blob[head[5]:head[5] + head[6]]
+    data = blob[head[8]:head[8] + head[9]]
+    nodes = [struct.unpack("<HII", index[i * 10:i * 10 + 10]) for i in range(count)]
+
+    # Breadth-first node order: a node's children are the index rows between
+    # its own first_child and the next node's, so one forward pass writes
+    # every key as the parent's key plus the node's UTF-16 code unit.
+    keys = {0: ""}
+    for i in range(count - 1):
+        begin, end = nodes[i][1], nodes[i + 1][1]
+        parent = keys.get(i)
+        if parent is None or begin >= end:
+            continue
+        for child in range(begin, min(end, count)):
+            keys[child] = parent + chr(nodes[child][0])
+
+    rows = {}
+    bad = 0
+    for i in range(1, count):
+        word = keys.get(i)
+        if word is None:  # the last index row is the trie's sentinel
+            continue
+        offset = nodes[i][2]
+        stop = nodes[i + 1][2] if i + 1 < count else len(data)
+        block = data[offset:stop]
+        if not block:
+            continue
+        cursor = 4
+        symbols = []
+        (n1,) = struct.unpack("<H", block[cursor:cursor + 2])
+        cursor += 2
+        for _ in range(n1):
+            (length,) = struct.unpack("<H", block[cursor:cursor + 2])
+            cursor += length + 2
+            if length % 2 or cursor > len(block):
+                bad += 1
+                break
+            symbols.append(block[cursor - length:cursor].decode("utf-16-le"))
+        if not symbols:
+            continue
+        rows[word] = [item for item in symbols if item and "\t" not in item]
+
+    out = assets / "emoji" / "follow-keywords.tsv"
+    tmp = out.with_suffix(".tsv.tmp")
+    with io.open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        f.write("# Association symbols per committed word, from the reference's follow_dict.dat\n")
+        f.write("# (local build data). First column is the word, the rest are its symbols,\n")
+        f.write("# tab separated so a symbol may contain a space. See DECODE-BATCH-C.md §3.\n")
+        for word in sorted(rows):
+            f.write("%s\t%s\n" % (word, "\t".join(rows[word])))
+    os.replace(tmp, out)
+    report["emoji_association"] = {
+        "entries": len(rows),
+        "symbols": sum(len(v) for v in rows.values()),
+        "bad_blocks": bad,
+    }
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--repo", default=str(Path(__file__).resolve().parent.parent))
@@ -458,12 +549,14 @@ def main():
                 f.write("%s\t%s\n" % (py, "".join(sorted(existing[py], key=ord))))
         os.replace(tmp, chars_path)
 
-    print("[6/8] build wubi86 dictionary ...")
+    print("[6/9] build wubi86 dictionary ...")
     build_wubi_dict(src, rime, report)
-    print("[7/8] build handwriting stroke asset ...")
+    print("[7/9] build handwriting stroke asset ...")
     build_handwriting_asset(src, assets, doubao, report)
-    print("[8/8] build English word list ...")
+    print("[8/9] build English word list ...")
     build_english_asset(src, assets, report)
+    print("[9/9] build emoji association keywords ...")
+    build_emoji_association_asset(src, assets, report)
 
     sample = {}
     for probe in ("上海", "伤害", "你好", "我想", "微信"):
@@ -489,6 +582,9 @@ def main():
               % (report["handwriting"]["codes"], report["handwriting"]["entries"]))
     if "entries" in report.get("english", {}):
         print("english: %d words" % report["english"]["entries"])
+    if "entries" in report.get("emoji_association", {}):
+        print("emoji association: %d words / %d symbols"
+              % (report["emoji_association"]["entries"], report["emoji_association"]["symbols"]))
     print("mapped sanity:", sample)
     print("report: %s" % report_path)
     if args.dry_run:

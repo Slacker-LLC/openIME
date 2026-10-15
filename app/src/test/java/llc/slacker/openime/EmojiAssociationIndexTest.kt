@@ -93,4 +93,39 @@ class EmojiAssociationIndexTest {
         assertEquals("😊", real.emojiFor("今天真的好开心").first())
         assertTrue(real.emojiFor("我们").isEmpty())
     }
+
+    @Test
+    fun tabSeparatedItemsKeepASpaceInsideThem() {
+        val tabbed = EmojiAssociationIndex.parse(
+            sequenceOf("亲\t💋\t(づ￣3￣)づ╭♥～", "绝对值\t|"),
+        )
+        assertEquals(listOf("💋", "(づ￣3￣)づ╭♥～"), tabbed.emojiFor("亲"))
+        assertEquals(listOf("|"), tabbed.emojiFor("绝对值"))
+    }
+
+    @Test
+    fun theEarlierTableWinsForAKeywordBothCarry() {
+        val merged = EmojiAssociationIndex.parse(sequenceOf("开心\t😊 😄", "开心\t😁", "# end"))
+        assertEquals(listOf("😊", "😄"), merged.emojiFor("开心"))
+    }
+
+    @Test
+    fun theGeneratedFollowTableCarriesTheReferenceAssociations() {
+        val file = sequenceOf(File("."), File(".."))
+            .map { File(it, "app/src/main/assets/emoji/follow-keywords.tsv") }
+            .first { it.isFile }
+        val lines = file.readLines(Charsets.UTF_8)
+        val rows = lines.filter { it.isNotBlank() && !it.startsWith("#") }
+        assertTrue("expected the reference's table, got ${rows.size}", rows.size >= 5_000)
+
+        val index = EmojiAssociationIndex.parse(lines.asSequence())
+        assertEquals(listOf("🇨🇳"), index.emojiFor("中国"))
+        assertEquals(listOf("🔥"), index.emojiFor("火"))
+        assertEquals(listOf("👌"), index.emojiFor("好"))
+        assertEquals(listOf("⬆️", "↑"), index.emojiFor("上"))
+        // A kaomoji with a space in it survives the tab separator.
+        assertEquals(listOf("💋", "(づ￣3￣)づ╭♥～"), index.emojiFor("亲"))
+        // The one row whose only symbol is the pipe character.
+        assertEquals(listOf("|"), index.emojiFor("绝对值"))
+    }
 }
