@@ -224,6 +224,26 @@ class CandidatePipelineTest {
         assertTrue(pipeline.nineKeyReadingsFor("", null).isEmpty())
     }
 
+    /**
+     * The reference pushes the letters of the open head key into the left list
+     * for every tail, not only for a single key press (left builder 0x5ba608 -
+     * 0x5ba704, one push per letter and one for its `+0x20` twin; 64 -> 10 items
+     * = o mi ni + g h i G H I + the digit). We keep the lower-case letter only,
+     * because the upper-case twin exists for the nine-key English the owner
+     * ruled out, and drop a letter no syllable can start (i, u, v).
+     */
+    @Test
+    fun theHeadsLettersFollowTheSyllablesForAnyOpenTail() {
+        val short = pipeline.nineKeyReadingsFor("64", null).map { it.display }
+        assertTrue("m and n must follow mi/ni: $short", short.takeLast(2) == listOf("m", "n"))
+        assertTrue("i cannot start a syllable and stays out: $short", "i" !in short)
+        val letters = mapOf("94" to listOf("w", "x", "y", "z"), "5426" to listOf("j", "k", "l"))
+        letters.forEach { (digits, expected) ->
+            val shown = pipeline.nineKeyReadingsFor(digits, null).map { it.display }
+            assertTrue("$digits must end with $expected: $shown", shown.takeLast(expected.size) == expected)
+        }
+    }
+
     @Test
     fun previewReadingFollowsTheWordNotTheDecoderGuess() {
         // The unit environment only has the compact lexicon; the full sentence

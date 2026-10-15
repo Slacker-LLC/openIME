@@ -2259,7 +2259,15 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         const val TAG = "OpenIme"
         const val CANDIDATE_REFRESH_IDLE_POLL_MS = 16L
         const val MAX_RIME_INPUT_LENGTH = 256
-        const val MAX_RIME_NINE_KEY_PATHS = 6
+
+        /**
+         * Readings handed to librime per key press. The reference enumerates its
+         * whole nine-key lattice with no count limit; each reading here costs one
+         * JNI query, so this stays a bound — but a small one starved the
+         * candidates the owner missed, because the readings a nine-key press
+         * offers run past the two or three a plain split produces.
+         */
+        const val MAX_RIME_NINE_KEY_PATHS = 12
         const val MAX_CANDIDATES = 96
         const val TYPO_CORRECTION_NATIVE_THRESHOLD = 8
         @Volatile
