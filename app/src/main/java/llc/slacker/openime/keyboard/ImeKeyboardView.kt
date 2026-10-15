@@ -319,6 +319,8 @@ open class ImeKeyboardView(
     // a letter, the backspace repeat). Remember the request and replay it once
     // the finger lifts instead of tearing the key out from under the gesture.
     private var pendingRowRebuild = false
+    /** 有没有手指按在这块键盘上：分辨真手势与上一次手势留下的 isPressed 残留。 */
+    private var touchStreamActive = false
     private val pendingRowRebuildPoll = object : Runnable {
         override fun run() {
             if (!pendingRowRebuild) return
@@ -1158,6 +1160,10 @@ open class ImeKeyboardView(
             }
             return false
         }
+        // 屏上已经没有手指时，任何 isPressed 都只是上一次手势的残留（重建把手势吞掉、
+        // 视图在手势中途被换下）。它不该再把之后的每一次重建都挡回去：那样切换键盘、
+        // 转屏、关面板都会静默失效，还留一个 40ms 的轮询跑个不停。
+        if (!touchStreamActive) return false
         // Space owns a physical touch stream through its touch listener. Some
         // Android versions clear View.isPressed while that stream is still
         // active, so a pending row rebuild must also respect the gesture owner.
@@ -2182,6 +2188,7 @@ open class ImeKeyboardView(
         spaceVoiceGestureController.shutdown()
         floatingKeyboardController.reset()
         pendingRowRebuild = false
+        touchStreamActive = false
         hidePopup()
     }
 
@@ -2494,6 +2501,14 @@ open class ImeKeyboardView(
      * exactly once without falling back to a stream of synthetic taps.
      */
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        // 有没有手指在屏上：见 hasPressedKey。POINTER_UP 时 pointerCount 仍算上正在
+        // 抬起的那根，所以 > 1 才代表手势还在。
+        touchStreamActive = when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> true
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> false
+            MotionEvent.ACTION_POINTER_UP -> event.pointerCount > 1
+            else -> touchStreamActive
+        }
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             keyPopupController.hideIfOutside(event.x, event.y)
             silencePlatformFeedback(this)

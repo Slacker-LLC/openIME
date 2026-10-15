@@ -32,6 +32,7 @@ import llc.slacker.openime.voice.VoiceRecognitionEvents
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -1222,6 +1223,65 @@ class AuditInteractionInstrumentedTest {
         }
         harness.awaitMain(timeoutMs = 3_000L) { if (recorder.spaces > 0) true else null }
         assertEquals("A rebuild during the press must not swallow the space", 1, recorder.spaces)
+    }
+
+    @Test
+    fun aPressLeftWithoutAFingerOnlyDefersWhileTheFingerIsStillDown() = withKeyboard { harness, _, keyboard ->
+        // Half by half: the deferral (see rebuildWhileSpaceIsHeldDoesNotSwallowTheSpace)
+        // must protect a real gesture and must not outlive it. A press left behind by
+        // an earlier gesture — the rebuild that swallowed it, or a view swapped out
+        // mid-gesture — used to defer every later rebuild and poll for it forever.
+        val releaseDelayMs = minOf(
+            100L,
+            (ViewConfiguration.getLongPressTimeout().toLong() / 2L).coerceAtLeast(1L),
+        )
+        lateinit var staleSpace: View
+        harness.awaitMain {
+            staleSpace = requireNotNull(keyboard.findViewWithTag("key-space"))
+            staleSpace.isPressed = true
+            true
+        }
+        harness.awaitMain {
+            keyboard.setMode(KeyboardMode.ENGLISH_26, notifyListener = false)
+            val rebuilt = keyboard.findViewWithTag<View>("key-space")
+            assertNotNull("The mode switch must rebuild the rows of the new layout", rebuilt)
+            assertNotSame(
+                "A press with no finger on the screen must not defer this rebuild",
+                staleSpace,
+                rebuilt,
+            )
+            assertFalse("The deferred rebuild must let go of the stale key", staleSpace.isAttachedToWindow)
+            true
+        }
+
+        // A finger really on the screen: the deferral still holds, and the rebuild
+        // lands as soon as that finger lifts.
+        var released = false
+        var downTime = 0L
+        lateinit var heldSpace: View
+        harness.awaitMain {
+            val point = keyPoint(keyboard, "key-space")
+            heldSpace = requireNotNull(keyboard.findViewWithTag("key-space"))
+            downTime = SystemClock.uptimeMillis()
+            pointers(keyboard, downTime, MotionEvent.ACTION_DOWN, listOf(point))
+            assertTrue("Space must own the active press", heldSpace.isPressed)
+            keyboard.setMode(KeyboardMode.PINYIN_26, notifyListener = false)
+            assertSame(
+                "A live finger must still defer the rebuild",
+                heldSpace,
+                keyboard.findViewWithTag<View>("key-space"),
+            )
+            keyboard.postDelayed({
+                pointers(keyboard, downTime, MotionEvent.ACTION_UP, listOf(point))
+                released = true
+            }, releaseDelayMs)
+            true
+        }
+        harness.awaitMain(timeoutMs = 3_000L) { if (released) true else null }
+        // The rebuild poll runs on a 40ms cadence; give it a few turns.
+        harness.awaitMain(timeoutMs = 3_000L) {
+            keyboard.findViewWithTag<View>("key-space")?.takeIf { it !== heldSpace }
+        }
     }
 
     @Test
