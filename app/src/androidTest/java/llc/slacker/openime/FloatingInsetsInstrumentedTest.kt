@@ -77,7 +77,9 @@ class FloatingInsetsInstrumentedTest {
     @Test
     fun theDefaultModeWouldLeaveTheCardWithNoTouchableArea() {
         val touchable = Rect(0, 0, CARD_WIDTH_PX, CARD_HEIGHT_PX)
-        touchable.inset(0, CARD_HEIGHT_PX, 0, 0)
+        // 可见顶等于卡片高度时，可触摸区被剪成空集。四条边的 `Rect.inset` 是 API 32
+        // 才有的，这条测试要在 API 26 的机器上跑，所以直接改边。
+        touchable.top += CARD_HEIGHT_PX
 
         assertTrue("A full-height visible top leaves nothing touchable", touchable.isEmpty)
     }
