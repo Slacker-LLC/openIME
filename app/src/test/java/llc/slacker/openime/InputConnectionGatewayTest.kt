@@ -699,4 +699,52 @@ class InputConnectionGatewayTest {
         assertEquals(1, fake.selectedTextCalls)
         assertEquals(listOf("commit:"), fake.events)
     }
+
+    @Test
+    fun letterDigitSpaceIsOffByDefault() {
+        val fake = FakeInputConnection(beforeText = "好")
+        InputConnectionGateway(null, { fake }).commitText("a")
+        assertEquals(listOf("commit:a"), fake.events)
+    }
+
+    @Test
+    fun letterDigitSpaceFillsBothSidesOfTheBoundary() {
+        // Chinese before, Latin committed: the space goes in front.
+        val afterChinese = FakeInputConnection(beforeText = "好")
+        InputConnectionGateway(null, { afterChinese }, letterDigitSpace = { true })
+            .commitText("a")
+        assertEquals(listOf("commit: a"), afterChinese.events)
+
+        // Latin in the field, Chinese committed: the space goes in front too.
+        val afterLatin = FakeInputConnection(beforeText = "good")
+        InputConnectionGateway(null, { afterLatin }, letterDigitSpace = { true })
+            .commitText("好")
+        assertEquals(listOf("commit: 好"), afterLatin.events)
+
+        // Chinese committed before Latin that is already in the field: behind.
+        val beforeLatin = FakeInputConnection(beforeText = "好", afterText = "a")
+        InputConnectionGateway(null, { beforeLatin }, letterDigitSpace = { true })
+            .commitText("中")
+        assertEquals(listOf("commit:中 "), beforeLatin.events)
+    }
+
+    @Test
+    fun letterDigitSpaceLeavesSameScriptAndPasswordsAlone() {
+        val sameScript = FakeInputConnection(beforeText = "好")
+        InputConnectionGateway(null, { sameScript }, letterDigitSpace = { true })
+            .commitText("中")
+        assertEquals(listOf("commit:中"), sameScript.events)
+
+        val password = FakeInputConnection(beforeText = "好")
+        InputConnectionGateway(null, { password }, isPassword = { true }, letterDigitSpace = { true })
+            .commitText("a")
+        assertEquals(listOf("commit:a"), password.events)
+    }
+
+    @Test
+    fun letterDigitSpaceNeverDoublesASpaceThatIsAlreadyThere() {
+        val fake = FakeInputConnection(beforeText = "好 ")
+        InputConnectionGateway(null, { fake }, letterDigitSpace = { true }).commitText("a")
+        assertEquals(listOf("commit:a"), fake.events)
+    }
 }

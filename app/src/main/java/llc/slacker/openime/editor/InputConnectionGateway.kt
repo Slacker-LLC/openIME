@@ -10,6 +10,7 @@ import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputContentInfo
 import llc.slacker.openime.R
+import llc.slacker.openime.core.LetterDigitSpacePolicy
 import llc.slacker.openime.core.nextCodePointUtf16Length
 import llc.slacker.openime.core.previousCodePointUtf16Length
 
@@ -53,6 +54,12 @@ class InputConnectionGateway(
      */
     private val isRawKeys: () -> Boolean = { false },
     private val keyEventsFor: (String) -> Array<KeyEvent>? = ::keyEventsForText,
+    /**
+     * 数字、英文前后加空格: when on, every commit gets the spaces the
+     * reference puts between Chinese and digits/English. Read per commit so a
+     * settings change takes effect at once.
+     */
+    private val letterDigitSpace: () -> Boolean = { false },
 ) {
 
     data class CursorSnapshot(
@@ -81,10 +88,27 @@ class InputConnectionGateway(
         // One Binder transaction carries about 1 MB: committing a huge paste or
         // transcript in one call throws TransactionTooLargeException and takes the
         // keyboard down with it. Chunk it, never splitting a surrogate pair.
-        chunksForCommit(text).forEach { chunk -> ic.commitText(chunk, 1) }
+        chunksForCommit(spacedForCommit(ic, text)).forEach { chunk -> ic.commitText(chunk, 1) }
         // commitText replaces an active composing span.
         composingInEditor = false
         ownEditPending = true
+    }
+
+    /**
+     * [text] with the boundary spaces 数字、英文前后加空格 asks for. The
+     * characters on both sides of the commit are read once; a password field and
+     * an editor that cannot answer leave the text exactly as it came in.
+     */
+    private fun spacedForCommit(ic: InputConnection, text: String): String {
+        if (isPassword() || !letterDigitSpace()) return text
+        val first = text.first()
+        val last = text.last()
+        val before = runCatching { ic.getTextBeforeCursor(1, 0)?.lastOrNull() }.getOrNull()
+        val after = runCatching { ic.getTextAfterCursor(1, 0)?.firstOrNull() }.getOrNull()
+        var spaced = text
+        if (LetterDigitSpacePolicy.boundaryNeedsSpace(before, first)) spaced = " $spaced"
+        if (LetterDigitSpacePolicy.boundaryNeedsSpace(last, after)) spaced = "$spaced "
+        return spaced
     }
 
     /**
@@ -150,6 +174,12 @@ class InputConnectionGateway(
     fun charBeforeCursor(): Char? {
         if (isPassword()) return null
         return runCatching { connection()?.getTextBeforeCursor(1, 0)?.lastOrNull() }.getOrNull()
+    }
+
+    /** Up to [maxChars] characters before the cursor, or null when unknown (and always in passwords). */
+    fun textBeforeCursor(maxChars: Int): CharSequence? {
+        if (isPassword()) return null
+        return runCatching { connection()?.getTextBeforeCursor(maxChars, 0) }.getOrNull()
     }
 
     fun finishComposing() {
