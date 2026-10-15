@@ -157,6 +157,43 @@ class PinyinEngineDataTest {
     }
 
     @Test
+    fun theVSpellingOfUReachesTheSameWords() {
+        val engine = loadEngine()
+        // Pinyin writes the ü the 26 keys have no letter for as v, and the
+        // reference's syllable trie carries those spellings as ordinary
+        // matches of the syllable (f_syllable-variants.tsv, the rows with both
+        // mask bytes zero): jv/jvan/jve/jvn stand at ju/juan/jue/jun, the same
+        // for q/x/y. Typing jv used to come back empty — the single letters are
+        // syllables of the catalogue, so j+v was a reading, but no word spells
+        // it.
+        for ((spelling, plain) in listOf(
+            "jv" to "ju",
+            "jvan" to "juan",
+            "jve" to "jue",
+            "jvn" to "jun",
+            "qv" to "qu",
+            "qvan" to "quan",
+            "qve" to "que",
+            "qvn" to "qun",
+            "xv" to "xu",
+            "xvan" to "xuan",
+            "xve" to "xue",
+            "xvn" to "xun",
+            "yv" to "yu",
+            "yvan" to "yuan",
+            "yve" to "yue",
+            "yvn" to "yun",
+        )) {
+            assertEquals(
+                "candidates of $spelling differ from $plain",
+                engine.candidates(plain),
+                engine.candidates(spelling),
+            )
+            assertTrue("no candidates for $spelling", engine.candidates(spelling).isNotEmpty())
+        }
+    }
+
+    @Test
     fun fuzzyRulesExpandCandidatesAndKeepExactReadingsFirst() {
         val engine = loadEngine()
         val rules = setOf(FuzzyRule.Z_ZH, FuzzyRule.N_L, FuzzyRule.S_SH)

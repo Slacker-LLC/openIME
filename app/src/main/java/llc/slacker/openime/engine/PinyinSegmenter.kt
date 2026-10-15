@@ -45,6 +45,10 @@ internal class PinyinSegmenter(
             fuzzy.getOrPut(spelling) { ArrayList(2) }.add(isFuzzy)
         }
         syllables.forEachIndexed { id, name -> add(name, id, isFuzzy = false) }
+        syllables.forEachIndexed { id, name ->
+            val spelling = vSpelling(name) ?: return@forEachIndexed
+            if (spelling !in nameToId) add(spelling, id, isFuzzy = false)
+        }
         if (fuzzyRules.isNotEmpty()) {
             syllables.forEachIndexed { id, name ->
                 for (rule in fuzzyRules) {
@@ -73,6 +77,10 @@ internal class PinyinSegmenter(
 
         val scan = ArrayList<Triple<String, Int, Boolean>>(syllables.size * 2)
         syllables.forEachIndexed { id, name -> scan += Triple(name, id, false) }
+        syllables.forEachIndexed { id, name ->
+            val spelling = vSpelling(name) ?: return@forEachIndexed
+            if (spelling !in nameToId) scan += Triple(spelling, id, false)
+        }
         if (fuzzyRules.isNotEmpty()) {
             syllables.forEachIndexed { id, name ->
                 for (rule in fuzzyRules) {
@@ -179,8 +187,10 @@ internal class PinyinSegmenter(
         val seen = HashSet<Int>(max * 2)
         for ((spelling, id, isFuzzy) in scanEdges) {
             if (spelling.length >= fragment.length && spelling.startsWith(fragment)) {
-                if (isFuzzy && !seen.add(id)) continue
-                if (!isFuzzy) seen.add(id)
+                // Two spellings of one syllable - a v form (`ju`/`jv`) or a
+                // fuzzy pair whose other spelling is also a syllable - are one
+                // edge, or the same words are looked up twice per fragment.
+                if (!seen.add(id)) continue
                 out.add(SyllableEdge(id, isFuzzy))
                 if (out.size >= max) break
             }
@@ -191,5 +201,28 @@ internal class PinyinSegmenter(
     companion object {
         const val MAX_SYLLABLE_LENGTH = 6
         const val MAX_SYLLABLES = 10
+
+        /**
+         * The `v` spelling of [syllable], or null when it has none.
+         *
+         * The reference's syllable trie carries these as ordinary matches of
+         * the syllable — `jv`, `jvan`, `jve`, `jvn` for `ju`, `juan`, `jue`,
+         * `jun`, the same for q/x/y, and `lve`/`nve` for `lue`/`nue` — with
+         * both mask bytes zero, so they match whatever the fuzzy settings say
+         * (`doubaoime-teardown/f_syllable-variants.tsv`, the C=0 D=0 rows whose
+         * spelling differs from the syllable). In pinyin the `u` after j/q/x/y
+         * is the ü the keyboard has no key for, which is exactly where the
+         * reference spells it `v`.
+         */
+        private fun vSpelling(syllable: String): String? {
+            val initial = syllable.getOrNull(0) ?: return null
+            if (initial in "jqxy" && syllable.getOrNull(1) == 'u') {
+                return initial + "v" + syllable.substring(2)
+            }
+            if (initial in "ln" && syllable.endsWith("ue")) {
+                return syllable.dropLast(2) + "ve"
+            }
+            return null
+        }
     }
 }
