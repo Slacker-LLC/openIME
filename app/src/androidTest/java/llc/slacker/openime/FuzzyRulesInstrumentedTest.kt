@@ -64,6 +64,12 @@ class FuzzyRulesInstrumentedTest {
             redeploy(rime)
             assertTrue("zi offers 知", "知" in rime.candidates("zi"))
             assertTrue("shan offers 上", "上" in rime.candidates("shan"))
+            // The four pairs the reference carries beyond the eleven: librime
+            // has to take their rules too, not only the Kotlin fallback.
+            assertTrue("eng = ong: dong offers 灯", "灯" in rime.candidates("dong").take(40))
+            assertTrue("un = ong: chun offers 冲", "冲" in rime.candidates("chun").take(40))
+            assertTrue("huang = wang: wang offers 黄", "黄" in rime.candidates("wang").take(40))
+            assertTrue("ei = ui: hui offers 飞", "飞" in rime.candidates("hui").take(40))
 
             // Back to the shipped defaults: nothing fuzzy even with 模糊音 on.
             ImeSettingsRepository.saveFuzzyRules(context, FuzzyRule.DEFAULTS)

@@ -1115,6 +1115,10 @@ internal class SettingsPanelController(
             FuzzyRule.IN_ING to "心 xin · 星 xing",
             FuzzyRule.IAN_IANG to "先 xian · 香 xiang",
             FuzzyRule.UAN_UANG to "关 guan · 光 guang",
+            FuzzyRule.UN_ONG to "春 chun · 冲 chong",
+            FuzzyRule.EI_UI to "飞 fei · 灰 hui",
+            FuzzyRule.HUANG_WANG to "黄 huang · 王 wang",
+            FuzzyRule.ENG_ONG to "灯 deng · 东 dong",
         )
     }
 }

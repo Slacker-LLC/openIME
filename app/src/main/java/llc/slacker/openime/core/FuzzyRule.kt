@@ -3,9 +3,8 @@ package llc.slacker.openime.core
 /**
  * One fuzzy-pinyin pair the user can switch on or off on its own.
  *
- * The eleven pairs are the ones mainstream IMEs offer (Sogou, Baidu, iFlytek,
- * Microsoft Pinyin): six initials and five finals. All start off
- * ([defaultOn]); the user turns on the ones their accent needs.
+ * Six initials and nine finals. All start off ([defaultOn]); the user turns on
+ * the ones their accent needs.
  *
  * Each pair works both ways and is defined twice, kept equal by tests: [rime]
  * is the librime speller algebra (written to openime_fuzzy.yaml), [variants]
@@ -29,6 +28,10 @@ enum class FuzzyRule(
     IN_ING("in_ing", "in = ing", false, false, listOf("derive/in\$/ing/", "derive/ing\$/in/")),
     IAN_IANG("ian_iang", "ian = iang", false, false, listOf("derive/ian\$/iang/", "derive/iang\$/ian/")),
     UAN_UANG("uan_uang", "uan = uang", false, false, listOf("derive/uan\$/uang/", "derive/uang\$/uan/")),
+    UN_ONG("un_ong", "un = ong", false, false, listOf("derive/ong\$/un/", "derive/un\$/ong/")),
+    EI_UI("ei_ui", "ei = ui", false, false, listOf("derive/^fei\$/hui/", "derive/^hui\$/fei/")),
+    HUANG_WANG("huang_wang", "huang = wang", false, false, listOf("derive/^huang\$/wang/", "derive/^wang\$/huang/")),
+    ENG_ONG("eng_ong", "eng = ong", false, false, listOf("derive/ong\$/eng/", "derive/eng\$/ong/")),
     ;
 
     /** The other spelling of [syllable] under this pair, or null when it does not apply. */
@@ -48,6 +51,18 @@ enum class FuzzyRule(
         IN_ING -> swapFinal(syllable, "ing", "in")
         IAN_IANG -> swapFinal(syllable, "iang", "ian")
         UAN_UANG -> swapFinal(syllable, "uang", "uan")
+        UN_ONG -> swapFinal(syllable, "ong", "un")
+        // ei = ui is the one pair the reference spells over whole syllables and
+        // not over a final: its mask rows are fei <-> hui alone, and hei joins
+        // them only where f = h is on as well (f_syllable-variants.tsv, the
+        // D4 rows; the huei rows are hui under the uei variant).
+        EI_UI -> if (syllable == "fei") "hui" else if (syllable == "hui") "fei" else null
+        HUANG_WANG -> when (syllable) {
+            "huang" -> "wang"
+            "wang" -> "huang"
+            else -> null
+        }
+        ENG_ONG -> swapFinal(syllable, "ong", "eng")
     }
 
     companion object {

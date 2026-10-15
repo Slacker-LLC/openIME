@@ -251,6 +251,31 @@ class PinyinEngineDataTest {
     }
 
     @Test
+    fun theFourPairsTheReferenceHasBeyondOurs() {
+        val engine = loadEngine()
+        // The reference's classic layer is fifteen pairs; ours was eleven. The
+        // four it has and we did not are un/ong, ei/ui, huang/wang and eng/ong
+        // (f_syllable-variants.tsv bits D3-D6), and each one reaches the words
+        // of the syllable it points at.
+        for ((reading, rules, fuzzyWord, word) in listOf(
+            Quad("zongjing", setOf(FuzzyRule.UN_ONG), "尊敬", "zunjing"),
+            Quad("dongguang", setOf(FuzzyRule.ENG_ONG), "灯光", "dengguang"),
+            Quad("huiji", setOf(FuzzyRule.EI_UI), "飞机", "feiji"),
+            Quad("wangse", setOf(FuzzyRule.HUANG_WANG), "黄色", "huangse"),
+        )) {
+            val withRule = engine.candidates(reading, fuzzyRules = rules)
+            println("$reading -> ${withRule.take(6)}")
+            assertTrue("$fuzzyWord ($word) missing from $reading: ${withRule.take(8)}", withRule.contains(fuzzyWord))
+            assertTrue(
+                "$fuzzyWord offered without the rule",
+                engine.candidates(reading).none { it == fuzzyWord },
+            )
+        }
+    }
+
+    private data class Quad(val reading: String, val rules: Set<FuzzyRule>, val fuzzyWord: String, val word: String)
+
+    @Test
     fun fuzzyRulesExpandCandidatesAndKeepExactReadingsFirst() {
         val engine = loadEngine()
         val rules = setOf(FuzzyRule.Z_ZH, FuzzyRule.N_L, FuzzyRule.S_SH)

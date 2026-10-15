@@ -36,8 +36,8 @@ class FuzzyRuleTest {
     }
 
     @Test
-    fun elevenPairsAllStartOff() {
-        assertEquals(11, FuzzyRule.entries.size)
+    fun fifteenPairsAllStartOff() {
+        assertEquals(15, FuzzyRule.entries.size)
         assertEquals(6, FuzzyRule.entries.count { it.initial })
         assertTrue(FuzzyRule.DEFAULTS.isEmpty())
     }
@@ -71,6 +71,28 @@ class FuzzyRuleTest {
         // zh is not z + h: n = l does not touch it, z = zh does.
         assertEquals(null, FuzzyRule.N_L.variant("zhi"))
         assertEquals(null, FuzzyRule.F_H.variant("zhi"))
+    }
+
+    @Test
+    fun theFourFinalPairsTheReferenceCarriesBeyondOurs() {
+        // un = ong and eng = ong are final swaps the reference spells over the
+        // whole syllable table (f_syllable-variants.tsv bits D3 and D6).
+        assertEquals("chong", FuzzyRule.UN_ONG.variant("chun"))
+        assertEquals("chun", FuzzyRule.UN_ONG.variant("chong"))
+        assertEquals("yun", FuzzyRule.UN_ONG.variant("yong"))
+        assertEquals("jiun", FuzzyRule.UN_ONG.variant("jiong"))
+        assertEquals("dong", FuzzyRule.ENG_ONG.variant("deng"))
+        assertEquals("deng", FuzzyRule.ENG_ONG.variant("dong"))
+        assertEquals("yeng", FuzzyRule.ENG_ONG.variant("yong"))
+        // The other two are whole-syllable pairs in the reference too.
+        assertEquals("hui", FuzzyRule.EI_UI.variant("fei"))
+        assertEquals("fei", FuzzyRule.EI_UI.variant("hui"))
+        // hei is not one of the pair: it reaches hui only through f = h, the
+        // way the reference gates its own hui <-> hei row on both bits.
+        assertEquals(null, FuzzyRule.EI_UI.variant("hei"))
+        assertEquals("wang", FuzzyRule.HUANG_WANG.variant("huang"))
+        assertEquals("huang", FuzzyRule.HUANG_WANG.variant("wang"))
+        assertEquals(null, FuzzyRule.HUANG_WANG.variant("zhuang"))
     }
 
     @Test
