@@ -194,6 +194,48 @@ class PinyinEngineDataTest {
     }
 
     @Test
+    fun twoFuzzyRulesApplyToTheSameSyllable() {
+        val engine = loadEngine()
+        // The reference's syllable table carries a spelling with two classic
+        // mask bits when one is an initial pair and the other a final one
+        // (ch_c+eng_ong, n_l+in_ing, z_zh+an_ang ...) and never otherwise, so
+        // a spelling one substitution away needs both switches: cheng is 岑
+        // cen (c→ch, then en→eng) and ning is 林 lin (l→n, then in→ing).
+        // One rule at a time answered neither.
+        val cCheng = setOf(FuzzyRule.C_CH, FuzzyRule.EN_ENG)
+        assertTrue(
+            "岑 missing from ${engine.candidates("cheng", fuzzyRules = cCheng).take(8)}",
+            engine.candidates("cheng", fuzzyRules = cCheng).contains("岑"),
+        )
+        assertTrue(
+            "岑 offered from cheng with only ch = c on",
+            engine.candidates("cheng", fuzzyRules = setOf(FuzzyRule.C_CH)).none { it == "岑" },
+        )
+
+        val nLing = setOf(FuzzyRule.N_L, FuzzyRule.IN_ING)
+        assertTrue(
+            "林 missing from ${engine.candidates("ning", fuzzyRules = nLing).take(8)}",
+            engine.candidates("ning", fuzzyRules = nLing).contains("林"),
+        )
+        assertTrue(
+            "林 offered from ning with only n = l on",
+            engine.candidates("ning", fuzzyRules = setOf(FuzzyRule.N_L)).none { it == "林" },
+        )
+
+        // The final pair applies to the syllable the initial pair made: zhang
+        // is 赞 zan with z = zh and an = ang on.
+        val zAng = setOf(FuzzyRule.Z_ZH, FuzzyRule.AN_ANG)
+        assertTrue(
+            "赞 missing from ${engine.candidates("zhang", fuzzyRules = zAng).take(8)}",
+            engine.candidates("zhang", fuzzyRules = zAng).contains("赞"),
+        )
+        assertTrue(
+            "赞 offered from zhang with only z = zh on",
+            engine.candidates("zhang", fuzzyRules = setOf(FuzzyRule.Z_ZH)).none { it == "赞" },
+        )
+    }
+
+    @Test
     fun fuzzyRulesExpandCandidatesAndKeepExactReadingsFirst() {
         val engine = loadEngine()
         val rules = setOf(FuzzyRule.Z_ZH, FuzzyRule.N_L, FuzzyRule.S_SH)

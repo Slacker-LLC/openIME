@@ -50,9 +50,9 @@ internal class PinyinSegmenter(
             if (spelling !in nameToId) add(spelling, id, isFuzzy = false)
         }
         if (fuzzyRules.isNotEmpty()) {
+            val rules = fuzzyRules.toList()
             syllables.forEachIndexed { id, name ->
-                for (rule in fuzzyRules) {
-                    val variant = rule.variant(name) ?: continue
+                for (variant in fuzzyVariants(name, rules)) {
                     if (variant in nameToId) add(variant, id, isFuzzy = true)
                 }
             }
@@ -82,9 +82,9 @@ internal class PinyinSegmenter(
             if (spelling !in nameToId) scan += Triple(spelling, id, false)
         }
         if (fuzzyRules.isNotEmpty()) {
+            val rules = fuzzyRules.toList()
             syllables.forEachIndexed { id, name ->
-                for (rule in fuzzyRules) {
-                    val variant = rule.variant(name) ?: continue
+                for (variant in fuzzyVariants(name, rules)) {
                     if (variant in nameToId) scan += Triple(variant, id, true)
                 }
             }
@@ -201,6 +201,40 @@ internal class PinyinSegmenter(
     companion object {
         const val MAX_SYLLABLE_LENGTH = 6
         const val MAX_SYLLABLES = 10
+
+        /**
+         * Every spelling of [syllable] the enabled [rules] produce.
+         *
+         * One initial pair and one final pair apply together, the way the
+         * reference's masks do: a row of its syllable table holds two classic
+         * bits exactly when one is an initial pair and the other a final one
+         * (`ch_c+eng_ong`, `n_l+in_ing`, `f_h+an_ang`, ... — every two-bit
+         * combination in `f_syllable-variants.tsv` under the 15 classic pairs),
+         * never two initials or two finals. So with `z = zh` and `an = ang`
+         * both on, 脏 `zang` answers to `zhang` and `zhan`, and the reference
+         * says the same: the typed spelling is the canonical syllable with its
+         * whole mask applied (`doubaoime-teardown/ENGINE-SPEC.md` §1.5).
+         */
+        private fun fuzzyVariants(syllable: String, rules: List<FuzzyRule>): List<String> {
+            val out = LinkedHashSet<String>()
+            val initials = ArrayList<String>(2)
+            for (rule in rules) {
+                if (!rule.initial) continue
+                val variant = rule.variant(syllable) ?: continue
+                initials += variant
+                out += variant
+            }
+            for (rule in rules) {
+                if (rule.initial) continue
+                rule.variant(syllable)?.let { out += it }
+                // The same rule reaches the syllable the initial pair made:
+                // `ning` is `lin` with n/l and in/ing both on, not one of them.
+                for (initial in initials) {
+                    rule.variant(initial)?.let { out += it }
+                }
+            }
+            return out.toList()
+        }
 
         /**
          * The `v` spelling of [syllable], or null when it has none.
