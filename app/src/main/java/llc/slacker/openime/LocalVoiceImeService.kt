@@ -1196,6 +1196,22 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         }
     }
 
+    /**
+     * 长按「发送」：按参考自己的说法（`enable_key_enter_sub_title`「长按「发送」可换行」）
+     * 插入一个换行，走的是没有输入动作时那条同样的路径（真 Enter 键事件），
+     * 而不是再拆一条只写 `\n` 的路。合成中（键面是「确定」）不该有长按，
+     * 真发生也当普通的 Enter 处理，不把没上屏的拼音留在输入框里。
+     */
+    override fun onEnterNewline() = guarded("onEnterNewline") {
+        prepareForManualInput()
+        if (lastComposition.isNotEmpty()) {
+            commitRawComposition()
+            return
+        }
+        voiceCorrectionTracker.finalizeIfNeeded()
+        gateway.sendKeyDownUp(KeyEvent.KEYCODE_ENTER)
+    }
+
     override fun onCompositionChanged(composition: String, candidates: List<String>) = guarded("onCompositionChanged") {
         prepareForManualInput()
         if (composition.isNotEmpty()) voiceCorrectionTracker.noteReplacementInput()

@@ -51,7 +51,9 @@ import llc.slacker.openime.data.QuickPhrase
 import llc.slacker.openime.data.QuickPhraseRepository
 import llc.slacker.openime.data.SymbolRecentRepository
 import llc.slacker.openime.editor.EditorInfoAdapter
+import llc.slacker.openime.editor.EnterKeyLongPress
 import llc.slacker.openime.editor.enterKeyFaceFor
+import llc.slacker.openime.editor.enterKeyLongPressFor
 import llc.slacker.openime.editor.enterKeyPresentationFor
 import llc.slacker.openime.floating.FloatingKeyboardController
 import llc.slacker.openime.panel.ClipboardPanelController
@@ -102,6 +104,14 @@ open class ImeKeyboardView(
         }
         fun onVoiceCommit() {}
         fun onEnter()
+
+        /**
+         * A long press on a send key inserts a line break instead of sending
+         * ([enterKeyLongPressFor]). Views that only display the keyboard take no
+         * long press, so the default is empty.
+         */
+        fun onEnterNewline() {}
+
         fun onCompositionChanged(composition: String, candidates: List<String>)
         fun onNineKeyCompositionChanged(
             composition: String,
@@ -1836,7 +1846,7 @@ open class ImeKeyboardView(
         candidateBarController.syncExpandControl(
             hasCandidates = currentCandidates.isNotEmpty(),
         )
-        syncEnterKeyPresentation(state.editorInfo?.imeOptions)
+        syncEnterKeyPresentation(state.editorInfo?.imeOptions ?: currentImeOptions())
     }
 
     /**
@@ -1858,10 +1868,26 @@ open class ImeKeyboardView(
         val options = imeOptions ?: return
         val enter = findViewWithTag<ImeKeyView>("key-enter") ?: return
         val composing = composition.text?.isNotEmpty() == true
+        val longPress = enterKeyLongPressFor(options, composing)
         enter.setMainText(enterKeyFaceFor(options, composing))
         enter.applyMainTextScale(referenceScale)
-        enter.contentDescription = if (composing) "确定" else enterKeyPresentationFor(options).label
+        enter.contentDescription = when {
+            composing -> "确定"
+            // 长按按参考自己的说法换行，跟着键面一起念出来（同「，上滑或长按输入X」的写法）。
+            longPress == EnterKeyLongPress.Newline -> "${enterKeyPresentationFor(options).label}，长按换行"
+            else -> enterKeyPresentationFor(options).label
+        }
         themeApplier.apply(enter, currentThemeTokens())
+        enter.setOnLongClickListener(
+            if (longPress == EnterKeyLongPress.Newline) {
+                View.OnLongClickListener {
+                    listener.onEnterNewline()
+                    true
+                }
+            } else {
+                null
+            },
+        )
     }
 
     private var inlineAutofillController: InlineAutofillController? = null
@@ -2360,7 +2386,7 @@ open class ImeKeyboardView(
             composing -> ImeTopZoneState.COMPOSING
             else -> ImeTopZoneState.IDLE
         }
-        syncEnterKeyPresentation((context as? android.inputmethodservice.InputMethodService)?.currentInputEditorInfo?.imeOptions)
+        syncEnterKeyPresentation(currentImeOptions())
         findViewWithTag<View>("key-enter")?.let(::applyThemeToSubtree)
         topZone.renderState(
             state = state,

@@ -2,6 +2,7 @@ package llc.slacker.openime
 
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
 import android.widget.TextView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import llc.slacker.openime.core.KeyboardMode
@@ -9,6 +10,7 @@ import llc.slacker.openime.keyboard.ImeKeyboardView
 import llc.slacker.openime.keyboard.ProductionKeyPolicy
 import llc.slacker.openime.voice.VoiceModelLifecycleState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -21,6 +23,8 @@ import java.lang.reflect.Proxy
 class KeyboardBottomRowInstrumentedTest {
     private class Recorder {
         val characters = mutableListOf<String>()
+        var enters = 0
+        var newlines = 0
         val listener = Proxy.newProxyInstance(
             ImeKeyboardView.Listener::class.java.classLoader,
             arrayOf(ImeKeyboardView.Listener::class.java),
@@ -28,6 +32,8 @@ class KeyboardBottomRowInstrumentedTest {
             when (method.name) {
                 "voiceModelState" -> VoiceModelLifecycleState.COLD
                 "onCharacter" -> { characters += args!![0] as String; null }
+                "onEnter" -> { enters++; null }
+                "onEnterNewline" -> { newlines++; null }
                 else -> if (method.returnType == java.lang.Boolean.TYPE) false else null
             }
         } as ImeKeyboardView.Listener
@@ -166,6 +172,44 @@ class KeyboardBottomRowInstrumentedTest {
         val en = harness.awaitMain { keyboard.findViewWithTag<View>("key-punctuation")?.takeIf { it.width > 0 } }
         harness.awaitMain { assertTrue(en.performClick()); assertTrue(en.performLongClick()); true }
         assertEquals(listOf(".", ","), recorder.characters.toList())
+    }
+
+    /**
+     * 发送键的长按是换行：参考自己的设置文案就是这句（`enable_key_enter_sub_title`
+     * 「长按「发送」可换行。开关支持App范围」）。只有「发送」这一面有长按——建立中的
+     * 合成读「确定」，其余动作读它们自己的动作词，长按仍是各自那一次按压。
+     */
+    @Test
+    fun theSendKeyLongPressesToALineBreak() = withKeyboard { harness, recorder, keyboard ->
+        harness.awaitMain {
+            keyboard.editorOptionsOverride = EditorInfo.IME_ACTION_SEND
+            // Rebuild the 26-key rows so the enter key is created under the send face.
+            keyboard.setMode(KeyboardMode.PINYIN_9)
+            keyboard.setMode(KeyboardMode.PINYIN_26)
+            true
+        }
+        val send = settled(harness, keyboard, "key-enter")
+        harness.awaitMain {
+            assertEquals("发送，长按换行", send.contentDescription.toString())
+            assertTrue("the send key must take a long press", send.performLongClick())
+            assertEquals("a long press must not send", 0, recorder.enters)
+            assertEquals(1, recorder.newlines)
+            true
+        }
+
+        harness.awaitMain {
+            keyboard.editorOptionsOverride = EditorInfo.IME_ACTION_SEARCH
+            keyboard.setMode(KeyboardMode.ENGLISH_26)
+            keyboard.setMode(KeyboardMode.PINYIN_26)
+            true
+        }
+        val search = settled(harness, keyboard, "key-enter")
+        harness.awaitMain {
+            assertEquals("搜索", search.contentDescription.toString())
+            assertFalse("only 发送 takes a long press", search.performLongClick())
+            assertEquals(1, recorder.newlines)
+            true
+        }
     }
 
     @Test
