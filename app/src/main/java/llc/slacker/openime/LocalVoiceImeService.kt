@@ -826,6 +826,22 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             Log.i(TAG, "BOUNDS\n${keyboardView?.normalizedBoundsReport().orEmpty()}")
             true
         }
+        // Volume E2E reads: the harness types thousands of words, so it needs
+        // one round trip to check what was committed and what the candidate bar
+        // offers. Both answers go out base64-encoded (no line breaks), because
+        // the editor's text is arbitrary user text. Only the debug-only
+        // receiver can send these commands; the release APK has no receiver.
+        command.startsWith("editor-tail64:") -> runCatching {
+            val size = command.substringAfter("editor-tail64:").toIntOrNull()?.coerceIn(1, 2_000) ?: 400
+            val snapshot = gateway.cursorSnapshot(size) ?: return@runCatching false
+            val committed = snapshot.text.take(snapshot.cursor)
+            Log.i(TAG, "EDITOR ${encodeBase64Utf8(committed.takeLast(size))}")
+            true
+        }.getOrDefault(false)
+        command == "candidates64" -> {
+            Log.i(TAG, "CANDIDATES ${encodeBase64Utf8(state.candidates.take(60).joinToString("\n"))}")
+            true
+        }
         command == "state" -> {
             Log.i(
                 TAG,
@@ -842,6 +858,9 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
 
     private fun decodeBase64Utf8(payload: String): String =
         String(java.util.Base64.getDecoder().decode(payload), Charsets.UTF_8)
+
+    private fun encodeBase64Utf8(text: String): String =
+        java.util.Base64.getEncoder().encodeToString(text.toByteArray(Charsets.UTF_8))
 
     /**
      * Feed text one *code point* per call. Iterating Char-by-Char split every
