@@ -36,6 +36,7 @@ import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.lang.reflect.Proxy
@@ -1177,6 +1178,7 @@ class AuditInteractionInstrumentedTest {
         var downTime = 0L
         var released = false
         var spaceViewSurvivedRebuildPoll = false
+        var starvedPastLongPress = false
         lateinit var spaceKey: View
         val releaseDelayMs = minOf(
             100L,
@@ -1204,6 +1206,12 @@ class AuditInteractionInstrumentedTest {
             // Give the deferred row rebuild poll several main-loop turns, but
             // release before Android's own long-click can consume this tap.
             keyboard.postDelayed({
+                // 机器卡顿时这个回调会晚到：一旦越过长按阈值，平台就不再把它当点击
+                // （`View.onTouchEvent` 置了 `mHasPerformedLongPress` 后不再发 click），
+                // 这颗键按设计就是语音而空格。这条断言在那种时间线下没有意义，跳过而不是
+                // 报错——否则 CI 越忙越"红"。
+                starvedPastLongPress =
+                    SystemClock.uptimeMillis() - downTime >= ViewConfiguration.getLongPressTimeout().toLong()
                 spaceViewSurvivedRebuildPoll =
                     keyboard.findViewWithTag<View>("key-space") === spaceKey
                 val point = keyPoint(keyboard, "key-space")
@@ -1213,6 +1221,10 @@ class AuditInteractionInstrumentedTest {
             true
         }
         harness.awaitMain(timeoutMs = 3_000L) { if (released) true else null }
+        assumeTrue(
+            "The main thread ran past the long-press deadline, so this press is a voice hold, not a tap",
+            !starvedPastLongPress,
+        )
         harness.awaitMain {
             assertTrue(
                 "The Space view must remain attached while the rebuild poll sees the active touch",

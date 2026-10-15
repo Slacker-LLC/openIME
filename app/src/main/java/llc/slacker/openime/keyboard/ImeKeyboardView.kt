@@ -345,13 +345,28 @@ open class ImeKeyboardView(
         modeBodyRebuildPosted = false
         renderModeBody()
     }
+    /** The poll has seen the finger lift and is waiting one turn for the release's click. */
+    private var rebuildSettling = false
     private val pendingRowRebuildPoll = object : Runnable {
         override fun run() {
-            if (!pendingRowRebuild) return
+            if (!pendingRowRebuild) {
+                rebuildSettling = false
+                return
+            }
             if (hasPressedKey()) {
+                rebuildSettling = false
                 postDelayed(this, ROW_REBUILD_POLL_MS)
                 return
             }
+            // `View.onTouchEvent` posts the click on ACTION_UP, and detaching the
+            // view cancels that post. This poll can be due before the post, so
+            // yield once: the click is then queued ahead of the rebuild.
+            if (!rebuildSettling) {
+                rebuildSettling = true
+                post(this)
+                return
+            }
+            rebuildSettling = false
             pendingRowRebuild = false
             renderModeBody()
         }
