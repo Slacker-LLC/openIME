@@ -151,8 +151,17 @@ open class ImeKeyboardView(
         fun onKeyboardHeightChanged(percent: Int) {}
         fun onHapticStrengthChanged(percent: Int) {}
 
+        /** 按键音量 changed; the new percent is already saved and in effect. */
+        fun onKeySoundVolumeChanged(percent: Int) {}
+
         /** 震动手感 or 按键音效 changed; the new value is already saved. */
         fun onFeedbackStyleChanged() {}
+
+        /** 首字母自动大写 changed; the new value is already saved. */
+        fun onAutoCapitalizationChanged() {}
+
+        /** 候选栏展示 changed; the new value is already saved. */
+        fun onClipboardCandidateChanged() {}
 
         /** 输入拼音显示位置改了（候选栏 ↔ 输入框）；新值已经存好。 */
         fun onPinyinLocationChanged(location: PinyinLocation) {}
@@ -532,6 +541,7 @@ open class ImeKeyboardView(
     private var lastStrengthPreviewMs = 0L
     private val keySounds = KeySounds(context).apply {
         style = KeySoundStyle.fromKey(ImeSettingsRepository.loadKeySoundStyle(context))
+        volume = ImeSettingsRepository.loadKeySoundVolume(context) / 100f
     }
     private var popupEnabled = ImeSettingsRepository.loadPopup(context)
     private var fuzzyEnabled = ImeSettingsRepository.loadFuzzy(context)
@@ -877,6 +887,7 @@ open class ImeKeyboardView(
             currentDoublePinyinScheme = { ImeSettingsRepository.loadDoublePinyinScheme(context) },
             currentPinyinLocation = { pinyinLocation },
             currentKeySoundStyle = { keySounds.style },
+            currentKeySoundVolume = { (keySounds.volume * 100).toInt() },
             currentPopup = { popupEnabled },
             currentSwipeUpDigits = { ImeSettingsRepository.loadSwipeUpDigits(context) },
             currentExtraToggle = ::onState,
@@ -905,6 +916,7 @@ open class ImeKeyboardView(
             onDoublePinyinSchemeChanged = ::setDoublePinyinScheme,
             onPinyinLocationChanged = ::setPinyinLocation,
             onKeySoundStyleChanged = ::setKeySoundStyle,
+            onKeySoundVolumeChanged = ::setKeySoundVolume,
             onFloatingStyleChanged = ::setFloatingStyle,
             onShowFuzzySettings = { showPanel(Panel.FUZZY_SETTINGS) },
             onFuzzyRulesChanged = listener::onFuzzyRulesChanged,
@@ -1991,6 +2003,23 @@ open class ImeKeyboardView(
         }
     }
 
+    /** Save 按键音量 and click once at the new loudness, rate-limited like the strength preview. */
+    private fun setKeySoundVolume(percent: Int) {
+        val bounded = percent.coerceIn(
+            ImeSettingsRepository.SOUND_VOLUME_MIN,
+            ImeSettingsRepository.SOUND_VOLUME_MAX,
+        )
+        if ((keySounds.volume * 100).toInt() == bounded) return
+        keySounds.volume = bounded / 100f
+        ImeSettingsRepository.saveKeySoundVolume(context, bounded)
+        listener.onKeySoundVolumeChanged(bounded)
+        val now = SystemClock.uptimeMillis()
+        if (now - lastStrengthPreviewMs >= STRENGTH_PREVIEW_INTERVAL_MS) {
+            lastStrengthPreviewMs = now
+            keySounds.play()
+        }
+    }
+
     /** Save the 震动手感 choice and let it be felt once. */
     /** Landscape split halves (Sogou's 左右分离), only for the docked full-width keyboard. */
     private fun splitKeyboard(): Boolean =
@@ -2182,6 +2211,7 @@ open class ImeKeyboardView(
         keyHaptics.strengthPercent = ImeSettingsRepository.loadHapticStrengthPercent(context)
         keyHaptics.style = HapticStyle.fromKey(ImeSettingsRepository.loadHapticStyle(context))
         keySounds.style = KeySoundStyle.fromKey(ImeSettingsRepository.loadKeySoundStyle(context))
+        keySounds.volume = ImeSettingsRepository.loadKeySoundVolume(context) / 100f
         if (heightChanged) {
             keyboardHeightPercent = persistedHeight
             renderedMode = null
@@ -2857,12 +2887,17 @@ open class ImeKeyboardView(
         "按键气泡" -> popupEnabled
         "上滑输入数字" -> ImeSettingsRepository.loadSwipeUpDigits(context)
         "复制内容提示" -> ImeSettingsRepository.loadClipboardChip(context)
+        "候选栏展示" -> ImeSettingsRepository.loadClipboardCandidate(context)
         "短信验证码" -> ImeSettingsRepository.loadSmsCodeChip(context) &&
             context.checkSelfPermission(android.Manifest.permission.READ_SMS) == android.content.pm.PackageManager.PERMISSION_GRANTED
         "数字和符号提示" -> ImeSettingsRepository.loadLetterHints(context)
+        "首字母自动大写" -> ImeSettingsRepository.loadFirstLetterCapitalization(context)
         "智能联想" -> ImeSettingsRepository.loadEmojiAssociation(context)
+        "数字、英文前后加空格" -> ImeSettingsRepository.loadLetterDigitSpace(context)
+        "双击空格键输入句号" -> ImeSettingsRepository.loadDoubleSpacePeriod(context)
         "语音去语气词" -> ImeSettingsRepository.loadVoiceStripFillers(context)
         "标点用空格代替" -> ImeSettingsRepository.loadVoicePunctuationAsSpace(context)
+        "使用耳机麦克风录音" -> ImeSettingsRepository.loadBluetoothHeadsetMic(context)
         else -> true
         }
 
@@ -2909,9 +2944,25 @@ open class ImeKeyboardView(
                 renderedMode = null
                 if (panel == Panel.NONE) renderModeBody()
             }
+            // Read at commit time, so both of these need no listener round trip.
+            "数字、英文前后加空格" -> ImeSettingsRepository.saveLetterDigitSpace(context, enabled)
+            "双击空格键输入句号" -> ImeSettingsRepository.saveDoubleSpacePeriod(context, enabled)
+            "候选栏展示" -> {
+                ImeSettingsRepository.saveClipboardCandidate(context, enabled)
+                // The row is the service's; it re-reads the clipboard right away.
+                listener.onClipboardCandidateChanged()
+            }
             "智能联想" -> ImeSettingsRepository.saveEmojiAssociation(context, enabled)
+            "首字母自动大写" -> {
+                ImeSettingsRepository.saveFirstLetterCapitalization(context, enabled)
+                // The Shift key is the service's to paint; it re-reads the text
+                // around the cursor for the field that is up right now.
+                listener.onAutoCapitalizationChanged()
+            }
             "语音去语气词" -> ImeSettingsRepository.saveVoiceStripFillers(context, enabled)
             "标点用空格代替" -> ImeSettingsRepository.saveVoicePunctuationAsSpace(context, enabled)
+            // Read when the next recording starts, so it needs no listener.
+            "使用耳机麦克风录音" -> ImeSettingsRepository.saveBluetoothHeadsetMic(context, enabled)
         }
     }
 
@@ -3628,11 +3679,7 @@ open class ImeKeyboardView(
                 ShiftState.CAPS_LOCK -> "key-shift-caps"
             }
             setIcon(EnglishShiftPolicy.icon(shiftState))
-            contentDescription = when (shiftState) {
-                ShiftState.LOWERCASE -> "大写"
-                ShiftState.SHIFT_ONCE -> "大写一次"
-                ShiftState.CAPS_LOCK -> "大写锁定"
-            }
+            contentDescription = EnglishShiftPolicy.description(shiftState)
         }
         applyShiftTheme(shift)
     }

@@ -26,16 +26,22 @@ internal class KeySounds(context: Context) {
             if (value != KeySoundStyle.SYSTEM) ensureLoaded(value)
         }
 
+    /**
+     * 0f-1f, from the 按键音量 setting (the reference's `key_sound_volume`,
+     * default 50). Applied to both the bundled samples and the system click.
+     */
+    var volume: Float = 0.5f
+
     fun play() {
         val current = style
         if (current == KeySoundStyle.SYSTEM) {
-            runCatching { audioManager?.playSoundEffect(AudioManager.FX_KEYPRESS_STANDARD, DEFAULT_VOLUME) }
+            runCatching { audioManager?.playSoundEffect(AudioManager.FX_KEYPRESS_STANDARD, volume) }
             return
         }
         val sample = ensureLoaded(current) ?: return
         // A click requested before its sample finished decoding is dropped,
         // not queued: a late click would sound like lag.
-        if (sample in ready) pool?.play(sample, 1f, 1f, 1, 0, 1f)
+        if (sample in ready) pool?.play(sample, volume, volume, 1, 0, 1f)
     }
 
     fun release() {
@@ -70,8 +76,5 @@ internal class KeySounds(context: Context) {
     private companion object {
         /** Fast typing overlaps a few clicks; more would only pile up noise. */
         const val MAX_STREAMS = 4
-
-        /** playSoundEffect's "use the default UI click volume" value. */
-        const val DEFAULT_VOLUME = -1f
     }
 }

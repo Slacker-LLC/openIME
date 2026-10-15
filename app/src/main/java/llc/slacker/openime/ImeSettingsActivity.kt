@@ -211,6 +211,15 @@ class ImeSettingsActivity : Activity(), ImeKeyboardView.Listener {
     override fun onHapticStrengthChanged(percent: Int) {
         refreshLiveIme()
     }
+    override fun onKeySoundVolumeChanged(percent: Int) {
+        refreshLiveIme()
+    }
+    override fun onAutoCapitalizationChanged() {
+        refreshLiveIme()
+    }
+    override fun onClipboardCandidateChanged() {
+        refreshLiveIme()
+    }
     override fun onFeedbackStyleChanged() {
         refreshLiveIme()
     }

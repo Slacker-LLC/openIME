@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.text.InputType
 import android.text.TextUtils
 import android.util.Log
@@ -33,6 +34,7 @@ import llc.slacker.openime.candidate.FuzzyPinyin
 import llc.slacker.openime.candidate.Stroke
 import llc.slacker.openime.candidate.StrokeLexicon
 import llc.slacker.openime.candidate.personalizedLearningAllowed
+import llc.slacker.openime.core.ArithmeticExpressionPolicy
 import llc.slacker.openime.core.CrashGuard
 import llc.slacker.openime.core.EmojiCatalog
 import llc.slacker.openime.core.ImeState
@@ -58,6 +60,8 @@ import llc.slacker.openime.editor.editorActionForEnter
 import llc.slacker.openime.editor.shouldClearCompositionForSelectionUpdate
 import llc.slacker.openime.floating.FloatingWindowController
 import llc.slacker.openime.core.LandscapeLayout
+import llc.slacker.openime.keyboard.AutoCapitalizationPolicy
+import llc.slacker.openime.keyboard.DoubleSpacePeriodPolicy
 import llc.slacker.openime.keyboard.EnglishShiftPolicy
 import llc.slacker.openime.keyboard.HardwareContext
 import llc.slacker.openime.keyboard.HardwareKey
@@ -140,6 +144,12 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     private var landscapeFloatingDeclined = false
     private var voiceComposing = false
     private var voiceAutoCommitOnFinal = true
+    /**
+     * 双击空格键输入句号: when the last space was written, and the character
+     * before it (read before that space was committed), both from the reference.
+     */
+    private var lastSpaceAtMs = 0L
+    private var lastCharBeforeSpace: Char? = null
     private val voiceCorrectionTracker by lazy {
         VoiceCorrectionTracker(
             snapshot = { gateway.absoluteCursorSnapshot() },
@@ -255,6 +265,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             connection = { currentInputConnection },
             isPassword = { state.passwordField },
             isRawKeys = { EditorInfoAdapter.kind(state.editorInfo) == EditorInfoAdapter.EditorKind.RAW_KEYS },
+            letterDigitSpace = { ImeSettingsRepository.loadLetterDigitSpace(this) },
         )
         state = ImeState(
             theme = ImeSettingsRepository.loadTheme(this),
@@ -515,6 +526,13 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         rime.clear()
         keyboardView?.clearAssociationCandidates()
         keyboardView?.setShiftState(initialShiftState)
+        // A field the user opened can already hold text: 首字母自动大写 reads it
+        // now rather than waiting for the first letter (off, it keeps the
+        // input-type state above).
+        refreshEnglishAutoCapitalization()
+        // 算式结果 and 候选栏展示 are read from the field and the clipboard, so a
+        // field that opens on a finished expression or a fresh copy shows both.
+        refreshIdleCandidates()
         keyboardView?.setMode(state.keyboardMode, notifyListener = false)
         keyboardView?.renderState(state)
         if (preserve) {
@@ -965,6 +983,9 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         commitPendingComposition()
         keyboardView?.clearAssociationCandidates()
         gateway.commitText(char)
+        // 算式出结果: the digit that finishes an expression brings its result.
+        refreshIdleCandidates()
+        refreshEnglishAutoCapitalization()
     }
 
     override fun onBackspace() = guarded("onBackspace") {
@@ -992,6 +1013,9 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         } else {
             gateway.deleteBackwards()
             clearImeCompositionState(render = true)
+            // Deleting the sentence mark (or leaving a fresh field) moves the
+            // sentence start, so 首字母自动大写 re-reads the text.
+            refreshEnglishAutoCapitalization()
         }
     }
 
@@ -1042,7 +1066,32 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         }
         voiceCorrectionTracker.finalizeIfNeeded()
         keyboardView?.clearAssociationCandidates()
+        commitPlainSpace()
+        refreshEnglishAutoCapitalization()
+    }
+
+    /**
+     * Write the space this key press means — or, with 双击空格键输入句号 on and
+     * a second space inside the reference's 200 ms window, replace the space
+     * just written with 「。」. The gate is the character before that first
+     * space, read then and kept here, exactly as the reference keeps it; a space
+     * after punctuation stays a space.
+     */
+    private fun commitPlainSpace() {
+        val now = SystemClock.uptimeMillis()
+        val elapsed = now - lastSpaceAtMs
+        val previousChar = lastCharBeforeSpace
+        lastSpaceAtMs = 0L
+        lastCharBeforeSpace = null
+        val doubleSpacePeriod = ImeSettingsRepository.loadDoubleSpacePeriod(this)
+        if (doubleSpacePeriod && DoubleSpacePeriodPolicy.converts(elapsed, previousChar)) {
+            gateway.deleteBackwards()
+            gateway.commitText(DoubleSpacePeriodPolicy.PERIOD)
+            return
+        }
+        if (doubleSpacePeriod) lastCharBeforeSpace = gateway.charBeforeCursor()
         gateway.commitText(" ")
+        lastSpaceAtMs = now
     }
 
     override fun onVoiceToggle() {
@@ -1198,6 +1247,8 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         } else {
             gateway.sendKeyDownUp(KeyEvent.KEYCODE_ENTER)
         }
+        // A line break ends the sentence (the policy counts 「\n」 as one).
+        refreshEnglishAutoCapitalization()
     }
 
     /**
@@ -1214,6 +1265,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         }
         voiceCorrectionTracker.finalizeIfNeeded()
         gateway.sendKeyDownUp(KeyEvent.KEYCODE_ENTER)
+        refreshEnglishAutoCapitalization()
     }
 
     override fun onCompositionChanged(composition: String, candidates: List<String>) = guarded("onCompositionChanged") {
@@ -1394,10 +1446,68 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         prepareForManualInput()
         if (state.passwordField || text.isEmpty()) return
         commitPendingComposition()
+        // 算式出结果 replaces the expression it came from: the reference's
+        // CommitCalculatorCand carries the candidate's own length for exactly that.
+        val calculator = arithmeticCandidate()
+        if (calculator != null && calculator.text == text) {
+            repeat(calculator.expressionLength) { gateway.deleteBackwards() }
+            gateway.commitText(text)
+            gateway.finishComposing()
+            refreshIdleCandidates()
+            return
+        }
+        // 候选栏展示: the chip writes the clip itself, and the row is done with
+        // it — the user took what they copied.
+        if (text == clipboardCandidate()) {
+            gateway.commitText(text)
+            gateway.finishComposing()
+            keyboardView?.clearAssociationCandidates()
+            return
+        }
         gateway.commitText(text)
         gateway.finishComposing()
         keyboardView?.clearAssociationCandidates()
         keyboardView?.setAssociationCandidates(associationsAfterCommit(text))
+    }
+
+    /**
+     * 算式出结果 rides the 智能联想 switch, which the reference names the
+     * result under too (`string/associate_close_content` 「关闭联想后，将不会
+     * 推荐诗词、计算结果、emoji表情。」). The result is read from the field at
+     * the cursor, so it follows the expression as it is typed, backspaced or
+     * moved past.
+     */
+    private fun arithmeticCandidate(): ArithmeticExpressionPolicy.Result? {
+        if (state.passwordField) return null
+        if (!ImeSettingsRepository.loadEmojiAssociation(this)) return null
+        val before = gateway.textBeforeCursor(ArithmeticExpressionPolicy.MAX_LOOKBACK)
+        return ArithmeticExpressionPolicy.evaluateTrailing(before)
+    }
+
+    /**
+     * What the candidate row offers between words: 算式结果 and, with 候选栏
+     * 展示 on, the clipboard's content — 「可在候选栏快速使用剪切内容」.
+     */
+    private fun refreshIdleCandidates() {
+        keyboardView?.clearAssociationCandidates()
+        val chips = ArrayList<String>(2)
+        arithmeticCandidate()?.let { chips += it.text }
+        clipboardCandidate()?.let { chips += it }
+        if (chips.isNotEmpty()) keyboardView?.setAssociationCandidates(chips)
+    }
+
+    /**
+     * The clipboard's content as a candidate, or null when 候选栏展示 is off,
+     * the field is a password, or the clipboard holds nothing. The chip carries
+     * the whole clip: the row clips it to one line, and a tap writes what was
+     * copied, not what is on screen.
+     */
+    private fun clipboardCandidate(): String? {
+        if (state.passwordField) return null
+        if (!ImeSettingsRepository.loadClipboardCandidate(this)) return null
+        val text = gateway.readClipboard()
+        if (text.isEmpty() || text.isBlank()) return null
+        return text
     }
 
     private val emojiAssociations: EmojiAssociationIndex by lazy {
@@ -1414,8 +1524,9 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     /** Next-word suggestions, with the emoji that go with the committed text first. */
     private fun associationsAfterCommit(committed: String): List<String> {
         val words = candidatePipeline.associationsFor(committed)
-        if (state.passwordField || !ImeSettingsRepository.loadEmojiAssociation(this)) return words
-        return emojiAssociations.emojiFor(committed) + words
+        val calculator = arithmeticCandidate()?.let { listOf(it.text) } ?: emptyList()
+        if (state.passwordField || !ImeSettingsRepository.loadEmojiAssociation(this)) return calculator + words
+        return calculator + emojiAssociations.emojiFor(committed) + words
     }
 
     override fun onCompositionBackspace() {
@@ -1456,6 +1567,12 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     }
 
     override fun onFuzzyRulesChanged() = syncFuzzyRules()
+
+    /** 首字母自动大写 switched; the field that is up re-reads its text at once. */
+    override fun onAutoCapitalizationChanged() = refreshEnglishAutoCapitalization()
+
+    /** 候选栏展示 switched; the row re-reads the clipboard at once. */
+    override fun onClipboardCandidateChanged() = refreshIdleCandidates()
 
     /**
      * Hand the 模糊音 switches to both candidate sources: the Kotlin fallback
@@ -1505,6 +1622,10 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         keyboardView?.clearAssociationCandidates()
         SymbolRecentRepository.record(this, symbol)
         gateway.commitText(symbol)
+        // 算式出结果: 「)」 or a full-width figure can finish the expression.
+        refreshIdleCandidates()
+        // A 「.」「!」「?」 (or their full-width forms) starts the next sentence.
+        refreshEnglishAutoCapitalization()
     }
 
     override fun onEmojiSelected(emoji: String) = guarded("onEmojiSelected") {
@@ -1901,6 +2022,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         state = state.copy(composition = "", candidates = emptyList())
         keyboardView?.clearAssociationCandidates()
         keyboardView?.renderState(state)
+        refreshEnglishAutoCapitalization()
     }
 
     private fun selectCandidate(candidate: String) {
@@ -2013,6 +2135,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         state = state.copy(composition = "", candidates = emptyList())
         keyboardView?.renderState(state)
         keyboardView?.setAssociationCandidates(associationsAfterCommit(committed))
+        refreshEnglishAutoCapitalization()
     }
 
     /**
@@ -2047,6 +2170,37 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     private fun resetEnglishShiftForEditor() {
         if (state.keyboardMode != KeyboardMode.ENGLISH_26 || state.passwordField || lastComposition.isNotEmpty()) return
         val next = desiredEnglishShiftState(state.editorInfo)
+        if (next != state.shiftState) {
+            state = state.copy(shiftState = next)
+            keyboardView?.setShiftState(next)
+        }
+        // 首字母自动大写 refines the input-type default with the text already
+        // in the field; off, it leaves the default in place.
+        refreshEnglishAutoCapitalization()
+    }
+
+    /**
+     * 首字母自动大写: after an English edit, Shift is up when the text before
+     * the cursor ends a sentence and down inside one. Off by default, exactly
+     * as the reference ships it; a field that demands capitals and the user's
+     * own Caps Lock are left alone.
+     */
+    private fun refreshEnglishAutoCapitalization() {
+        if (state.keyboardMode != KeyboardMode.ENGLISH_26 || state.passwordField) return
+        if (!ImeSettingsRepository.loadFirstLetterCapitalization(this)) return
+        if (state.shiftState == ShiftState.CAPS_LOCK) return
+        val info = state.editorInfo
+        if (info != null &&
+            info.inputType and android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS != 0
+        ) {
+            return
+        }
+        val before = gateway.textBeforeCursor(AutoCapitalizationPolicy.LOOKBACK) ?: return
+        val next = if (AutoCapitalizationPolicy.atSentenceStart(before)) {
+            ShiftState.SHIFT_ONCE
+        } else {
+            ShiftState.LOWERCASE
+        }
         if (next == state.shiftState) return
         state = state.copy(shiftState = next)
         keyboardView?.setShiftState(next)
