@@ -52,7 +52,8 @@ class PinyinEngine internal constructor(
         // and the fragment passes below are a fallback — running them first
         // let them spend the budget, and the word the user actually typed
         // never made it into the list.
-        for (path in segmenter.segment(letters, maxPaths = HEAD_PATHS, alive = wordPrefix)) {
+        val spellings = segmenter.segment(letters, maxPaths = HEAD_PATHS, alive = wordPrefix)
+        for (path in spellings) {
             collectExact(found, path.ids, path.fuzzy, budget, COMPLETE)
             // A word that only starts with the reading is a completion, not a
             // match: 朋克头 spells pengke and three more letters the user has
@@ -94,16 +95,46 @@ class PinyinEngine internal constructor(
                 }
             }
         }
-        if (found.isEmpty()) return emptyList()
-        return found.entries
+        // A reading whose every letter is a syllable but which no single word
+        // spells is still a reading: the reference composes it from the words
+        // it holds (`jintianxingqiwu` → 今天 + 星期五) and its bar leads with
+        // that, so a user who typed a whole sentence sees the sentence and not
+        // a word that merely starts the same way. The words must come up empty
+        // (the reading spells none) and the tail must be typed in full — a
+        // reading that still ends mid-syllable has its own pass above.
+        val sentences = if (found.values.none { it.coverage == COMPLETE } && isTypedInFull(letters)) {
+            decode(letters, limit = SENTENCE_LIMIT, fuzzyRules = fuzzyRules)
+        } else {
+            emptyList()
+        }
+
+        val ranked = found.entries
             .sortedWith(
                 compareBy<Map.Entry<String, Candidate>> { it.value.coverage }
                     .thenByDescending { it.value.score }
                     .thenBy { it.key },
             )
-            .take(limit)
             .map { it.key }
+        if (ranked.isEmpty() && sentences.isEmpty()) return emptyList()
+        return (sentences + ranked).distinct().take(limit)
     }
+
+    /**
+     * Whether [letters] reads as whole syllables, i.e. whether some reading of
+     * it uses no single letter as a syllable of its own.
+     *
+     * A tail that is still half a syllable leaves only readings that end in a
+     * single letter (every letter is a syllable of the catalogue), so this is
+     * the line between `jintianxingqiwu` — five syllables, no word spells them,
+     * a sentence does — and `jintianxingqiw`, which the fragment pass above
+     * already answers for and which no sentence can cover.
+     */
+    private fun isTypedInFull(letters: String): Boolean =
+        plainSegmenter.segment(letters, maxPaths = HEAD_PATHS).any { path ->
+            (0 until path.ids.size).all { index ->
+                path.starts[index + 1] - path.starts[index] >= SPELLED_SYLLABLE
+            }
+        }
 
     /** Top sentence readings for [input]; each result is the joined words. */
     fun decode(
@@ -113,6 +144,10 @@ class PinyinEngine internal constructor(
     ): List<String> {
         val letters = normalize(input)
         if (letters.isEmpty() || letters.length > MAX_INPUT) return emptyList()
+        // No word-prefix pruning here: a sentence's own spans are words, but
+        // the reading up to a span boundary can sit inside one of them
+        // (我很好谢谢 = 我+很好+谢谢, and no word starts with 我很好些), so the
+        // test the candidate pass uses would drop the sentences themselves.
         val paths = segmenterFor(fuzzyRules).segment(letters, maxPaths = PATH_LIMIT)
         if (paths.isEmpty()) return emptyList()
         val length = letters.length
@@ -303,11 +338,13 @@ class PinyinEngine internal constructor(
         private const val COMPLETE = 0
         private const val FRAGMENT = 1
         private const val COMPLETION_WORDS = 64
-        private const val FRAGMENT_WORDS = 64
+        private const val FRAGMENT_WORDS = 16
         private const val WORDS_PER_SPAN = 24
         private const val TOTAL_WORDS = 1500
         private const val TOTAL_LOOKUPS = 600
         private const val STATE_K = 3
+        /** Shortest syllable that still says the tail was typed in full. */
+        private const val SPELLED_SYLLABLE = 2
         /** Fuzzy candidates keep their frequency but pay this much score
          *  (below the 6571-vs-4655 gap of 师傅/私服, so a clearly more common
          *  fuzzy word still wins against a mediocre literal one). */

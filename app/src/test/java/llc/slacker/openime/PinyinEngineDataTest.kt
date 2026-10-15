@@ -108,6 +108,21 @@ class PinyinEngineDataTest {
     }
 
     @Test
+    fun aReadingNoWordSpellsComesBackAsTheSentenceItIs() {
+        val engine = loadEngine()
+        // No lexicon entry spells jintianxingqiwu; 今天 + 星期五 does, and the
+        // bar leads with it the way the reference's candidate column does.
+        assertEquals("今天星期五", engine.candidates("jintianxingqiwu").firstOrNull())
+        assertEquals("我很好谢谢", engine.candidates("wohenhaoxiexie").firstOrNull())
+        // A word the reading does spell keeps the place: the sentence only
+        // fills in where there is no such word.
+        assertEquals("朋克", engine.candidates("pengke").firstOrNull())
+        // Half a syllable at the end is not a sentence: the bar shows the
+        // words the finished syllables already reach.
+        assertEquals(listOf("今天心情", "今天新闻", "今天星期"), engine.candidates("jintianxingqiw").take(3))
+    }
+
+    @Test
     fun theWordTheReadingSpellsComesBeforeItsCompletions() {
         val engine = loadEngine()
         // 朋克 spells pengke exactly; 朋克头/朋克养生 only start with it.

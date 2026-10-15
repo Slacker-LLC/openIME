@@ -111,7 +111,11 @@ internal class PinyinSegmenter(
                     for (index in targets.indices) {
                         val ids = path.ids.copyOf(path.ids.size + 1)
                         ids[ids.size - 1] = targets[index]
-                        if (alive != null && !alive(ids)) continue
+                        // A path that ends the input is a reading of it even
+                        // when no word starts with it (the sentence pass takes
+                        // those); only a path that still has letters to go is
+                        // worth keeping solely for the word it may reach.
+                        if (alive != null && position + edge < length && !alive(ids)) continue
                         val starts = path.starts.copyOf(path.starts.size + 1)
                         starts[starts.size - 1] = position + edge
                         addPath(next, SegmentPath(ids, starts, path.fuzzy || flags[index]), maxPaths)
