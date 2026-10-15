@@ -39,16 +39,12 @@ internal object LetterHintPolicy {
 
     /**
      * What a long press on a letter key offers, in popup order: the letter in
-     * both cases, upper first — except on P and L, where the reference's own
-     * long-press list reads lower first (`p P`, `l L`, in both its Chinese and
-     * its English layout). No other key or layout leads with the lower case,
-     * so this is the reference's order on those two keys and not a rule.
+     * both cases, upper first on every key. The reference reads lower first on
+     * P and L (`p P`, `l L`, in both its Chinese and its English layout) while
+     * its other twenty-four keys read `X x`, and its nine-key long press leads
+     * lowercase throughout; that is one product contradicting itself, so this
+     * port keeps its single order instead of copying the two keys.
      */
-    private val LOWER_FIRST = setOf('p', 'l')
-
-    fun caseChoices(letter: Char): List<String> {
-        val lower = letter.lowercaseChar().toString()
-        val upper = letter.uppercaseChar().toString()
-        return if (letter.lowercaseChar() in LOWER_FIRST) listOf(lower, upper) else listOf(upper, lower)
-    }
+    fun caseChoices(letter: Char): List<String> =
+        listOf(letter.uppercaseChar().toString(), letter.lowercaseChar().toString())
 }

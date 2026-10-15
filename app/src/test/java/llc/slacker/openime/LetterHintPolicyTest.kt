@@ -69,21 +69,17 @@ class LetterHintPolicyTest {
         assertTrue(LetterHintPolicy.hint('1', false) == null)
     }
 
+    /** Every key leads upper, P and L included: one order, not the skin's two. */
     @Test
     fun longPressOffersTheLetterInBothCasesUpperFirst() {
         assertEquals(listOf("A", "a"), LetterHintPolicy.caseChoices('a'))
         assertEquals(listOf("Q", "q"), LetterHintPolicy.caseChoices('q'))
         assertEquals(listOf("S", "s"), LetterHintPolicy.caseChoices('s'))
-    }
-
-    /** The reference skin lists P and L lower first in both of its layouts. */
-    @Test
-    fun onlyPAndLLeadWithTheLowerCase() {
-        assertEquals(listOf("p", "P"), LetterHintPolicy.caseChoices('p'))
-        assertEquals(listOf("l", "L"), LetterHintPolicy.caseChoices('l'))
+        assertEquals(listOf("P", "p"), LetterHintPolicy.caseChoices('p'))
+        assertEquals(listOf("L", "l"), LetterHintPolicy.caseChoices('l'))
         assertEquals(
-            listOf('l', 'p'),
-            letters.filter { LetterHintPolicy.caseChoices(it).first() == it.toString() },
+            letters.size,
+            letters.count { LetterHintPolicy.caseChoices(it).first() == it.toString().uppercase() },
         )
     }
 }
