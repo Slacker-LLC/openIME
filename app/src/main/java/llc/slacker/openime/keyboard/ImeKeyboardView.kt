@@ -1294,9 +1294,13 @@ open class ImeKeyboardView(
         }
 
         (mainDock.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
-            params.width = FrameLayout.LayoutParams.MATCH_PARENT
-            params.gravity = Gravity.TOP
-            mainDock.layoutParams = params
+            if (params.width != FrameLayout.LayoutParams.MATCH_PARENT ||
+                params.gravity != Gravity.TOP
+            ) {
+                params.width = FrameLayout.LayoutParams.MATCH_PARENT
+                params.gravity = Gravity.TOP
+                mainDock.layoutParams = params
+            }
         }
 
         if (floatingKeyboardController.enabled) {
@@ -1312,8 +1316,10 @@ open class ImeKeyboardView(
                 // display for optical centering. A floating window can be
                 // narrower than the display, so that cached width would clip
                 // the first and last keys. Let the row fill its local window.
-                (row.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
-                    params.width = (measuredWidthPx * 0.9f).toInt()
+                val rowWidth = (measuredWidthPx * 0.9f).toInt()
+                val params = row.layoutParams as? LinearLayout.LayoutParams
+                if (params != null && (params.width != rowWidth || params.gravity != Gravity.CENTER_HORIZONTAL)) {
+                    params.width = rowWidth
                     params.gravity = Gravity.CENTER_HORIZONTAL
                     row.layoutParams = params
                 }
@@ -1367,9 +1373,11 @@ open class ImeKeyboardView(
         keyboardBody.findViewWithTag<View>("key-row-secondary")?.let { row ->
             val rowWidth = ((measuredWidthPx - bodyLeft - bodyRight) * 0.9f).toInt()
             val params = row.layoutParams as? LinearLayout.LayoutParams
-            if (params != null) {
+            // 只有真的变了才写回：赋 layoutParams 一定会 requestLayout()，而这里是从
+            // onMeasure 调进来的，每次测量都排下一次布局就等于每帧重排一遍。
+            if (params != null && (params.width != rowWidth || params.gravity != Gravity.CENTER_HORIZONTAL)) {
+                params.width = rowWidth
                 params.gravity = Gravity.CENTER_HORIZONTAL
-                if (params.width != rowWidth) params.width = rowWidth
                 row.layoutParams = params
             }
         }
