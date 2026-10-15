@@ -1338,9 +1338,11 @@ open class ImeKeyboardView(
         }
         // 单手模式把键面收窄贴向一侧；左右分离布局本身就是两侧的安排，不再叠加。
         val oneHand = if (splitKeyboard()) null else OneHandPolicy.insets(measuredWidthPx, oneHandMode, contentInsetPx)
-        val boardInsetPx = boardSideInsetPx()
-        val bodyLeft = (oneHand?.first ?: contentInsetPx) + boardInsetPx
-        val bodyRight = (oneHand?.second ?: contentInsetPx) + boardInsetPx
+        // 键区不再另加侧边留白：参考皮肤给键区写的那一道（`cls_input_kbd_inset_adaptive`
+        // 2.5 单位、`cls_input_kbd9_inset_adaptive` 1.5 单位，style.xml:727-729、:736-738）
+        // 会改动竖屏键位大小，owner 要求竖屏九键与 26 键布局保持原样，见 docs/DECISIONS.md。
+        val bodyLeft = oneHand?.first ?: contentInsetPx
+        val bodyRight = oneHand?.second ?: contentInsetPx
         // 展开候选页自己也留一道侧边留白（2.5 单位，参考皮肤给这一页写的
         // `cls_input_kbd_morecand_inset_adaptive`，style.xml:731-733）；横屏的
         // 那一道按页宽比例算，已经在上面的 moreCandidatesInsetPx 里。
@@ -1398,23 +1400,6 @@ open class ImeKeyboardView(
         mode == KeyboardMode.PINYIN_9 ||
             mode == KeyboardMode.STROKE ||
             mode == KeyboardMode.DIGITS
-
-    /**
-     * The board area keeps a side inset of its own, on top of the key margins,
-     * so the outer columns breathe by the same amount as the gaps between keys:
-     * 2.5 units on the 26-key boards, 1.5 on the nine-key ones
-     * (`cls_input_kbd_inset_adaptive`, `style.xml:727-729` and
-     * `cls_input_kbd9_inset_adaptive`, `:736-738`, the classes
-     * [usesNineKeyBoardArea] tells apart). Landscape and the floating window
-     * carry their own side figures, and the one-hand and split layouts arrange
-     * the two sides themselves.
-     */
-    private fun boardSideInsetPx(): Int = when {
-        floatingKeyboardController.enabled -> dp(0)
-        appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE -> dp(0)
-        usesNineKeyBoardArea() -> dp(ImeGeometryTokens.NINE_KEY_SIDE_INSET_DP)
-        else -> dp(ImeGeometryTokens.BOARD_SIDE_INSET_DP)
-    }
 
     private fun scheduleRelayout() {
         if (relayoutPosted) return
@@ -2278,11 +2263,10 @@ open class ImeKeyboardView(
                 keyboardHost.layoutParams = it
             }
         }
-        val boardInsetPx = boardSideInsetPx()
         keyboardBody.setPadding(
-            contentInsetPx + boardInsetPx,
+            contentInsetPx,
             dp(ImeGeometryTokens.KEYBOARD_TOP_PAD_DP),
-            contentInsetPx + boardInsetPx,
+            contentInsetPx,
             dp(layoutMetrics.bottomPadDp),
         )
         val state = when {
