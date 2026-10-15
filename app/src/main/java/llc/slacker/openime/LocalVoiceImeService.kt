@@ -360,17 +360,33 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     /**
      * 停靠时键盘占据屏幕底部；浮动时卡片只是浮层。系统按窗口 frame 计算 IME 遮挡区域，
      * 会让应用把整块屏幕当作"被输入法盖住"而把输入框顶上去（resize/pan）。
-     * 浮动时这里报告"没有遮挡内容"，输入框原地不动。
+     * 浮动时这里报告"没有遮挡内容"，输入框原地不动；这份报告还要带上整帧可触摸，
+     * 见 [applyFloatingInsets]。
      */
     override fun onComputeInsets(outInsets: InputMethodService.Insets) {
         super.onComputeInsets(outInsets)
         if (floatingWindow.enabled) {
-            val fullHeight = window?.window?.decorView?.height ?: 0
-            if (fullHeight > 0) {
-                outInsets.contentTopInsets = fullHeight
-                outInsets.visibleTopInsets = fullHeight
-            }
+            applyFloatingInsets(outInsets, window?.window?.decorView?.height ?: 0)
         }
+    }
+
+    /**
+     * 浮动卡片对"身后被遮住多少"的报告：内容顶和可见顶都取卡片自己的下边缘，即窗口之内
+     * 没有任何区域盖住后面的应用，应用既不 resize 也不 pan。
+     *
+     * 这份报告同时决定卡片本身哪一块能接触摸：基类 `onComputeInsets` 设的模式是
+     * `TOUCHABLE_INSETS_VISIBLE`（"the area inside of the visible insets can be touched"，
+     * `ViewTreeObserver.InternalInsetsInfo`），可见顶报成窗口底就等于把可触摸区剪成空集，
+     * 整个浮动键盘收不到任何触摸（beta10 的卡死）。AOSP 全屏分支做同一份报告时正是配
+     * `TOUCHABLE_INSETS_FRAME`（`InputMethodService.onComputeInsets`：
+     * `info.contentInsets.top = info.visibleInsets.top = decor.getHeight();
+     * info.setTouchableInsets(TOUCHABLE_INSETS_FRAME);`），浮动卡片照配。
+     */
+    internal fun applyFloatingInsets(outInsets: InputMethodService.Insets, cardHeightPx: Int) {
+        if (cardHeightPx <= 0) return
+        outInsets.contentTopInsets = cardHeightPx
+        outInsets.visibleTopInsets = cardHeightPx
+        outInsets.touchableInsets = InputMethodService.Insets.TOUCHABLE_INSETS_FRAME
     }
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
