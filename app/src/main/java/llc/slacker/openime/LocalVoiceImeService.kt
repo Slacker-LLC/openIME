@@ -27,6 +27,7 @@ import llc.slacker.openime.candidate.EmojiAssociationIndex
 import llc.slacker.openime.candidate.EnglishLexicon
 import llc.slacker.openime.candidate.NineKeyReading
 import llc.slacker.openime.candidate.PinyinLexicon
+import llc.slacker.openime.candidate.PoemIndex
 import llc.slacker.openime.engine.PinyinEngine
 import llc.slacker.openime.candidate.FuzzyPinyin
 import llc.slacker.openime.candidate.Stroke
@@ -220,6 +221,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
                     ),
                     pinyinEngine = PinyinEngine.obtain(this),
                     fuzzyRules = { ImeSettingsRepository.activeFuzzyRules(this) },
+                    poemIndex = { activePoemIndex() },
                 )
             }
                 .onSuccess { candidatePipeline = it }
@@ -230,6 +232,8 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
             runCatching { EmojiCatalog.byCategory(this) }
             // The association table is the reference's full one now; parse it here, not on the first commit.
             runCatching { EmojiAssociationIndex.preload(this) }
+            // 诗句联想 reads on the first keystroke otherwise.
+            runCatching { PoemIndex.preload(this) }
             // Only someone who uses the 笔画 keyboard pays for its table; the
             // keyboard loads it on first use otherwise.
             if (ImeSettingsRepository.loadPreferredChineseMode(this) == KeyboardMode.STROKE) {
@@ -1399,6 +1403,13 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     private val emojiAssociations: EmojiAssociationIndex by lazy {
         EmojiAssociationIndex.obtain(this)
     }
+
+    /**
+     * 诗句联想 shares the 智能联想 switch, as it does in the reference, whose own
+     * text for that switch is 「关闭联想后，将不会推荐诗词、计算结果、emoji表情。」
+     */
+    private fun activePoemIndex(): PoemIndex =
+        if (ImeSettingsRepository.loadEmojiAssociation(this)) PoemIndex.obtain(this) else PoemIndex.EMPTY
 
     /** Next-word suggestions, with the emoji that go with the committed text first. */
     private fun associationsAfterCommit(committed: String): List<String> {
