@@ -220,19 +220,19 @@ class FloatingGameKeyboardInstrumentedTest {
         harness.awaitMain { keyboard.setFloatingWindowMode(true); true }
         settleTip(harness, keyboard)
         val topZone = harness.awaitMain { keyboard.findViewWithTag<View>("ime_toolbar") }
-        // The 48dp toolbar row sits centered in the 60dp zone, so a strip at the
-        // bottom of the zone belongs to no child. Nothing consumes the DOWN there,
-        // and the framework never asks the interceptor again once a gesture has no
-        // touch target: the zone itself has to claim it (ImeTopZone.onTouchEvent).
+        // 工具栏那一行自己就是顶栏的高度（`ImeTopZone` 给 toolbarRow 的高度就是
+        // COMPOSED_TOP_ZONE_HEIGHT_DP），48dp 的图标条在它里面居中，上下各留一条空带。
+        // 空带里没有任何子视图消费按下，而一条没有 touch target 的手势之后框架不再回头
+        // 问拦截器：只能由顶栏自己认领（ImeTopZone.onTouchEvent）。
         val (x, y) = harness.awaitMain {
-            val row = topZone.findViewWithTag<View>("toolbar-row")
-            if (row?.height == 0 || topZone.height == 0) return@awaitMain null
+            val icons = topZone.findViewWithTag<View>("toolbar-icon-strip")
+            if (icons?.height == 0 || topZone.height == 0) return@awaitMain null
             val zoneLocation = IntArray(2).also { topZone.getLocationInWindow(it) }
-            val rowLocation = IntArray(2).also { row.getLocationInWindow(it) }
-            val rowBottom = rowLocation[1] - zoneLocation[1] + row.height
-            val strip = topZone.height - rowBottom
+            val iconsLocation = IntArray(2).also { icons.getLocationInWindow(it) }
+            val iconsBottom = iconsLocation[1] - zoneLocation[1] + icons.height
+            val strip = topZone.height - iconsBottom
             if (strip < 4) return@awaitMain null
-            (topZone.width / 2f) to (rowBottom + strip / 2f)
+            (topZone.width / 2f) to (iconsBottom + strip / 2f)
         }
         val downTime = SystemClock.uptimeMillis()
         harness.awaitMain { touch(topZone, MotionEvent.ACTION_DOWN, downTime, x, y); true }
