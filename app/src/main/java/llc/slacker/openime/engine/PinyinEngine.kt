@@ -144,33 +144,39 @@ class PinyinEngine internal constructor(
     ): List<String> {
         val letters = normalize(input)
         if (letters.isEmpty() || letters.length > MAX_INPUT) return emptyList()
-        // No word-prefix pruning here: a sentence's own spans are words, but
-        // the reading up to a span boundary can sit inside one of them
-        // (我很好谢谢 = 我+很好+谢谢, and no word starts with 我很好些), so the
-        // test the candidate pass uses would drop the sentences themselves.
-        val paths = segmenterFor(fuzzyRules).segment(letters, maxPaths = PATH_LIMIT)
-        if (paths.isEmpty()) return emptyList()
         val length = letters.length
 
+        // Words are read off the lattice, one start position at a time, the way
+        // the reference walks its own: every reading of the next up to
+        // MAX_WORD_SYLLABLES syllables is a word lookup, and a reading is
+        // followed only as far as the lattice carries it. (Reading words off
+        // whole paths instead looks the same window up once per path that
+        // crosses it, and the paths a sentence spans run into the hundreds.)
+        val lattice = segmenterFor(fuzzyRules).lattice(letters)
+        if (lattice.isEmpty()) return emptyList()
         val edges = Array(length + 1) { ArrayList<Edge>(8) }
-        for (path in paths) {
-            val syllables = path.ids.size
-            for (from in 0 until syllables) {
-                val charFrom = path.starts[from]
-                var to = from
-                while (to < syllables && to - from < MAX_WORD_SYLLABLES) {
-                    val charTo = path.starts[to + 1]
-                    val span = path.ids.copyOfRange(from, to + 1)
-                    val start = lexicon.lowerBound(span, span.size)
-                    val end = lexicon.exactEnd(span, span.size)
-                    var taken = 0
-                    for (word in start until end) {
-                        if (taken >= WORDS_PER_SPAN) break
-                        taken++
-                        edges[charFrom].add(Edge(charTo, word, path.fuzzy))
+        for (start in 0 until length) {
+            var readings = listOf(Reading(START_IDS, start, fuzzy = false))
+            for (depth in 1..MAX_WORD_SYLLABLES) {
+                val next = ArrayList<Reading>(readings.size * 2)
+                for (reading in readings) {
+                    if (reading.end >= length) continue
+                    for (edge in lattice[reading.end]) {
+                        val ids = reading.ids.copyOf(reading.ids.size + 1)
+                        ids[ids.size - 1] = edge.id
+                        val first = lexicon.lowerBound(ids, ids.size)
+                        val last = lexicon.exactEnd(ids, ids.size)
+                        var taken = 0
+                        for (word in first until last) {
+                            if (taken >= WORDS_PER_SPAN) break
+                            taken++
+                            edges[start].add(Edge(edge.end, word, reading.fuzzy || edge.fuzzy))
+                        }
+                        next.add(Reading(ids, edge.end, reading.fuzzy || edge.fuzzy))
                     }
-                    to++
                 }
+                if (next.isEmpty()) break
+                readings = next
             }
         }
 
@@ -308,6 +314,9 @@ class PinyinEngine internal constructor(
 
     private class Edge(val to: Int, val word: Int, val fuzzy: Boolean)
 
+    /** A reading of the letters from one start position to [end]. */
+    private class Reading(val ids: IntArray, val end: Int, val fuzzy: Boolean)
+
     /**
      * One candidate: how much of the typed input the reading explains
      * ([coverage], COMPLETE beats FRAGMENT) and the word's frequency score.
@@ -328,7 +337,6 @@ class PinyinEngine internal constructor(
         private const val MAX_INPUT = 64
         private const val HEAD_PATHS = 64
         private const val TAIL_SYLLABLES = 32
-        private const val PATH_LIMIT = 32
         private const val MAX_WORD_SYLLABLES = 6
         private const val EXACT_WORDS = 48
         /** Coverage ranks first: a word whose reading spells out every typed
@@ -343,6 +351,7 @@ class PinyinEngine internal constructor(
         private const val TOTAL_WORDS = 1500
         private const val TOTAL_LOOKUPS = 600
         private const val STATE_K = 3
+        private val START_IDS = IntArray(0)
         /** Shortest syllable that still says the tail was typed in full. */
         private const val SPELLED_SYLLABLE = 2
         /** Fuzzy candidates keep their frequency but pay this much score

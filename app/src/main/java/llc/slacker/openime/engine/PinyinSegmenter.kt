@@ -142,6 +142,36 @@ internal class PinyinSegmenter(
         into.add(at, path)
     }
 
+    /** One syllable edge of the lattice: it consumes letters up to [end]. */
+    internal class LatticeEdge(val end: Int, val id: Int, val fuzzy: Boolean)
+
+    /**
+     * The syllable lattice of [letters]: for every position, every syllable of
+     * the catalogue that matches there.
+     *
+     * The reference builds its lattice exactly this way — `BuildLattice` walks
+     * its syllable trie from each reachable position and adds one edge per
+     * match (`ENGINE-SPEC.md` §1.1, §1.3) — and reads words off the edges. A
+     * caller that reads words off whole paths instead looks the same window up
+     * once per path that crosses it.
+     */
+    fun lattice(letters: String): List<List<LatticeEdge>> {
+        val length = letters.length
+        return (0 until length).map { position ->
+            val out = ArrayList<LatticeEdge>(4)
+            val maxEdge = minOf(MAX_SYLLABLE_LENGTH, length - position)
+            for (edge in 1..maxEdge) {
+                val spelling = letters.substring(position, position + edge)
+                val targets = edgeIds[spelling] ?: continue
+                val flags = edgeFuzzy.getValue(spelling)
+                for (index in targets.indices) {
+                    out.add(LatticeEdge(position + edge, targets[index], flags[index]))
+                }
+            }
+            out
+        }
+    }
+
     /** Syllable edges whose spelling starts with the trailing fragment [fragment]. */
     fun syllablesStartingWith(fragment: String, max: Int = 32): List<SyllableEdge> {
         if (fragment.isEmpty()) return emptyList()
