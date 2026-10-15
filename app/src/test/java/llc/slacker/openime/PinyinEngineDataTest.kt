@@ -71,6 +71,15 @@ class PinyinEngineDataTest {
     }
 
     @Test
+    fun aReadingSplitManyWaysStillFindsItsWord() {
+        val engine = loadEngine()
+        // 乱按/卵鞍 are luan+an; the letters also read as lu+a+nan, and the
+        // split into fewer syllables must be the one that reaches the lookup.
+        assertEquals("卵鞍", engine.candidates("luanan").firstOrNull())
+        assertTrue(engine.candidates("luanan").contains("乱按"))
+    }
+
+    @Test
     fun fuzzyRulesExpandCandidatesAndKeepExactReadingsFirst() {
         val engine = loadEngine()
         val rules = setOf(FuzzyRule.Z_ZH, FuzzyRule.N_L, FuzzyRule.S_SH)

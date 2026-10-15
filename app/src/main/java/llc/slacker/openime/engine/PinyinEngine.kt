@@ -268,7 +268,7 @@ class PinyinEngine internal constructor(
         private const val CANDIDATE_LIMIT = 60
         private const val SENTENCE_LIMIT = 3
         private const val MAX_INPUT = 64
-        private const val HEAD_PATHS = 4
+        private const val HEAD_PATHS = 16
         private const val TAIL_SYLLABLES = 32
         private const val PATH_LIMIT = 32
         private const val MAX_WORD_SYLLABLES = 6

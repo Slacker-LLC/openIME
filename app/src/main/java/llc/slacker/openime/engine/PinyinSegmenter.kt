@@ -103,17 +103,32 @@ internal class PinyinSegmenter(
                     val flags = edgeFuzzy.getValue(spelling)
                     val next = frontier[position + edge] ?: continue
                     for (index in targets.indices) {
-                        if (next.size >= maxPaths) break
                         val ids = path.ids.copyOf(path.ids.size + 1)
                         ids[ids.size - 1] = targets[index]
                         val starts = path.starts.copyOf(path.starts.size + 1)
                         starts[starts.size - 1] = position + edge
-                        next.add(SegmentPath(ids, starts, path.fuzzy || flags[index]))
+                        addPath(next, SegmentPath(ids, starts, path.fuzzy || flags[index]), maxPaths)
                     }
                 }
             }
         }
         return frontier[length] ?: emptyList()
+    }
+
+    /**
+     * Keep the best [maxPaths] paths of one lattice node.
+     *
+     * The reference enumerates every path of the lattice and only ranks them
+     * afterwards (a 0.99 decay per syllable edge), so a path that arrives once
+     * the cap is full must evict a worse one rather than be dropped: fewer
+     * syllables is always the better reading (`luanan` is luan+an, not lu+a+nan).
+     */
+    private fun addPath(into: ArrayList<SegmentPath>, path: SegmentPath, maxPaths: Int) {
+        var at = 0
+        while (at < into.size && into[at].ids.size <= path.ids.size) at++
+        if (at >= maxPaths) return
+        if (into.size == maxPaths) into.removeAt(into.size - 1)
+        into.add(at, path)
     }
 
     /** Syllable edges whose spelling starts with the trailing fragment [fragment]. */
