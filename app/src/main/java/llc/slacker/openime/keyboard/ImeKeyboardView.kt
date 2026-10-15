@@ -321,6 +321,11 @@ open class ImeKeyboardView(
     private var pendingRowRebuild = false
     /** 有没有手指按在这块键盘上：分辨真手势与上一次手势留下的 isPressed 残留。 */
     private var touchStreamActive = false
+    private var modeBodyRebuildPosted = false
+    private val modeBodyRebuild = Runnable {
+        modeBodyRebuildPosted = false
+        renderModeBody()
+    }
     private val pendingRowRebuildPoll = object : Runnable {
         override fun run() {
             if (!pendingRowRebuild) return
@@ -551,7 +556,10 @@ open class ImeKeyboardView(
     private var oneHandMode = ImeSettingsRepository.loadOneHandMode(context)
 
     /** 停靠键盘的“键盘调节”拖拽（顶栏长按后上下拖）。 */
-    private val heightDragController = KeyboardHeightDragController(::adjustKeyboardHeightByDrag)
+    private val heightDragController = KeyboardHeightDragController(
+        onDragBy = ::adjustKeyboardHeightByDrag,
+        onDragEnd = ::commitKeyboardHeightAfterDrag,
+    )
     private var navigationBottomInsetPx = 0
     private val themeApplier: ImeThemeApplier by lazy {
         ImeThemeApplier(
@@ -2038,16 +2046,56 @@ open class ImeKeyboardView(
         }
     }
 
-    /** 键盘调节：按竖直拖动量改变高度百分比（持久化在 [setKeyboardHeightPercent] 内）。 */
+    /**
+     * 键盘调节：拖动中只做即时预览（行高跟着手指变），松手时才写回设置。
+     * 原来每个触摸样本都走 [setKeyboardHeightPercent]：一次拖动写上百次设置、
+     * 整块键面重建上百次。
+     */
     private fun adjustKeyboardHeightByDrag(deltaY: Float) {
         if (floatingKeyboardController.enabled) return
-        setKeyboardHeightPercent(
+        previewKeyboardHeightPercent(
             KeyboardHeightDragPolicy.applyTo(
                 keyboardHeightPercent,
                 deltaY,
                 resources.displayMetrics.heightPixels,
             ),
         )
+    }
+
+    /** 拖动结束（松手，或系统把手势收走）时把最终高度存下来，并让面板跟着刷新。 */
+    private fun commitKeyboardHeightAfterDrag() {
+        if (floatingKeyboardController.enabled) return
+        ImeSettingsRepository.saveKeyboardHeightPercent(
+            context,
+            keyboardHeightPercent,
+            landscape = appliedOrientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE,
+        )
+        listener.onKeyboardHeightChanged(keyboardHeightPercent)
+    }
+
+    /** 拖动中的即时预览：改行高与键盘高度，重建压到一帧一次。 */
+    private fun previewKeyboardHeightPercent(percent: Int) {
+        val bounded = percent.coerceIn(ImeGeometryTokens.KEYBOARD_HEIGHT_MIN_PERCENT, ImeGeometryTokens.KEYBOARD_HEIGHT_MAX_PERCENT)
+        if (keyboardHeightPercent == bounded) return
+        keyboardHeightPercent = bounded
+        renderedMode = null
+        layoutMetrics = buildLayoutMetrics()
+        applyDynamicHeights()
+        if (!standalonePanel && panel == Panel.NONE) {
+            scheduleModeBodyRebuild()
+        } else {
+            requestLayout()
+        }
+    }
+
+    /**
+     * 一帧最多重建一次键面：拖动这类逐样本的输入用它把重建合并到下一帧，
+     * 一帧内的多个样本只重建一次。
+     */
+    private fun scheduleModeBodyRebuild() {
+        if (modeBodyRebuildPosted) return
+        modeBodyRebuildPosted = true
+        postOnAnimation(modeBodyRebuild)
     }
 
     private fun setKeyboardHeightPercent(percent: Int) {
@@ -2184,10 +2232,12 @@ open class ImeKeyboardView(
         // voiceGestureSession, which stopVoiceIfActive() cleared above.
         repeatHandler.removeCallbacksAndMessages(null)
         removeCallbacks(pendingRowRebuildPoll)
+        removeCallbacks(modeBodyRebuild)
         backspaceGestureController.shutdown()
         spaceVoiceGestureController.shutdown()
         floatingKeyboardController.reset()
         pendingRowRebuild = false
+        modeBodyRebuildPosted = false
         touchStreamActive = false
         hidePopup()
     }
