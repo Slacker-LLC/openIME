@@ -6,6 +6,7 @@ import android.content.Context
 object PinyinLexicon {
     private const val CHAR_ASSET = "pinyin_chars.tsv"
     private const val PHRASE_ASSET = "pinyin_phrases.tsv"
+    private const val READING_FIX_ASSET = "pinyin_reading_fixes.tsv"
     private const val CHAR_WEIGHT_ASSET = "rime-data/openime_dicts/8105.dict.yaml"
 
     private data class WeightedValue(
@@ -76,6 +77,14 @@ object PinyinLexicon {
                     }
                 }
 
+                // pinyin_reading_fixes.tsv corrects readings the tables above get
+                // wrong (the reference's misread-word list). Its rows keep the
+                // word's own corpus weight, so a correction never jumps ahead of
+                // the ordinary phrases of that pinyin.
+                context.assets.open(READING_FIX_ASSET).bufferedReader(Charsets.UTF_8).useLines { lines ->
+                    readingFixes(lines).forEach { (pinyin, text, weight) -> add(pinyin, text, weight) }
+                }
+
                 val weights = HashMap<String, Int>()
                 val ordered = result.mapValues { (pinyin, values) ->
                     values.values
@@ -113,6 +122,22 @@ object PinyinLexicon {
             val weight = fields[2].trim().toLongOrNull() ?: continue
             if (pinyin.isEmpty() || ' ' in pinyin) continue
             rows += Triple(pinyin, character, weight.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt())
+        }
+        return rows
+    }
+
+    /** `(pinyin, text, weight)` rows of the reading-fix table (comment lines skipped). */
+    internal fun readingFixes(lines: Sequence<String>): List<Triple<String, String, Int>> {
+        val rows = ArrayList<Triple<String, String, Int>>()
+        for (line in lines) {
+            if (line.isBlank() || line.startsWith('#')) continue
+            val fields = line.split('\t', limit = 3)
+            if (fields.size < 3) continue
+            val pinyin = fields[0].trim()
+            val text = fields[1].trim()
+            val weight = fields[2].trim().toIntOrNull() ?: continue
+            if (pinyin.isEmpty() || text.isEmpty() || weight < 0) continue
+            rows += Triple(pinyin, text, weight)
         }
         return rows
     }
