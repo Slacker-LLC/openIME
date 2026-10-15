@@ -52,9 +52,10 @@ internal class PinyinSegmenter(
         if (fuzzyRules.isNotEmpty()) {
             val rules = fuzzyRules.toList()
             syllables.forEachIndexed { id, name ->
-                for (variant in fuzzyVariants(name, rules)) {
-                    if (variant in nameToId) add(variant, id, isFuzzy = true)
-                }
+                // A fuzzy spelling need not be a syllable of the catalogue:
+                // 闯 chuang is typed cuang, and the reference's trie holds that
+                // path for the syllable alone.
+                for (variant in fuzzyVariants(name, rules)) add(variant, id, isFuzzy = true)
             }
         }
         edgeIds = HashMap(ids.size * 2)
@@ -84,9 +85,7 @@ internal class PinyinSegmenter(
         if (fuzzyRules.isNotEmpty()) {
             val rules = fuzzyRules.toList()
             syllables.forEachIndexed { id, name ->
-                for (variant in fuzzyVariants(name, rules)) {
-                    if (variant in nameToId) scan += Triple(variant, id, true)
-                }
+                for (variant in fuzzyVariants(name, rules)) scan += Triple(variant, id, true)
             }
         }
         scanEdges = scan

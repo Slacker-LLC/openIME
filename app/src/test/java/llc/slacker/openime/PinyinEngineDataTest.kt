@@ -236,6 +236,21 @@ class PinyinEngineDataTest {
     }
 
     @Test
+    fun aFuzzySpellingNeedNotBeASyllable() {
+        val engine = loadEngine()
+        // cuang is no syllable of the catalogue, but it is what the reference's
+        // trie holds for 床 chuang under ch = c (f_syllable-variants.tsv row
+        // chuang -> cuang, mask C9). Requiring the variant to be a syllable of
+        // its own dropped it, and with it every such spelling.
+        val chC = setOf(FuzzyRule.C_CH)
+        val chuang = engine.candidates("cuang", fuzzyRules = chC)
+        assertTrue("no candidates for cuang: $chuang", chuang.isNotEmpty())
+        assertTrue("床 missing from $chuang", chuang.contains("床"))
+        // The exact spelling keeps the lead.
+        assertEquals(engine.candidates("chuang").first(), engine.candidates("chuang", fuzzyRules = chC).first())
+    }
+
+    @Test
     fun fuzzyRulesExpandCandidatesAndKeepExactReadingsFirst() {
         val engine = loadEngine()
         val rules = setOf(FuzzyRule.Z_ZH, FuzzyRule.N_L, FuzzyRule.S_SH)
