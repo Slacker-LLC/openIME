@@ -5,6 +5,7 @@ import android.graphics.drawable.InsetDrawable
 import android.view.View
 import android.view.ViewGroup
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import llc.slacker.openime.core.ImeState
 import llc.slacker.openime.core.KeyboardMode
 import llc.slacker.openime.core.Panel
 import llc.slacker.openime.keyboard.ImeKeyboardView
@@ -194,6 +195,35 @@ class KeyMarginsInstrumentedTest {
                 )
                 assertEquals("$mode insets both sides equally", body.paddingLeft, body.paddingRight)
             }
+        }
+    }
+
+    @Test
+    fun theExpandedCandidatesPageKeepsTheReferenceSideInset() {
+        withKeyboard { harness, keyboard ->
+            val density = keyboard.resources.displayMetrics.density
+            val scale = ImeReferenceSizing.scale(keyboard.context)
+            val centering = maxOf(0, (keyboard.width - (minOf(600f, 390f * scale) * density).toInt()) / 2)
+            // The page carries its own side figure whatever board opened it
+            // (`cls_input_kbd_morecand_inset_adaptive`, `style.xml:731-733`).
+            val expected = centering + Math.round(ImeGeometryTokens.MORE_CAND_SIDE_INSET_DP * density * scale)
+            harness.awaitMain { keyboard.setMode(KeyboardMode.PINYIN_26); true }
+            harness.awaitMain {
+                keyboard.renderState(ImeState(composition = "nihao", candidates = listOf("你好", "您好")))
+                true
+            }
+            harness.awaitMain { keyboard.findViewWithTag<View>("candidate-expand").performClick(); true }
+            val overlay = harness.awaitMain {
+                keyboard.findViewWithTag<ViewGroup>("candidate-overlay")
+                    ?.takeIf { it.visibility == View.VISIBLE && it.paddingLeft > 0 }
+            }
+            assertNotNull("the expanded page opens", overlay)
+            assertEquals(
+                "the expanded page keeps the reference's side inset",
+                expected.toLong(),
+                overlay!!.paddingLeft.toLong(),
+            )
+            assertEquals("the expanded page insets both sides equally", overlay.paddingLeft, overlay.paddingRight)
         }
     }
 

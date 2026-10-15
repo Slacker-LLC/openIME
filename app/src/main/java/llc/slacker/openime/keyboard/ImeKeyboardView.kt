@@ -1341,8 +1341,12 @@ open class ImeKeyboardView(
         val boardInsetPx = boardSideInsetPx()
         val bodyLeft = (oneHand?.first ?: contentInsetPx) + boardInsetPx
         val bodyRight = (oneHand?.second ?: contentInsetPx) + boardInsetPx
-        val panelLeft = oneHand?.first ?: moreCandidatesInsetPx
-        val panelRight = oneHand?.second ?: moreCandidatesInsetPx
+        // 展开候选页自己也留一道侧边留白（2.5 单位，参考皮肤给这一页写的
+        // `cls_input_kbd_morecand_inset_adaptive`，style.xml:731-733）；横屏的
+        // 那一道按页宽比例算，已经在上面的 moreCandidatesInsetPx 里。
+        val panelInsetPx = if (landscape) dp(0) else dp(ImeGeometryTokens.MORE_CAND_SIDE_INSET_DP)
+        val panelLeft = (oneHand?.first ?: moreCandidatesInsetPx) + panelInsetPx
+        val panelRight = (oneHand?.second ?: moreCandidatesInsetPx) + panelInsetPx
         keyboardBody.setPadding(
             bodyLeft,
             dp(ImeGeometryTokens.KEYBOARD_TOP_PAD_DP),

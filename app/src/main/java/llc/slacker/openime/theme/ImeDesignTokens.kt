@@ -105,6 +105,13 @@ internal object ImeGeometryTokens {
      * — "57 都给了 padding"), and our keyboard keeps its own top and bottom
      * pads, which are what hold the height that the emulator gates measure.
      */
+    /**
+     * The expanded candidates page insets its content 2.5 units a side as well,
+     * whatever board opened it (`cls_input_kbd_morecand_inset_adaptive`
+     * `inset="2.5,0,2.5,0"`, `style.xml:731-733`, on the page itself at
+     * `layout/input_more_cand.xml:3`), and draws no top or bottom inset at all.
+     */
+    const val MORE_CAND_SIDE_INSET_DP = 2.5f
     const val BOARD_SIDE_INSET_DP = 2.5f
     const val NINE_KEY_SIDE_INSET_DP = 1.5f
     const val KEY_POPUP_HEIGHT_DP = 52
