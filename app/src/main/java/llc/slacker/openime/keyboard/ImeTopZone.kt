@@ -874,6 +874,8 @@ internal class ImeTopZone(
     private var longPressToolbarOnly = false
     private var longPressArmed = false
     private var longPressDragging = false
+    /** 这一次手势被拦下来了（顶栏内的按下）：[onTouchEvent] 据此认领空白处的手势。 */
+    private var longPressEngaged = false
     private var pressRawX = 0f
     private var pressRawY = 0f
     private val longPressRunnable = Runnable {
@@ -895,15 +897,42 @@ internal class ImeTopZone(
         removeCallbacks(longPressRunnable)
         longPressArmed = false
         longPressDragging = false
+        longPressEngaged = false
     }
 
-    /** 手指是否落在顶栏（工具条）范围内；用窗口坐标比较，兼容嵌套层级。 */
+    /**
+     * 手指是否落在顶栏（工具条）范围内：`raw` 是屏幕坐标（"the original location of
+     * the event on the screen, before it had been adjusted for the containing window"，
+     * `MotionEvent.getRawX`），所以这里也用屏幕坐标取行框——和候选项滑选
+     * （[KeyPopupController.trackChoiceTouch]）一个取法。输入法窗口不在屏幕原点
+     * （实测 `frame=[0,1731][1080,2400]`），拿 `getLocationInWindow` 的行框
+     * （窗口内 y=0..）去比屏幕上的 `rawY`（≈1731+）永远不成立，停靠键盘的高度调节
+     * 因此根本起不了手。
+     */
     private fun isInsideToolbar(rawX: Float, rawY: Float): Boolean {
         if (toolbarRow.width == 0 || toolbarRow.height == 0) return false
         val location = IntArray(2)
-        toolbarRow.getLocationInWindow(location)
+        toolbarRow.getLocationOnScreen(location)
         return rawX >= location[0] && rawX <= location[0] + toolbarRow.width &&
             rawY >= location[1] && rawY <= location[1] + toolbarRow.height
+    }
+
+    /** 长按还没成立就移动超过阈值：取消这次长按，滑动不该被当成拖动。 */
+    private fun cancelLongPressIfMoved(event: MotionEvent) {
+        val slop = ViewConfiguration.get(context).scaledTouchSlop
+        if (kotlin.math.abs(event.rawX - pressRawX) > slop ||
+            kotlin.math.abs(event.rawY - pressRawY) > slop
+        ) {
+            removeCallbacks(longPressRunnable)
+        }
+    }
+
+    /** 长按已成立：起手拖动。两条派发路径（拦截器与 [onTouchEvent]）共用。 */
+    private fun beginDragIfArmed(drag: LongPressDragTarget, event: MotionEvent): Boolean {
+        if (!longPressArmed) return false
+        drag.begin(event)
+        longPressDragging = true
+        return true
     }
 
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
@@ -912,23 +941,15 @@ internal class ImeTopZone(
             MotionEvent.ACTION_DOWN -> {
                 resetLongPress()
                 if (longPressToolbarOnly && !isInsideToolbar(ev.rawX, ev.rawY)) return false
+                longPressEngaged = true
                 pressRawX = ev.rawX
                 pressRawY = ev.rawY
                 postDelayed(longPressRunnable, ViewConfiguration.getLongPressTimeout().toLong())
             }
 
             MotionEvent.ACTION_MOVE -> {
-                if (longPressArmed) {
-                    drag.begin(ev)
-                    longPressDragging = true
-                    return true
-                }
-                val slop = ViewConfiguration.get(context).scaledTouchSlop
-                if (kotlin.math.abs(ev.rawX - pressRawX) > slop ||
-                    kotlin.math.abs(ev.rawY - pressRawY) > slop
-                ) {
-                    removeCallbacks(longPressRunnable)
-                }
+                if (beginDragIfArmed(drag, ev)) return true
+                cancelLongPressIfMoved(ev)
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -941,19 +962,38 @@ internal class ImeTopZone(
         return false
     }
 
+    /**
+     * 顶栏里的空白处（图标之间、空闲时那一行输入区）没有任何子视图消费这次按下，
+     * 框架此后就不再回头问 [onInterceptTouchEvent]，长按成立也起不了手——按下落在
+     * 工具栏图标上时能拖正是因为那个图标消费了它。所以被拦下的这次手势由这里认领：
+     * 吞掉 DOWN 保住整条流，长按成立后在 MOVE 上起手。
+     */
     override fun onTouchEvent(event: MotionEvent): Boolean {
         val drag = longPressDrag
-        if (drag == null || !longPressDragging) return super.onTouchEvent(event)
-        drag.onTouch(event)
-        if (event.actionMasked == MotionEvent.ACTION_UP ||
-            event.actionMasked == MotionEvent.ACTION_CANCEL
-        ) {
-            resetLongPress()
+        if (drag == null || (!longPressEngaged && !longPressDragging)) return super.onTouchEvent(event)
+        if (longPressDragging) {
+            drag.onTouch(event)
+            if (event.actionMasked == MotionEvent.ACTION_UP ||
+                event.actionMasked == MotionEvent.ACTION_CANCEL
+            ) {
+                resetLongPress()
+            }
+            return true
+        }
+        when (event.actionMasked) {
+            MotionEvent.ACTION_MOVE -> {
+                if (beginDragIfArmed(drag, event)) {
+                    drag.onTouch(event)
+                } else {
+                    cancelLongPressIfMoved(event)
+                }
+            }
+
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> resetLongPress()
         }
         return true
     }
 
-    /** Floating (game) mode: a slimmer toolbar without text editing and undo. */
     /**
      * Landscape strip: the zone is one key row plus a little, and while composing
      * the pinyin sits at the left of the candidates instead of above them.
@@ -1008,6 +1048,7 @@ internal class ImeTopZone(
         refreshToolbar()
     }
 
+    /** Floating (game) mode: a slimmer toolbar without text editing and undo. */
     fun setCompactToolbar(value: Boolean) {
         if (compact == value) return
         compact = value

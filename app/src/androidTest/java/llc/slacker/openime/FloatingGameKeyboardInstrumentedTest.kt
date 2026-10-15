@@ -216,6 +216,49 @@ class FloatingGameKeyboardInstrumentedTest {
     }
 
     @Test
+    fun longPressOnTheBlankStripOfTheTopZoneDragsToo() = withKeyboard { harness, recorder, keyboard ->
+        harness.awaitMain { keyboard.setFloatingWindowMode(true); true }
+        settleTip(harness, keyboard)
+        val topZone = harness.awaitMain { keyboard.findViewWithTag<View>("ime_toolbar") }
+        // The 48dp toolbar row sits centered in the 60dp zone, so a strip at the
+        // bottom of the zone belongs to no child. Nothing consumes the DOWN there,
+        // and the framework never asks the interceptor again once a gesture has no
+        // touch target: the zone itself has to claim it (ImeTopZone.onTouchEvent).
+        val (x, y) = harness.awaitMain {
+            val row = topZone.findViewWithTag<View>("toolbar-row")
+            if (row?.height == 0 || topZone.height == 0) return@awaitMain null
+            val zoneLocation = IntArray(2).also { topZone.getLocationInWindow(it) }
+            val rowLocation = IntArray(2).also { row.getLocationInWindow(it) }
+            val rowBottom = rowLocation[1] - zoneLocation[1] + row.height
+            val strip = topZone.height - rowBottom
+            if (strip < 4) return@awaitMain null
+            (topZone.width / 2f) to (rowBottom + strip / 2f)
+        }
+        val downTime = SystemClock.uptimeMillis()
+        harness.awaitMain { touch(topZone, MotionEvent.ACTION_DOWN, downTime, x, y); true }
+        SystemClock.sleep(android.view.ViewConfiguration.getLongPressTimeout() + 250L)
+        harness.awaitMain {
+            touch(topZone, MotionEvent.ACTION_MOVE, downTime, x + 30f, y + 20f)
+            touch(topZone, MotionEvent.ACTION_MOVE, downTime, x + 90f, y + 60f)
+            touch(topZone, MotionEvent.ACTION_UP, downTime, x + 90f, y + 60f)
+            true
+        }
+        harness.awaitMain {
+            assertTrue("Long-press drag must move the window from blank top-zone space", recorder.drags.isNotEmpty())
+            assertEquals(
+                "Drag deltas follow the finger after the grab point",
+                60.0,
+                recorder.drags.sumOf { it.first.toDouble() },
+                1.0,
+            )
+            assertEquals(40.0, recorder.drags.sumOf { it.second.toDouble() }, 1.0)
+            assertTrue("Releasing a drag must not dock the keyboard", recorder.floatingChanges.isEmpty())
+            assertEquals("A drag on blank space must not open a panel", Panel.NONE, keyboard.currentPanel())
+            true
+        }
+    }
+
+    @Test
     fun shortTapOnTopZoneStillClicksAndDoesNotDrag() = withKeyboard { harness, recorder, keyboard ->
         harness.awaitMain { keyboard.setFloatingWindowMode(true); true }
         harness.awaitMain {
