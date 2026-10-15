@@ -265,7 +265,19 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         mode: KeyboardMode,
         composition: String,
         fuzzy: Boolean,
-    ): List<String> = candidatePipeline.candidatesFor(mode, composition, fuzzy)
+    ): List<String> {
+        val normal = candidatePipeline.candidatesFor(mode, composition, fuzzy)
+        if (mode != KeyboardMode.PINYIN_26) return normal
+        // The reference's first conversion stage is the user's own dictionary,
+        // ahead of the system one and of every other source it consults
+        // (`ConvertByUserDict`, the first call of the 26-key pipeline;
+        // `doubaoime-teardown/ENGINE-SPEC.md` §3.1). With the built-in engine
+        // owning the 26-key order, librime's userdb can only ever append behind
+        // that order — so the words the user picked for this reading before are
+        // what has to lead it.
+        val learned = learnedPinyinCandidates(composition)
+        return if (learned.isEmpty()) normal else (learned + normal).distinct().take(MAX_CANDIDATES)
+    }
 
     override fun resolveNineKey(
         digits: String,
@@ -1634,11 +1646,7 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         composition: String,
         mode: KeyboardMode,
     ): List<String> {
-        val normal = candidatePipeline.candidatesFor(
-            mode,
-            composition,
-            state.fuzzyPinyinEnabled,
-        )
+        val normal = candidatesFor(mode, composition, state.fuzzyPinyinEnabled)
         if (mode == KeyboardMode.STROKE) {
             // Characters the user picked for these strokes before come first.
             val learned = strokeLearningKey(composition)
@@ -1658,6 +1666,10 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
         )
         return (quickPhrases + normal).distinct().take(MAX_CANDIDATES)
     }
+
+    /** The words the user picked for this reading before ([candidatesFor] leads with them). */
+    private fun learnedPinyinCandidates(composition: String): List<String> =
+        if (allowsPersonalizedLearning()) UserPhraseRepository.candidatesFor(composition) else emptyList()
 
     /** The extra learner is only a repeated-choice fallback while Rime is unavailable. */
     private fun immediateCandidates(composition: String, fallback: List<String>): List<String> {
@@ -1933,14 +1945,16 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
 
     private fun finishCandidateCommit(composition: String, committed: String) {
         if (committed.isEmpty()) return
-        // librime owns normal learning through its userdb. Keep the old local
-        // repository only as an offline fallback; never run two unconditional
-        // ranking systems over the same successful native selection.
+        // librime owns learning wherever its own order is the visible one, and
+        // there the local repository stays the offline fallback; never run two
+        // unconditional ranking systems over the same successful selection.
+        // The 26-key engine order is the exception: librime can only append
+        // behind it, so the local learner is the one that ranks there.
         if (state.keyboardMode == KeyboardMode.STROKE) {
             // Stroke input has no librime session, so it always learns locally.
             strokeLearningKey(composition)?.takeIf { allowsPersonalizedLearning() }
                 ?.let { UserPhraseRepository.record(it, committed) }
-        } else if (!rime.isReady && allowsPersonalizedLearning()) {
+        } else if (allowsPersonalizedLearning() && (!rime.isReady || engineOwnsPinyinOrder())) {
             UserPhraseRepository.record(composition, committed)
         }
         // An English word is followed by a space, as space and a suggestion
@@ -1965,6 +1979,10 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
 
     private fun allowsPersonalizedLearning(): Boolean =
         personalizedLearningAllowed(state.passwordField, state.editorInfo?.imeOptions)
+
+    /** True when the built-in engine's own order is what the 26-key bar shows. */
+    private fun engineOwnsPinyinOrder(): Boolean =
+        state.keyboardMode == KeyboardMode.PINYIN_26 && candidatePipeline.usesPinyinEngine
 
     /** Remove only voice-owned composing text before a manual edit takes ownership. */
     private fun prepareForManualInput() {
