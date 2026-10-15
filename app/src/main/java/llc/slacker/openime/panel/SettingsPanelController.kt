@@ -356,7 +356,7 @@ internal class SettingsPanelController(
                 .toTypedArray(),
         )
         content.addView(
-            noteText("每一组默认关闭，按自己容易混的音打开。开得越多，候选越杂。"),
+            noteText("常用的六组（z = zh、c = ch、s = sh、an = ang、en = eng、in = ing）默认打开，其余默认关闭，按自己容易混的音增减。开得越多，候选越杂。"),
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,

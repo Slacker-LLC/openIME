@@ -36,10 +36,19 @@ class FuzzyRuleTest {
     }
 
     @Test
-    fun fifteenPairsAllStartOff() {
+    fun fifteenPairsWithTheReferencesSixOnByDefault() {
         assertEquals(15, FuzzyRule.entries.size)
         assertEquals(6, FuzzyRule.entries.count { it.initial })
-        assertTrue(FuzzyRule.DEFAULTS.isEmpty())
+        // The reference's preference XML (res/cU.xml) defaults these six to
+        // true: kZEqualToZh, kCEqualToCh, kSEqualToSh, kAnEqualToAng,
+        // kEnEqualToEng, kInEqualToIng.
+        assertEquals(
+            setOf(
+                FuzzyRule.Z_ZH, FuzzyRule.C_CH, FuzzyRule.S_SH,
+                FuzzyRule.AN_ANG, FuzzyRule.EN_ENG, FuzzyRule.IN_ING,
+            ),
+            FuzzyRule.DEFAULTS,
+        )
     }
 
     @Test
