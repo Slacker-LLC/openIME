@@ -166,13 +166,27 @@ def check_changelog(text: str, version: str) -> None:
         raise ReleaseCheckError(f"CHANGELOG.md marks [{version}] as [YANKED]; bump the version")
 
 
+DEVELOPMENT_NOTES_HEADING = "### 开发记录"
+
+
 def changelog_notes(text: str, version: str) -> str:
     _, sections = parse_changelog(text)
     for section in sections:
         if section.version == version:
             if not section.body:
                 raise ReleaseCheckError(f"CHANGELOG.md [{version}] is empty")
-            return section.body
+            # Everything under the development-notes heading is for maintainers:
+            # it stays in the change log and is left out of the release notes.
+            lines = section.body.split("\n")
+            if DEVELOPMENT_NOTES_HEADING in lines:
+                lines = lines[: lines.index(DEVELOPMENT_NOTES_HEADING)]
+            notes = "\n".join(lines).strip()
+            if not notes:
+                raise ReleaseCheckError(
+                    f"CHANGELOG.md [{version}] has no user-facing notes above "
+                    f"'{DEVELOPMENT_NOTES_HEADING}'"
+                )
+            return notes
     raise ReleaseCheckError(f"CHANGELOG.md has no section for {version}")
 
 

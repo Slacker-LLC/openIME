@@ -55,6 +55,10 @@ We maintain only the newest MINOR line. Security fixes ship as PATCH versions.
   Empty sections and versions or dates in the wrong order are not allowed.
   `release_check.py check` enforces this in CI, so the version and the change log change together.
 - The body of this section is the GitHub release note. Write it so that users can understand it.
+  Keep it short: one line for each change that a user can see.
+  Put maintainer detail (addresses, reverse-engineering notes, internal causes) under the heading `### 开发记录` at the end of the section.
+  `release_check.py notes` stops before that heading, so the detail stays in the change log and out of the release.
+  A section with nothing above the heading fails the check.
 - For a withdrawn version, add ` [YANKED]` after the heading and publish a higher version (a beta increases `N`).
 
 ## Release assets

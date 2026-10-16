@@ -45,7 +45,7 @@ Do not change a rule only on the web page.
 The ruleset `release-tags` covers `v*`.
 Only a repository administrator can create such a tag.
 After creation, nobody except an administrator can move or delete it.
-A release tag is `vX.Y.Z` or `vX.Y.Z-beta.N` and must equal `VERSION`. See [RELEASE.md](RELEASE.md).
+A release tag is `vX.Y.Z` (stable) or `vX.Y.Z-beta.N` (beta) and must equal `VERSION`. See [RELEASE.md](RELEASE.md).
 
 ## Security settings
 

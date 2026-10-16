@@ -60,6 +60,7 @@ Files: `values/colors.xml` and `values-night/colors.xml`.
 
 Panels in the keyboard use the keyboard tokens (`ImeTheme.IOS`).
 Switches and quick switches in the keyboard use the keyboard accent color.
+The keyboard and the app use the same accent: `SetupUi.accent` equals the keyboard theme's `tokens.primary` in light and dark.
 
 ## Layout
 
@@ -114,7 +115,18 @@ Switches and quick switches in the keyboard use the keyboard accent color.
   The panel has no voice input (hold space instead) and no keyboard switch (the toolbar has one).
 - The last group in preferences and in the keyboard settings is 关于与数据 ("About and data").
   It has two rows: 关于 ("About": version, privacy, diagnostics) and 数据管理 ("Data management": export, import, pre-uninstall note).
+- The 切换键盘 ("Switch keyboard") and tools pages center their tile rows in the window.
+  The rows stay centered when the window width changes.
 - The title row has the same background as the panel. The back button has no background and shows feedback only when pressed.
+
+## Voice model page
+
+- The page uses the same 16 dp side margin as the other pages, and its cards use the same width and corner radius.
+  Text and cards do not drift left or right of the page edge.
+- It lists the built-in model and the imported models, with the import button.
+- Below the import button it lists the official model packages with their sizes.
+  Each address can be copied; the page does not download anything.
+  The text says that the official `.tar.bz2` package imports as it is.
 
 ## Width and font changes
 

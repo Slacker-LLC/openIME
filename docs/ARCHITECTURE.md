@@ -159,7 +159,8 @@ Split them next. Follow the package rules above and add no cross-package depende
 | 26-key pinyin | `ImeKeyboardView`, `CandidatePipeline`, Rime | Production |
 | Nine-key pinyin | `ImeKeyboardView`, `NineKeyLocalDecoder`, Rime | Production. No English nine-key. |
 | Stroke | `StrokeKeyboardRenderer`, `StrokeLexicon` | Production |
-| Wubi 26-key | `ImeKeyboardView`, `CandidatePipeline`, Rime (`wubi86`) | Production. The table ships only in builds with the local data. |
+| Double pinyin | `DoublePinyinScheme`, `ImeKeyboardView`, Rime | Production. Xiaohe and Ziranma schemes. |
+| Wubi 26-key | `ImeKeyboardView`, `CandidatePipeline`, Rime (`wubi86`) | Production. |
 | English 26-key | `CandidatePipeline`, `CandidateEngine` | Production |
 | Digits, phone, decimal | `EditorInfoAdapter`, `NumericKeyboardRenderer` | Production |
 | Symbols | `SymbolCatalog`, `CustomSymbolRepository` | Production |
@@ -167,8 +168,9 @@ Split them next. Follow the package rules above and add no cross-package depende
 | Clipboard history | `ClipboardHistoryRepository`, `InputConnectionGateway` | Production. See the privacy rules above. |
 | Quick phrases | `QuickPhraseRepository`, `QuickPhraseEditActivity` | Production |
 | Text editing | `InputConnectionGateway` | Production. Available actions depend on the editor. |
-| Voice | `VoiceModelLifecycleManager`, sherpa-onnx | Production. Hold space to speak. |
-| Handwriting | `HandwritingPadView`, `StrokeMatchHandwritingProvider` | Stroke-table recognition. Builds without the local table hide the entry. |
+| Voice | `VoiceModelLifecycleManager`, sherpa-onnx | Production. Hold space to speak. The voice model page imports `.zip`, `.tar`, `.tar.gz` and `.tar.bz2` packages. |
+| SMS code chip | `SmsCodeExtractor`, `ImeTopZone` | Production, optional. A content observer on the SMS provider refreshes the chip; it is off until the user grants read-SMS. |
+| Handwriting | `HandwritingPadView`, `StrokeMatchHandwritingProvider` | Hidden. `HandwritingFeaturePolicy.ENTRY_OFFERED` is `false`; set it to `true` to show the entry again. |
 | Floating keyboard | `FloatingKeyboardController`, `LocalVoiceImeService` | Production |
 | Settings | `ImeSettingsRepository`, settings UI | Production |
 

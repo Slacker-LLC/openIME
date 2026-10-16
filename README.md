@@ -7,16 +7,15 @@
 <p align="center"><strong>A local-first Chinese input method for Android.</strong></p>
 
 <p align="center">
-  <a href="https://github.com/Slacker-LLC/openIME/releases"><img alt="Release" src="https://img.shields.io/github/v/release/Slacker-LLC/openIME?include_prereleases"></a>
+  <a href="https://github.com/Slacker-LLC/openIME/releases"><img alt="Release" src="https://img.shields.io/github/v/release/Slacker-LLC/openIME"></a>
   <a href="https://github.com/Slacker-LLC/openIME/actions/workflows/android.yml"><img alt="Android CI" src="https://github.com/Slacker-LLC/openIME/actions/workflows/android.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: GPL-3.0-only" src="https://img.shields.io/badge/license-GPL--3.0--only-blue"></a>
 </p>
 
 <p align="center">English · <a href="README.zh-CN.md">简体中文</a></p>
 
-> **Beta software (0.0.x).**
-> Features, settings and data formats can change between releases.
-> Do not use openIME as your only keyboard.
+> **openIME 1.0 is the first stable release.**
+> Few devices have been tested. Keep another keyboard installed as a fallback.
 > Report problems in [Issues](https://github.com/Slacker-LLC/openIME/issues).
 
 openIME is a system keyboard for Android.
@@ -52,23 +51,28 @@ The app has no `INTERNET` permission, so your text cannot leave the phone.
 
 ## Features
 
-- **Keyboards:** 26-key pinyin, nine-key pinyin, stroke, English 26-key, digits and symbols.
+- **Keyboards:** 26-key pinyin, nine-key pinyin, double pinyin (Xiaohe and Ziranma), Wubi, stroke, English 26-key, digits and symbols.
   Emoji, symbols, clipboard history, quick phrases, text editing and a floating keyboard are also available.
 - **Pinyin engine:** [librime](https://github.com/rime/librime) with about 900,000 Rime Ice dictionary entries.
   The dictionary is compiled at build time.
   The full dictionary is ready a few seconds after the first start.
-- **Pinyin input:** full pinyin, abbreviations, manual word splitting, fuzzy pinyin, user-word learning and simplified/traditional conversion.
+- **Pinyin input:** full pinyin, abbreviations, manual word splitting, fuzzy pinyin (15 groups), user-word learning, poem-line suggestions and simplified/traditional conversion.
 - **Nine-key input:** a column on the left lists the pinyin for the next character.
   Tap one syllable to lock it.
 - **Voice input:** hold the space key and speak.
   openIME inserts the text when you release the key.
   The bilingual (Chinese and English) model is in the APK and works without a network.
   Options remove filler words and replace punctuation with spaces.
+  You can also import your own streaming model.
+  「设置 → 语音模型」 (Settings → Voice model) lists the official download links to copy, and it imports the official `.tar.bz2` packages as they are.
 - **Gestures:** swipe up on the delete key to clear the text.
   Swipe left or right on the space key to move the cursor.
+- **Quick format input:** optional switches in the settings for spaces around numbers and English words,
+  a period on a double space, calculator results in the candidate bar, first-letter capitalization and a key-sound volume.
 - **Emoji suggestions:** after you choose a word, the suggestion bar shows related emoji.
   The word list is in the APK.
 - **Autofill (Android 11 and later):** account names and codes from your password manager appear in the toolbar.
+- **SMS code chip (optional):** the toolbar shows a code from a new text message, in the common formats, and one tap types it.
 - **Numbers and symbols:** each letter key shows a number or symbol.
   Swipe up to enter it. Press and hold to open a popup, then slide to a cell and release.
 - **Display support:** portrait, landscape, tablets, foldables, dark theme and large font sizes.
@@ -104,7 +108,7 @@ You can install a new release over an old one.
 
 ### Known limitations
 
-- Handwriting input has no recognition engine yet. The entry point is hidden.
+- Handwriting input is hidden for now. The code stays in the app, but the entry is off.
 - The nine-key keyboard does not work with a physical keyboard.
 - Some vendor Android versions limit background input methods. Few devices have been tested.
 - Android does not install a version that is older than the installed one.
