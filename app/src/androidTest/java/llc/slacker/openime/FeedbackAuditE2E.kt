@@ -132,9 +132,9 @@ class FeedbackAuditE2E {
                 SystemClock.sleep(1000)
                 copy(h, "审计复制 A")
                 val key = keyboard(h)
-                val liveChip = h.awaitMain { tree(key).filter { it.tag == "suggestion-text" }.map { (it as TextView).text.toString() } }
+                val liveChip = h.awaitMain { tree(key).filter { it.tag == "suggestion-text" }.map { (it as TextView).text.toString() }.takeIf { "审计复制 A" in it } }
                 record("复制后提示即时刷新", liveChip.contains("审计复制 A"), liveChip)
-                val idle = h.awaitMain { tree(key).filterIsInstance<TextView>().any { it.text.toString() == "审计复制 A" && it.tag == "association-candidate" } }
+                val idle = h.awaitMain { tree(key).filterIsInstance<TextView>().any { it.text.toString() == "审计复制 A" && it.tag == "association-candidate" }.takeIf { it } }
                 record("复制后候选即时刷新", idle)
                 h.awaitMain { key.showPanel(Panel.CLIPBOARD); true }
                 h.awaitMain { tree(key).firstOrNull { it.tag == "clip-card" } }
@@ -145,7 +145,7 @@ class FeedbackAuditE2E {
                 val refreshedStamp = ClipboardHistoryRepository.load(context).first { it.text == "审计复制 A" }.timestamp
                 record("刷新不改变复制时间", stamp == refreshedStamp, "$stamp → $refreshedStamp")
                 copy(h, "审计复制 B\n第二行 😀")
-                val automatic = h.awaitMain { tree(key).any { it.tag == "clip-card" && it.contentDescription.toString().contains("审计复制 B") } }
+                val automatic = h.awaitMain { tree(key).any { it.tag == "clip-card" && it.contentDescription.toString().contains("审计复制 B") }.takeIf { it } }
                 record("已开历史面板实时新增", automatic)
                 h.awaitMain { key.findTestTarget("clipboard-refresh")!!.performClick(); true }
                 h.awaitMain { key.findTestTarget("clip-pin:审计复制 A")?.let { it.performClick(); true } }

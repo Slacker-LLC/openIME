@@ -48,7 +48,7 @@ with local_apk.open('rb') as stream:
 assert installed_sha == local_sha, '请先重新安装当前 app-debug.apk'
 (out / 'installed-apk.json').write_text(json.dumps({'sha256': local_sha, 'serial': serial, 'package': args.package}, indent=2))
 keys = [('system', 'font_scale'), ('secure', 'default_input_method'), ('system', 'accelerometer_rotation'),
-        ('system', 'user_rotation'), ('secure', 'show_ime_with_hard_keyboard')]
+        ('system', 'user_rotation'), ('secure', 'show_ime_with_hard_keyboard'), ('secure', 'autofill_service')]
 settings = {(namespace, key): call('shell', 'settings', 'get', namespace, key, check=True).stdout.strip() for namespace, key in keys}
 remote = f'/sdcard/Android/data/{args.package}/files/optimization-audit/{args.phase}'
 process = None
@@ -57,6 +57,8 @@ log = out / 'instrumentation.txt'
 try:
     call('shell', 'wm', 'dismiss-keyguard', check=True)
     call('shell', 'settings', 'put', 'secure', 'show_ime_with_hard_keyboard', '1', check=True)
+    call('shell', 'settings', 'put', 'secure', 'autofill_service',
+         f'{args.package}/llc.slacker.openime.TestAutofillService', check=True)
     if args.font_scale is not None:
         call('shell', 'settings', 'put', 'system', 'font_scale', str(args.font_scale), check=True)
     call('shell', 'ime', 'enable', f'{args.package}/llc.slacker.openime.LocalVoiceImeService', check=True)
