@@ -76,8 +76,10 @@ fi
 APK="$FULL_APK"
 
 # 3. The APK is signed with the release key and nothing else.
-"$APKSIGNER" verify --verbose --print-certs "$APK" | tee "$OUT/apksigner.txt"
-grep -Eq 'Verified using v[23][^:]*: true' "$OUT/apksigner.txt" || die "no v2/v3 signature"
+# Force the v1 verification path too; minSdk 26 otherwise only exercises v2.
+"$APKSIGNER" verify --min-sdk-version 23 --verbose --print-certs "$APK" | tee "$OUT/apksigner.txt"
+grep -q 'Verified using v1 scheme (JAR signing): true' "$OUT/apksigner.txt" || die "no v1 compatibility signature"
+grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' "$OUT/apksigner.txt" || die "no v2 signature"
 grep -q 'CN=Android Debug' "$OUT/apksigner.txt" && die "APK is signed with the Android debug certificate"
 CERT_SHA256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$OUT/apksigner.txt" | head -n 1)"
 [[ -n "$CERT_SHA256" ]] || die "could not read the signing certificate digest"
@@ -114,7 +116,9 @@ cp "$APK" "$OUT/$NAME"
 rm -f "$FULL_APK"
 LITE_NAME="openIME-v${VERSION}.apk"
 if [[ -n "${LITE_APK:-}" ]]; then
-  "$APKSIGNER" verify --verbose --print-certs "$LITE_APK" > "$OUT/lite-apksigner.txt" || die "lite APK signature check failed"
+  "$APKSIGNER" verify --min-sdk-version 23 --verbose --print-certs "$LITE_APK" > "$OUT/lite-apksigner.txt" || die "lite APK signature check failed"
+  grep -q 'Verified using v1 scheme (JAR signing): true' "$OUT/lite-apksigner.txt" || die "lite APK has no v1 compatibility signature"
+  grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' "$OUT/lite-apksigner.txt" || die "lite APK has no v2 signature"
   LITE_CERT_SHA256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$OUT/lite-apksigner.txt" | head -n 1)"
   [[ -n "$LITE_CERT_SHA256" ]] || die "could not read the lite signing certificate digest"
   [[ "$(printf '%s' "$LITE_CERT_SHA256" | tr -d ':' | tr 'A-F' 'a-f')" == "$(printf '%s' "$CERT_SHA256" | tr -d ':' | tr 'A-F' 'a-f')" ]] || die "full and lite APK signing certificates differ"
@@ -157,7 +161,7 @@ ${LITE_SHA256:+- \`$LITE_NAME\`：**精简版**，不含语音模型，体积小
 
 ### 已知限制
 
-- 手写输入尚未接入识别引擎，入口默认隐藏；九键暂不支持与外接键盘同时使用。
+- 手写输入暂时隐藏；九键暂不支持与外接键盘同时使用。
 - 首次安装后需要完成完整词典部署，期间候选质量略低。
 - 发布包只含 arm64-v8a；模拟器请使用 Debug 构建。
 - 系统不允许降级或换签名覆盖安装：安装此前版本号更高的包或 Debug 包时，需要先卸载（卸载前可在「设置 → 关于与数据 → 数据管理」导出用户数据）。

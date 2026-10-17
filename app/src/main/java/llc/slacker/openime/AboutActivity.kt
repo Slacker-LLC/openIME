@@ -1,6 +1,10 @@
 package llc.slacker.openime
 
 import android.app.Activity
+import android.app.AlertDialog
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.WindowInsets
 import android.widget.LinearLayout
@@ -42,15 +46,8 @@ class AboutActivity : Activity() {
                     dp(ImeGeometryTokens.TOP_BAR_HEIGHT_DP),
                 ).apply { marginStart = -dp(16); marginEnd = -dp(16) },
             )
-            addView(
-                SetupUi.infoCard(
-                    this@AboutActivity,
-                    title = "隐私",
-                    body = "本应用不含联网权限，数据只存在本机。",
-                    iconRes = R.drawable.ic_pref_shield,
-                ),
-                wrap().apply { topMargin = dp(ImeSpacingTokens.SM_DP) },
-            )
+            addView(projectCard(), wrap().apply { topMargin = dp(ImeSpacingTokens.SM_DP) })
+            addView(legalCard(), wrap().apply { topMargin = dp(ImeSpacingTokens.LG_DP) })
             addView(diagnosticsCard(), wrap().apply { topMargin = dp(ImeSpacingTokens.LG_DP) })
             addView(TextView(this@AboutActivity).apply {
                 text = "openIME · 版本 " + versionName()
@@ -85,6 +82,103 @@ class AboutActivity : Activity() {
                 addView(content)
             },
         )
+    }
+
+    private fun projectCard(): LinearLayout = SetupUi.infoCard(
+        this,
+        title = "openIME",
+        body = "离线输入法 · 开源代码托管于 GitHub\nSlacker-LLC/openIME",
+        iconRes = R.drawable.ic_pref_info,
+    ).apply {
+        addAction("GitHub 仓库") { openLink("https://github.com/Slacker-LLC/openIME") }
+        addAction("反馈问题（Issue）") { openLink("https://github.com/Slacker-LLC/openIME/issues/new") }
+    }
+
+    private fun legalCard(): LinearLayout = SetupUi.infoCard(
+        this,
+        title = "开源与隐私",
+        body = "openIME 使用 GPL-3.0-only 许可证。第三方代码、词库及模型保留各自的许可证。以下文档均可离线查看。",
+        iconRes = R.drawable.ic_pref_shield,
+    ).apply {
+        addAction("开源软件说明") { showOpenSourceNotices() }
+        addAction("开源许可证（GPL-3.0）") { showAsset("开源许可证（GPL-3.0）", "legal/LICENSE") }
+        addAction("隐私政策") { showAsset("隐私政策", "privacy-policy.txt") }
+    }
+
+    private fun LinearLayout.addAction(label: String, action: () -> Unit) {
+        addView(SetupUi.secondaryButton(this@AboutActivity, label, action), wrap().apply {
+            topMargin = dp(ImeSpacingTokens.SM_DP)
+        })
+    }
+
+    private fun showOpenSourceNotices() {
+        val documents = listOf(
+            "组件来源与开源说明" to "legal/THIRD_PARTY_NOTICES.md",
+            "librime · BSD-3-Clause" to "licenses/librime-BSD-3-Clause.txt",
+            "OpenCC · Apache-2.0" to "licenses/OpenCC-Apache-2.0.txt",
+            "Snappy · BSD-3-Clause" to "licenses/snappy-BSD-3-Clause.txt",
+            "Rime Ice 词库 · GPL-3.0" to "licenses/rime-ice-GPL-3.0.txt",
+            "sherpa-onnx · Apache-2.0" to "licenses/sherpa-onnx-Apache-2.0.txt",
+            "Paraformer 语音模型 · Apache-2.0" to "licenses/paraformer-model-Apache-2.0.txt",
+            "CT-Transformer 标点模型 · Apache-2.0" to "licenses/ct-transformer-Apache-2.0.txt",
+            "Apache Commons Compress · Apache-2.0" to "licenses/commons-compress-Apache-2.0.txt",
+            "Fluent Emoji · MIT" to "licenses/fluent-emoji-MIT.txt",
+            "Unicode 数据说明" to "UNICODE_DATA_NOTICE.txt",
+        )
+        AlertDialog.Builder(this)
+            .setTitle("开源软件说明")
+            .setItems(documents.map { it.first }.toTypedArray()) { _, index ->
+                val (title, asset) = documents[index]
+                showAsset(title, asset)
+            }
+            .setNegativeButton("关闭", null)
+            .create().also { dialog ->
+                dialog.setOnShowListener { SetupUi.styleDialog(dialog, this) }
+                dialog.show()
+            }
+    }
+
+    private fun showAsset(title: String, path: String) {
+        val text = runCatching { assets.open(path).bufferedReader().use { it.readText() } }
+            .getOrElse {
+                Toast.makeText(this, "文档读取失败，请重试", Toast.LENGTH_SHORT).show()
+                return
+            }
+        val body = TextView(this).apply {
+            this.text = text
+            textSize = ImeTypographyTokens.BODY_SP
+            setTextIsSelectable(true)
+            setPadding(dp(20), dp(12), dp(20), dp(20))
+            setTextColor(getColor(R.color.setup_body))
+        }
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setView(ScrollView(this).apply { addView(body) })
+            .setPositiveButton("关闭", null)
+            .create().also { dialog ->
+                dialog.setOnShowListener { SetupUi.styleDialog(dialog, this) }
+                dialog.show()
+            }
+    }
+
+    private fun openLink(url: String) {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        } catch (_: ActivityNotFoundException) {
+            AlertDialog.Builder(this)
+                .setTitle("未找到浏览器")
+                .setMessage(url)
+                .setPositiveButton("复制链接") { _, _ ->
+                    getSystemService(android.content.ClipboardManager::class.java)
+                        .setPrimaryClip(android.content.ClipData.newPlainText("openIME", url))
+                    Toast.makeText(this, "链接已复制", Toast.LENGTH_SHORT).show()
+                }
+                .setNegativeButton("取消", null)
+                .create().also { dialog ->
+                    dialog.setOnShowListener { SetupUi.styleDialog(dialog, this) }
+                    dialog.show()
+                }
+        }
     }
 
     private fun diagnosticsCard(): LinearLayout {

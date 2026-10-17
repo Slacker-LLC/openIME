@@ -109,6 +109,8 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     }
 
     private var keyboardView: ImeKeyboardView? = null
+    // A keyboard View is replaced when hidden; dismissal belongs to the IME session.
+    internal val dismissedToolbarSuggestions = mutableMapOf<llc.slacker.openime.keyboard.ToolbarSuggestion.Kind, String>()
     private lateinit var gateway: InputConnectionGateway
     /**
      * Starts as an empty pipeline and is replaced by the real one once the lexicon
@@ -717,9 +719,13 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
     private fun registerClipboardWatcher() {
         val cm = getSystemService(CLIPBOARD_SERVICE) as? android.content.ClipboardManager ?: return
         val listener = android.content.ClipboardManager.OnPrimaryClipChangedListener {
-            val clip = runCatching { cm.primaryClip }.getOrNull() ?: return@OnPrimaryClipChangedListener
+            val clip = runCatching { cm.primaryClip }.getOrNull()
             Thread {
-                runCatching { ClipboardHistoryRepository.captureCopied(this, clip) }
+                if (clip != null) runCatching { ClipboardHistoryRepository.captureCopied(this, clip) }
+                mainHandler.post {
+                    if (state.composition.isEmpty()) refreshIdleCandidates()
+                    keyboardView?.refreshClipboardContent()
+                }
             }.apply { isDaemon = true }.start()
         }
         cm.addPrimaryClipChangedListener(listener)
@@ -1503,9 +1509,16 @@ class LocalVoiceImeService : InputMethodService(), ImeKeyboardView.Listener, Can
      * copied, not what is on screen.
      */
     private fun clipboardCandidate(): String? {
-        if (state.passwordField) return null
+        if (!llc.slacker.openime.candidate.personalizedLearningAllowed(state.passwordField, state.editorInfo?.imeOptions ?: 0)) return null
         if (!ImeSettingsRepository.loadClipboardCandidate(this)) return null
-        val text = gateway.readClipboard()
+        val clipboard = getSystemService(android.content.ClipboardManager::class.java)
+        val clip = runCatching { clipboard?.primaryClip }.getOrNull() ?: return null
+        val sensitive = clip.description.extras?.let { extras ->
+            llc.slacker.openime.data.ClipboardSensitivityPolicy.isSensitive { extras.getBoolean(it, false) }
+        } ?: false
+        if (sensitive) return null
+        val text = runCatching { clip.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString().orEmpty() }
+            .getOrDefault("")
         if (text.isEmpty() || text.isBlank()) return null
         return text
     }

@@ -20,7 +20,8 @@ internal class InlineChipTracker<V : Any>(
     fun begin(count: Int): Int {
         generation++
         slots = MutableList(count.coerceIn(0, maxChips)) { null }
-        if (slots.isEmpty()) publish(emptyList())
+        // The previous response is obsolete even if every new inflate fails.
+        publish(emptyList())
         return generation
     }
 

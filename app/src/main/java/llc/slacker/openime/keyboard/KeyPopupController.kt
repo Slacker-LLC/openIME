@@ -2,13 +2,16 @@ package llc.slacker.openime.keyboard
 
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.drawable.Drawable
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
+import android.util.TypedValue
 import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.HorizontalScrollView
 import android.widget.TextView
 import llc.slacker.openime.theme.ImeDrawableFactory
 import llc.slacker.openime.theme.ImeGeometryTokens
@@ -202,13 +205,21 @@ internal class KeyPopupController(
     fun showChoiceRows(anchor: View, requestedRows: List<List<String>>) {
         if (requestedRows.isEmpty() || requestedRows.all { it.isEmpty() }) return
         hide()
+        val paint = Paint().apply {
+            textSize = TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_SP, ImeTypographyTokens.POPUP_ITEM_SP, host.resources.displayMetrics,
+            )
+        }
+        val cellWidth = maxOf(dp(CELL_WIDTH_DP),
+            kotlin.math.ceil(requestedRows.flatten().maxOf { paint.measureText(it) }.toDouble()).toInt() + dp(9) * 2)
+        val cellHeight = maxOf(dp(CELL_HEIGHT_DP), paint.fontMetricsInt.let { it.descent - it.ascent })
         // The popup must sit above the key inside the IME window. A landscape
         // keyboard has too little room for stacked rows, and a popup covering the
         // key would put the pressed finger on a cell. Fall back to one row then,
         // nearest letters first.
         val anchorTop = IntArray(2).also { anchor.getLocationOnScreen(it) }[1] -
             IntArray(2).also { host.getLocationOnScreen(it) }[1]
-        val needed = dp(CELL_HEIGHT_DP * requestedRows.size + 2 * POPUP_PAD_DP) + dp(ImeGeometryTokens.KEY_POPUP_VERTICAL_GAP_DP) + dp(4)
+        val needed = cellHeight * requestedRows.size + dp(2 * POPUP_PAD_DP) + dp(ImeGeometryTokens.KEY_POPUP_VERTICAL_GAP_DP) + dp(4)
         val rows = if (requestedRows.size > 1 && needed > anchorTop) {
             listOf(requestedRows.reversed().flatten())
         } else {
@@ -274,24 +285,33 @@ internal class KeyPopupController(
                             onSymbolSelected(symbol)
                         }
                     },
-                    LinearLayout.LayoutParams(dp(CELL_WIDTH_DP), dp(CELL_HEIGHT_DP)),
+                    LinearLayout.LayoutParams(cellWidth, cellHeight),
                 )
             }
             column.addView(
                 row,
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
-                    dp(CELL_HEIGHT_DP),
+                    cellHeight,
                 ),
             )
         }
 
         val widest = rows.maxOf { it.size }
-        val popupWidth = dp(CELL_WIDTH_DP * widest + 2 * POPUP_PAD_DP)
-        val popupHeight = dp(CELL_HEIGHT_DP * rows.size + 2 * POPUP_PAD_DP)
-        placeAbove(anchor, column, popupWidth, popupHeight)
-        popupView = column
-        animateIn(column, popupWidth, popupHeight)
+        val contentWidth = cellWidth * widest + dp(2 * POPUP_PAD_DP)
+        val popupWidth = minOf(contentWidth, (host.width - contentInsetPx() * 2).coerceAtLeast(1))
+        val popupHeight = cellHeight * rows.size + dp(2 * POPUP_PAD_DP)
+        // Keep a flattened landscape row within the window; every option remains reachable by scrolling.
+        val popup = if (popupWidth < contentWidth) {
+            HorizontalScrollView(host.context).apply {
+                isHorizontalScrollBarEnabled = true
+                isScrollbarFadingEnabled = false
+                addView(column, FrameLayout.LayoutParams(contentWidth, popupHeight))
+            }
+        } else column
+        placeAbove(anchor, popup, popupWidth, popupHeight)
+        popupView = popup
+        animateIn(popup, popupWidth, popupHeight)
         scheduleAutoDismiss(OPEN_DISMISS_MS)
         // The one buzz that says the long press worked (the platform's own is switched off).
         hoverFeedback()
@@ -308,7 +328,8 @@ internal class KeyPopupController(
         if (choiceCells.isEmpty() || popupView == null) return false
         // A cell drawn over the key itself is not a choice yet: the finger has not left the key.
         val onAnchor = choiceAnchor?.let { containsRaw(it, rawX, rawY) } == true
-        val hit = if (onAnchor) null else choiceCells.firstOrNull { (cell, _) -> containsRaw(cell, rawX, rawY) }
+        val hit = if (onAnchor || popupView?.let { containsRaw(it, rawX, rawY) } != true) null
+            else choiceCells.firstOrNull { (cell, _) -> containsRaw(cell, rawX, rawY) }
         if (!lifted) {
             val cell = hit?.first
             if (cell !== hoveredCell) {

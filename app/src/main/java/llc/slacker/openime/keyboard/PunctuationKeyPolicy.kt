@@ -5,8 +5,8 @@ package llc.slacker.openime.keyboard
  *
  * [Spec.merged] is the wide key left of the space bar, the reference's
  * `ButtonPeriodComma`: Chinese draws `text="，"` with the always-visible corner
- * `ficon_text="。"` (`input_kbd_pinyin26.xml:145-152`), English draws `text="."`
- * with the corner `","` (`input_kbd_english26.xml:154-161`). An up swipe and a
+ * `ficon_text="。"` (`input_kbd_pinyin26.xml:145-152`), English keeps the Beta10 comma-first order
+ * with `","` as the main mark and `"."` in the corner. An up swipe and a
  * long press commit that corner mark in both modes.
  *
  * [Spec.comma] and [Spec.period] are the two symbol keys the reference ships
@@ -25,7 +25,7 @@ internal object PunctuationKeyPolicy {
     )
 
     private val CHINESE = Spec(merged = "，", mergedCorner = "。", comma = "，", period = "。")
-    private val ENGLISH = Spec(merged = ".", mergedCorner = ",", comma = ",", period = ".")
+    private val ENGLISH = Spec(merged = ",", mergedCorner = ".", comma = ",", period = ".")
 
     /** The address-field marks, from `uri_adapter_symbol` on both symbol keys. */
     private const val URI_COMMA = "/"

@@ -15,12 +15,11 @@ class PunctuationKeyPolicyTest {
     }
 
     @Test
-    fun englishMergedKeyLeadsWithThePeriod() {
-        // The reference draws 句号逗号 with the period as the main label and the
-        // comma as the corner mark (input_kbd_english26.xml:154-161).
+    fun englishMergedKeyLeadsWithTheComma() {
+        // Keep the Beta10 comma-on-tap, period-on-long-press order.
         val spec = PunctuationKeyPolicy.spec(english = true)
-        assertEquals(".", spec.merged)
-        assertEquals(",", spec.mergedCorner)
+        assertEquals(",", spec.merged)
+        assertEquals(".", spec.mergedCorner)
         assertEquals(",", spec.comma)
         assertEquals(".", spec.period)
     }
@@ -37,7 +36,7 @@ class PunctuationKeyPolicyTest {
         val english = PunctuationKeyPolicy.spec(english = true, uriField = true)
         assertEquals("/", english.comma)
         assertEquals(".", english.period)
-        assertEquals(".", english.merged)
-        assertEquals(",", english.mergedCorner)
+        assertEquals(",", english.merged)
+        assertEquals(".", english.mergedCorner)
     }
 }

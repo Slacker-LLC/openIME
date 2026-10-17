@@ -92,6 +92,12 @@ internal class ClipboardPanelController(
         wordSegAnchor = null
     }
 
+    /** A copy event must not replace an in-progress split selection or phrase tab. */
+    fun refreshHistory() {
+        if (tab == 0 && wordSegEntry == null &&
+            expandedPanel.findViewWithTag<View>("clipboard-clear-confirmation") == null) render(true)
+    }
+
     fun render(reusePanel: Boolean = false) {
         expandedPanel.removeAllViews()
         val header = createHeader("")
@@ -493,6 +499,7 @@ internal class ClipboardPanelController(
 
         column.addView(createSectionTitle("${phrases.size} 条常用语 · 点选即输入"), wrapParams())
         phrases.groupBy { it.category }.forEach { (category, grouped) ->
+            column.addView(createSectionTitle(category), wrapParams())
             grouped.forEach { phrase ->
                 column.addView(
                     quickPhraseRow(phrase),

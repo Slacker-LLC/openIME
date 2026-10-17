@@ -160,7 +160,7 @@ internal class Pinyin9KeyboardRenderer(
             container.addView(hands[1], adaptiveColumnParams(1f))
         } else {
             container.addView(left, adaptiveColumnParams(1f))
-            container.addView(center, adaptiveColumnParams(25f / 7f))
+            container.addView(center, adaptiveColumnParams(ProductionKeyPolicy.NINE_KEY_CENTER_WEIGHT))
             container.addView(side, adaptiveColumnParams(1f))
         }
 
@@ -228,12 +228,11 @@ internal class Pinyin9KeyboardRenderer(
     }
 
     private fun createNineDigitKey(digit: String): ImeKeyView {
-        // Keep the original segment key in the 1 cell; its digit swipe and
-        // symbol choices remain available without changing the key arrangement.
+        // The host switches this idle symbol label to 分词 while composing.
         val segmentation = digit == "1"
         val labels = NINE_KEYS.flatten().first { it.first == digit }.second
         val key = createKey(
-            if (segmentation) "分词" else labels,
+            labels,
             false,
             digit,
             if (segmentation) ImeTypographyTokens.BODY_SP else ImeTypographyTokens.NINE_KEY_LETTER_SP,
@@ -241,7 +240,7 @@ internal class Pinyin9KeyboardRenderer(
             if (segmentation) onPinyinSegment() else onNineKey(digit)
         }.apply {
             tag = "key-9:$digit"
-            contentDescription = if (segmentation) "1，分词" else digit
+            contentDescription = if (segmentation) "@/#，点击选择符号，上滑输入1" else digit
             markWhiteKey(this)
             if (segmentation) {
                 setOnLongClickListener {
@@ -286,7 +285,7 @@ internal class Pinyin9KeyboardRenderer(
 
     private companion object {
         val NINE_KEYS = listOf(
-            listOf("1" to "@#", "2" to "ABC", "3" to "DEF"),
+            listOf("1" to "@/#", "2" to "ABC", "3" to "DEF"),
             listOf("4" to "GHI", "5" to "JKL", "6" to "MNO"),
             listOf("7" to "PQRS", "8" to "TUV", "9" to "WXYZ"),
         )

@@ -7,15 +7,15 @@
 <p align="center"><strong>本地优先的 Android 中文输入法</strong></p>
 
 <p align="center">
-  <a href="https://github.com/Slacker-LLC/openIME/releases"><img alt="版本" src="https://img.shields.io/github/v/release/Slacker-LLC/openIME?include_prereleases&label=%E7%89%88%E6%9C%AC"></a>
+  <a href="https://github.com/Slacker-LLC/openIME/releases"><img alt="版本" src="https://img.shields.io/github/v/release/Slacker-LLC/openIME?label=%E7%89%88%E6%9C%AC"></a>
   <a href="https://github.com/Slacker-LLC/openIME/actions/workflows/android.yml"><img alt="Android CI" src="https://github.com/Slacker-LLC/openIME/actions/workflows/android.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="许可证" src="https://img.shields.io/badge/license-GPL--3.0--only-blue"></a>
 </p>
 
 <p align="center"><a href="README.md">English</a> · 简体中文</p>
 
-> **当前处于 Beta 测试阶段（0.0.x）。** 功能和稳定性仍在验证，接口与数据格式可能调整，
-> 请不要把它作为日常唯一的输入法。欢迎通过 [Issues](https://github.com/Slacker-LLC/openIME/issues) 反馈问题。
+> **openIME 1.0 是首个正式版。** 实机验证的机型还不多，请保留另一款输入法作为备用。
+> 欢迎通过 [Issues](https://github.com/Slacker-LLC/openIME/issues) 反馈问题。
 
 openIME 是一款独立的 Android 系统输入法。拼音候选、用户词库学习和语音识别全部在设备本地完成，
 应用**没有 `INTERNET` 权限**，输入内容不会离开手机。
@@ -43,14 +43,16 @@ openIME 是一款独立的 Android 系统输入法。拼音候选、用户词库
 
 ## 功能
 
-- **键盘**：26 键拼音、九键拼音、笔画、英文 26 键、数字与符号；Emoji、符号、剪贴板、文本编辑、浮动键盘。
-- **拼音**：全拼、简拼、手动分词、候选展开、用户词库学习、简繁转换。
+- **键盘**：26 键拼音、九键拼音、双拼（小鹤、自然码）、五笔、笔画、英文 26 键、数字与符号；Emoji、符号、剪贴板、文本编辑、浮动键盘。
+- **拼音**：全拼、简拼、手动分词、候选展开、模糊音（15 组）、用户词库学习、诗句联想、简繁转换。
   引擎为 librime，内置约 90 万条 Rime Ice 词典记录，打包时已预先编译；安装或升级后第一次打开键盘，几秒内即可用完整词典。
 - **九键**：输入时左栏列出下一个字的拼音，一个字选一个音节，选定后自动移到下一个字。
-- **语音输入**：长按空格说话，松手后识别并上屏；使用内置的中英双语模型，不联网；可去掉“嗯”“呃”等语气词，也可把标点写成空格。
+- **语音输入**：长按空格说话，松手后识别并上屏；使用内置的中英双语模型，不联网；可去掉“嗯”“呃”等语气词，也可把标点写成空格；也可以导入自己的流式模型：「设置 → 语音模型」列出可复制的官方下载地址，官方 `.tar.bz2` 包不用解压，直接导入。
 - **手势**：删除键上滑清空；空格左右滑动移动光标，滑动时底行其他按键锁定。
+- **快捷格式输入**：设置里可选的开关，包括数字、英文前后加空格，双击空格输入句号，候选栏直接给算式结果，首字母自动大写和按键音量。
 - **表情联想**：选词后联想栏先给出相关表情（开心 → 😊），词表内置，不联网。
 - **自动填充**：Android 11+ 上，密码管理器的账号、验证码直接显示在键盘工具栏位置。
+- **短信验证码**（可选）：工具栏显示新短信里的验证码，常见写法都能识别，点一下即输入。
 - **数字和符号**：26 键字母键右上角印着数字和符号，上滑直接输入；长按弹出选择面板，滑到目标松手输入。
 - **适配**：横竖屏、平板与折叠屏、深色模式、大字号；终端、远程桌面、游戏等原始按键输入框；
   外接键盘可直接打拼音。详见 [兼容性说明](docs/COMPATIBILITY.md)。
@@ -76,7 +78,7 @@ openIME 是一款独立的 Android 系统输入法。拼音候选、用户词库
 
 ### 已知限制
 
-- 手写输入尚未接入识别引擎，入口默认隐藏。
+- 手写输入暂时隐藏：代码仍在应用里，入口已关闭。
 - 九键暂不支持与外接键盘同时使用。
 - 部分厂商系统对输入法的后台限制不同，尚未在大量真机上验证。
 - 版本号小于此前已装版本时，系统会拒绝覆盖安装；需要先卸载（卸载前可导出用户数据）。

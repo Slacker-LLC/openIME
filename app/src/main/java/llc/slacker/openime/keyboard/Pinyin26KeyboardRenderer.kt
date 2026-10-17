@@ -273,14 +273,7 @@ internal class Pinyin26KeyboardRenderer(
     private companion object {
         const val SPLIT_GAP = 3.5f
 
-        /**
-         * The 中/英 key names which way it points. The reference draws its own
-         * wordmark in the accent on the English board, where the key leads back
-         * to Chinese (`cls_button_en2cn`'s `keyboard_current_english`,
-         * `style.xml:897-904`), and in the plain key text on the Chinese boards,
-         * where only the corner mark is dimmed (`cls_button_cn2en`,
-         * `style.xml:882-890`). The host's accessibility lookup reads both tags.
-         */
+        /** Distinct accessibility tags; both modes use the same function-key styling. */
         fun modeKeyTag(english: Boolean): String = if (english) "key:mode-en" else "key:mode"
 
         /** Original Shift and backspace width relative to a letter. */

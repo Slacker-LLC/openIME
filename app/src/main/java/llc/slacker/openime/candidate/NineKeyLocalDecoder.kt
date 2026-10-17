@@ -436,13 +436,17 @@ internal class NineKeyLocalDecoder(
             if (syllable.length > 1 && syllable !in completeSyllables) return@forEach
             if (syllable in RAIL_DUPLICATES) return@forEach
             val code = digitsForPinyin(syllable) ?: return@forEach
-            if (code.length == bounded.length || canRead(bounded.substring(code.length))) {
+            val initial = syllable.length == 1 && syllable !in completeSyllables
+            if (initial || code.length == bounded.length || canRead(bounded.substring(code.length))) {
                 firsts.putIfAbsent(syllable, Int.MIN_VALUE)
             }
         }
         val ordered = firsts.entries
             .sortedWith(
-                compareByDescending<Map.Entry<String, Int>> { lead.startsWith(it.key) && it.key == leadFirst(lead, firsts.keys) }
+                // Longer syllables precede shorter segment/initial choices,
+                // including when more digits follow the first syllable.
+                compareByDescending<Map.Entry<String, Int>> { it.key.length }
+                    .thenByDescending { lead.startsWith(it.key) && it.key == leadFirst(lead, firsts.keys) }
                     .thenByDescending { it.value },
             )
             .map { it.key }

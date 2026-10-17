@@ -30,7 +30,7 @@ Do not publish details before the fix is released.
 
 | Version | Status |
 |---|---|
-| The latest release (beta or stable) | Receives security fixes. We publish them as a new patch or beta version and list them in the change log. |
+| The latest stable release | Receives security fixes. We publish them as a new patch version and list them in the change log. |
 | Older releases and debug builds | Not maintained. Update to the latest release. |
 
 To verify an APK, compare its SHA-256 checksum with the release notes.

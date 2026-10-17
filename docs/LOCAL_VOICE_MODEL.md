@@ -102,7 +102,7 @@ The model never changes during a recording.
 
 ## Import your own streaming model
 
-The app never downloads anything. 「设置 → 语音模型」 imports a local package:
+The app never downloads anything. 「设置 → 语音模型」 lists the official sherpa-onnx download links (`VoiceModelDownloads`) for the user to copy into a browser, and imports a local package:
 
 - Archives: `.zip`, `.tar`, `.tar.gz`, `.tgz`, `.tar.bz2` / `.tbz2` / `.tbz`.
   The official sherpa-onnx releases publish their model packages as `tar.bz2`, so those import as they arrive, with no unpacking or renaming.

@@ -34,6 +34,19 @@ The service clears the response when the user leaves the field.
 
 Android 10 and earlier, and providers without inline support, use the system dropdown menu.
 
+## SMS code chip
+
+The chip is optional and off by default.
+When the user turns it on, openIME asks for the read-SMS permission and reads only messages from the last 5 minutes.
+A content observer on `Telephony.Sms.CONTENT_URI` recomputes the chip 200 ms after the inbox changes, so a message that arrives while the keyboard is open shows at once.
+The observer is removed when the permission is revoked or the keyboard hides.
+`SmsCodeExtractor` accepts a label (Chinese or English: `code`, `passcode`, `OTP`, `verification code` and others) followed by a code.
+The label and the code can be on different lines, the colon can be full-width, and digits can be full-width or grouped with spaces or hyphens.
+It ignores phone numbers, dates, order numbers and status sentences.
+The chip does not show in password fields or in fields that ask for no personalised learning.
+
+Verification: `SmsCodeExtractorTest`.
+
 Verification: `InlineChipTrackerTest` and `scripts/beta3_e2e.py autofill`.
 The debug build includes a test provider (`TestAutofillService`) and `AutofillTestActivity`.
 
@@ -81,6 +94,26 @@ Verification:
 CI runs all instrumentation tests on API 26, 29, 31 and 34.
 Developers also run them on API 36 locally.
 A release needs a pass on API 29 and API 31.
+
+### Feedback audit with emulator fixtures
+
+`scripts/feedback_audit_e2e.py` runs the feedback, clipboard/SMS, nine-key and
+bottom-row E2E suites through the real IME. These suites require the driver's
+`phase` argument and SMS modem fixtures; the generic compatibility run skips
+them. The ordinary instrumentation suites still run in CI.
+
+Reuse the only running emulator, with its desktop window visible, and install
+the current `.dev` debug APK and test APK first. Then run:
+
+```bash
+python3 scripts/feedback_audit_e2e.py --phase release-font1 --font-scale 1.0
+python3 scripts/feedback_audit_e2e.py --phase release-font2 --font-scale 2.0
+```
+
+The driver verifies the installed APK hash, delivers test SMS messages through
+the emulator modem, restores the original system settings, and keeps logs,
+screenshots and SHA-256 evidence under `output/feedback-audit/<phase>/`.
+It never starts an emulator or selects a connected phone.
 
 ## Crashes, freezes and conflicts
 

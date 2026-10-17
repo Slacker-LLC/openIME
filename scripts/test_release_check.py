@@ -105,6 +105,13 @@ class ChangelogTests(unittest.TestCase):
         with self.assertRaises(rc.ReleaseCheckError):
             rc.changelog_notes(CHANGELOG, "9.9.9")
 
+    def test_development_notes_stay_out_of_the_release_notes(self) -> None:
+        text = "## [Unreleased]\n\n## [1.0.0] - 2026-10-02\n- 给用户看的。\n\n### 开发记录\n- 给维护者看的。\n"
+        self.assertEqual(rc.changelog_notes(text, "1.0.0"), "- 给用户看的。")
+        only_dev = "## [Unreleased]\n\n## [1.0.0] - 2026-10-02\n### 开发记录\n- a\n"
+        with self.assertRaisesRegex(rc.ReleaseCheckError, "user-facing"):
+            rc.changelog_notes(only_dev, "1.0.0")
+
 
 class BadgingTests(unittest.TestCase):
     SAMPLE = (

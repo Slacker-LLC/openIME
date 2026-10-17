@@ -55,6 +55,10 @@ We maintain only the newest MINOR line. Security fixes ship as PATCH versions.
   Empty sections and versions or dates in the wrong order are not allowed.
   `release_check.py check` enforces this in CI, so the version and the change log change together.
 - The body of this section is the GitHub release note. Write it so that users can understand it.
+  Keep it short: one line for each change that a user can see.
+  Put maintainer detail (addresses, reverse-engineering notes, internal causes) under the heading `### 开发记录` at the end of the section.
+  `release_check.py notes` stops before that heading, so the detail stays in the change log and out of the release.
+  A section with nothing above the heading fails the check.
 - For a withdrawn version, add ` [YANKED]` after the heading and publish a higher version (a beta increases `N`).
 
 ## Release assets
@@ -69,6 +73,11 @@ openIME-v{VERSION}.apk
 The `-llm` APK carries the offline voice models.
 The plain-named APK leaves them out (`OPENIME_LITE=1`), so it is much smaller; the user imports a model in 设置 → 语音模型.
 Both APKs use the same signing key, so they install over each other and keep the user data.
+
+Both APKs carry v1 (JAR) and v2 signatures. The v1 files support installers that inspect
+`META-INF`; v2 protects the full APK. The release check forces the verifier's minimum
+API to 23 so that it actually checks v1 as well as v2. This verification option does
+not change the app's minimum supported Android version (API 26).
 `scripts/release_build.sh` builds both, checks that the lite APK is smaller and holds no `.onnx` model, and signs both.
 
 The GitHub release has only these APKs.

@@ -170,8 +170,6 @@ class CandidatePipelineTest {
         assertTrue("mi" in readings.map { it.display })
         // ni spells two of the five digits: choosing it moves on to the next character.
         assertTrue(readings.none { it.coversAll })
-        // A lone vowel between syllables is a digit-grid artefact, not a reading.
-        assertTrue(readings.none { reading -> reading.syllables.any { it.length == 1 } })
         assertEquals(readings.map { it.display }.distinct(), readings.map { it.display })
     }
 

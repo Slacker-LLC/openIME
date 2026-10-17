@@ -55,7 +55,8 @@ Git LFS only stores the files. It does not change their licenses.
 
 ## Licenses in the APK
 
-The release APK carries the main third-party license texts in `assets/licenses/`.
+The release APK carries the project license in `assets/legal/LICENSE`, the canonical third-party notices in `assets/legal/THIRD_PARTY_NOTICES.md`, and the main third-party license texts in `assets/licenses/`.
+The About screen exposes these documents and the privacy policy for offline reading.
 These are librime, OpenCC, Snappy, Rime Ice, the sherpa-onnx runtime, Apache Commons Compress, the Paraformer and CT-Transformer models and Fluent Emoji.
 
 `THIRD_PARTY_NOTICES.md` lists each component, its source, its version or pinned commit and its file location.

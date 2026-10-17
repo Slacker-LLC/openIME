@@ -160,8 +160,8 @@ class KeyboardBottomRowInstrumentedTest {
     /**
      * The reference's merged key carries the full stop in its own language and
      * the mark it hides in its corner: Chinese draws `text="，"` with
-     * `ficon_text="。"` (`input_kbd_pinyin26.xml:145-152`), English draws
-     * `text="."` with `ficon_text=","` (`input_kbd_english26.xml:154-161`), so a
+     * `ficon_text="。"` (`input_kbd_pinyin26.xml:145-152`), English keeps
+     * the Beta10 comma-first order, so a
      * long press commits the corner mark in both.
      */
     @Test
@@ -175,7 +175,7 @@ class KeyboardBottomRowInstrumentedTest {
         harness.awaitMain { keyboard.setMode(KeyboardMode.ENGLISH_26); true }
         val en = harness.awaitMain { keyboard.findViewWithTag<View>("key-punctuation")?.takeIf { it.width > 0 } }
         harness.awaitMain { assertTrue(en.performClick()); assertTrue(en.performLongClick()); true }
-        assertEquals(listOf(".", ","), recorder.characters.toList())
+        assertEquals(listOf(",", "."), recorder.characters.toList())
     }
 
     /**

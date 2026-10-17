@@ -3,6 +3,8 @@ package llc.slacker.openime.keyboard
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.Paint
+import android.util.TypedValue
 import android.text.Editable
 import android.text.InputType
 import android.text.TextUtils
@@ -142,6 +144,27 @@ internal class ImeTopZone(
     private var tipShown = false
     /** True while the zone draws the landscape strip, where the pre-edit sits beside the candidates. */
     private var landscapeStrip = false
+    private val candidateFont = Paint()
+
+    private fun compositionHeightPx(): Int = maxOf(
+        toPx(COMPOSITION_LINE_DP),
+        composition.paint.fontMetricsInt.let { it.descent - it.ascent } +
+            composition.compoundPaddingTop + composition.compoundPaddingBottom,
+    )
+
+    private fun candidateHeightPx(): Int {
+        candidateFont.textSize = TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_SP, ImeTypographyTokens.CANDIDATE_SP, resources.displayMetrics,
+        )
+        return maxOf(toPx(CANDIDATE_ROW_DP), candidateFont.fontMetricsInt.let { it.descent - it.ascent })
+    }
+
+    /** Reserve the same font-safe height in idle, composing and voice states. */
+    fun requiredHeightPx(landscape: Boolean): Int = if (landscape) {
+        maxOf(toPx(ImeGeometryTokens.LANDSCAPE_TOP_ZONE_HEIGHT_DP), compositionHeightPx(), candidateHeightPx())
+    } else {
+        maxOf(toPx(ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP), compositionHeightPx() + candidateHeightPx() + toPx(2))
+    }
 
     /**
      * What the toolbar row shows; icons, autofill chips, associations, the
@@ -997,9 +1020,7 @@ internal class ImeTopZone(
      */
     fun setLandscapeStrip(on: Boolean) {
         landscapeStrip = on
-        val height = toPx(
-            if (on) ImeGeometryTokens.LANDSCAPE_TOP_ZONE_HEIGHT_DP else ImeGeometryTokens.COMPOSED_TOP_ZONE_HEIGHT_DP,
-        )
+        val height = requiredHeightPx(on)
         minimumHeight = height
         toolbarRow.minimumHeight = minOf(height, toPx(ImeGeometryTokens.TOOLBAR_HEIGHT_DP))
         (toolbarRow.layoutParams as? LinearLayout.LayoutParams)?.let {
@@ -1016,7 +1037,7 @@ internal class ImeTopZone(
                 it.height = LinearLayout.LayoutParams.MATCH_PARENT
             } else {
                 it.width = compositionMaxWidthPx()
-                it.height = toPx(COMPOSITION_LINE_DP)
+                it.height = compositionHeightPx()
             }
             composition.layoutParams = it
         }
@@ -1030,9 +1051,13 @@ internal class ImeTopZone(
             } else {
                 it.width = LinearLayout.LayoutParams.MATCH_PARENT
                 it.weight = 0f
-                it.height = toPx(CANDIDATE_ROW_DP)
+                it.height = candidateHeightPx()
             }
             candidateField.layoutParams = it
+        }
+        val rowHeight = if (on) height else candidateHeightPx()
+        for (view in listOf(candidateScroll, candidateRow)) {
+            view.layoutParams = view.layoutParams.apply { this.height = rowHeight }
         }
     }
 
