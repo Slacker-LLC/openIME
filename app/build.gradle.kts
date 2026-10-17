@@ -89,6 +89,10 @@ android {
                 storePassword = releaseKeystorePassword
                 keyAlias = releaseKeyAlias
                 keyPassword = releaseKeyPassword
+                // Some installers inspect META-INF rather than the APK signing block.
+                // Keep that compatibility signature alongside Android's v2 verification.
+                enableV1Signing = true
+                enableV2Signing = true
             }
         }
     }
@@ -205,6 +209,17 @@ val prebuildRimeData = tasks.register<PrebuildRimeData>("prebuildRimeData") {
     excludedSources.set(rimeCompiledOnlySources)
     outputDir.set(layout.buildDirectory.dir("generated/rime-prebuilt"))
 }
+
+// Ship the canonical project notices without maintaining duplicate license files.
+val packageOpenSourceNotices = tasks.register<Sync>("packageOpenSourceNotices") {
+    from(rootProject.layout.projectDirectory.file("LICENSE"))
+    from(rootProject.layout.projectDirectory.file("THIRD_PARTY_NOTICES.md"))
+    into(layout.buildDirectory.dir("generated/open-source-notices/legal"))
+}
+android.sourceSets.getByName("main").assets.srcDir(
+    packageOpenSourceNotices.map { it.destinationDir.parentFile },
+)
+tasks.named("preBuild").configure { dependsOn(packageOpenSourceNotices) }
 
 androidComponents {
     onVariants { variant ->

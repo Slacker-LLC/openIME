@@ -151,6 +151,9 @@ internal class NineKeySymbolRailController(
             ?: choices.first()
         renderPinyinChoices(digits = digits, choices = choices, selected = selected) { chosen ->
             onChooseReading(chosen)
+            // Fixing the shown syllable can leave the text unchanged, so the
+            // TextWatcher will not advance the rail to the remaining digits.
+            refreshPinyinFilters()
         }
     }
 

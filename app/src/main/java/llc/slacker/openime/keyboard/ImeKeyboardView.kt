@@ -329,6 +329,7 @@ open class ImeKeyboardView(
     // removeAllViews()+rebuild when focus moves between fields without a layout
     // change.
     private var renderedMode: KeyboardMode? = null
+    private var renderedDigitsKind: EditorInfoAdapter.EditorKind? = null
     // The key margins the keys being built wear, set per board family when a
     // body or a panel is rendered (see renderModeBody / renderPanel).
     private var keyMarginX = ImeGeometryTokens.KEY_MARGIN_X_DP
@@ -417,8 +418,8 @@ open class ImeKeyboardView(
     }
 
     /** Refresh data owned by auxiliary editor Activities when they return. */
-    private var dismissedSuggestion: String? = null
-    private var dismissedSmsCode: String? = null
+    private val dismissedSuggestions =
+        (context as? llc.slacker.openime.LocalVoiceImeService)?.dismissedToolbarSuggestions ?: mutableMapOf()
     private var ownSuggestionsShown = false
     private var smsObserver: android.database.ContentObserver? = null
     private val refreshSmsSuggestions = Runnable {
@@ -466,7 +467,7 @@ open class ImeKeyboardView(
         syncSmsObserver()
         // System autofill chips keep the strip; only this view's own chips are refreshed.
         if (topZone.autofillChipsShown && !ownSuggestionsShown) return
-        val found = ToolbarSuggestions.collect(context, allowed = personalizedLearningAllowed(passwordField, currentImeOptions()), skipClip = dismissedSuggestion, skipSms = dismissedSmsCode)
+        val found = ToolbarSuggestions.collect(context, allowed = personalizedLearningAllowed(passwordField, currentImeOptions()), skipClip = dismissedSuggestions[ToolbarSuggestion.Kind.CLIPBOARD], skipSms = dismissedSuggestions[ToolbarSuggestion.Kind.SMS_CODE])
         if (found.isEmpty()) {
             if (ownSuggestionsShown) topZone.setAutofillChips(emptyList())
             ownSuggestionsShown = false
@@ -529,8 +530,7 @@ open class ImeKeyboardView(
                 setOnClickListener {
                     feedback()
                     if (!insertIntoInlineEditor(suggestion.text)) listener.onCharacter(suggestion.text)
-                    if (sms) dismissedSmsCode = suggestion.text
-                    else dismissedSuggestion = suggestion.text
+                    dismissedSuggestions[suggestion.kind] = suggestion.id
                     ownSuggestionsShown = false
                     topZone.setAutofillChips(emptyList())
                 }
@@ -554,11 +554,15 @@ open class ImeKeyboardView(
             row
         }
         topZone.onAutofillDismissed = {
-            found.lastOrNull { it.kind == ToolbarSuggestion.Kind.CLIPBOARD }?.let { dismissedSuggestion = it.text }
-            found.firstOrNull { it.kind == ToolbarSuggestion.Kind.SMS_CODE }?.let { dismissedSmsCode = it.text }
+            found.forEach { dismissedSuggestions[it.kind] = it.id }
         }
         ownSuggestionsShown = true
         topZone.setAutofillChips(chips, chipHeightPx = dp(36), own = true)
+    }
+
+    internal fun refreshClipboardContent() {
+        refreshSuggestions()
+        if (panel == Panel.CLIPBOARD) clipboardPanelController.refreshHistory()
     }
 
     internal fun refreshAuxiliaryContent() {
@@ -704,7 +708,13 @@ open class ImeKeyboardView(
             markWhiteKey = { key -> key.setTag(MARK_WHITE_KEY, true) },
             onDigitKeyCreated = nineKeySegmentRepairController::bindDigitKey,
             onNineKey = ::onNineKey,
-            onPinyinSegment = ::onPinyinSegment,
+            onPinyinSegment = {
+                if (composition.text.isNullOrBlank()) {
+                    findViewWithTag<View>("key-9:1")?.let { showChoicePopup(it, NineKeyLongPressPolicy.AT_SYMBOL_CHOICES) }
+                } else {
+                    onPinyinSegment()
+                }
+            },
             onShowChoicePopup = ::showChoicePopup,
             onShowChoiceRows = ::showChoiceRows,
             swipeUpEnabled = { ImeSettingsRepository.loadSwipeUpDigits(context) },
@@ -798,12 +808,17 @@ open class ImeKeyboardView(
     private fun nineGridHeightDp(): Int = layoutMetrics.nineGridHeightDp
     private fun nineBodyHeightDp(): Int = layoutMetrics.nineBodyHeightDp
     private fun doubleKeyHeightDp(): Int = layoutMetrics.doubleKeyHeightDp
-    private fun imeHeightDp(): Int = layoutMetrics.imeHeightDp + if (floatingWindowMode) 20 else 0
+    private fun topZoneExtraHeightDp(): Int = if (!::topZone.isInitialized || standalonePanel) 0 else {
+        val extraPx = (topZone.requiredHeightPx(layoutMetrics.landscape) - dp(layoutMetrics.topZoneHeightDp)).coerceAtLeast(0)
+        kotlin.math.ceil(extraPx / (resources.displayMetrics.density * referenceScale).toDouble()).toInt()
+    }
+
+    private fun imeHeightDp(): Int = layoutMetrics.imeHeightDp + topZoneExtraHeightDp() + if (floatingWindowMode) 20 else 0
 
     /** The top zone is reserved at its composed height in every state. */
-    private fun topZoneHeightDp(): Int = layoutMetrics.topZoneHeightDp
+    private fun topZoneHeightDp(): Int = layoutMetrics.topZoneHeightDp + topZoneExtraHeightDp()
     private fun keyboardBodyHeightDp(): Int = layoutMetrics.keyboardBodyHeightDp
-    private fun panelBodyHeightDp(): Int = layoutMetrics.panelBodyHeightDp
+    private fun panelBodyHeightDp(): Int = layoutMetrics.panelBodyHeightDp + topZoneExtraHeightDp()
     private var syncingComposition = false
     private var passwordField = false
 
@@ -1156,6 +1171,7 @@ open class ImeKeyboardView(
         )
         renderModeBody()
         applyTheme()
+        applyDynamicHeights()
 
         setOnApplyWindowInsetsListener { _, insets ->
             systemBottomInsetPx = if (android.os.Build.VERSION.SDK_INT >= 30) {
@@ -1679,7 +1695,9 @@ open class ImeKeyboardView(
         // Rebuild the key rows (and play the switch fade) only when the layout
         // actually changes. Re-focusing another field in the same mode now reuses
         // the existing rows instead of recreating ~150 views on every focus.
-        if (layoutChanged || renderedMode != newMode) {
+        val digitsKindChanged = newMode == KeyboardMode.DIGITS && renderedDigitsKind !=
+            EditorInfoAdapter.kind((context as? android.inputmethodservice.InputMethodService)?.currentInputEditorInfo)
+        if (layoutChanged || renderedMode != newMode || digitsKindChanged) {
             keyboardBody.animate().cancel()
             keyboardBody.alpha = 0.96f
             renderModeBody()
@@ -2472,6 +2490,11 @@ open class ImeKeyboardView(
         }
         syncEnterKeyPresentation(currentImeOptions())
         findViewWithTag<View>("key-enter")?.let(::applyThemeToSubtree)
+        findViewWithTag<ImeKeyView>("key-9:1")?.let { key ->
+            val label = if (composing) "分词" else "@/#"
+            if (key.currentMainText != label) key.setMainText(label)
+            key.contentDescription = if (composing) "1，分词" else "@/#，点击选择符号，上滑输入1"
+        }
         topZone.renderState(
             state = state,
             showCompositionEditor = (composing || candidateBarController.expandedOpen) &&
@@ -2574,7 +2597,7 @@ open class ImeKeyboardView(
             english = false,
             shiftState = shiftState,
             enterLabel = enterKeyLabel(),
-            landscape = layoutMetrics.landscape,
+            landscape = layoutMetrics.landscape && !floatingWindowMode,
         )
     }
 
@@ -2583,7 +2606,7 @@ open class ImeKeyboardView(
             english = true,
             shiftState = shiftState,
             enterLabel = enterKeyLabel(),
-            landscape = layoutMetrics.landscape,
+            landscape = layoutMetrics.landscape && !floatingWindowMode,
         )
     }
 
@@ -2641,10 +2664,12 @@ open class ImeKeyboardView(
     private fun renderDigits() {
         val info = (context as? android.inputmethodservice.InputMethodService)
             ?.currentInputEditorInfo
+        val kind = EditorInfoAdapter.kind(info)
         numericKeyboardRenderer.render(
-            editorKind = EditorInfoAdapter.kind(info),
+            editorKind = kind,
             enterLabel = enterKeyLabel(),
         )
+        renderedDigitsKind = kind
     }
 
     private fun commitFirstCandidateOrSpace() {

@@ -6,6 +6,8 @@ import llc.slacker.openime.core.FuzzyRule
 import llc.slacker.openime.core.KeyboardMode
 import llc.slacker.openime.core.DoublePinyinScheme
 import llc.slacker.openime.core.OneHandMode
+import llc.slacker.openime.core.LandscapeLayout
+import llc.slacker.openime.core.PinyinLocation
 import llc.slacker.openime.theme.ImeAppearance
 import llc.slacker.openime.theme.ImeTheme
 import org.json.JSONArray
@@ -65,6 +67,12 @@ internal data class ArchiveSettings(
     /** Keys of the 模糊音 pairs switched on; null in backups made before the switches. */
     val fuzzyRules: List<String>? = null,
     val landscapeKeyboardHeightPercent: Int = keyboardHeightPercent,
+    // Missing fields in older archives preserve the current device's choices.
+    val landscapeLayout: String? = null,
+    val splitMirrored: Boolean? = null,
+    val smsCodeChip: Boolean? = null,
+    val clipboardChip: Boolean? = null,
+    val pinyinLocation: String? = null,
 )
 
 internal data class RimeUserDictionaryArchive(
@@ -208,6 +216,11 @@ internal object UserDataArchiveCodec {
             .put("double_pinyin_scheme", value.doublePinyinScheme)
             .put("keyboard_height_percent", value.keyboardHeightPercent)
             .put("landscape_keyboard_height_percent", value.landscapeKeyboardHeightPercent)
+            .put("landscape_layout", value.landscapeLayout)
+            .put("split_mirrored", value.splitMirrored)
+            .put("sms_code_chip", value.smsCodeChip)
+            .put("clipboard_chip", value.clipboardChip)
+            .put("pinyin_location", value.pinyinLocation)
             .put("floating_width_percent", value.floatingWidthPercent)
             .put("floating_opacity_percent", value.floatingOpacityPercent)
             .put("letter_hints", value.letterHints)
@@ -253,6 +266,13 @@ internal object UserDataArchiveCodec {
                 "landscape_keyboard_height_percent",
                 value.optInt("keyboard_height_percent", ImeGeometryTokens.KEYBOARD_HEIGHT_DEFAULT_PERCENT),
             ).coerceIn(ImeGeometryTokens.KEYBOARD_HEIGHT_MIN_PERCENT, ImeGeometryTokens.KEYBOARD_HEIGHT_MAX_PERCENT),
+            landscapeLayout = value.optString("landscape_layout").takeIf { value.has("landscape_layout") && !value.isNull("landscape_layout") }
+                ?.let { LandscapeLayout.fromKey(it).key },
+            splitMirrored = if (value.has("split_mirrored") && !value.isNull("split_mirrored")) value.optBoolean("split_mirrored") else null,
+            smsCodeChip = if (value.has("sms_code_chip") && !value.isNull("sms_code_chip")) value.optBoolean("sms_code_chip") else null,
+            clipboardChip = if (value.has("clipboard_chip") && !value.isNull("clipboard_chip")) value.optBoolean("clipboard_chip") else null,
+            pinyinLocation = value.optString("pinyin_location").takeIf { value.has("pinyin_location") && !value.isNull("pinyin_location") }
+                ?.let { PinyinLocation.fromKey(it).key },
             floatingWidthPercent =
                 value.optInt("floating_width_percent", ImeGeometryTokens.FLOATING_WIDTH_DEFAULT_PERCENT).coerceIn(ImeGeometryTokens.FLOATING_WIDTH_MIN_PERCENT, ImeGeometryTokens.FLOATING_WIDTH_MAX_PERCENT),
             floatingOpacityPercent =
@@ -290,6 +310,15 @@ internal object UserDataArchiveCodec {
 }
 
 internal object UserDataArchiveMerger {
+    private fun mergedSettings(existing: ArchiveSettings, incoming: ArchiveSettings): ArchiveSettings =
+        incoming.copy(
+            landscapeLayout = incoming.landscapeLayout ?: existing.landscapeLayout,
+            splitMirrored = incoming.splitMirrored ?: existing.splitMirrored,
+            smsCodeChip = incoming.smsCodeChip ?: existing.smsCodeChip,
+            clipboardChip = incoming.clipboardChip ?: existing.clipboardChip,
+            pinyinLocation = incoming.pinyinLocation ?: existing.pinyinLocation,
+        )
+
     fun preview(existing: UserDataArchive, incoming: UserDataArchive): UserDataImportPreview {
         val existingQuick = existing.quickPhrases.mapTo(HashSet(), ::quickKey)
         val existingSymbols = existing.customSymbols.mapTo(HashSet(), ::symbolKey)
@@ -301,7 +330,7 @@ internal object UserDataArchiveMerger {
                 .count { symbolKey(it) !in existingSymbols },
             userPhrasesToAdd = incoming.userPhrases.distinctBy(::userPhraseKey)
                 .count { userPhraseKey(it) !in existingUser },
-            settingsWillChange = incoming.settings != existing.settings,
+            settingsWillChange = mergedSettings(existing.settings, incoming.settings) != existing.settings,
             rimeDictionaryFiles = incoming.rimeUserDictionaries
                 .map { it.name }
                 .distinct()
@@ -345,7 +374,7 @@ internal object UserDataArchiveMerger {
             quickPhrases = quick,
             customSymbols = symbols,
             userPhrases = users.values.toList(),
-            settings = incoming.settings,
+            settings = mergedSettings(existing.settings, incoming.settings),
             rimeUserDictionaries = rime.values.toList(),
         )
     }
@@ -404,6 +433,11 @@ internal object UserDataRepository {
                     ImeSettingsRepository.loadKeyboardHeightPercent(context),
                 landscapeKeyboardHeightPercent =
                     ImeSettingsRepository.loadKeyboardHeightPercent(context, landscape = true),
+                landscapeLayout = ImeSettingsRepository.loadLandscapeLayout(context).key,
+                splitMirrored = ImeSettingsRepository.loadSplitMirrored(context),
+                smsCodeChip = ImeSettingsRepository.loadSmsCodeChip(context),
+                clipboardChip = ImeSettingsRepository.loadClipboardChip(context),
+                pinyinLocation = ImeSettingsRepository.loadPinyinLocation(context).key,
                 floatingWidthPercent =
                     ImeSettingsRepository.loadFloatingWidthPercent(context),
                 floatingOpacityPercent =
@@ -481,6 +515,11 @@ internal object UserDataRepository {
     }
 
     private fun applySettings(context: Context, value: ArchiveSettings) {
+        value.landscapeLayout?.let { ImeSettingsRepository.saveLandscapeLayout(context, LandscapeLayout.fromKey(it)) }
+        value.splitMirrored?.let { ImeSettingsRepository.saveSplitMirrored(context, it) }
+        value.smsCodeChip?.let { ImeSettingsRepository.saveSmsCodeChip(context, it) }
+        value.clipboardChip?.let { ImeSettingsRepository.saveClipboardChip(context, it) }
+        value.pinyinLocation?.let { ImeSettingsRepository.savePinyinLocation(context, PinyinLocation.fromKey(it)) }
         ImeSettingsRepository.saveTheme(
             context,
             runCatching { ImeTheme.valueOf(value.theme) }.getOrDefault(ImeTheme.IOS),

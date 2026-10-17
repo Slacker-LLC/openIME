@@ -73,6 +73,11 @@ openIME-v{VERSION}.apk
 The `-llm` APK carries the offline voice models.
 The plain-named APK leaves them out (`OPENIME_LITE=1`), so it is much smaller; the user imports a model in 设置 → 语音模型.
 Both APKs use the same signing key, so they install over each other and keep the user data.
+
+Both APKs carry v1 (JAR) and v2 signatures. The v1 files support installers that inspect
+`META-INF`; v2 protects the full APK. The release check forces the verifier's minimum
+API to 23 so that it actually checks v1 as well as v2. This verification option does
+not change the app's minimum supported Android version (API 26).
 `scripts/release_build.sh` builds both, checks that the lite APK is smaller and holds no `.onnx` model, and signs both.
 
 The GitHub release has only these APKs.

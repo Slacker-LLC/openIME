@@ -34,23 +34,23 @@ class LetterHintPolicyTest {
         }
     }
 
-    /** The reference product's English marks, key by key. */
+    /** Beta10's English marks, key by key. */
     @Test
-    fun englishFollowsTheReferenceMarks() {
+    fun englishKeepsTheBeta10Marks() {
         assertEquals(
-            listOf("-", "/", ":", ";", "(", ")", "~", "'", "\"")
-                + listOf("@", "_", "#", "&", "?", "!", "…"),
+            listOf("~", "!", "@", "#", "$", "%", "&", "*", "?")
+                + listOf("(", ")", "-", "_", ":", ";", "/"),
             "asdfghjkl".map { LetterHintPolicy.hint(it, english = true) } +
                 "zxcvbnm".map { LetterHintPolicy.hint(it, english = true) },
         )
     }
 
-    /** The reference product's Chinese marks: the full-width form of the same row. */
+    /** Beta10's Chinese marks: the full-width form of the same row. */
     @Test
-    fun chineseFollowsTheReferenceMarks() {
+    fun chineseKeepsTheBeta10Marks() {
         assertEquals(
-            listOf("-", "/", "：", "；", "（", "）", "～", "“", "”")
-                + listOf("@", ".", "#", "、", "？", "！", "…"),
+            listOf("~", "！", "@", "#", "￥", "%", "&", "*", "？")
+                + listOf("（", "）", "-", "_", "：", "；", "/"),
             "asdfghjkl".map { LetterHintPolicy.hint(it, english = false) } +
                 "zxcvbnm".map { LetterHintPolicy.hint(it, english = false) },
         )
@@ -58,7 +58,7 @@ class LetterHintPolicyTest {
 
     @Test
     fun marksWithoutAFullWidthFormAreTheSameInBothLanguages() {
-        "aszcm".forEach {
+        "adfhjkcvm".forEach {
             assertEquals("$it", LetterHintPolicy.hint(it, true), LetterHintPolicy.hint(it, false))
         }
     }

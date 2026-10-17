@@ -274,8 +274,8 @@ class ImeKeyView(
                     // scales. Shrink within a controlled range instead of
                     // replacing the action with an ellipsis such as “中/…”.
                     setAutoSizeTextTypeUniformWithConfiguration(
-                        labelPx((mainTextSize * 0.68f).coerceAtLeast(10f)).toInt(),
-                        labelPx(mainTextSize.coerceAtLeast(12f)).toInt(),
+                        smallestMainTextPx.toInt(),
+                        wantedMainTextPx.toInt(),
                         1,
                         TypedValue.COMPLEX_UNIT_PX,
                     )
@@ -418,8 +418,11 @@ class ImeKeyView(
 
     /** The size the label asks for at [sp], and the smallest it may be shrunk to. */
     private fun setWantedMainText(sp: Float) {
-        wantedMainTextPx = labelPx(sp)
+        wantedMainTextPx = labelPx(sp).coerceAtLeast(2f)
+        // A narrow/floating key can ask for less than 10sp. Android requires
+        // the auto-size minimum to remain strictly below its pixel maximum.
         smallestMainTextPx = labelPx((sp * 0.68f).coerceAtLeast(10f))
+            .coerceIn(1f, wantedMainTextPx - 1f)
     }
 
     /**

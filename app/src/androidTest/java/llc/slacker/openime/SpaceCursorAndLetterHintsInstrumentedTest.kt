@@ -304,16 +304,15 @@ class SpaceCursorAndLetterHintsInstrumentedTest {
         check(harness.awaitMain { true })
     }
 
-    // The reference product's mark map (LetterHintPolicy).
-    private val chineseHints = mapOf(
+    // Beta10's corner-symbol map.
+    private val englishHints = mapOf(
         'q' to "1", 'w' to "2", 'e' to "3", 'r' to "4", 't' to "5", 'y' to "6", 'u' to "7", 'i' to "8",
-        'o' to "9", 'p' to "0", 'a' to "-", 's' to "/", 'd' to "：", 'f' to "；", 'g' to "（", 'h' to "）",
-        'j' to "～", 'k' to "“", 'l' to "”", 'z' to "@", 'x' to ".", 'c' to "#", 'v' to "、",
-        'b' to "？", 'n' to "！", 'm' to "…",
+        'o' to "9", 'p' to "0", 'a' to "~", 's' to "!", 'd' to "@", 'f' to "#", 'g' to "$", 'h' to "%",
+        'j' to "&", 'k' to "*", 'l' to "?", 'z' to "(", 'x' to ")", 'c' to "-", 'v' to "_",
+        'b' to ":", 'n' to ";", 'm' to "/",
     )
-    private val englishHints = chineseHints + mapOf(
-        'd' to ":", 'f' to ";", 'g' to "(", 'h' to ")", 'j' to "~", 'k' to "'", 'l' to "\"",
-        'x' to "_", 'v' to "&", 'b' to "?", 'n' to "!",
+    private val chineseHints = englishHints + mapOf(
+        's' to "！", 'g' to "￥", 'l' to "？", 'z' to "（", 'x' to "）", 'b' to "：", 'n' to "；",
     )
 
     @Test

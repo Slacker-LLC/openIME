@@ -95,6 +95,26 @@ CI runs all instrumentation tests on API 26, 29, 31 and 34.
 Developers also run them on API 36 locally.
 A release needs a pass on API 29 and API 31.
 
+### Feedback audit with emulator fixtures
+
+`scripts/feedback_audit_e2e.py` runs the feedback, clipboard/SMS, nine-key and
+bottom-row E2E suites through the real IME. These suites require the driver's
+`phase` argument and SMS modem fixtures; the generic compatibility run skips
+them. The ordinary instrumentation suites still run in CI.
+
+Reuse the only running emulator, with its desktop window visible, and install
+the current `.dev` debug APK and test APK first. Then run:
+
+```bash
+python3 scripts/feedback_audit_e2e.py --phase release-font1 --font-scale 1.0
+python3 scripts/feedback_audit_e2e.py --phase release-font2 --font-scale 2.0
+```
+
+The driver verifies the installed APK hash, delivers test SMS messages through
+the emulator modem, restores the original system settings, and keeps logs,
+screenshots and SHA-256 evidence under `output/feedback-audit/<phase>/`.
+It never starts an emulator or selects a connected phone.
+
 ## Crashes, freezes and conflicts
 
 - One failed key handler does not stop the keyboard process.

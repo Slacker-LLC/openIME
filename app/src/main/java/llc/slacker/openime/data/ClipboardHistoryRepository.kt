@@ -92,8 +92,8 @@ internal object ClipboardRetentionPolicy {
 
 /**
  * Tiny persistent clipboard history. Clipboard capture is best-effort; no
- * clipboard content is logged. Password and no-personalized-learning editors
- * do not expose persistent history through the IME. Unpinned
+ * clipboard content is logged. No-personalized-learning editors do not expose
+ * persistent history through the IME. Unpinned
  * items expire after 24 hours; pinned items remain until the user removes them.
  */
 object ClipboardHistoryRepository {
@@ -120,11 +120,14 @@ object ClipboardHistoryRepository {
         synchronized(lock) { addLocked(context, text) }
     }
 
-    private fun addLocked(context: Context, text: String) {
+    private fun addLocked(context: Context, text: String, timestamp: Long = System.currentTimeMillis()) {
         val stored = loadStored(context)
         val old = stored.firstOrNull { it.text == text }
         val items = stored.filterNot { it.text == text }.toMutableList()
-        items.add(0, ClipboardEntry(text, System.currentTimeMillis(), old?.pinned ?: false))
+        val entry = ClipboardEntry(text, maxOf(timestamp, old?.timestamp ?: 0L), old?.pinned ?: false)
+        if (!ClipboardRetentionPolicy.retain(entry, System.currentTimeMillis())) return
+        items.add(0, entry)
+        items.sortByDescending { it.timestamp }
         save(context, ClipboardRetentionPolicy.trimToCount(items, MAX_ITEMS))
     }
 
@@ -157,7 +160,10 @@ object ClipboardHistoryRepository {
             // 用户刚清空过：系统剪贴板里还躺着那一条（同一次复制的时间戳），不能写回来。
             val clipTimestamp = clip.description?.timestamp ?: 0L
             if (ClipboardSuppression.isSuppressed(suppressed(context), clipTimestamp, text)) return false
-            addLocked(context, text)
+            val timestamp = clipTimestamp.takeIf { it > 0L }
+                ?: loadStored(context).firstOrNull { it.text == text }?.timestamp
+                ?: System.currentTimeMillis()
+            addLocked(context, text, timestamp)
         }
         return true
     }
@@ -253,7 +259,7 @@ object ClipboardHistoryRepository {
         }.getOrElse { emptyList() }
         val retained = ClipboardRetentionPolicy.prune(parsed, System.currentTimeMillis())
         if (retained.size != parsed.size) save(context, retained)
-        return retained
+        return retained.sortedWith(compareByDescending<ClipboardEntry> { it.pinned }.thenByDescending { it.timestamp })
     }
 
     private fun save(context: Context, items: List<ClipboardEntry>) {

@@ -165,16 +165,6 @@ internal class ImeThemeApplier(
                 view.setColors(t.lightKeyText, ImeSurfacePolicy.keyHint(t), t.lightKeyText)
             side ->
                 view.setColors(t.sideKeyText, t.sideKeyText, t.sideKeyText)
-            // The English board's 中/英 key leads back to Chinese, and the
-            // reference tints its wordmark with `keyboard_current_english` —
-            // the accent at 95% on both skins (`cls_button_en2cn`,
-            // `style.xml:897-904`; `values/colors.xml:18`,
-            // `values/dark_colors.xml:17`).
-            view.tag == "key:mode-en" -> view.setColors(
-                ImeSurfacePolicy.accentTextOn(t.primary, t.functionKeyBackground),
-                t.functionKeyText,
-                t.functionKeyText,
-            )
             function ->
                 view.setColors(
                     t.functionKeyText,
